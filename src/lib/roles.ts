@@ -1,11 +1,11 @@
-export type UserRole = "founder" | "student";
+export type UserRole = "founder" | "tutor" | "student";
 
 const fallbackFounderEmail = "ethanxucoder@gmail.com";
 
 export const founderEmail =
   process.env.NEXT_PUBLIC_FOUNDER_EMAIL ?? fallbackFounderEmail;
 
-export const resolveRole = (email?: string | null): UserRole => {
+export const resolveRoleByEmail = (email?: string | null): UserRole => {
   if (!email) {
     return "student";
   }
@@ -14,3 +14,37 @@ export const resolveRole = (email?: string | null): UserRole => {
     ? "founder"
     : "student";
 };
+
+const normalizeRole = (role?: string | null): UserRole | null => {
+  if (!role) {
+    return null;
+  }
+
+  const value = role.toLowerCase();
+
+  if (value === "founder" || value === "tutor" || value === "student") {
+    return value as UserRole;
+  }
+
+  return null;
+};
+
+export const resolveUserRole = (
+  email?: string | null,
+  metadataRole?: string | null
+): UserRole => {
+  const emailRole = resolveRoleByEmail(email);
+  if (emailRole === "founder") {
+    return "founder";
+  }
+
+  const role = normalizeRole(metadataRole);
+  if (role === "tutor") {
+    return "tutor";
+  }
+
+  return "student";
+};
+
+export const canManageCourses = (role: UserRole): boolean =>
+  role === "founder" || role === "tutor";

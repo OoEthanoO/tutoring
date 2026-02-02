@@ -74,112 +74,94 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[var(--background)]">
-      <div className="mx-auto flex w-full max-w-4xl flex-col gap-10 px-6 py-16">
-        <section className="space-y-3">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
-            Access
-          </p>
-          <h1 className="text-3xl font-semibold text-[var(--foreground)]">
-            Sign in or create an account
-          </h1>
-        </section>
+    <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
+      <div className="mx-auto flex w-full max-w-md flex-col gap-6 px-6 py-10">
+        <h1 className="text-xl font-semibold">Sign in</h1>
 
-        <div className="w-full rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-8">
-          <div className="mb-6 inline-flex rounded-full border border-[var(--border)] p-1 text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
-            <button
-              type="button"
-              onClick={() => setMode("signin")}
-              className={`rounded-full px-4 py-2 transition ${
-                mode === "signin"
-                  ? "bg-[var(--foreground)] text-white"
-                  : "text-[var(--muted)]"
-              }`}
-            >
-              Sign in
-            </button>
-            <button
-              type="button"
-              onClick={() => setMode("signup")}
-              className={`rounded-full px-4 py-2 transition ${
-                mode === "signup"
-                  ? "bg-[var(--foreground)] text-white"
-                  : "text-[var(--muted)]"
-              }`}
-            >
-              Sign up
-            </button>
-          </div>
-
-          <form className="space-y-4" onSubmit={onSubmit}>
-            <div>
-              <label className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
-                Email
-              </label>
-              <input
-                type="email"
-                placeholder="you@nonprofit.org"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                className="mt-2 w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
-                required
-              />
-            </div>
-            {mode === "signup" ? (
-              <div>
-                <label className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
-                  Full name
-                </label>
-                <input
-                  type="text"
-                  placeholder="Alex Johnson"
-                  value={fullName}
-                  onChange={(event) => setFullName(event.target.value)}
-                  className="mt-2 w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
-                  required
-                />
-              </div>
-            ) : null}
-            <div>
-              <label className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
-                Password
-              </label>
-              <input
-                type="password"
-                placeholder="••••••••"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                className="mt-2 w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
-                required
-                minLength={8}
-              />
-            </div>
-            {error ? (
-              <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700">
-                {error}
-              </div>
-            ) : null}
-            {status ? (
-              <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-800">
-                {status}
-              </div>
-            ) : null}
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="w-full rounded-full border border-[var(--foreground)] px-6 py-3 text-sm font-semibold text-[var(--foreground)] transition hover:bg-[var(--foreground)] hover:text-white disabled:cursor-not-allowed disabled:opacity-70"
-            >
-              {isSubmitting
-                ? "Working..."
-                : mode === "signup"
-                  ? "Create account"
-                  : "Sign in"}
-            </button>
-          </form>
-          <p className="mt-4 text-xs text-[var(--muted)]">
-            Make sure your email is verified before signing in.
-          </p>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setMode("signin")}
+            className={`rounded border px-3 py-2 text-sm ${
+              mode === "signin"
+                ? "border-[var(--foreground)]"
+                : "border-[var(--border)]"
+            }`}
+          >
+            Sign in
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode("signup")}
+            className={`rounded border px-3 py-2 text-sm ${
+              mode === "signup"
+                ? "border-[var(--foreground)]"
+                : "border-[var(--border)]"
+            }`}
+          >
+            Sign up
+          </button>
         </div>
+
+        <form className="space-y-4" onSubmit={onSubmit}>
+          <div>
+            <label className="text-xs text-[var(--muted)]">Email</label>
+            <input
+              type="email"
+              placeholder="you@example.com"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              className="mt-2 w-full rounded border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm outline-none focus:border-[var(--foreground)]"
+              required
+            />
+          </div>
+          {mode === "signup" ? (
+            <div>
+              <label className="text-xs text-[var(--muted)]">Full name</label>
+              <input
+                type="text"
+                placeholder="Alex Johnson"
+                value={fullName}
+                onChange={(event) => setFullName(event.target.value)}
+                className="mt-2 w-full rounded border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm outline-none focus:border-[var(--foreground)]"
+                required
+              />
+            </div>
+          ) : null}
+          <div>
+            <label className="text-xs text-[var(--muted)]">Password</label>
+            <input
+              type="password"
+              placeholder="••••••••"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              className="mt-2 w-full rounded border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm outline-none focus:border-[var(--foreground)]"
+              required
+              minLength={8}
+            />
+          </div>
+          {error ? (
+            <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+              {error}
+            </div>
+          ) : null}
+          {status ? (
+            <div className="rounded border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+              {status}
+            </div>
+          ) : null}
+          <button
+            type="submit"
+            disabled={isSubmitting}
+            className="w-full rounded border border-[var(--foreground)] px-3 py-2 text-sm transition disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            {isSubmitting
+              ? "Working..."
+              : mode === "signup"
+                ? "Create account"
+                : "Sign in"}
+          </button>
+        </form>
       </div>
     </div>
   );

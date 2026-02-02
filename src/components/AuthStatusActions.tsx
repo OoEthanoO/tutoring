@@ -7,6 +7,7 @@ import AccountCard from "@/components/AccountCard";
 
 export default function AuthStatusActions() {
   const [isSignedIn, setIsSignedIn] = useState<boolean | null>(null);
+  const [isSigningOut, setIsSigningOut] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -32,13 +33,28 @@ export default function AuthStatusActions() {
   }
 
   if (isSignedIn) {
-    return null;
+    const onSignOut = async () => {
+      setIsSigningOut(true);
+      await supabase.auth.signOut();
+      setIsSigningOut(false);
+    };
+
+    return (
+      <button
+        type="button"
+        onClick={onSignOut}
+        disabled={isSigningOut}
+        className="rounded border border-[var(--border)] px-3 py-2 text-sm transition hover:border-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-70"
+      >
+        {isSigningOut ? "Signing out" : "Sign out"}
+      </button>
+    );
   }
 
   return (
     <Link
       href="/login"
-      className="rounded-full border border-[var(--border)] px-4 py-2 text-sm font-semibold text-[var(--foreground)] transition hover:border-[var(--foreground)]"
+      className="rounded border border-[var(--border)] px-3 py-2 text-sm transition hover:border-[var(--foreground)]"
     >
       Sign in
     </Link>

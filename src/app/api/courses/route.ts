@@ -1,11 +1,90 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
-import { resolveRoleByEmail, resolveUserRole } from "@/lib/roles";
+import { canManageCourses, resolveUserRole } from "@/lib/roles";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
+
+export async function POST(request: NextRequest) {
+  if (!supabaseUrl || !supabaseAnonKey) {
+    return NextResponse.json(
+      { error: "Missing Supabase environment configuration." },
+      { status: 500 }
+    );
+  }
+
+  const response = NextResponse.next();
+  const authClient = createServerClient(supabaseUrl, supabaseAnonKey, {
+    cookies: {
+      get(name) {
+        return request.cookies.get(name)?.value;
+      },
+      set(name, value, options) {
+        response.cookies.set({ name, value, ...options });
+      },
+      remove(name, options) {
+        response.cookies.set({ name, value: "", ...options });
+      },
+    },
+  });
+
+  const {
+    data: { user },
+    error,
+  } = await authClient.auth.getUser();
+
+  if (error || !user) {
+    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  }
+
+  const role = resolveUserRole(user.email, user.user_metadata?.role ?? null);
+  if (!canManageCourses(role)) {
+    return NextResponse.json({ error: "Forbidden." }, { status: 403 });
+  }
+
+  if (!serviceRoleKey) {
+    return NextResponse.json(
+      { error: "Missing SUPABASE_SERVICE_ROLE_KEY." },
+      { status: 500 }
+    );
+  }
+
+  const body = (await request.json().catch(() => null)) as
+    | { title?: string; description?: string }
+    | null;
+
+  const title = body?.title?.trim() ?? "";
+  const description = body?.description?.trim() ?? "";
+
+  if (!title) {
+    return NextResponse.json({ error: "Title is required." }, { status: 400 });
+  }
+
+  const adminClient = createClient(supabaseUrl, serviceRoleKey, {
+    auth: { persistSession: false },
+  });
+
+  const { data, error: insertError } = await adminClient
+    .from("courses")
+    .insert({
+      title,
+      description,
+      created_by: user.id,
+    })
+    .select("id, title, description, created_by, created_at")
+    .single();
+
+  if (insertError || !data) {
+    return NextResponse.json(
+      { error: insertError?.message ?? "Failed to create course." },
+      { status: 500 }
+    );
+  }
+
+  return NextResponse.json({ course: data });
+}
 
 export async function GET(request: NextRequest) {
   if (!supabaseUrl || !supabaseAnonKey) {
@@ -39,7 +118,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
-  if (resolveRoleByEmail(user.email) !== "founder") {
+  const role = resolveUserRole(user.email, user.user_metadata?.role ?? null);
+  if (!canManageCourses(role)) {
     return NextResponse.json({ error: "Forbidden." }, { status: 403 });
   }
 
@@ -50,133 +130,25 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const search = request.nextUrl.searchParams.get("email")?.toLowerCase() ?? "";
-  const page = Number(request.nextUrl.searchParams.get("page") ?? "1");
-  const perPage = Math.min(
-    200,
-    Number(request.nextUrl.searchParams.get("perPage") ?? "200")
-  );
-
   const adminClient = createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false },
   });
 
-  const { data, error: listError } = await adminClient.auth.admin.listUsers({
-    page,
-    perPage,
-  });
+  const { data, error: listError } = await adminClient
+    .from("courses")
+    .select(
+      "id, title, description, created_by, created_at, course_classes(id, title, starts_at, created_at)"
+    )
+    .eq("created_by", user.id)
+    .order("created_at", { ascending: false })
+    .order("starts_at", { foreignTable: "course_classes", ascending: true });
 
   if (listError || !data) {
     return NextResponse.json(
-      { error: listError?.message ?? "Failed to fetch users." },
+      { error: listError?.message ?? "Failed to load courses." },
       { status: 500 }
     );
   }
 
-  const users = data.users
-    .filter((item) =>
-      search ? item.email?.toLowerCase().includes(search) : true
-    )
-    .map((item) => ({
-      id: item.id,
-      email: item.email,
-      createdAt: item.created_at,
-      lastSignInAt: item.last_sign_in_at,
-      fullName: item.user_metadata?.full_name ?? "",
-      role: resolveUserRole(item.email, item.user_metadata?.role ?? null),
-    }));
-
-  return NextResponse.json({ users, total: data.total });
-}
-
-export async function PATCH(request: NextRequest) {
-  if (!supabaseUrl || !supabaseAnonKey) {
-    return NextResponse.json(
-      { error: "Missing Supabase environment configuration." },
-      { status: 500 }
-    );
-  }
-
-  const response = NextResponse.next();
-  const authClient = createServerClient(supabaseUrl, supabaseAnonKey, {
-    cookies: {
-      get(name) {
-        return request.cookies.get(name)?.value;
-      },
-      set(name, value, options) {
-        response.cookies.set({ name, value, ...options });
-      },
-      remove(name, options) {
-        response.cookies.set({ name, value: "", ...options });
-      },
-    },
-  });
-
-  const {
-    data: { user },
-    error,
-  } = await authClient.auth.getUser();
-
-  if (error || !user) {
-    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
-  }
-
-  if (resolveRoleByEmail(user.email) !== "founder") {
-    return NextResponse.json({ error: "Forbidden." }, { status: 403 });
-  }
-
-  if (!serviceRoleKey) {
-    return NextResponse.json(
-      { error: "Missing SUPABASE_SERVICE_ROLE_KEY." },
-      { status: 500 }
-    );
-  }
-
-  const body = (await request.json().catch(() => null)) as
-    | { userId?: string; role?: string }
-    | null;
-
-  if (!body?.userId || !body.role) {
-    return NextResponse.json(
-      { error: "Missing userId or role." },
-      { status: 400 }
-    );
-  }
-
-  if (body.role !== "tutor" && body.role !== "student") {
-    return NextResponse.json({ error: "Invalid role." }, { status: 400 });
-  }
-
-  const adminClient = createClient(supabaseUrl, serviceRoleKey, {
-    auth: { persistSession: false },
-  });
-
-  const { data, error: updateError } =
-    await adminClient.auth.admin.updateUserById(body.userId, {
-      user_metadata: {
-        role: body.role,
-      },
-    });
-
-  if (updateError || !data.user) {
-    return NextResponse.json(
-      { error: updateError?.message ?? "Failed to update user." },
-      { status: 500 }
-    );
-  }
-
-  const updatedUser = data.user;
-  const responseUser = {
-    id: updatedUser.id,
-    email: updatedUser.email,
-    createdAt: updatedUser.created_at,
-    lastSignInAt: updatedUser.last_sign_in_at,
-    fullName: updatedUser.user_metadata?.full_name ?? "",
-    role: resolveUserRole(
-      updatedUser.email,
-      updatedUser.user_metadata?.role ?? null
-    ),
-  };
-
-  return NextResponse.json({ user: responseUser });
+  return NextResponse.json({ courses: data });
 }

@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "TutorHub | Nonprofit Tutoring Operations",
+  title: "Ethan's Coding Class",
   description:
     "A role-based tutoring platform for founders, tutors, and students.",
 };
