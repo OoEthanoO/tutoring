@@ -3,7 +3,6 @@
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
-import { resolveRole } from "@/lib/roles";
 
 type Mode = "signin" | "signup";
 
@@ -63,8 +62,7 @@ export default function LoginPage() {
           return;
         }
 
-        const role = resolveRole(data.user?.email);
-        router.replace(role === "founder" ? "/admin" : "/student");
+        router.replace("/");
       }
     } catch (err) {
       const message =
@@ -85,9 +83,6 @@ export default function LoginPage() {
           <h1 className="text-3xl font-semibold text-[var(--foreground)]">
             Sign in or create an account
           </h1>
-          <p className="text-sm text-[var(--muted)]">
-            We route you to the right dashboard based on your role.
-          </p>
         </section>
 
         <div className="w-full rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-8">

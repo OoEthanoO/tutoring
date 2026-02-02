@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
-import { resolveRole } from "@/lib/roles";
 
 export default function OnboardingPage() {
   const router = useRouter();
@@ -31,9 +30,7 @@ export default function OnboardingPage() {
       setError(updateError.message);
     } else {
       setStatus("Thanks! Your profile is updated.");
-      const { data } = await supabase.auth.getUser();
-      const role = resolveRole(data.user?.email);
-      router.replace(role === "founder" ? "/admin" : "/student");
+      router.replace("/");
     }
 
     setIsSubmitting(false);

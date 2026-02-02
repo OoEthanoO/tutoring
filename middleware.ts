@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
-import { resolveRole } from "@/lib/roles";
 
-const guardedPaths = ["/admin", "/tutor", "/student", "/onboarding"];
+const guardedPaths = ["/onboarding"];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -45,25 +44,16 @@ export async function middleware(request: NextRequest) {
 
   const fullName = user.user_metadata?.full_name;
   if (!fullName || String(fullName).trim().length === 0) {
-    if (!pathname.startsWith("/onboarding")) {
-      return NextResponse.redirect(new URL("/onboarding", request.url));
-    }
     return response;
   }
 
-  const role = resolveRole(user.email);
-
-  if (pathname.startsWith("/admin") && role !== "founder") {
-    return NextResponse.redirect(new URL("/student", request.url));
-  }
-
-  if (pathname.startsWith("/tutor") && role !== "founder") {
-    return NextResponse.redirect(new URL("/student", request.url));
+  if (pathname.startsWith("/onboarding")) {
+    return NextResponse.redirect(new URL("/", request.url));
   }
 
   return response;
 }
 
 export const config = {
-  matcher: ["/admin/:path*", "/tutor/:path*", "/student/:path*", "/onboarding"],
+  matcher: ["/onboarding"],
 };

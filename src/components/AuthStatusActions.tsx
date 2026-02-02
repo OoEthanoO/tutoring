@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
+import AccountCard from "@/components/AccountCard";
 
 export default function AuthStatusActions() {
   const [isSignedIn, setIsSignedIn] = useState<boolean | null>(null);
@@ -75,4 +76,33 @@ export function AuthStatusLink() {
       Login
     </Link>
   );
+}
+
+export function AuthStatusCard() {
+  const [isSignedIn, setIsSignedIn] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    const load = async () => {
+      const { data } = await supabase.auth.getUser();
+      setIsSignedIn(Boolean(data.user));
+    };
+
+    load();
+
+    const { data: subscription } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        setIsSignedIn(Boolean(session?.user));
+      }
+    );
+
+    return () => {
+      subscription.subscription.unsubscribe();
+    };
+  }, []);
+
+  if (!isSignedIn) {
+    return null;
+  }
+
+  return <AccountCard />;
 }
