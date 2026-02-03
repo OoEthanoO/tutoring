@@ -45,6 +45,12 @@ export default function ManageMyCoursesMenu() {
   const [classStartsAt, setClassStartsAt] = useState<Record<string, string>>({});
   const [classDuration, setClassDuration] = useState<Record<string, string>>({});
   const [pendingCourseId, setPendingCourseId] = useState<string | null>(null);
+  const [editingCourseId, setEditingCourseId] = useState<string | null>(null);
+  const [editCourseTitle, setEditCourseTitle] = useState("");
+  const [editCourseDescription, setEditCourseDescription] = useState("");
+  const [pendingCourseEditId, setPendingCourseEditId] = useState<string | null>(
+    null
+  );
   const [editingClassId, setEditingClassId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [editStartsAt, setEditStartsAt] = useState("");
@@ -354,6 +360,64 @@ export default function ManageMyCoursesMenu() {
     setPendingDeleteId(null);
   };
 
+  const startEditCourse = (course: Course) => {
+    setEditingCourseId(course.id);
+    setEditCourseTitle(course.title ?? "");
+    setEditCourseDescription(course.description ?? "");
+  };
+
+  const cancelEditCourse = () => {
+    setEditingCourseId(null);
+    setEditCourseTitle("");
+    setEditCourseDescription("");
+  };
+
+  const saveCourseEdit = async (courseId: string) => {
+    const titleValue = editCourseTitle.trim();
+
+    if (!titleValue) {
+      setStatus({ type: "error", message: "Course title is required." });
+      return;
+    }
+
+    setPendingCourseEditId(courseId);
+    setStatus({ type: "idle", message: "" });
+
+    const response = await fetch("/api/courses", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        courseId,
+        title: titleValue,
+        description: editCourseDescription.trim(),
+      }),
+    });
+
+    if (!response.ok) {
+      const payload = (await response.json().catch(() => null)) as
+        | { error?: string }
+        | null;
+      setStatus({
+        type: "error",
+        message: payload?.error ?? "Unable to update course.",
+      });
+      setPendingCourseEditId(null);
+      return;
+    }
+
+    const payload = (await response.json()) as { course: Course };
+    setCourses((current) =>
+      current.map((courseItem) =>
+        courseItem.id === payload.course.id
+          ? { ...courseItem, ...payload.course }
+          : courseItem
+      )
+    );
+    setStatus({ type: "success", message: "Course updated." });
+    setPendingCourseEditId(null);
+    cancelEditCourse();
+  };
+
   if (!role || !canManageCourses(role)) {
     return null;
   }
@@ -402,34 +466,86 @@ export default function ManageMyCoursesMenu() {
             className="space-y-4 rounded-xl border border-[var(--border)] px-4 py-4"
           >
             <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <p className="text-sm font-semibold text-[var(--foreground)]">
-                  {course.title}
-                </p>
-                {course.description ? (
-                  <p className="text-xs text-[var(--muted)]">
-                    {course.description}
-                  </p>
-                ) : null}
+              <div className="flex-1">
+                {editingCourseId === course.id ? (
+                  <div className="space-y-2">
+                    <input
+                      type="text"
+                      value={editCourseTitle}
+                      onChange={(event) =>
+                        setEditCourseTitle(event.target.value)
+                      }
+                      className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+                    />
+                    <textarea
+                      value={editCourseDescription}
+                      onChange={(event) =>
+                        setEditCourseDescription(event.target.value)
+                      }
+                      rows={3}
+                      className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+                    />
+                  </div>
+                ) : (
+                  <div>
+                    <p className="text-sm font-semibold text-[var(--foreground)]">
+                      {course.title}
+                    </p>
+                    {course.description ? (
+                      <p className="text-xs text-[var(--muted)]">
+                        {course.description}
+                      </p>
+                    ) : null}
+                    {role === "founder" ? (
+                      <p className="text-xs text-[var(--muted)]">
+                        Tutor:{" "}
+                        {course.created_by_name ||
+                          course.created_by_email ||
+                          "Unknown tutor"}
+                      </p>
+                    ) : null}
+                  </div>
+                )}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                {editingCourseId === course.id ? (
+                  <>
+                    <button
+                      type="button"
+                      disabled={pendingCourseEditId === course.id}
+                      onClick={() => saveCourseEdit(course.id)}
+                      className="rounded-full border border-[var(--foreground)] px-3 py-1 text-[0.6rem] font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-70"
+                    >
+                      {pendingCourseEditId === course.id ? "Saving..." : "Save"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={cancelEditCourse}
+                      className="rounded-full border border-[var(--border)] px-3 py-1 text-[0.6rem] font-semibold text-[var(--foreground)] transition hover:border-[var(--foreground)]"
+                    >
+                      Cancel
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => startEditCourse(course)}
+                    className="rounded-full border border-[var(--border)] px-3 py-1 text-[0.6rem] font-semibold text-[var(--foreground)] transition hover:border-[var(--foreground)]"
+                  >
+                    Edit
+                  </button>
+                )}
                 {role === "founder" ? (
-                  <p className="text-xs text-[var(--muted)]">
-                    Tutor:{" "}
-                    {course.created_by_name ||
-                      course.created_by_email ||
-                      "Unknown tutor"}
-                  </p>
+                  <button
+                    type="button"
+                    disabled={pendingDeleteId === course.id}
+                    onClick={() => deleteCourse(course)}
+                    className="rounded-full border border-red-200 px-3 py-1 text-[0.6rem] font-semibold text-red-500 transition hover:border-red-400 disabled:cursor-not-allowed disabled:opacity-70"
+                  >
+                    {pendingDeleteId === course.id ? "Deleting..." : "Delete"}
+                  </button>
                 ) : null}
               </div>
-              {role === "founder" ? (
-                <button
-                  type="button"
-                  disabled={pendingDeleteId === course.id}
-                  onClick={() => deleteCourse(course)}
-                  className="rounded-full border border-red-200 px-3 py-1 text-[0.6rem] font-semibold text-red-500 transition hover:border-red-400 disabled:cursor-not-allowed disabled:opacity-70"
-                >
-                  {pendingDeleteId === course.id ? "Deleting..." : "Delete"}
-                </button>
-              ) : null}
             </div>
 
             <div className="space-y-2">

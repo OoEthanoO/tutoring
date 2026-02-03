@@ -269,3 +269,93 @@ export async function DELETE(request: NextRequest) {
 
   return NextResponse.json({ success: true });
 }
+
+export async function PATCH(request: NextRequest) {
+  if (!supabaseUrl || !supabaseAnonKey) {
+    return NextResponse.json(
+      { error: "Missing Supabase environment configuration." },
+      { status: 500 }
+    );
+  }
+
+  const user = await getRequestUser(request);
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  }
+
+  const role = resolveUserRole(user.email, user.role ?? null);
+  if (!canManageCourses(role)) {
+    return NextResponse.json({ error: "Forbidden." }, { status: 403 });
+  }
+
+  if (!serviceRoleKey) {
+    return NextResponse.json(
+      { error: "Missing SUPABASE_SERVICE_ROLE_KEY." },
+      { status: 500 }
+    );
+  }
+
+  const body = (await request.json().catch(() => null)) as
+    | { courseId?: string; title?: string; description?: string | null }
+    | null;
+
+  if (!body?.courseId) {
+    return NextResponse.json({ error: "Missing course id." }, { status: 400 });
+  }
+
+  const title =
+    typeof body.title === "string" ? body.title.trim() : undefined;
+  const description =
+    typeof body.description === "string" ? body.description.trim() : undefined;
+
+  if (title !== undefined && !title) {
+    return NextResponse.json({ error: "Title is required." }, { status: 400 });
+  }
+
+  if (title === undefined && description === undefined) {
+    return NextResponse.json(
+      { error: "Nothing to update." },
+      { status: 400 }
+    );
+  }
+
+  const adminClient = createClient(supabaseUrl, serviceRoleKey, {
+    auth: { persistSession: false },
+  });
+
+  const updatePayload: { title?: string; description?: string | null } = {};
+  if (title !== undefined) {
+    updatePayload.title = title;
+  }
+  if (description !== undefined) {
+    updatePayload.description = description ? description : null;
+  }
+
+  let updateQuery = adminClient
+    .from("courses")
+    .update(updatePayload)
+    .eq("id", body.courseId)
+    .select(
+      "id, title, description, created_by, created_by_name, created_by_email, created_at"
+    )
+    .single();
+
+  if (role === "tutor") {
+    updateQuery = updateQuery.eq("created_by", user.id);
+  }
+
+  const { data, error: updateError } = await updateQuery;
+
+  if (updateError || !data) {
+    return NextResponse.json(
+      {
+        error:
+          updateError?.message ??
+          "Unable to update course. Ensure you own this course.",
+      },
+      { status: 500 }
+    );
+  }
+
+  return NextResponse.json({ course: data });
+}
