@@ -211,3 +211,72 @@ export async function PATCH(request: NextRequest) {
 
   return NextResponse.json({ user: responseUser });
 }
+
+export async function DELETE(request: NextRequest) {
+  if (!supabaseUrl || !supabaseAnonKey) {
+    return NextResponse.json(
+      { error: "Missing Supabase environment configuration." },
+      { status: 500 }
+    );
+  }
+
+  const response = NextResponse.next();
+  const authClient = createServerClient(supabaseUrl, supabaseAnonKey, {
+    cookies: {
+      get(name) {
+        return request.cookies.get(name)?.value;
+      },
+      set(name, value, options) {
+        response.cookies.set({ name, value, ...options });
+      },
+      remove(name, options) {
+        response.cookies.set({ name, value: "", ...options });
+      },
+    },
+  });
+
+  const {
+    data: { user },
+    error,
+  } = await authClient.auth.getUser();
+
+  if (error || !user) {
+    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  }
+
+  if (resolveRoleByEmail(user.email) !== "founder") {
+    return NextResponse.json({ error: "Forbidden." }, { status: 403 });
+  }
+
+  if (!serviceRoleKey) {
+    return NextResponse.json(
+      { error: "Missing SUPABASE_SERVICE_ROLE_KEY." },
+      { status: 500 }
+    );
+  }
+
+  const body = (await request.json().catch(() => null)) as
+    | { userId?: string }
+    | null;
+
+  if (!body?.userId) {
+    return NextResponse.json({ error: "Missing userId." }, { status: 400 });
+  }
+
+  const adminClient = createClient(supabaseUrl, serviceRoleKey, {
+    auth: { persistSession: false },
+  });
+
+  const { error: deleteError } = await adminClient.auth.admin.deleteUser(
+    body.userId
+  );
+
+  if (deleteError) {
+    return NextResponse.json(
+      { error: deleteError.message ?? "Failed to delete user." },
+      { status: 500 }
+    );
+  }
+
+  return NextResponse.json({ success: true });
+}

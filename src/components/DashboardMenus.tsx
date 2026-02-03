@@ -89,7 +89,7 @@ export default function DashboardMenus() {
 
     if (role === "founder") {
       items.push({ key: "manage_enrollments", label: "Manage enrollments" });
-      items.push({ key: "founder_tools", label: "Promotion" });
+      items.push({ key: "founder_tools", label: "Manage accounts" });
     }
 
     return items;

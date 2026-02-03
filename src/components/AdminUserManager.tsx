@@ -179,6 +179,62 @@ export default function AdminUserManager() {
     setPendingId(null);
   };
 
+  const deleteAccount = async (user: AdminUser) => {
+    const name = user.fullName || user.email || "this user";
+    const firstConfirm = window.confirm(
+      `Delete account for ${name}? This cannot be undone.`
+    );
+    if (!firstConfirm) {
+      return;
+    }
+
+    const secondConfirm = window.confirm(
+      `Please confirm again to permanently delete ${name}.`
+    );
+    if (!secondConfirm) {
+      return;
+    }
+
+    const typedEmail = window.prompt(
+      `Type the full email for ${name} to confirm deletion.`
+    );
+    if (!typedEmail || typedEmail.trim() !== (user.email ?? "").trim()) {
+      setStatus({
+        type: "error",
+        message: "Deletion cancelled. Email did not match.",
+      });
+      return;
+    }
+
+    setPendingId(user.id);
+    setStatus({ type: "idle", message: "" });
+
+    const response = await fetch("/api/admin/users", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId: user.id }),
+    });
+
+    if (!response.ok) {
+      const payload = (await response.json().catch(() => null)) as
+        | { error?: string }
+        | null;
+      setStatus({
+        type: "error",
+        message: payload?.error ?? "Could not delete account.",
+      });
+      setPendingId(null);
+      return;
+    }
+
+    setUsers((current) => current.filter((entry) => entry.id !== user.id));
+    setStatus({
+      type: "success",
+      message: `Deleted account for ${name}.`,
+    });
+    setPendingId(null);
+  };
+
   if (!isFounder) {
     return null;
   }
@@ -187,10 +243,10 @@ export default function AdminUserManager() {
     <section className="space-y-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6">
       <header className="space-y-1">
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
-          Promotion
+          Manage accounts
         </p>
         <h2 className="text-lg font-semibold text-[var(--foreground)]">
-          Promote students to tutors
+          Manage student and tutor accounts
         </h2>
       </header>
 
@@ -275,6 +331,14 @@ export default function AdminUserManager() {
                     </div>
                   </>
                 )}
+                <button
+                  type="button"
+                  disabled={isPending}
+                  onClick={() => deleteAccount(user)}
+                  className="rounded-full border border-red-200 px-4 py-2 text-xs font-semibold text-red-500 transition hover:border-red-400 disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  {isPending ? "Working..." : "Delete account"}
+                </button>
               </div>
             </div>
           );
