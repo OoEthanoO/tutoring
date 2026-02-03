@@ -37,10 +37,17 @@ type StatusState = {
   message: string;
 };
 
+type TutorOption = {
+  id: string;
+  name: string;
+  email: string;
+};
+
 export default function ManageMyCoursesMenu() {
   const [role, setRole] = useState<UserRole | null>(null);
   const [courses, setCourses] = useState<Course[]>([]);
   const [donationLink, setDonationLink] = useState<string>("");
+  const [tutorOptions, setTutorOptions] = useState<TutorOption[]>([]);
   const [classTitle, setClassTitle] = useState<Record<string, string>>({});
   const [classStartsAt, setClassStartsAt] = useState<Record<string, string>>({});
   const [classDuration, setClassDuration] = useState<Record<string, string>>({});
@@ -48,6 +55,7 @@ export default function ManageMyCoursesMenu() {
   const [editingCourseId, setEditingCourseId] = useState<string | null>(null);
   const [editCourseTitle, setEditCourseTitle] = useState("");
   const [editCourseDescription, setEditCourseDescription] = useState("");
+  const [editCourseTutorId, setEditCourseTutorId] = useState<string>("");
   const [pendingCourseEditId, setPendingCourseEditId] = useState<string | null>(
     null
   );
@@ -129,6 +137,35 @@ export default function ManageMyCoursesMenu() {
     };
 
     loadDonationLink();
+  }, [role]);
+
+  useEffect(() => {
+    if (role !== "founder") {
+      setTutorOptions([]);
+      return;
+    }
+
+    const loadTutors = async () => {
+      const response = await fetch("/api/admin/users");
+      if (!response.ok) {
+        return;
+      }
+
+      const data = (await response.json()) as {
+        users?: { id: string; fullName?: string; email?: string | null; role?: string }[];
+      };
+      const options =
+        data.users
+          ?.filter((user) => user.role === "tutor" || user.role === "founder")
+          .map((user) => ({
+            id: user.id,
+            name: user.fullName || user.email || "Unknown",
+            email: user.email ?? "",
+          })) ?? [];
+      setTutorOptions(options);
+    };
+
+    loadTutors();
   }, [role]);
 
   const toLocalDateTimeInputValue = (value: Date) => {
@@ -364,12 +401,14 @@ export default function ManageMyCoursesMenu() {
     setEditingCourseId(course.id);
     setEditCourseTitle(course.title ?? "");
     setEditCourseDescription(course.description ?? "");
+    setEditCourseTutorId(course.created_by ?? "");
   };
 
   const cancelEditCourse = () => {
     setEditingCourseId(null);
     setEditCourseTitle("");
     setEditCourseDescription("");
+    setEditCourseTutorId("");
   };
 
   const saveCourseEdit = async (courseId: string) => {
@@ -377,6 +416,11 @@ export default function ManageMyCoursesMenu() {
 
     if (!titleValue) {
       setStatus({ type: "error", message: "Course title is required." });
+      return;
+    }
+
+    if (role === "founder" && !editCourseTutorId) {
+      setStatus({ type: "error", message: "Please select a tutor." });
       return;
     }
 
@@ -390,6 +434,7 @@ export default function ManageMyCoursesMenu() {
         courseId,
         title: titleValue,
         description: editCourseDescription.trim(),
+        createdBy: role === "founder" ? editCourseTutorId : undefined,
       }),
     });
 
@@ -485,6 +530,22 @@ export default function ManageMyCoursesMenu() {
                       rows={3}
                       className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
                     />
+                    {role === "founder" ? (
+                      <select
+                        value={editCourseTutorId}
+                        onChange={(event) =>
+                          setEditCourseTutorId(event.target.value)
+                        }
+                        className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+                      >
+                        <option value="">Select tutor</option>
+                        {tutorOptions.map((option) => (
+                          <option key={option.id} value={option.id}>
+                            {option.name} {option.email ? `(${option.email})` : ""}
+                          </option>
+                        ))}
+                      </select>
+                    ) : null}
                   </div>
                 ) : (
                   <div>

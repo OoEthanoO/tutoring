@@ -296,7 +296,12 @@ export async function PATCH(request: NextRequest) {
   }
 
   const body = (await request.json().catch(() => null)) as
-    | { courseId?: string; title?: string; description?: string | null }
+    | {
+        courseId?: string;
+        title?: string;
+        description?: string | null;
+        createdBy?: string;
+      }
     | null;
 
   if (!body?.courseId) {
@@ -307,12 +312,16 @@ export async function PATCH(request: NextRequest) {
     typeof body.title === "string" ? body.title.trim() : undefined;
   const description =
     typeof body.description === "string" ? body.description.trim() : undefined;
+  const createdBy =
+    typeof body.createdBy === "string" && body.createdBy.trim()
+      ? body.createdBy.trim()
+      : undefined;
 
   if (title !== undefined && !title) {
     return NextResponse.json({ error: "Title is required." }, { status: 400 });
   }
 
-  if (title === undefined && description === undefined) {
+  if (title === undefined && description === undefined && createdBy === undefined) {
     return NextResponse.json(
       { error: "Nothing to update." },
       { status: 400 }
@@ -323,12 +332,49 @@ export async function PATCH(request: NextRequest) {
     auth: { persistSession: false },
   });
 
-  const updatePayload: { title?: string; description?: string | null } = {};
+  const updatePayload: {
+    title?: string;
+    description?: string | null;
+    created_by?: string;
+    created_by_name?: string | null;
+    created_by_email?: string | null;
+  } = {};
   if (title !== undefined) {
     updatePayload.title = title;
   }
   if (description !== undefined) {
     updatePayload.description = description ? description : null;
+  }
+
+  if (createdBy !== undefined) {
+    if (role !== "founder") {
+      return NextResponse.json({ error: "Forbidden." }, { status: 403 });
+    }
+
+    const { data: tutorUser, error: tutorError } = await adminClient
+      .from("app_users")
+      .select("id, email, full_name, role")
+      .eq("id", createdBy)
+      .maybeSingle();
+
+    if (tutorError || !tutorUser) {
+      return NextResponse.json(
+        { error: "Unable to find selected tutor." },
+        { status: 400 }
+      );
+    }
+
+    if (resolveUserRole(tutorUser.email, tutorUser.role ?? null) === "student") {
+      return NextResponse.json(
+        { error: "Selected user is not a tutor." },
+        { status: 400 }
+      );
+    }
+
+    updatePayload.created_by = tutorUser.id;
+    updatePayload.created_by_name =
+      String(tutorUser.full_name ?? "").trim() || tutorUser.email || null;
+    updatePayload.created_by_email = tutorUser.email ?? null;
   }
 
   let updateQuery = adminClient
@@ -340,7 +386,7 @@ export async function PATCH(request: NextRequest) {
     )
     .single();
 
-  if (role === "tutor") {
+  if (role === "tutor" && createdBy === undefined) {
     updateQuery = updateQuery.eq("created_by", user.id);
   }
 
