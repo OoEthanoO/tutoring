@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-
-const clientIteration = process.env.NEXT_PUBLIC_ITERATION ?? "1";
+import { iteration } from "@/lib/iteration";
 
 export default function Footer() {
   useEffect(() => {
@@ -14,8 +13,8 @@ export default function Footer() {
         }
 
         const data = (await response.json()) as { iteration?: string };
-        const serverIteration = data.iteration ?? clientIteration;
-        if (serverIteration !== clientIteration) {
+        const serverIteration = data.iteration ?? iteration;
+        if (serverIteration !== iteration) {
           window.location.reload();
         }
       } catch {
@@ -31,7 +30,7 @@ export default function Footer() {
       <p>
         Made with ❤️ by Ethan Yan Xu | Current iteration of website is in alpha
         testing, bugs are expected and should be reported | Iteration{" "}
-        {clientIteration}
+        {iteration}
       </p>
     </footer>
   );

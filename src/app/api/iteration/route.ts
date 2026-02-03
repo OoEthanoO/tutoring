@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
+import { iteration } from "@/lib/iteration";
 
 export async function GET() {
-  const iteration = process.env.SERVER_ITERATION ?? "1";
   return NextResponse.json({ iteration });
 }
