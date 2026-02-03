@@ -12,7 +12,44 @@ type CourseClass = {
   id: string;
   title: string;
   starts_at: string;
+  duration_hours: number;
   created_at: string;
+};
+
+const sortClassesByStart = (classes: CourseClass[]) =>
+  [...classes].sort(
+    (a, b) =>
+      new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime()
+  );
+
+const getClassTimes = (startsAt: string, durationHours: number) => {
+  const start = new Date(startsAt);
+  const end = new Date(start.getTime() + durationHours * 60 * 60 * 1000);
+  return { start, end };
+};
+
+const formatClassSchedule = (start: Date, end: Date) => {
+  const date = start.toLocaleDateString();
+  const startTime = start.toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+  const endTime = end.toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+  return `${date} · ${startTime} - ${endTime}`;
+};
+
+const getClassTimeStyle = (start: Date, end: Date) => {
+  const now = new Date();
+  if (now >= start && now <= end) {
+    return "text-amber-400 animate-pulse";
+  }
+  if (now > end) {
+    return "text-emerald-400 line-through";
+  }
+  return "text-[var(--muted)]";
 };
 
 type Course = {
@@ -23,11 +60,15 @@ type Course = {
   created_by_email?: string | null;
   created_at: string;
   course_classes: CourseClass[];
+  enrollment_status?: "pending" | "approved" | "rejected" | "enrolled" | null;
+  donation_link?: string | null;
 };
 
 export default function CoursesMenu() {
   const [userId, setUserId] = useState<string | null>(null);
   const [courses, setCourses] = useState<Course[]>([]);
+  const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
+  const [isEnrolling, setIsEnrolling] = useState(false);
   const [status, setStatus] = useState<StatusState>({
     type: "idle",
     message: "",
@@ -98,7 +139,7 @@ export default function CoursesMenu() {
           Courses
         </p>
         <h2 className="text-lg font-semibold text-[var(--foreground)]">
-          Available courses
+          All courses
         </h2>
       </header>
 
@@ -140,22 +181,169 @@ export default function CoursesMenu() {
             </div>
 
             <div className="space-y-2">
-              {course.course_classes?.length ? (
-                <ul className="space-y-1 text-xs text-[var(--muted)]">
-                  {course.course_classes.map((courseClass) => (
-                    <li key={courseClass.id}>
-                      {courseClass.title} ·{" "}
-                      {new Date(courseClass.starts_at).toLocaleString()}
-                    </li>
-                  ))}
+                {course.course_classes?.length ? (
+                  <ul className="space-y-1 text-xs text-[var(--muted)]">
+                  {sortClassesByStart(course.course_classes).map((courseClass) => {
+                    const { start, end } = getClassTimes(
+                      courseClass.starts_at,
+                      courseClass.duration_hours
+                    );
+                    const tone = getClassTimeStyle(start, end);
+                    return (
+                      <li key={courseClass.id} className={tone}>
+                        {courseClass.title} · {formatClassSchedule(start, end)}
+                      </li>
+                    );
+                  })}
                 </ul>
               ) : (
                 <p className="text-xs text-[var(--muted)]">No classes yet.</p>
               )}
             </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              {course.enrollment_status === "enrolled" ? (
+                <span className="rounded-full border border-emerald-300 px-3 py-1 text-xs font-semibold text-emerald-700">
+                  Enrolled
+                </span>
+              ) : course.enrollment_status === "pending" ? (
+                <span className="rounded-full border border-amber-300 px-3 py-1 text-xs font-semibold text-amber-700">
+                  Pending approval
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setSelectedCourse(course)}
+                  className="rounded-full border border-[var(--foreground)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)]"
+                >
+                  {course.enrollment_status === "rejected"
+                    ? "Request again"
+                    : "Enroll"}
+                </button>
+              )}
+            </div>
           </div>
         ))}
       </div>
+
+      {selectedCourse ? (
+        <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/50 px-4">
+          <div className="w-full max-w-lg space-y-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-xl">
+            <div className="space-y-1">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
+                Confirm enrollment
+              </p>
+              <h3 className="text-lg font-semibold text-[var(--foreground)]">
+                {selectedCourse.title}
+              </h3>
+              <p className="text-xs text-[var(--muted)]">
+                Tutor:{" "}
+                {selectedCourse.created_by_name ||
+                  selectedCourse.created_by_email ||
+                  "Unknown tutor"}
+              </p>
+            </div>
+
+            {selectedCourse.description ? (
+              <p className="text-sm text-[var(--muted)]">
+                {selectedCourse.description}
+              </p>
+            ) : null}
+
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
+                Classes
+              </p>
+              {selectedCourse.course_classes?.length ? (
+                <ul className="space-y-1 text-xs text-[var(--muted)]">
+                  {sortClassesByStart(selectedCourse.course_classes).map((courseClass) => {
+                    const { start, end } = getClassTimes(
+                      courseClass.starts_at,
+                      courseClass.duration_hours
+                    );
+                    const tone = getClassTimeStyle(start, end);
+                    return (
+                      <li key={courseClass.id} className={tone}>
+                        {courseClass.title} · {formatClassSchedule(start, end)}
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : (
+                <p className="text-xs text-[var(--muted)]">No classes yet.</p>
+              )}
+            </div>
+
+            <p className="text-xs text-[var(--muted)]">
+              When you enroll, the founder will review your request. You will
+              receive an email when it is approved or rejected.
+            </p>
+            {selectedCourse.donation_link ? (
+              <p className="text-xs text-[var(--muted)]">
+                You MUST donate via{" "}
+                <a
+                  href={selectedCourse.donation_link}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-semibold text-[var(--foreground)] underline"
+                >
+                  this link
+                </a>{" "}
+                in order for your enrollment to be accepted.
+              </p>
+            ) : null}
+
+            <div className="flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setSelectedCourse(null)}
+                className="rounded-full border border-[var(--border)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:border-[var(--foreground)]"
+                disabled={isEnrolling}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  setIsEnrolling(true);
+                  setStatus({ type: "idle", message: "" });
+                  const response = await fetch(
+                    `/api/courses/${selectedCourse.id}/enroll`,
+                    { method: "POST" }
+                  );
+
+                  if (!response.ok) {
+                    const payload = (await response.json().catch(() => null)) as
+                      | { error?: string }
+                      | null;
+                    setStatus({
+                      type: "error",
+                      message:
+                        payload?.error ?? "Unable to submit enrollment request.",
+                    });
+                    setIsEnrolling(false);
+                    return;
+                  }
+
+                  setCourses((current) =>
+                    current.map((course) =>
+                      course.id === selectedCourse.id
+                        ? { ...course, enrollment_status: "pending" }
+                        : course
+                    )
+                  );
+                  setSelectedCourse(null);
+                  setIsEnrolling(false);
+                }}
+                disabled={isEnrolling}
+                className="rounded-full border border-[var(--foreground)] bg-[var(--foreground)] px-4 py-2 text-xs font-semibold text-[var(--background)] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                {isEnrolling ? "Submitting..." : "Confirm enroll"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

@@ -1,0 +1,38 @@
+"use client";
+
+import { useEffect } from "react";
+
+const clientIteration = process.env.NEXT_PUBLIC_ITERATION ?? "1";
+
+export default function Footer() {
+  useEffect(() => {
+    const checkIteration = async () => {
+      try {
+        const response = await fetch("/api/iteration", { cache: "no-store" });
+        if (!response.ok) {
+          return;
+        }
+
+        const data = (await response.json()) as { iteration?: string };
+        const serverIteration = data.iteration ?? clientIteration;
+        if (serverIteration !== clientIteration) {
+          window.location.reload();
+        }
+      } catch {
+        // Ignore iteration check errors.
+      }
+    };
+
+    checkIteration();
+  }, []);
+
+  return (
+    <footer className="mt-auto border-t border-[var(--border)] pt-6 text-center text-xs text-[var(--muted)]">
+      <p>
+        Made with ❤️ by Ethan Yan Xu | Current iteration of website is in alpha
+        testing, bugs are expected and should be reported | Iteration{" "}
+        {clientIteration}
+      </p>
+    </footer>
+  );
+}

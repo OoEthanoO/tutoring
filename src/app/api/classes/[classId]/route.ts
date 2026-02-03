@@ -7,9 +7,9 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 
-export async function POST(
+export async function PATCH(
   request: NextRequest,
-  { params }: { params: { courseId: string } | Promise<{ courseId: string }> }
+  { params }: { params: { classId: string } | Promise<{ classId: string }> }
 ) {
   if (!supabaseUrl || !supabaseAnonKey) {
     return NextResponse.json(
@@ -55,44 +55,50 @@ export async function POST(
   }
 
   const resolvedParams = await params;
-  const courseId = resolvedParams?.courseId ?? "";
-  if (!courseId) {
-    return NextResponse.json({ error: "Missing course id." }, { status: 400 });
+  const classId = resolvedParams?.classId ?? "";
+  if (!classId) {
+    return NextResponse.json({ error: "Missing class id." }, { status: 400 });
   }
 
   const body = (await request.json().catch(() => null)) as
     | { title?: string; startsAt?: string; durationHours?: number }
     | null;
 
-  const title = body?.title?.trim() ?? "";
-  const startsAt = body?.startsAt?.trim() ?? "";
-  const durationHours =
+  const nextTitle = body?.title?.trim();
+  const nextStartsAt = body?.startsAt?.trim();
+  const nextDuration =
     typeof body?.durationHours === "number" && body.durationHours > 0
       ? body.durationHours
-      : 1;
+      : undefined;
 
-  if (!title) {
-    return NextResponse.json({ error: "Title is required." }, { status: 400 });
-  }
-
-  if (!startsAt) {
-    return NextResponse.json(
-      { error: "Start time is required." },
-      { status: 400 }
-    );
+  if (!nextTitle && !nextStartsAt && !nextDuration) {
+    return NextResponse.json({ error: "No updates provided." }, { status: 400 });
   }
 
   const adminClient = createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false },
   });
 
-  const { data: course, error: courseError } = await adminClient
-    .from("courses")
-    .select("id, created_by")
-    .eq("id", courseId)
+  const { data: classRow, error: classError } = await adminClient
+    .from("course_classes")
+    .select("id, course_id, title, starts_at, duration_hours")
+    .eq("id", classId)
     .single();
 
-  if (courseError || !course) {
+  if (classError || !classRow) {
+    return NextResponse.json(
+      { error: classError?.message ?? "Class not found." },
+      { status: 404 }
+    );
+  }
+
+  const { data: courseRow, error: courseError } = await adminClient
+    .from("courses")
+    .select("id, created_by")
+    .eq("id", classRow.course_id)
+    .single();
+
+  if (courseError || !courseRow) {
     return NextResponse.json(
       { error: courseError?.message ?? "Course not found." },
       { status: 404 }
@@ -100,33 +106,35 @@ export async function POST(
   }
 
   const isFounder = role === "founder";
-  const isOwner = course.created_by === user.id;
-
+  const isOwner = courseRow.created_by === user.id;
   if (!isFounder && !isOwner) {
-    return NextResponse.json(
-      { error: "Only the course owner can add classes." },
-      { status: 403 }
-    );
+    return NextResponse.json({ error: "Forbidden." }, { status: 403 });
   }
 
-  const { data, error: insertError } = await adminClient
+  const updates: Record<string, string | number> = {};
+  if (nextTitle) {
+    updates.title = nextTitle;
+  }
+  if (nextStartsAt) {
+    updates.starts_at = nextStartsAt;
+  }
+  if (typeof nextDuration === "number") {
+    updates.duration_hours = nextDuration;
+  }
+
+  const { data: updated, error: updateError } = await adminClient
     .from("course_classes")
-    .insert({
-      course_id: courseId,
-      title,
-      starts_at: startsAt,
-      duration_hours: durationHours,
-      created_by: user.id,
-    })
+    .update(updates)
+    .eq("id", classId)
     .select("id, title, starts_at, duration_hours, created_at")
     .single();
 
-  if (insertError || !data) {
+  if (updateError || !updated) {
     return NextResponse.json(
-      { error: insertError?.message ?? "Failed to create class." },
+      { error: updateError?.message ?? "Failed to update class." },
       { status: 500 }
     );
   }
 
-  return NextResponse.json({ class: data });
+  return NextResponse.json({ class: updated });
 }

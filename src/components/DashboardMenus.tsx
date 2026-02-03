@@ -6,8 +6,19 @@ import { canManageCourses, resolveUserRole, type UserRole } from "@/lib/roles";
 import AdminUserManager from "@/components/AdminUserManager";
 import CourseCreator from "@/components/CourseCreator";
 import CoursesMenu from "@/components/CoursesMenu";
+import EnrolledCoursesMenu from "@/components/EnrolledCoursesMenu";
+import HomeMenu from "@/components/HomeMenu";
+import ManageEnrollmentsMenu from "@/components/ManageEnrollmentsMenu";
+import ManageMyCoursesMenu from "@/components/ManageMyCoursesMenu";
 
-type MenuKey = "courses" | "create" | "founder";
+type MenuKey =
+  | "home"
+  | "all_courses"
+  | "enrolled_courses"
+  | "create"
+  | "manage_courses"
+  | "manage_enrollments"
+  | "founder_tools";
 
 type MenuItem = {
   key: MenuKey;
@@ -16,14 +27,14 @@ type MenuItem = {
 
 export default function DashboardMenus() {
   const [role, setRole] = useState<UserRole | null>(null);
-  const [active, setActive] = useState<MenuKey>("courses");
+  const [active, setActive] = useState<MenuKey>("home");
 
   useEffect(() => {
     const load = async () => {
       const { data } = await supabase.auth.getUser();
       if (!data.user) {
         setRole(null);
-        setActive("courses");
+        setActive("home");
         return;
       }
 
@@ -33,7 +44,7 @@ export default function DashboardMenus() {
       );
       setRole(resolvedRole);
       if (resolvedRole === "student") {
-        setActive("courses");
+        setActive("home");
       }
     };
 
@@ -44,7 +55,7 @@ export default function DashboardMenus() {
         const user = session?.user ?? null;
         if (!user) {
           setRole(null);
-          setActive("courses");
+          setActive("home");
           return;
         }
 
@@ -54,7 +65,7 @@ export default function DashboardMenus() {
         );
         setRole(resolvedRole);
         if (resolvedRole === "student") {
-          setActive("courses");
+          setActive("home");
         }
       }
     );
@@ -65,14 +76,20 @@ export default function DashboardMenus() {
   }, []);
 
   const menus = useMemo<MenuItem[]>(() => {
-    const items: MenuItem[] = [{ key: "courses", label: "Courses" }];
+    const items: MenuItem[] = [
+      { key: "home", label: "Home" },
+      { key: "all_courses", label: "All courses" },
+      { key: "enrolled_courses", label: "Enrolled courses" },
+    ];
 
     if (role && canManageCourses(role)) {
       items.push({ key: "create", label: "Create" });
+      items.push({ key: "manage_courses", label: "Manage my courses" });
     }
 
     if (role === "founder") {
-      items.push({ key: "founder", label: "Founder tools" });
+      items.push({ key: "manage_enrollments", label: "Manage enrollments" });
+      items.push({ key: "founder_tools", label: "Promotion" });
     }
 
     return items;
@@ -90,7 +107,14 @@ export default function DashboardMenus() {
           <button
             key={menu.key}
             type="button"
-            onClick={() => setActive(menu.key)}
+            onClick={() => {
+              setActive(menu.key);
+              if (menu.key === "home") {
+                document.getElementById("home")?.scrollIntoView({
+                  behavior: "smooth",
+                });
+              }
+            }}
             className={
               active === menu.key
                 ? "rounded-full border border-[var(--foreground)] bg-[var(--foreground)] px-4 py-2 text-xs font-semibold text-[var(--background)] transition"
@@ -103,9 +127,13 @@ export default function DashboardMenus() {
         </nav>
       </div>
 
-      {active === "courses" ? <CoursesMenu /> : null}
+      {active === "home" ? <HomeMenu /> : null}
+      {active === "all_courses" ? <CoursesMenu /> : null}
+      {active === "enrolled_courses" ? <EnrolledCoursesMenu /> : null}
       {active === "create" ? <CourseCreator /> : null}
-      {active === "founder" ? <AdminUserManager /> : null}
+      {active === "manage_courses" ? <ManageMyCoursesMenu /> : null}
+      {active === "manage_enrollments" ? <ManageEnrollmentsMenu /> : null}
+      {active === "founder_tools" ? <AdminUserManager /> : null}
     </div>
   );
 }

@@ -1,58 +1,34 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
-import { canManageCourses, resolveUserRole, type UserRole } from "@/lib/roles";
+import { canManageCourses, resolveUserRole } from "@/lib/roles";
 
 type StatusState = {
   type: "idle" | "error" | "success";
   message: string;
 };
 
-type CourseClass = {
-  id: string;
-  title: string;
-  starts_at: string;
-  created_at: string;
-};
-
-type Course = {
-  id: string;
-  title: string;
-  description: string | null;
-  created_by: string | null;
-  created_at: string;
-  course_classes: CourseClass[];
-};
-
 export default function CourseCreator() {
   const [canCreate, setCanCreate] = useState(false);
-  const [role, setRole] = useState<UserRole | null>(null);
-  const [userId, setUserId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [courses, setCourses] = useState<Course[]>([]);
   const [status, setStatus] = useState<StatusState>({
     type: "idle",
     message: "",
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isLoadingCourses, setIsLoadingCourses] = useState(false);
-  const [pendingCourseId, setPendingCourseId] = useState<string | null>(null);
-  const [classTitle, setClassTitle] = useState<Record<string, string>>({});
-  const [classStartsAt, setClassStartsAt] = useState<Record<string, string>>({});
   const [draftClassTitle, setDraftClassTitle] = useState("");
   const [draftClassStartsAt, setDraftClassStartsAt] = useState("");
+  const [draftClassDuration, setDraftClassDuration] = useState("1");
   const [draftClasses, setDraftClasses] = useState<
-    { title: string; startsAt: string }[]
+    { title: string; startsAt: string; durationHours: number }[]
   >([]);
 
   useEffect(() => {
     const load = async () => {
       const { data } = await supabase.auth.getUser();
       if (!data.user) {
-        setRole(null);
-        setUserId(null);
         setCanCreate(false);
         return;
       }
@@ -61,8 +37,6 @@ export default function CourseCreator() {
         data.user.email,
         data.user.user_metadata?.role ?? null
       );
-      setRole(resolvedRole);
-      setUserId(data.user.id);
       setCanCreate(canManageCourses(resolvedRole));
     };
 
@@ -72,8 +46,6 @@ export default function CourseCreator() {
       (_event, session) => {
         const user = session?.user ?? null;
         if (!user) {
-          setRole(null);
-          setUserId(null);
           setCanCreate(false);
           return;
         }
@@ -82,8 +54,6 @@ export default function CourseCreator() {
           user.email ?? null,
           user.user_metadata?.role ?? null
         );
-        setRole(resolvedRole);
-        setUserId(user.id);
         setCanCreate(canManageCourses(resolvedRole));
       }
     );
@@ -93,34 +63,6 @@ export default function CourseCreator() {
     };
   }, []);
 
-  useEffect(() => {
-    if (!userId) {
-      setCourses([]);
-      return;
-    }
-
-    const loadCourses = async () => {
-      setIsLoadingCourses(true);
-      const response = await fetch("/api/courses");
-      if (!response.ok) {
-        const payload = (await response.json().catch(() => null)) as
-          | { error?: string }
-          | null;
-        setStatus({
-          type: "error",
-          message: payload?.error ?? "Unable to load courses.",
-        });
-        setIsLoadingCourses(false);
-        return;
-      }
-
-      const data = (await response.json()) as { courses: Course[] };
-      setCourses(data.courses ?? []);
-      setIsLoadingCourses(false);
-    };
-
-    loadCourses();
-  }, [userId]);
 
   const onSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -141,6 +83,7 @@ export default function CourseCreator() {
         classes: draftClasses.map((item) => ({
           title: item.title,
           startsAt: new Date(item.startsAt).toISOString(),
+          durationHours: item.durationHours,
         })),
       }),
     });
@@ -157,8 +100,7 @@ export default function CourseCreator() {
       return;
     }
 
-    const payload = (await response.json()) as { course: Course };
-    setCourses((current) => [payload.course, ...current]);
+    await response.json().catch(() => null);
     setTitle("");
     setDescription("");
     setDraftClassTitle("");
@@ -168,82 +110,13 @@ export default function CourseCreator() {
     setIsSubmitting(false);
   };
 
-  const upcomingCourses = useMemo(() => {
-    if (!userId) {
-      return [];
-    }
-
-    if (role === "founder") {
-      return courses;
-    }
-
-    return courses.filter((course) => course.created_by === userId);
-  }, [courses, role, userId]);
-
-  const onCreateClass = async (
-    courseId: string,
-    event: React.FormEvent<HTMLFormElement>
-  ) => {
-    event.preventDefault();
-    setStatus({ type: "idle", message: "" });
-
-    const titleValue = (classTitle[courseId] ?? "").trim();
-    const startsAtValue = classStartsAt[courseId] ?? "";
-
-    if (!titleValue) {
-      setStatus({ type: "error", message: "Class title is required." });
-      return;
-    }
-
-    if (!startsAtValue) {
-      setStatus({ type: "error", message: "Class date/time is required." });
-      return;
-    }
-
-    setPendingCourseId(courseId);
-    const response = await fetch(`/api/courses/${courseId}/classes`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        title: titleValue,
-        startsAt: new Date(startsAtValue).toISOString(),
-      }),
-    });
-
-    if (!response.ok) {
-      const payload = (await response.json().catch(() => null)) as
-        | { error?: string }
-        | null;
-      setStatus({
-        type: "error",
-        message: payload?.error ?? "Unable to create class.",
-      });
-      setPendingCourseId(null);
-      return;
-    }
-
-    const payload = (await response.json()) as { class: CourseClass };
-    setCourses((current) =>
-      current.map((course) =>
-        course.id === courseId
-          ? {
-              ...course,
-              course_classes: [...(course.course_classes ?? []), payload.class],
-            }
-          : course
-      )
-    );
-    setClassTitle((current) => ({ ...current, [courseId]: "" }));
-    setClassStartsAt((current) => ({ ...current, [courseId]: "" }));
-    setStatus({ type: "success", message: "Class added." });
-    setPendingCourseId(null);
-  };
 
   const addDraftClass = () => {
     setStatus({ type: "idle", message: "" });
 
     const titleValue = draftClassTitle.trim();
     const startsAtValue = draftClassStartsAt;
+    const durationValue = Number(draftClassDuration);
 
     if (!titleValue) {
       setStatus({ type: "error", message: "Class title is required." });
@@ -255,18 +128,73 @@ export default function CourseCreator() {
       return;
     }
 
-    setDraftClasses((current) => [
-      ...current,
-      { title: titleValue, startsAt: startsAtValue },
-    ]);
+    const nextEntry = {
+      title: titleValue,
+      startsAt: startsAtValue,
+      durationHours: durationValue > 0 ? durationValue : 1,
+    };
+    const updatedDrafts = [...draftClasses, nextEntry];
+
+    setDraftClasses((current) => [...current, nextEntry]);
+
+    const nextDraftStart = getSuggestedStartValueFromDraft(updatedDrafts);
+    const nextDraftDuration = getSuggestedDurationFromDraft(updatedDrafts);
+
     setDraftClassTitle("");
-    setDraftClassStartsAt("");
+    setDraftClassStartsAt(nextDraftStart);
+    setDraftClassDuration(nextDraftDuration || "1");
   };
 
   const removeDraftClass = (index: number) => {
     setDraftClasses((current) =>
       current.filter((_, currentIndex) => currentIndex !== index)
     );
+  };
+
+  const getSuggestedStartValueFromDraft = (
+    classes: { title: string; startsAt: string; durationHours: number }[]
+  ) => {
+    if (classes.length < 2) {
+      return "";
+    }
+
+    const sorted = [...classes].sort(
+      (a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()
+    );
+    const latest = sorted[sorted.length - 1];
+    const previous = sorted[sorted.length - 2];
+    const gap =
+      new Date(latest.startsAt).getTime() -
+      new Date(previous.startsAt).getTime();
+    if (!Number.isFinite(gap) || gap <= 0) {
+      return "";
+    }
+
+    const suggested = new Date(new Date(latest.startsAt).getTime() + gap);
+    return toLocalDateTimeInputValue(suggested);
+  };
+
+  const getSuggestedDurationFromDraft = (
+    classes: { title: string; startsAt: string; durationHours: number }[]
+  ) => {
+    if (classes.length === 0) {
+      return "1";
+    }
+
+    const sorted = [...classes].sort(
+      (a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()
+    );
+    const latest = sorted[sorted.length - 1];
+    return String(latest.durationHours || 1);
+  };
+
+  const toLocalDateTimeInputValue = (value: Date) => {
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, "0");
+    const day = String(value.getDate()).padStart(2, "0");
+    const hours = String(value.getHours()).padStart(2, "0");
+    const minutes = String(value.getMinutes()).padStart(2, "0");
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
   };
 
 
@@ -332,24 +260,48 @@ export default function CourseCreator() {
               Add classes now or later.
             </p>
           </div>
-          <div className="grid gap-3 sm:grid-cols-[1.4fr_1fr_auto]">
-            <input
-              type="text"
-              placeholder="Class title"
-              value={draftClassTitle}
-              onChange={(event) => setDraftClassTitle(event.target.value)}
-              className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
-            />
-            <input
-              type="datetime-local"
-              value={draftClassStartsAt}
-              onChange={(event) => setDraftClassStartsAt(event.target.value)}
-              className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
-            />
+          <div className="grid gap-3 sm:grid-cols-[1.4fr_1fr_0.7fr_auto]">
+            <div className="space-y-1">
+              <label className="text-[0.6rem] font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
+                Class title
+              </label>
+              <input
+                type="text"
+                placeholder="Class title"
+                value={draftClassTitle}
+                onChange={(event) => setDraftClassTitle(event.target.value)}
+                className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[0.6rem] font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
+                Date &amp; time
+              </label>
+              <input
+                type="datetime-local"
+                value={draftClassStartsAt}
+                onChange={(event) => setDraftClassStartsAt(event.target.value)}
+                className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[0.6rem] font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
+                Duration (hrs)
+              </label>
+              <input
+                type="number"
+                min="0.5"
+                step="0.5"
+                value={draftClassDuration}
+                onChange={(event) => setDraftClassDuration(event.target.value)}
+                placeholder="Duration (hrs)"
+                className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+              />
+            </div>
             <button
               type="button"
               onClick={addDraftClass}
-              className="rounded-full border border-[var(--foreground)] px-4 py-3 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--foreground)] hover:text-white"
+              className="rounded-full border border-[var(--foreground)] px-4 py-3 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)] sm:col-span-4"
             >
               Add class
             </button>
@@ -361,10 +313,11 @@ export default function CourseCreator() {
                   key={`${draftClass.title}-${draftClass.startsAt}-${index}`}
                   className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--border)] px-3 py-2"
                 >
-                  <span>
-                    {draftClass.title} ·{" "}
-                    {new Date(draftClass.startsAt).toLocaleString()}
-                  </span>
+                    <span>
+                      {draftClass.title} ·{" "}
+                      {new Date(draftClass.startsAt).toLocaleString()} ·{" "}
+                      {draftClass.durationHours} hrs
+                    </span>
                   <button
                     type="button"
                     onClick={() => removeDraftClass(index)}
@@ -380,107 +333,12 @@ export default function CourseCreator() {
         <button
           type="submit"
           disabled={isSubmitting}
-          className="w-full rounded-full border border-[var(--foreground)] px-6 py-3 text-sm font-semibold text-[var(--foreground)] transition hover:bg-[var(--foreground)] hover:text-white disabled:cursor-not-allowed disabled:opacity-70"
+          className="w-full rounded-full border border-[var(--foreground)] px-6 py-3 text-sm font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-70"
         >
           {isSubmitting ? "Creating..." : "Create course"}
         </button>
       </form>
 
-      <div className="space-y-4">
-        <div className="space-y-1">
-          <h3 className="text-sm font-semibold text-[var(--foreground)]">
-            Manage courses
-          </h3>
-          <p className="text-xs text-[var(--muted)]">
-            Add classes with a date and time (local timezone).
-          </p>
-        </div>
-
-        {isLoadingCourses ? (
-          <p className="text-sm text-[var(--muted)]">Loading courses...</p>
-        ) : null}
-
-        {!isLoadingCourses && upcomingCourses.length === 0 ? (
-          <p className="text-sm text-[var(--muted)]">
-            Create your first course to add classes.
-          </p>
-        ) : null}
-
-        <div className="space-y-3">
-          {upcomingCourses.map((course) => (
-            <div
-              key={course.id}
-              className="space-y-4 rounded-xl border border-[var(--border)] px-4 py-4"
-            >
-              <div>
-                <p className="text-sm font-semibold text-[var(--foreground)]">
-                  {course.title}
-                </p>
-                {course.description ? (
-                  <p className="text-xs text-[var(--muted)]">
-                    {course.description}
-                  </p>
-                ) : null}
-              </div>
-
-              <div className="space-y-2">
-                {course.course_classes?.length ? (
-                  <ul className="space-y-1 text-xs text-[var(--muted)]">
-                    {course.course_classes.map((courseClass) => (
-                      <li key={courseClass.id}>
-                        {courseClass.title} ·{" "}
-                        {new Date(courseClass.starts_at).toLocaleString()}
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="text-xs text-[var(--muted)]">
-                    No classes yet.
-                  </p>
-                )}
-              </div>
-
-              <form
-                className="grid gap-3 sm:grid-cols-[1.4fr_1fr_auto]"
-                onSubmit={(event) => onCreateClass(course.id, event)}
-              >
-                <input
-                  type="text"
-                  placeholder="Class title"
-                  value={classTitle[course.id] ?? ""}
-                  onChange={(event) =>
-                    setClassTitle((current) => ({
-                      ...current,
-                      [course.id]: event.target.value,
-                    }))
-                  }
-                  className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
-                  required
-                />
-                <input
-                  type="datetime-local"
-                  value={classStartsAt[course.id] ?? ""}
-                  onChange={(event) =>
-                    setClassStartsAt((current) => ({
-                      ...current,
-                      [course.id]: event.target.value,
-                    }))
-                  }
-                  className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
-                  required
-                />
-                <button
-                  type="submit"
-                  disabled={pendingCourseId === course.id}
-                  className="rounded-full border border-[var(--foreground)] px-4 py-3 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--foreground)] hover:text-white disabled:cursor-not-allowed disabled:opacity-70"
-                >
-                  {pendingCourseId === course.id ? "Adding..." : "Add class"}
-                </button>
-              </form>
-            </div>
-          ))}
-        </div>
-      </div>
     </section>
   );
 }

@@ -79,7 +79,7 @@ export default function OnboardingPage() {
             <button
               type="submit"
               disabled={isSubmitting}
-              className="w-full rounded-full border border-[var(--foreground)] px-6 py-3 text-sm font-semibold text-[var(--foreground)] transition hover:bg-[var(--foreground)] hover:text-white disabled:cursor-not-allowed disabled:opacity-70"
+            className="w-full rounded-full border border-[var(--foreground)] px-6 py-3 text-sm font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-70"
             >
               {isSubmitting ? "Saving..." : "Save and continue"}
             </button>

@@ -22,7 +22,7 @@ export default function VerifiedPage({ searchParams }: VerifiedPageProps) {
         <div className="flex justify-center">
           <Link
             href="/login"
-            className="rounded-full border border-[var(--foreground)] px-6 py-3 text-sm font-semibold text-[var(--foreground)] transition hover:bg-[var(--foreground)] hover:text-white"
+            className="rounded-full border border-[var(--foreground)] px-6 py-3 text-sm font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)]"
           >
             Continue to sign in
           </Link>

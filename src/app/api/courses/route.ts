@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
-import { canManageCourses } from "@/lib/roles";
+import { canManageCourses, resolveUserRole } from "@/lib/roles";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
     | {
         title?: string;
         description?: string;
-        classes?: { title?: string; startsAt?: string }[];
+        classes?: { title?: string; startsAt?: string; durationHours?: number }[];
       }
     | null;
 
@@ -104,6 +104,10 @@ export async function POST(request: NextRequest) {
     .map((item) => ({
       title: item?.title?.trim() ?? "",
       startsAt: item?.startsAt?.trim() ?? "",
+      durationHours:
+        typeof item?.durationHours === "number" && item.durationHours > 0
+          ? item.durationHours
+          : 1,
     }))
     .filter((item) => item.title && item.startsAt);
 
@@ -115,10 +119,11 @@ export async function POST(request: NextRequest) {
           course_id: data.id,
           title: item.title,
           starts_at: item.startsAt,
+          duration_hours: item.durationHours,
           created_by: user.id,
         }))
       )
-      .select("id, title, starts_at, created_at");
+      .select("id, title, starts_at, duration_hours, created_at");
 
     if (classError || !classData) {
       return NextResponse.json(
@@ -184,7 +189,7 @@ export async function GET(request: NextRequest) {
   let query = adminClient
     .from("courses")
     .select(
-      "id, title, description, created_by, created_by_name, created_by_email, created_at, course_classes(id, title, starts_at, created_at)"
+      "id, title, description, created_by, created_by_name, created_by_email, created_at, course_classes(id, title, starts_at, duration_hours, created_at)"
     )
     .order("created_at", { ascending: false })
     .order("starts_at", { foreignTable: "course_classes", ascending: true });
@@ -198,5 +203,128 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  return NextResponse.json({ courses: data });
+  const { data: requestData } = await adminClient
+    .from("course_enrollment_requests")
+    .select("id, course_id, status")
+    .eq("student_id", user.id);
+
+  const { data: enrollmentData } = await adminClient
+    .from("course_enrollments")
+    .select("course_id")
+    .eq("student_id", user.id);
+
+  const requestByCourse = new Map<string, { id: string; status: string }>();
+  (requestData ?? []).forEach((request) => {
+    requestByCourse.set(request.course_id, {
+      id: request.id,
+      status: request.status,
+    });
+  });
+
+  const enrolledSet = new Set(
+    (enrollmentData ?? []).map((item) => item.course_id)
+  );
+
+  const creatorIds = Array.from(
+    new Set(data.map((course) => course.created_by).filter(Boolean))
+  ) as string[];
+
+  const { data: donationData } = creatorIds.length
+    ? await adminClient
+        .from("tutor_profiles")
+        .select("user_id, donation_link")
+        .in("user_id", creatorIds)
+    : { data: [] };
+
+  const donationMap = new Map(
+    (donationData ?? []).map((row) => [row.user_id, row.donation_link ?? null])
+  );
+
+  const courses = data.map((course) => {
+    const request = requestByCourse.get(course.id);
+    const enrolled = enrolledSet.has(course.id);
+    const enrollmentStatus = enrolled
+      ? "enrolled"
+      : request?.status ?? null;
+
+    return {
+      ...course,
+      donation_link: donationMap.get(course.created_by ?? "") ?? null,
+      enrollment_status: enrollmentStatus,
+      enrollment_request_id: request?.id ?? null,
+    };
+  });
+
+  return NextResponse.json({ courses });
+}
+
+export async function DELETE(request: NextRequest) {
+  if (!supabaseUrl || !supabaseAnonKey) {
+    return NextResponse.json(
+      { error: "Missing Supabase environment configuration." },
+      { status: 500 }
+    );
+  }
+
+  const response = NextResponse.next();
+  const authClient = createServerClient(supabaseUrl, supabaseAnonKey, {
+    cookies: {
+      get(name) {
+        return request.cookies.get(name)?.value;
+      },
+      set(name, value, options) {
+        response.cookies.set({ name, value, ...options });
+      },
+      remove(name, options) {
+        response.cookies.set({ name, value: "", ...options });
+      },
+    },
+  });
+
+  const {
+    data: { user },
+    error,
+  } = await authClient.auth.getUser();
+
+  if (error || !user) {
+    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  }
+
+  const role = resolveUserRole(user.email, user.user_metadata?.role ?? null);
+  if (role !== "founder") {
+    return NextResponse.json({ error: "Forbidden." }, { status: 403 });
+  }
+
+  if (!serviceRoleKey) {
+    return NextResponse.json(
+      { error: "Missing SUPABASE_SERVICE_ROLE_KEY." },
+      { status: 500 }
+    );
+  }
+
+  const body = (await request.json().catch(() => null)) as
+    | { courseId?: string }
+    | null;
+
+  if (!body?.courseId) {
+    return NextResponse.json({ error: "Missing course id." }, { status: 400 });
+  }
+
+  const adminClient = createClient(supabaseUrl, serviceRoleKey, {
+    auth: { persistSession: false },
+  });
+
+  const { error: deleteError } = await adminClient
+    .from("courses")
+    .delete()
+    .eq("id", body.courseId);
+
+  if (deleteError) {
+    return NextResponse.json(
+      { error: deleteError.message ?? "Failed to delete course." },
+      { status: 500 }
+    );
+  }
+
+  return NextResponse.json({ success: true });
 }

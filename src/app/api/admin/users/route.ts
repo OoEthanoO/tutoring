@@ -84,7 +84,24 @@ export async function GET(request: NextRequest) {
       lastSignInAt: item.last_sign_in_at,
       fullName: item.user_metadata?.full_name ?? "",
       role: resolveUserRole(item.email, item.user_metadata?.role ?? null),
+      donationLink: "",
     }));
+
+  const userIds = users.map((user) => user.id);
+  if (userIds.length > 0) {
+    const { data: donationData } = await adminClient
+      .from("tutor_profiles")
+      .select("user_id, donation_link")
+      .in("user_id", userIds);
+
+    const donationMap = new Map(
+      (donationData ?? []).map((row) => [row.user_id, row.donation_link ?? ""])
+    );
+
+    users.forEach((user) => {
+      user.donationLink = donationMap.get(user.id) ?? "";
+    });
+  }
 
   return NextResponse.json({ users, total: data.total });
 }
@@ -133,17 +150,17 @@ export async function PATCH(request: NextRequest) {
   }
 
   const body = (await request.json().catch(() => null)) as
-    | { userId?: string; role?: string }
+    | { userId?: string; role?: string; donationLink?: string }
     | null;
 
-  if (!body?.userId || !body.role) {
+  if (!body?.userId || (!body.role && body.donationLink === undefined)) {
     return NextResponse.json(
-      { error: "Missing userId or role." },
+      { error: "Missing userId or update data." },
       { status: 400 }
     );
   }
 
-  if (body.role !== "tutor" && body.role !== "student") {
+  if (body.role && body.role !== "tutor" && body.role !== "student") {
     return NextResponse.json({ error: "Invalid role." }, { status: 400 });
   }
 
@@ -151,21 +168,34 @@ export async function PATCH(request: NextRequest) {
     auth: { persistSession: false },
   });
 
-  const { data, error: updateError } =
-    await adminClient.auth.admin.updateUserById(body.userId, {
-      user_metadata: {
-        role: body.role,
-      },
-    });
+  const updatePayload = body.role ? { role: body.role } : undefined;
+  const updateResult = updatePayload
+    ? await adminClient.auth.admin.updateUserById(body.userId, {
+        user_metadata: updatePayload,
+      })
+    : { data: { user }, error: null };
 
-  if (updateError || !data.user) {
+  const updated = updateResult.data;
+  const updateError = updateResult.error;
+
+  if (updateError || !updated.user) {
     return NextResponse.json(
       { error: updateError?.message ?? "Failed to update user." },
       { status: 500 }
     );
   }
 
-  const updatedUser = data.user;
+  if (body.donationLink !== undefined) {
+    await adminClient
+      .from("tutor_profiles")
+      .upsert({
+        user_id: body.userId,
+        donation_link: body.donationLink,
+        updated_at: new Date().toISOString(),
+      });
+  }
+
+  const updatedUser = updated.user ?? user;
   const responseUser = {
     id: updatedUser.id,
     email: updatedUser.email,
@@ -176,6 +206,7 @@ export async function PATCH(request: NextRequest) {
       updatedUser.email,
       updatedUser.user_metadata?.role ?? null
     ),
+    donationLink: body.donationLink ?? "",
   };
 
   return NextResponse.json({ user: responseUser });
