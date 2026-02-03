@@ -380,17 +380,17 @@ export async function PATCH(request: NextRequest) {
   let updateQuery = adminClient
     .from("courses")
     .update(updatePayload)
-    .eq("id", body.courseId)
-    .select(
-      "id, title, description, created_by, created_by_name, created_by_email, created_at"
-    )
-    .single();
+    .eq("id", body.courseId);
 
   if (role === "tutor" && createdBy === undefined) {
     updateQuery = updateQuery.eq("created_by", user.id);
   }
 
-  const { data, error: updateError } = await updateQuery;
+  const { data, error: updateError } = await updateQuery
+    .select(
+      "id, title, description, created_by, created_by_name, created_by_email, created_at"
+    )
+    .single();
 
   if (updateError || !data) {
     return NextResponse.json(
