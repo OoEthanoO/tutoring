@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Ethan's Coding Class",
   description:
-    "A role-based tutoring platform for founders, tutors, and students.",
+    "Education for all",
 };
 
 export default function RootLayout({
