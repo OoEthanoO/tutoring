@@ -1,28 +1,20 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { getCurrentUser, onAuthChange } from "@/lib/authClient";
 
 export default function PublicHome() {
   const [isSignedIn, setIsSignedIn] = useState<boolean | null>(null);
 
   useEffect(() => {
     const load = async () => {
-      const { data } = await supabase.auth.getUser();
-      setIsSignedIn(Boolean(data.user));
+      const user = await getCurrentUser();
+      setIsSignedIn(Boolean(user));
     };
 
     load();
 
-    const { data: subscription } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        setIsSignedIn(Boolean(session?.user));
-      }
-    );
-
-    return () => {
-      subscription.subscription.unsubscribe();
-    };
+    return onAuthChange(load);
   }, []);
 
   if (isSignedIn || isSignedIn === null) {

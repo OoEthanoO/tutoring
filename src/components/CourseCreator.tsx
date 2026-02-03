@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { getCurrentUser, onAuthChange } from "@/lib/authClient";
 import { canManageCourses, resolveUserRole } from "@/lib/roles";
 
 type StatusState = {
@@ -11,6 +11,7 @@ type StatusState = {
 
 export default function CourseCreator() {
   const [canCreate, setCanCreate] = useState(false);
+  const [userRole, setUserRole] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [status, setStatus] = useState<StatusState>({
@@ -27,40 +28,24 @@ export default function CourseCreator() {
 
   useEffect(() => {
     const load = async () => {
-      const { data } = await supabase.auth.getUser();
-      if (!data.user) {
+      const user = await getCurrentUser();
+      if (!user) {
         setCanCreate(false);
+        setUserRole(null);
         return;
       }
 
       const resolvedRole = resolveUserRole(
-        data.user.email,
-        data.user.user_metadata?.role ?? null
+        user.email,
+        user.role ?? null
       );
+      setUserRole(resolvedRole);
       setCanCreate(canManageCourses(resolvedRole));
     };
 
     load();
 
-    const { data: subscription } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        const user = session?.user ?? null;
-        if (!user) {
-          setCanCreate(false);
-          return;
-        }
-
-        const resolvedRole = resolveUserRole(
-          user.email ?? null,
-          user.user_metadata?.role ?? null
-        );
-        setCanCreate(canManageCourses(resolvedRole));
-      }
-    );
-
-    return () => {
-      subscription.subscription.unsubscribe();
-    };
+    return onAuthChange(load);
   }, []);
 
 
@@ -71,6 +56,29 @@ export default function CourseCreator() {
     if (!title.trim()) {
       setStatus({ type: "error", message: "Please add a title." });
       return;
+    }
+
+    if (userRole === "tutor") {
+      const ok = window.confirm(
+        "This course will immediately become public and you will not be able to delete it unless you contact the admin (ethanxucoder@gmail.com). Do you want to continue?"
+      );
+      if (!ok) {
+        return;
+      }
+    } else if (userRole === null) {
+      const currentUser = await getCurrentUser();
+      const currentRole = resolveUserRole(
+        currentUser?.email ?? null,
+        currentUser?.role ?? null
+      );
+      if (currentRole === "tutor") {
+        const ok = window.confirm(
+          "This course will immediately become public and you will not be able to delete it unless you contact the admin (ethanxucoder@gmail.com). Do you want to continue?"
+        );
+        if (!ok) {
+          return;
+        }
+      }
     }
 
     setIsSubmitting(true);

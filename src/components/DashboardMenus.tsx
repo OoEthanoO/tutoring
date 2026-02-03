@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { getCurrentUser, onAuthChange } from "@/lib/authClient";
 import { canManageCourses, resolveUserRole, type UserRole } from "@/lib/roles";
 import AdminUserManager from "@/components/AdminUserManager";
 import CourseCreator from "@/components/CourseCreator";
@@ -31,16 +31,16 @@ export default function DashboardMenus() {
 
   useEffect(() => {
     const load = async () => {
-      const { data } = await supabase.auth.getUser();
-      if (!data.user) {
+      const user = await getCurrentUser();
+      if (!user) {
         setRole(null);
         setActive("home");
         return;
       }
 
       const resolvedRole = resolveUserRole(
-        data.user.email,
-        data.user.user_metadata?.role ?? null
+        user.email,
+        user.role ?? null
       );
       setRole(resolvedRole);
       if (resolvedRole === "student") {
@@ -50,29 +50,7 @@ export default function DashboardMenus() {
 
     load();
 
-    const { data: subscription } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        const user = session?.user ?? null;
-        if (!user) {
-          setRole(null);
-          setActive("home");
-          return;
-        }
-
-        const resolvedRole = resolveUserRole(
-          user.email ?? null,
-          user.user_metadata?.role ?? null
-        );
-        setRole(resolvedRole);
-        if (resolvedRole === "student") {
-          setActive("home");
-        }
-      }
-    );
-
-    return () => {
-      subscription.subscription.unsubscribe();
-    };
+    return onAuthChange(load);
   }, []);
 
   const menus = useMemo<MenuItem[]>(() => {

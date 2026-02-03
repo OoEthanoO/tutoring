@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabaseClient";
+import { broadcastAuthChange } from "@/lib/authClient";
 
 export default function OnboardingPage() {
   const router = useRouter();
@@ -22,18 +22,25 @@ export default function OnboardingPage() {
     }
 
     setIsSubmitting(true);
-    const { error: updateError } = await supabase.auth.updateUser({
-      data: { full_name: fullName.trim() },
+    const response = await fetch("/api/auth/profile", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fullName: fullName.trim() }),
     });
 
-    if (updateError) {
-      setError(updateError.message);
-    } else {
-      setStatus("Thanks! Your profile is updated.");
-      router.replace("/");
+    if (!response.ok) {
+      const payload = (await response.json().catch(() => null)) as
+        | { error?: string }
+        | null;
+      setError(payload?.error ?? "Unable to update profile.");
+      setIsSubmitting(false);
+      return;
     }
 
+    broadcastAuthChange();
+    setStatus("Thanks! Your profile is updated.");
     setIsSubmitting(false);
+    router.replace("/");
   };
 
   return (

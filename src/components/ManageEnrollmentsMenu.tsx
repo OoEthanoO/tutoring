@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
-import { resolveRoleByEmail } from "@/lib/roles";
+import { getCurrentUser, onAuthChange } from "@/lib/authClient";
+import { resolveUserRole } from "@/lib/roles";
 
 type RequestCourse = {
   id: string;
@@ -38,12 +38,13 @@ export default function ManageEnrollmentsMenu() {
 
   useEffect(() => {
     const load = async () => {
-      const { data } = await supabase.auth.getUser();
-      const role = resolveRoleByEmail(data.user?.email ?? null);
+      const user = await getCurrentUser();
+      const role = resolveUserRole(user?.email ?? null, user?.role ?? null);
       setIsFounder(role === "founder");
     };
 
     load();
+    return onAuthChange(load);
   }, []);
 
   useEffect(() => {

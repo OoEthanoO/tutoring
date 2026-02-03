@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
-import { resolveRoleByEmail } from "@/lib/roles";
+import { getCurrentUser, onAuthChange } from "@/lib/authClient";
+import { resolveUserRole } from "@/lib/roles";
 
 type AdminUser = {
   id: string;
@@ -30,26 +30,17 @@ export default function AdminUserManager() {
 
   useEffect(() => {
     const load = async () => {
-      const { data } = await supabase.auth.getUser();
-      const role = resolveRoleByEmail(data.user?.email ?? null);
+      const user = await getCurrentUser();
+      const role = resolveUserRole(user?.email ?? null, user?.role ?? null);
       setIsFounder(role === "founder");
+      if (role !== "founder") {
+        setUsers([]);
+      }
     };
 
     load();
 
-    const { data: subscription } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        const role = resolveRoleByEmail(session?.user?.email ?? null);
-        setIsFounder(role === "founder");
-        if (role !== "founder") {
-          setUsers([]);
-        }
-      }
-    );
-
-    return () => {
-      subscription.subscription.unsubscribe();
-    };
+    return onAuthChange(load);
   }, []);
 
   useEffect(() => {

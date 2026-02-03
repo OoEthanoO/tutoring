@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { getCurrentUser, onAuthChange } from "@/lib/authClient";
 
 type StatusState = {
   type: "idle" | "error";
@@ -43,21 +43,13 @@ export default function EnrolledCoursesMenu() {
 
   useEffect(() => {
     const load = async () => {
-      const { data } = await supabase.auth.getUser();
-      setUserId(data.user?.id ?? null);
+      const user = await getCurrentUser();
+      setUserId(user?.id ?? null);
     };
 
     load();
 
-    const { data: subscription } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        setUserId(session?.user?.id ?? null);
-      }
-    );
-
-    return () => {
-      subscription.subscription.unsubscribe();
-    };
+    return onAuthChange(load);
   }, []);
 
   useEffect(() => {

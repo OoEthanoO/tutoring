@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { getCurrentUser, onAuthChange } from "@/lib/authClient";
 import { canManageCourses, resolveUserRole, type UserRole } from "@/lib/roles";
 
 type EnrolledStudent = {
@@ -59,20 +59,21 @@ export default function ManageMyCoursesMenu() {
 
   useEffect(() => {
     const load = async () => {
-      const { data } = await supabase.auth.getUser();
-      if (!data.user) {
+      const user = await getCurrentUser();
+      if (!user) {
         setRole(null);
         return;
       }
 
       const resolvedRole = resolveUserRole(
-        data.user.email,
-        data.user.user_metadata?.role ?? null
+        user.email,
+        user.role ?? null
       );
       setRole(resolvedRole);
     };
 
     load();
+    return onAuthChange(load);
   }, []);
 
   useEffect(() => {

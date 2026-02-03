@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { supabase } from "@/lib/supabaseClient";
+import { getCurrentUser, onAuthChange, broadcastAuthChange } from "@/lib/authClient";
 import AccountCard from "@/components/AccountCard";
 
 export default function AuthStatusActions() {
@@ -13,21 +13,13 @@ export default function AuthStatusActions() {
 
   useEffect(() => {
     const load = async () => {
-      const { data } = await supabase.auth.getUser();
-      setIsSignedIn(Boolean(data.user));
+      const user = await getCurrentUser();
+      setIsSignedIn(Boolean(user));
     };
 
     load();
 
-    const { data: subscription } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        setIsSignedIn(Boolean(session?.user));
-      }
-    );
-
-    return () => {
-      subscription.subscription.unsubscribe();
-    };
+    return onAuthChange(load);
   }, []);
 
   useEffect(() => {
@@ -58,7 +50,8 @@ export default function AuthStatusActions() {
   if (isSignedIn) {
     const onSignOut = async () => {
       setIsSigningOut(true);
-      await supabase.auth.signOut();
+      await fetch("/api/auth/logout", { method: "POST" });
+      broadcastAuthChange();
       setIsSigningOut(false);
       setIsMenuOpen(false);
     };
@@ -103,21 +96,13 @@ export function AuthStatusLink() {
 
   useEffect(() => {
     const load = async () => {
-      const { data } = await supabase.auth.getUser();
-      setIsSignedIn(Boolean(data.user));
+      const user = await getCurrentUser();
+      setIsSignedIn(Boolean(user));
     };
 
     load();
 
-    const { data: subscription } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        setIsSignedIn(Boolean(session?.user));
-      }
-    );
-
-    return () => {
-      subscription.subscription.unsubscribe();
-    };
+    return onAuthChange(load);
   }, []);
 
   if (isSignedIn === null || isSignedIn) {
@@ -136,21 +121,13 @@ export function AuthStatusCard() {
 
   useEffect(() => {
     const load = async () => {
-      const { data } = await supabase.auth.getUser();
-      setIsSignedIn(Boolean(data.user));
+      const user = await getCurrentUser();
+      setIsSignedIn(Boolean(user));
     };
 
     load();
 
-    const { data: subscription } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        setIsSignedIn(Boolean(session?.user));
-      }
-    );
-
-    return () => {
-      subscription.subscription.unsubscribe();
-    };
+    return onAuthChange(load);
   }, []);
 
   if (!isSignedIn) {

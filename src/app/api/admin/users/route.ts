@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
-import { resolveRoleByEmail, resolveUserRole } from "@/lib/roles";
+import { resolveUserRole } from "@/lib/roles";
+import { getRequestUser } from "@/lib/authServer";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
@@ -15,31 +15,12 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const response = NextResponse.next();
-  const authClient = createServerClient(supabaseUrl, supabaseAnonKey, {
-    cookies: {
-      get(name) {
-        return request.cookies.get(name)?.value;
-      },
-      set(name, value, options) {
-        response.cookies.set({ name, value, ...options });
-      },
-      remove(name, options) {
-        response.cookies.set({ name, value: "", ...options });
-      },
-    },
-  });
-
-  const {
-    data: { user },
-    error,
-  } = await authClient.auth.getUser();
-
-  if (error || !user) {
+  const user = await getRequestUser(request);
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
-  if (resolveRoleByEmail(user.email) !== "founder") {
+  if (resolveUserRole(user.email, user.role ?? null) !== "founder") {
     return NextResponse.json({ error: "Forbidden." }, { status: 403 });
   }
 
@@ -61,10 +42,12 @@ export async function GET(request: NextRequest) {
     auth: { persistSession: false },
   });
 
-  const { data, error: listError } = await adminClient.auth.admin.listUsers({
-    page,
-    perPage,
-  });
+  const { data, error: listError } = await adminClient
+    .from("app_users")
+    .select("id, email, full_name, role, created_at")
+    .ilike("email", search ? `%${search}%` : "%")
+    .order("created_at", { ascending: false })
+    .range((page - 1) * perPage, page * perPage - 1);
 
   if (listError || !data) {
     return NextResponse.json(
@@ -73,19 +56,15 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const users = data.users
-    .filter((item) =>
-      search ? item.email?.toLowerCase().includes(search) : true
-    )
-    .map((item) => ({
-      id: item.id,
-      email: item.email,
-      createdAt: item.created_at,
-      lastSignInAt: item.last_sign_in_at,
-      fullName: item.user_metadata?.full_name ?? "",
-      role: resolveUserRole(item.email, item.user_metadata?.role ?? null),
-      donationLink: "",
-    }));
+  const users = data.map((item) => ({
+    id: item.id,
+    email: item.email,
+    createdAt: item.created_at,
+    lastSignInAt: null,
+    fullName: item.full_name ?? "",
+    role: resolveUserRole(item.email, item.role ?? null),
+    donationLink: "",
+  }));
 
   const userIds = users.map((user) => user.id);
   if (userIds.length > 0) {
@@ -103,7 +82,7 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  return NextResponse.json({ users, total: data.total });
+  return NextResponse.json({ users, total: users.length });
 }
 
 export async function PATCH(request: NextRequest) {
@@ -114,31 +93,12 @@ export async function PATCH(request: NextRequest) {
     );
   }
 
-  const response = NextResponse.next();
-  const authClient = createServerClient(supabaseUrl, supabaseAnonKey, {
-    cookies: {
-      get(name) {
-        return request.cookies.get(name)?.value;
-      },
-      set(name, value, options) {
-        response.cookies.set({ name, value, ...options });
-      },
-      remove(name, options) {
-        response.cookies.set({ name, value: "", ...options });
-      },
-    },
-  });
-
-  const {
-    data: { user },
-    error,
-  } = await authClient.auth.getUser();
-
-  if (error || !user) {
+  const user = await getRequestUser(request);
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
-  if (resolveRoleByEmail(user.email) !== "founder") {
+  if (resolveUserRole(user.email, user.role ?? null) !== "founder") {
     return NextResponse.json({ error: "Forbidden." }, { status: 403 });
   }
 
@@ -168,17 +128,24 @@ export async function PATCH(request: NextRequest) {
     auth: { persistSession: false },
   });
 
-  const updatePayload = body.role ? { role: body.role } : undefined;
+  const updatePayload = body.role ? { role: body.role } : null;
   const updateResult = updatePayload
-    ? await adminClient.auth.admin.updateUserById(body.userId, {
-        user_metadata: updatePayload,
-      })
-    : { data: { user }, error: null };
+    ? await adminClient
+        .from("app_users")
+        .update(updatePayload)
+        .eq("id", body.userId)
+        .select("id, email, full_name, role, created_at")
+        .single()
+    : await adminClient
+        .from("app_users")
+        .select("id, email, full_name, role, created_at")
+        .eq("id", body.userId)
+        .single();
 
   const updated = updateResult.data;
   const updateError = updateResult.error;
 
-  if (updateError || !updated.user) {
+  if (updateError || !updated) {
     return NextResponse.json(
       { error: updateError?.message ?? "Failed to update user." },
       { status: 500 }
@@ -195,16 +162,16 @@ export async function PATCH(request: NextRequest) {
       });
   }
 
-  const updatedUser = updated.user ?? user;
+  const updatedUser = updated;
   const responseUser = {
     id: updatedUser.id,
     email: updatedUser.email,
     createdAt: updatedUser.created_at,
-    lastSignInAt: updatedUser.last_sign_in_at,
-    fullName: updatedUser.user_metadata?.full_name ?? "",
+    lastSignInAt: null,
+    fullName: updatedUser.full_name ?? "",
     role: resolveUserRole(
       updatedUser.email,
-      updatedUser.user_metadata?.role ?? null
+      updatedUser.role ?? null
     ),
     donationLink: body.donationLink ?? "",
   };
@@ -220,31 +187,12 @@ export async function DELETE(request: NextRequest) {
     );
   }
 
-  const response = NextResponse.next();
-  const authClient = createServerClient(supabaseUrl, supabaseAnonKey, {
-    cookies: {
-      get(name) {
-        return request.cookies.get(name)?.value;
-      },
-      set(name, value, options) {
-        response.cookies.set({ name, value, ...options });
-      },
-      remove(name, options) {
-        response.cookies.set({ name, value: "", ...options });
-      },
-    },
-  });
-
-  const {
-    data: { user },
-    error,
-  } = await authClient.auth.getUser();
-
-  if (error || !user) {
+  const user = await getRequestUser(request);
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
-  if (resolveRoleByEmail(user.email) !== "founder") {
+  if (resolveUserRole(user.email, user.role ?? null) !== "founder") {
     return NextResponse.json({ error: "Forbidden." }, { status: 403 });
   }
 
@@ -267,9 +215,10 @@ export async function DELETE(request: NextRequest) {
     auth: { persistSession: false },
   });
 
-  const { error: deleteError } = await adminClient.auth.admin.deleteUser(
-    body.userId
-  );
+  const { error: deleteError } = await adminClient
+    .from("app_users")
+    .delete()
+    .eq("id", body.userId);
 
   if (deleteError) {
     return NextResponse.json(

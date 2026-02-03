@@ -31,14 +31,14 @@ const normalizeRole = (role?: string | null): UserRole | null => {
 
 export const resolveUserRole = (
   email?: string | null,
-  metadataRole?: string | null
+  roleValue?: string | null
 ): UserRole => {
   const emailRole = resolveRoleByEmail(email);
   if (emailRole === "founder") {
     return "founder";
   }
 
-  const role = normalizeRole(metadataRole);
+  const role = normalizeRole(roleValue);
   if (role === "tutor") {
     return "tutor";
   }

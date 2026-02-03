@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { getCurrentUser, onAuthChange } from "@/lib/authClient";
 import { resolveUserRole } from "@/lib/roles";
 
 type AccountInfo = {
@@ -15,21 +15,18 @@ export default function AccountCard() {
 
   useEffect(() => {
     const loadAccount = async () => {
-      const { data } = await supabase.auth.getUser();
-      if (!data.user?.email) {
+      const user = await getCurrentUser();
+      if (!user?.email) {
         setAccount(null);
         return;
       }
 
       const fullName =
-        String(data.user.user_metadata?.full_name ?? "").trim() || "Unnamed user";
-      const role = resolveUserRole(
-        data.user.email,
-        data.user.user_metadata?.role ?? null
-      );
+        String(user.full_name ?? "").trim() || "Unnamed user";
+      const role = resolveUserRole(user.email, user.role ?? null);
 
       setAccount({
-        email: data.user.email,
+        email: user.email,
         fullName,
         role,
       });
@@ -37,32 +34,7 @@ export default function AccountCard() {
 
     loadAccount();
 
-    const { data: subscription } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        const user = session?.user ?? null;
-        if (!user?.email) {
-          setAccount(null);
-          return;
-        }
-
-        const fullName =
-          String(user.user_metadata?.full_name ?? "").trim() || "Unnamed user";
-        const role = resolveUserRole(
-          user.email,
-          user.user_metadata?.role ?? null
-        );
-
-        setAccount({
-          email: user.email,
-          fullName,
-          role,
-        });
-      }
-    );
-
-    return () => {
-      subscription.subscription.unsubscribe();
-    };
+    return onAuthChange(loadAccount);
   }, []);
 
   if (!account) {

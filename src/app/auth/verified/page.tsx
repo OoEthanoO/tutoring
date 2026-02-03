@@ -12,11 +12,11 @@ export default function VerifiedPage({ searchParams }: VerifiedPageProps) {
     <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
       <div className="mx-auto flex w-full max-w-xl flex-col gap-4 px-6 py-16 text-center">
         <h1 className="text-2xl font-semibold">
-          {isVerified ? "Email verified" : "Email verification"}
+          {isVerified ? "Your email has been verified" : "Email verification"}
         </h1>
         <p className="text-sm text-[var(--muted)]">
           {isVerified
-            ? "Thanks! Your email address is confirmed and your account is ready."
+            ? "You may now close this tab."
             : "Your email verification is complete."}
         </p>
         <div className="flex justify-center">

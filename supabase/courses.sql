@@ -1,8 +1,34 @@
+create table if not exists public.app_users (
+  id uuid primary key default gen_random_uuid(),
+  email text unique not null,
+  full_name text,
+  role text not null default 'student',
+  password_hash text not null,
+  email_verified_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.app_sessions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.app_users(id) on delete cascade,
+  token_hash text not null,
+  expires_at timestamptz not null,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.app_email_verifications (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.app_users(id) on delete cascade,
+  token_hash text not null,
+  expires_at timestamptz not null,
+  created_at timestamptz not null default now()
+);
+
 create table if not exists public.courses (
   id uuid primary key default gen_random_uuid(),
   title text not null,
   description text,
-  created_by uuid references auth.users(id) on delete set null,
+  created_by uuid references public.app_users(id) on delete set null,
   created_by_name text,
   created_by_email text,
   created_at timestamptz not null default now()
@@ -24,7 +50,7 @@ create table if not exists public.course_classes (
   title text not null,
   starts_at timestamptz not null,
   duration_hours numeric(4,2) not null default 1,
-  created_by uuid references auth.users(id) on delete set null,
+  created_by uuid references public.app_users(id) on delete set null,
   created_at timestamptz not null default now()
 );
 
@@ -41,7 +67,7 @@ create policy "insert course classes as self" on public.course_classes
 create table if not exists public.course_enrollment_requests (
   id uuid primary key default gen_random_uuid(),
   course_id uuid not null references public.courses(id) on delete cascade,
-  student_id uuid not null references auth.users(id) on delete cascade,
+  student_id uuid not null references public.app_users(id) on delete cascade,
   student_name text,
   student_email text,
   status text not null default 'pending',
@@ -62,7 +88,7 @@ create policy "students can create enrollment requests" on public.course_enrollm
 create table if not exists public.course_enrollments (
   id uuid primary key default gen_random_uuid(),
   course_id uuid not null references public.courses(id) on delete cascade,
-  student_id uuid not null references auth.users(id) on delete cascade,
+  student_id uuid not null references public.app_users(id) on delete cascade,
   student_name text,
   student_email text,
   created_at timestamptz not null default now(),
@@ -76,7 +102,7 @@ create policy "students can view their enrollments" on public.course_enrollments
   using (auth.uid() = student_id);
 
 create table if not exists public.tutor_profiles (
-  user_id uuid primary key references auth.users(id) on delete cascade,
+  user_id uuid primary key references public.app_users(id) on delete cascade,
   donation_link text,
   updated_at timestamptz not null default now()
 );

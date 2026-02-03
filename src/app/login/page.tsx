@@ -2,7 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabaseClient";
+import { broadcastAuthChange } from "@/lib/authClient";
 
 type Mode = "signin" | "signup";
 
@@ -15,9 +15,6 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const router = useRouter();
-  const siteUrl =
-    process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/+$/, "") ??
-    (typeof window !== "undefined" ? window.location.origin : "");
 
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -30,36 +27,47 @@ export default function LoginPage() {
         if (!fullName.trim()) {
           throw new Error("Full name is required for sign up.");
         }
-        const { error: signUpError } = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            data: {
-              full_name: fullName.trim(),
-            },
-            emailRedirectTo: `${siteUrl}/auth/callback?next=/auth/verified`,
-          },
+        const response = await fetch("/api/auth/signup", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email,
+            password,
+            fullName: fullName.trim(),
+          }),
         });
 
-        if (signUpError) {
-          throw signUpError;
+        if (!response.ok) {
+          const payload = (await response.json().catch(() => null)) as
+            | { error?: string }
+            | null;
+          throw new Error(payload?.error ?? "Unable to sign up.");
         }
 
         setStatus(
           "Check your inbox to confirm your email. You can sign in after verification."
         );
       } else {
-        const { error: signInError, data } =
-          await supabase.auth.signInWithPassword({
-            email,
-            password,
-          });
+        const response = await fetch("/api/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password }),
+        });
 
-        if (signInError) {
-          throw signInError;
+        if (!response.ok) {
+          const payload = (await response.json().catch(() => null)) as
+            | { error?: string }
+            | null;
+          throw new Error(payload?.error ?? "Unable to sign in.");
         }
 
-        const fullNameValue = data.user?.user_metadata?.full_name;
+        const payload = (await response.json()) as {
+          user: { full_name?: string | null };
+        };
+
+        broadcastAuthChange();
+
+        const fullNameValue = payload.user?.full_name;
         if (!fullNameValue || String(fullNameValue).trim().length === 0) {
           router.replace("/onboarding");
           return;
