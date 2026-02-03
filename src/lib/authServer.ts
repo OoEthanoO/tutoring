@@ -43,11 +43,15 @@ export const getSessionUser = async (token?: string | null) => {
     .gt("expires_at", now)
     .maybeSingle();
 
-  if (!data?.user) {
+  const resolvedUser = Array.isArray(data?.user)
+    ? data.user[0]
+    : data?.user;
+
+  if (!resolvedUser) {
     return null;
   }
 
-  return data.user as SessionUser;
+  return resolvedUser as SessionUser;
 };
 
 export const getRequestUser = async (
