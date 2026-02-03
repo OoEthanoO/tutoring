@@ -7,7 +7,10 @@ export default function Footer() {
   useEffect(() => {
     const checkIteration = async () => {
       try {
-        const response = await fetch("/api/iteration", { cache: "no-store" });
+        const response = await fetch(
+          `/api/iteration?ts=${Date.now()}`,
+          { cache: "no-store" }
+        );
         if (!response.ok) {
           return;
         }
@@ -23,6 +26,8 @@ export default function Footer() {
     };
 
     checkIteration();
+    const interval = window.setInterval(checkIteration, 15000);
+    return () => window.clearInterval(interval);
   }, []);
 
   return (
