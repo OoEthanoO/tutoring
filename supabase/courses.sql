@@ -3,6 +3,8 @@ create table if not exists public.courses (
   title text not null,
   description text,
   created_by uuid references auth.users(id) on delete set null,
+  created_by_name text,
+  created_by_email text,
   created_at timestamptz not null default now()
 );
 

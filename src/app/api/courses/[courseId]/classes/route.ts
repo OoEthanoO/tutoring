@@ -9,7 +9,7 @@ const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { courseId: string } }
+  { params }: { params: { courseId: string } | Promise<{ courseId: string }> }
 ) {
   if (!supabaseUrl || !supabaseAnonKey) {
     return NextResponse.json(
@@ -54,7 +54,8 @@ export async function POST(
     );
   }
 
-  const courseId = params.courseId;
+  const resolvedParams = await params;
+  const courseId = resolvedParams?.courseId ?? "";
   if (!courseId) {
     return NextResponse.json({ error: "Missing course id." }, { status: 400 });
   }
@@ -94,7 +95,10 @@ export async function POST(
     );
   }
 
-  if (course.created_by !== user.id) {
+  const isFounder = role === "founder";
+  const isOwner = course.created_by === user.id;
+
+  if (!isFounder && !isOwner) {
     return NextResponse.json(
       { error: "Only the course owner can add classes." },
       { status: 403 }

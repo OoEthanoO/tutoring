@@ -34,6 +34,20 @@ export default function AdminUserManager() {
     };
 
     load();
+
+    const { data: subscription } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        const role = resolveRoleByEmail(session?.user?.email ?? null);
+        setIsFounder(role === "founder");
+        if (role !== "founder") {
+          setUsers([]);
+        }
+      }
+    );
+
+    return () => {
+      subscription.subscription.unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
@@ -122,9 +136,6 @@ export default function AdminUserManager() {
         <h2 className="text-lg font-semibold text-[var(--foreground)]">
           Promote students to tutors
         </h2>
-        <p className="text-sm text-[var(--muted)]">
-          Choose a user and toggle their tutor status.
-        </p>
       </header>
 
       {status.type !== "idle" ? (

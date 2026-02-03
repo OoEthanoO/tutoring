@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
-import { canManageCourses, resolveUserRole } from "@/lib/roles";
+import { canManageCourses, resolveUserRole, type UserRole } from "@/lib/roles";
 
 type StatusState = {
   type: "idle" | "error" | "success";
@@ -20,12 +20,15 @@ type Course = {
   id: string;
   title: string;
   description: string | null;
+  created_by: string | null;
   created_at: string;
   course_classes: CourseClass[];
 };
 
 export default function CourseCreator() {
   const [canCreate, setCanCreate] = useState(false);
+  const [role, setRole] = useState<UserRole | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [courses, setCourses] = useState<Course[]>([]);
@@ -38,22 +41,61 @@ export default function CourseCreator() {
   const [pendingCourseId, setPendingCourseId] = useState<string | null>(null);
   const [classTitle, setClassTitle] = useState<Record<string, string>>({});
   const [classStartsAt, setClassStartsAt] = useState<Record<string, string>>({});
+  const [draftClassTitle, setDraftClassTitle] = useState("");
+  const [draftClassStartsAt, setDraftClassStartsAt] = useState("");
+  const [draftClasses, setDraftClasses] = useState<
+    { title: string; startsAt: string }[]
+  >([]);
 
   useEffect(() => {
     const load = async () => {
       const { data } = await supabase.auth.getUser();
-      const role = resolveUserRole(
-        data.user?.email ?? null,
-        data.user?.user_metadata?.role ?? null
+      if (!data.user) {
+        setRole(null);
+        setUserId(null);
+        setCanCreate(false);
+        return;
+      }
+
+      const resolvedRole = resolveUserRole(
+        data.user.email,
+        data.user.user_metadata?.role ?? null
       );
-      setCanCreate(canManageCourses(role));
+      setRole(resolvedRole);
+      setUserId(data.user.id);
+      setCanCreate(canManageCourses(resolvedRole));
     };
 
     load();
+
+    const { data: subscription } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        const user = session?.user ?? null;
+        if (!user) {
+          setRole(null);
+          setUserId(null);
+          setCanCreate(false);
+          return;
+        }
+
+        const resolvedRole = resolveUserRole(
+          user.email ?? null,
+          user.user_metadata?.role ?? null
+        );
+        setRole(resolvedRole);
+        setUserId(user.id);
+        setCanCreate(canManageCourses(resolvedRole));
+      }
+    );
+
+    return () => {
+      subscription.subscription.unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
-    if (!canCreate) {
+    if (!userId) {
+      setCourses([]);
       return;
     }
 
@@ -78,7 +120,7 @@ export default function CourseCreator() {
     };
 
     loadCourses();
-  }, [canCreate]);
+  }, [userId]);
 
   const onSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -96,6 +138,10 @@ export default function CourseCreator() {
       body: JSON.stringify({
         title: title.trim(),
         description: description.trim(),
+        classes: draftClasses.map((item) => ({
+          title: item.title,
+          startsAt: new Date(item.startsAt).toISOString(),
+        })),
       }),
     });
 
@@ -115,14 +161,24 @@ export default function CourseCreator() {
     setCourses((current) => [payload.course, ...current]);
     setTitle("");
     setDescription("");
+    setDraftClassTitle("");
+    setDraftClassStartsAt("");
+    setDraftClasses([]);
     setStatus({ type: "success", message: "Course created." });
     setIsSubmitting(false);
   };
 
-  const upcomingCourses = useMemo(
-    () => courses,
-    [courses]
-  );
+  const upcomingCourses = useMemo(() => {
+    if (!userId) {
+      return [];
+    }
+
+    if (role === "founder") {
+      return courses;
+    }
+
+    return courses.filter((course) => course.created_by === userId);
+  }, [courses, role, userId]);
 
   const onCreateClass = async (
     courseId: string,
@@ -183,6 +239,37 @@ export default function CourseCreator() {
     setPendingCourseId(null);
   };
 
+  const addDraftClass = () => {
+    setStatus({ type: "idle", message: "" });
+
+    const titleValue = draftClassTitle.trim();
+    const startsAtValue = draftClassStartsAt;
+
+    if (!titleValue) {
+      setStatus({ type: "error", message: "Class title is required." });
+      return;
+    }
+
+    if (!startsAtValue) {
+      setStatus({ type: "error", message: "Class date/time is required." });
+      return;
+    }
+
+    setDraftClasses((current) => [
+      ...current,
+      { title: titleValue, startsAt: startsAtValue },
+    ]);
+    setDraftClassTitle("");
+    setDraftClassStartsAt("");
+  };
+
+  const removeDraftClass = (index: number) => {
+    setDraftClasses((current) =>
+      current.filter((_, currentIndex) => currentIndex !== index)
+    );
+  };
+
+
   if (!canCreate) {
     return null;
   }
@@ -191,14 +278,11 @@ export default function CourseCreator() {
     <section className="space-y-8 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6">
       <header className="space-y-1">
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
-          Course builder
+          Create
         </p>
         <h2 className="text-lg font-semibold text-[var(--foreground)]">
           Create a new course
         </h2>
-        <p className="text-sm text-[var(--muted)]">
-          Founders and tutors can draft new offerings here.
-        </p>
       </header>
 
       {status.type !== "idle" ? (
@@ -239,6 +323,60 @@ export default function CourseCreator() {
             className="mt-2 w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
           />
         </div>
+        <div className="space-y-3 rounded-xl border border-dashed border-[var(--border)] px-4 py-4">
+          <div className="space-y-1">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
+              Classes (Optional)
+            </p>
+            <p className="text-xs text-[var(--muted)]">
+              Add classes now or later.
+            </p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-[1.4fr_1fr_auto]">
+            <input
+              type="text"
+              placeholder="Class title"
+              value={draftClassTitle}
+              onChange={(event) => setDraftClassTitle(event.target.value)}
+              className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+            />
+            <input
+              type="datetime-local"
+              value={draftClassStartsAt}
+              onChange={(event) => setDraftClassStartsAt(event.target.value)}
+              className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+            />
+            <button
+              type="button"
+              onClick={addDraftClass}
+              className="rounded-full border border-[var(--foreground)] px-4 py-3 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--foreground)] hover:text-white"
+            >
+              Add class
+            </button>
+          </div>
+          {draftClasses.length ? (
+            <ul className="space-y-2 text-xs text-[var(--muted)]">
+              {draftClasses.map((draftClass, index) => (
+                <li
+                  key={`${draftClass.title}-${draftClass.startsAt}-${index}`}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--border)] px-3 py-2"
+                >
+                  <span>
+                    {draftClass.title} ·{" "}
+                    {new Date(draftClass.startsAt).toLocaleString()}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => removeDraftClass(index)}
+                    className="text-xs font-semibold text-[var(--foreground)] transition hover:text-red-500"
+                  >
+                    Remove
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
         <button
           type="submit"
           disabled={isSubmitting}
@@ -251,7 +389,7 @@ export default function CourseCreator() {
       <div className="space-y-4">
         <div className="space-y-1">
           <h3 className="text-sm font-semibold text-[var(--foreground)]">
-            Your courses
+            Manage courses
           </h3>
           <p className="text-xs text-[var(--muted)]">
             Add classes with a date and time (local timezone).

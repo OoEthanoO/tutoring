@@ -29,8 +29,9 @@ export async function GET(request: NextRequest) {
     await supabase.auth.exchangeCodeForSession(code);
   }
 
-  const next = request.nextUrl.searchParams.get("next") ?? "/login";
-  return NextResponse.redirect(new URL(next, request.url), {
+  const next = request.nextUrl.searchParams.get("next");
+  const redirectTo = next ? next : "/auth/verified?status=verified";
+  return NextResponse.redirect(new URL(redirectTo, request.url), {
     headers: response.headers,
   });
 }

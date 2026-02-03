@@ -36,6 +36,33 @@ export default function AccountCard() {
     };
 
     loadAccount();
+
+    const { data: subscription } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        const user = session?.user ?? null;
+        if (!user?.email) {
+          setAccount(null);
+          return;
+        }
+
+        const fullName =
+          String(user.user_metadata?.full_name ?? "").trim() || "Unnamed user";
+        const role = resolveUserRole(
+          user.email,
+          user.user_metadata?.role ?? null
+        );
+
+        setAccount({
+          email: user.email,
+          fullName,
+          role,
+        });
+      }
+    );
+
+    return () => {
+      subscription.subscription.unsubscribe();
+    };
   }, []);
 
   if (!account) {
