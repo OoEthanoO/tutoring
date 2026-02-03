@@ -156,9 +156,10 @@ export async function PATCH(
   }
 
   const studentEmail = requestData.student_email ?? "";
-  const courseTitle = Array.isArray(requestData.course)
-    ? requestData.course[0]?.title ?? "course"
-    : requestData.course?.title ?? "course";
+  const courseTitle =
+    Array.isArray(requestData.course)
+      ? requestData.course[0]?.title ?? "course"
+      : (requestData.course as { title?: string } | null)?.title ?? "course";
 
   if (studentEmail) {
     const subject =

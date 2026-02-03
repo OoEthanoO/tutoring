@@ -33,7 +33,7 @@ type Course = {
 };
 
 type StatusState = {
-  type: "idle" | "error";
+  type: "idle" | "error" | "success";
   message: string;
 };
 
