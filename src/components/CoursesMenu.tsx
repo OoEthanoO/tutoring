@@ -281,9 +281,31 @@ export default function CoursesMenu() {
                 >
                   this link
                 </a>{" "}
+                and complete{" "}
+                <a
+                  href="https://forms.gle/tfxiH8zHfCifpBSa9"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-semibold text-[var(--foreground)] underline"
+                >
+                  this form
+                </a>{" "}
                 in order for your enrollment to be accepted.
               </p>
-            ) : null}
+            ) : (
+              <p className="text-xs text-[var(--muted)]">
+                You MUST complete{" "}
+                <a
+                  href="https://forms.gle/tfxiH8zHfCifpBSa9"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-semibold text-[var(--foreground)] underline"
+                >
+                  this form
+                </a>{" "}
+                in order for your enrollment to be accepted.
+              </p>
+            )}
 
             <div className="flex flex-wrap justify-end gap-2">
               <button
