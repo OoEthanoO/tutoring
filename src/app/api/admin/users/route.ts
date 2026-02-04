@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
 
   const { data, error: listError } = await adminClient
     .from("app_users")
-    .select("id, email, full_name, role, created_at")
+    .select("id, email, full_name, role, created_at, tutor_promoted_at")
     .ilike("email", search ? `%${search}%` : "%")
     .order("created_at", { ascending: false })
     .range((page - 1) * perPage, page * perPage - 1);
@@ -64,6 +64,7 @@ export async function GET(request: NextRequest) {
     fullName: item.full_name ?? "",
     role: resolveUserRole(item.email, item.role ?? null),
     donationLink: "",
+    tutorPromotedAt: item.tutor_promoted_at ?? null,
   }));
 
   const userIds = users.map((user) => user.id);
@@ -110,10 +111,20 @@ export async function PATCH(request: NextRequest) {
   }
 
   const body = (await request.json().catch(() => null)) as
-    | { userId?: string; role?: string; donationLink?: string }
+    | {
+        userId?: string;
+        role?: string;
+        donationLink?: string;
+        tutorPromotedAt?: string | null;
+      }
     | null;
 
-  if (!body?.userId || (!body.role && body.donationLink === undefined)) {
+  if (
+    !body?.userId ||
+    (!body.role &&
+      body.donationLink === undefined &&
+      body.tutorPromotedAt === undefined)
+  ) {
     return NextResponse.json(
       { error: "Missing userId or update data." },
       { status: 400 }
@@ -128,17 +139,50 @@ export async function PATCH(request: NextRequest) {
     auth: { persistSession: false },
   });
 
-  const updatePayload = body.role ? { role: body.role } : null;
+  const existingUser = body.role !== undefined || body.tutorPromotedAt !== undefined
+    ? await adminClient
+        .from("app_users")
+        .select("id, email, role")
+        .eq("id", body.userId)
+        .single()
+    : null;
+
+  if ((body.role !== undefined || body.tutorPromotedAt !== undefined) && (existingUser?.error || !existingUser?.data)) {
+    return NextResponse.json(
+      { error: existingUser?.error?.message ?? "Failed to load user." },
+      { status: 500 }
+    );
+  }
+
+  const existingRole = existingUser?.data?.role ?? null;
+  const isPromotingToTutor =
+    body.role === "tutor" && existingRole !== "tutor";
+
+  const shouldUpdatePromotedAt = body.tutorPromotedAt !== undefined;
+  const normalizedPromotedAt =
+    body.tutorPromotedAt === null ? null : body.tutorPromotedAt;
+
+  const updatePayload =
+    body.role || shouldUpdatePromotedAt
+      ? {
+          role: body.role ?? existingRole ?? "student",
+          tutor_promoted_at: isPromotingToTutor
+            ? new Date().toISOString()
+            : shouldUpdatePromotedAt
+              ? normalizedPromotedAt
+              : undefined,
+        }
+      : null;
   const updateResult = updatePayload
     ? await adminClient
         .from("app_users")
         .update(updatePayload)
         .eq("id", body.userId)
-        .select("id, email, full_name, role, created_at")
+        .select("id, email, full_name, role, created_at, tutor_promoted_at")
         .single()
     : await adminClient
         .from("app_users")
-        .select("id, email, full_name, role, created_at")
+        .select("id, email, full_name, role, created_at, tutor_promoted_at")
         .eq("id", body.userId)
         .single();
 
@@ -174,6 +218,7 @@ export async function PATCH(request: NextRequest) {
       updatedUser.role ?? null
     ),
     donationLink: body.donationLink ?? "",
+    tutorPromotedAt: updatedUser.tutor_promoted_at ?? null,
   };
 
   return NextResponse.json({ user: responseUser });

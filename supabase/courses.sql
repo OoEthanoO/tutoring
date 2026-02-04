@@ -3,6 +3,7 @@ create table if not exists public.app_users (
   email text unique not null,
   full_name text,
   role text not null default 'student',
+  tutor_promoted_at timestamptz,
   password_hash text not null,
   email_verified_at timestamptz,
   created_at timestamptz not null default now()

@@ -476,16 +476,26 @@ export default function ManageMyCoursesMenu() {
         <h2 className="text-lg font-semibold text-[var(--foreground)]">
           Manage my courses
         </h2>
-        {role === "tutor" && donationLink ? (
+        <div className="flex flex-col gap-1">
+          {role === "tutor" && donationLink ? (
+            <a
+              href={donationLink}
+              target="_blank"
+              rel="noreferrer"
+              className="text-xs font-semibold text-[var(--foreground)] underline"
+            >
+              Your donation link
+            </a>
+          ) : null}
           <a
-            href={donationLink}
+            href="https://forms.gle/WXrRhDtAv2CH5Chx6"
             target="_blank"
             rel="noreferrer"
             className="text-xs font-semibold text-[var(--foreground)] underline"
           >
-            Your donation link
+            Tutor Log Form
           </a>
-        ) : null}
+        </div>
       </header>
 
       {status.type === "error" ? (

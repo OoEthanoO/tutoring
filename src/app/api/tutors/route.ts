@@ -27,7 +27,7 @@ export async function GET() {
 
   const { data, error } = await adminClient
     .from("app_users")
-    .select("id, email, full_name, role");
+    .select("id, email, full_name, role, created_at, tutor_promoted_at");
 
   if (error || !data) {
     return NextResponse.json(
@@ -44,6 +44,7 @@ export async function GET() {
         name: String(user.full_name ?? "").trim() || user.email || "Tutor",
         role,
         email: user.email ?? "",
+        promotedAt: user.tutor_promoted_at ?? user.created_at,
       };
     })
     .filter((user) => user.role === "founder" || user.role === "tutor")
@@ -53,6 +54,11 @@ export async function GET() {
       }
       if (b.role === "founder" && a.role !== "founder") {
         return 1;
+      }
+      const promotedA = new Date(a.promotedAt).getTime();
+      const promotedB = new Date(b.promotedAt).getTime();
+      if (promotedA !== promotedB) {
+        return promotedA - promotedB;
       }
       return a.name.localeCompare(b.name);
     })

@@ -10,6 +10,7 @@ type AdminUser = {
   fullName: string;
   role: "founder" | "tutor" | "student";
   donationLink?: string;
+  tutorPromotedAt?: string | null;
 };
 
 type StatusState = {
@@ -27,6 +28,38 @@ export default function AdminUserManager() {
   const [isLoading, setIsLoading] = useState(false);
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [donationLinks, setDonationLinks] = useState<Record<string, string>>({});
+  const [promotedDates, setPromotedDates] = useState<Record<string, string>>(
+    {}
+  );
+
+  const toLocalDateTimeInput = (value: string) => {
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      return "";
+    }
+    const pad = (num: number) => String(num).padStart(2, "0");
+    return [
+      `${parsed.getFullYear()}-${pad(parsed.getMonth() + 1)}-${pad(parsed.getDate())}`,
+      `${pad(parsed.getHours())}:${pad(parsed.getMinutes())}`,
+    ].join("T");
+  };
+
+  const formatPromotedDate = (value?: string | null) => {
+    if (!value) {
+      return "Unknown";
+    }
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      return "Unknown";
+    }
+    return new Intl.DateTimeFormat("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    }).format(parsed);
+  };
 
   useEffect(() => {
     const load = async () => {
@@ -74,6 +107,16 @@ export default function AdminUserManager() {
           (data.users ?? []).map((user) => [
             user.id,
             user.donationLink ?? "",
+          ])
+        )
+      );
+      setPromotedDates(
+        Object.fromEntries(
+          (data.users ?? []).map((user) => [
+            user.id,
+            user.tutorPromotedAt
+              ? toLocalDateTimeInput(user.tutorPromotedAt)
+              : "",
           ])
         )
       );
@@ -127,9 +170,62 @@ export default function AdminUserManager() {
     setUsers((current) =>
       current.map((user) => (user.id === data.user.id ? data.user : user))
     );
+    setPromotedDates((current) => ({
+      ...current,
+      [data.user.id]: data.user.tutorPromotedAt
+        ? toLocalDateTimeInput(data.user.tutorPromotedAt)
+        : current[data.user.id] ?? "",
+    }));
     setStatus({
       type: "success",
       message: `Updated ${data.user.fullName || data.user.email || "user"}.`,
+    });
+    setPendingId(null);
+  };
+
+  const updatePromotedDate = async (userId: string) => {
+    setPendingId(userId);
+    setStatus({ type: "idle", message: "" });
+
+    const dateValue = promotedDates[userId] ?? "";
+    const isoDate = dateValue ? new Date(dateValue).toISOString() : null;
+
+    const response = await fetch("/api/admin/users", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userId,
+        tutorPromotedAt: isoDate,
+      }),
+    });
+
+    if (!response.ok) {
+      const payload = (await response.json().catch(() => null)) as
+        | { error?: string }
+        | null;
+      setStatus({
+        type: "error",
+        message:
+          payload?.error ??
+          "Could not update promotion date. Please try again.",
+      });
+      setPendingId(null);
+      return;
+    }
+
+    const data = (await response.json()) as { user: AdminUser };
+    setUsers((current) =>
+      current.map((user) => (user.id === data.user.id ? data.user : user))
+    );
+    setPromotedDates((current) => ({
+      ...current,
+      [data.user.id]: data.user.tutorPromotedAt
+        ? toLocalDateTimeInput(data.user.tutorPromotedAt)
+        : "",
+    }));
+    setStatus({
+      type: "success",
+      message: `Updated promotion date for ${data.user.fullName || data.user.email || "user"}.`,
     });
     setPendingId(null);
   };
@@ -277,8 +373,13 @@ export default function AdminUserManager() {
                 <p className="mt-1 text-xs text-[var(--muted)]">
                   Role: {user.role}
                 </p>
+                {user.role === "tutor" ? (
+                  <p className="text-xs text-[var(--muted)]">
+                    Promoted: {formatPromotedDate(user.tutorPromotedAt)}
+                  </p>
+                ) : null}
               </div>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-col gap-2">
                 {user.role !== "tutor" ? (
                   <button
                     type="button"
@@ -298,27 +399,59 @@ export default function AdminUserManager() {
                     >
                       {isPending ? "Updating..." : "Make student"}
                     </button>
-                    <div className="flex flex-wrap gap-2">
-                      <input
-                        type="url"
-                        value={donationLinks[user.id] ?? ""}
-                        onChange={(event) =>
-                          setDonationLinks((current) => ({
-                            ...current,
-                            [user.id]: event.target.value,
-                          }))
-                        }
-                        placeholder="Donation link"
-                        className="w-64 rounded-full border border-[var(--border)] bg-[var(--surface)] px-4 py-2 text-xs text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
-                      />
-                      <button
-                        type="button"
-                        disabled={isPending}
-                        onClick={() => updateDonationLink(user.id)}
-                        className="rounded-full border border-[var(--foreground)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-70"
-                      >
-                        {isPending ? "Saving..." : "Save link"}
-                      </button>
+                    <div className="space-y-2 rounded-xl border border-[var(--border)]/70 bg-[var(--surface)] px-3 py-3">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+                        Tutor settings
+                      </p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <label className="text-xs text-[var(--muted)]">
+                          Donation link
+                        </label>
+                        <input
+                          type="url"
+                          value={donationLinks[user.id] ?? ""}
+                          onChange={(event) =>
+                            setDonationLinks((current) => ({
+                              ...current,
+                              [user.id]: event.target.value,
+                            }))
+                          }
+                          placeholder="Donation link"
+                          className="min-w-[12rem] flex-1 rounded-full border border-[var(--border)] bg-[var(--surface)] px-4 py-2 text-xs text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+                        />
+                        <button
+                          type="button"
+                          disabled={isPending}
+                          onClick={() => updateDonationLink(user.id)}
+                          className="rounded-full border border-[var(--foreground)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-70"
+                        >
+                          {isPending ? "Saving..." : "Save link"}
+                        </button>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <label className="text-xs text-[var(--muted)]">
+                          Promotion time
+                        </label>
+                        <input
+                          type="datetime-local"
+                          value={promotedDates[user.id] ?? ""}
+                          onChange={(event) =>
+                            setPromotedDates((current) => ({
+                              ...current,
+                              [user.id]: event.target.value,
+                            }))
+                          }
+                          className="w-56 rounded-full border border-[var(--border)] bg-[var(--surface)] px-4 py-2 text-xs text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+                        />
+                        <button
+                          type="button"
+                          disabled={isPending}
+                          onClick={() => updatePromotedDate(user.id)}
+                          className="rounded-full border border-[var(--foreground)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-70"
+                        >
+                          {isPending ? "Saving..." : "Save time"}
+                        </button>
+                      </div>
                     </div>
                   </>
                 )}
