@@ -60,7 +60,7 @@ export default function CourseCreator() {
 
     if (userRole === "tutor") {
       const ok = window.confirm(
-        "This course will immediately become public and you will not be able to delete it unless you contact the admin (ethanxucoder@gmail.com). Do you want to continue?"
+        "This course will immediately become public and you will not be able to delete it unless you contact the admin (ethans.coding.class@gmail.com). Do you want to continue?"
       );
       if (!ok) {
         return;
@@ -73,7 +73,7 @@ export default function CourseCreator() {
       );
       if (currentRole === "tutor") {
         const ok = window.confirm(
-          "This course will immediately become public and you will not be able to delete it unless you contact the admin (ethanxucoder@gmail.com). Do you want to continue?"
+          "This course will immediately become public and you will not be able to delete it unless you contact the admin (ethans.coding.class@gmail.com). Do you want to continue?"
         );
         if (!ok) {
           return;

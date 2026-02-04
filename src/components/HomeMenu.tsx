@@ -1,6 +1,24 @@
 "use client";
 
+import { useEffect, useState } from "react";
+
 export default function HomeMenu() {
+  const [tutors, setTutors] = useState<string[]>([]);
+
+  useEffect(() => {
+    const loadTutors = async () => {
+      const response = await fetch("/api/tutors");
+      if (!response.ok) {
+        return;
+      }
+
+      const data = (await response.json()) as { tutors?: string[] };
+      setTutors(data.tutors ?? []);
+    };
+
+    loadTutors();
+  }, []);
+
   return (
     <section
       id="home"
@@ -35,30 +53,28 @@ export default function HomeMenu() {
 
       <div className="space-y-2">
         <h3 className="text-sm font-semibold text-[var(--foreground)]">
-          About the Tutor
+          About the Founder
         </h3>
         <p className="text-sm text-[var(--muted)]">
-          Ethan Xu, Toronto Highschooler, programming and computer science
+          Ethan Yan Xu, Toronto Highschooler, programming and computer science
           enthusiast, 6 years of coding experience, fluent in Java, C++, and
           Python. Exam score of 5 on AP Computer Science Applied and excellent
-          results in CCC. As of December 2025, more than 270 classes have been
+          results in CCC. As of January 2026, more than 280 classes have been
           taught and more than 230 people have participated in the program.
         </p>
       </div>
-
-      <div className="space-y-2">
-        <h3 className="text-sm font-semibold text-[var(--foreground)]">
-          Donate to SickKids Today
-        </h3>
-        <a
-          href="https://give.sickkidsfoundation.com/fundraisers/codingforsickkids"
-          target="_blank"
-          rel="noreferrer"
-          className="text-sm font-semibold text-[var(--foreground)] underline"
-        >
-          https://give.sickkidsfoundation.com/fundraisers/codingforsickkids
-        </a>
-      </div>
+      {tutors.length ? (
+        <div className="space-y-2">
+          <h3 className="text-sm font-semibold text-[var(--foreground)]">
+            Our Tutors
+          </h3>
+          <ul className="space-y-1 text-sm text-[var(--muted)]">
+            {tutors.map((name, index) => (
+              <li key={`${name}-${index}`}>{name}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
     </section>
   );
 }

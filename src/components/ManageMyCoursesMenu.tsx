@@ -746,8 +746,14 @@ export default function ManageMyCoursesMenu() {
               </p>
               {course.course_enrollments?.length ? (
                 <ul className="space-y-1 text-xs text-[var(--muted)]">
-                  {course.course_enrollments.map((student) => (
-                    <li key={student.id}>
+                  {course.course_enrollments.map((student, index) => (
+                    <li
+                      key={
+                        student.id ||
+                        student.student_email ||
+                        `${student.student_name ?? "student"}-${index}`
+                      }
+                    >
                       {student.student_name || "Student"} ·{" "}
                       {student.student_email || "No email"}
                     </li>

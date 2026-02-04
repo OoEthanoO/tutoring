@@ -1,6 +1,6 @@
 export type UserRole = "founder" | "tutor" | "student";
 
-const fallbackFounderEmail = "ethanxucoder@gmail.com";
+const fallbackFounderEmail = "ethans.coding.class@gmail.com";
 
 export const founderEmail =
   process.env.NEXT_PUBLIC_FOUNDER_EMAIL ?? fallbackFounderEmail;
