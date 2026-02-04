@@ -8,6 +8,8 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 const resendApiKey = process.env.RESEND_API_KEY ?? "";
 const resendFrom = process.env.RESEND_FROM ?? "";
+const defaultZoomId = "822 9677 5321";
+const defaultZoomPassword = "youth";
 
 type Action = "approve" | "reject";
 
@@ -84,7 +86,7 @@ export async function PATCH(
   const { data: requestData, error: requestError } = await adminClient
     .from("course_enrollment_requests")
     .select(
-      "id, course_id, student_id, student_name, student_email, status, course:courses(id, title)"
+      "id, course_id, student_id, student_name, student_email, status, course:courses(id, title, created_by_name)"
     )
     .eq("id", requestId)
     .single();
@@ -141,6 +143,11 @@ export async function PATCH(
     Array.isArray(requestData.course)
       ? requestData.course[0]?.title ?? "course"
       : (requestData.course as { title?: string } | null)?.title ?? "course";
+  const tutorName =
+    Array.isArray(requestData.course)
+      ? requestData.course[0]?.created_by_name ?? "your tutor"
+      : (requestData.course as { created_by_name?: string } | null)
+          ?.created_by_name ?? "your tutor";
 
   if (studentEmail) {
     const subject =
@@ -149,7 +156,9 @@ export async function PATCH(
         : `Enrollment update: ${courseTitle}`;
     const html =
       action === "approve"
-        ? `<p>Your enrollment request for <strong>${courseTitle}</strong> has been approved.</p>`
+        ? `<p>Your enrollment request for <strong>${courseTitle}</strong> has been approved.</p>
+           <p>Please attend the class 5 minutes before the start time:</p>
+           <p>Zoom ID: ${defaultZoomId}<br/>Password: ${defaultZoomPassword}<br/>Breakout room: ${tutorName}</p>`
         : `<p>Your enrollment request for <strong>${courseTitle}</strong> has been rejected.</p>`;
 
     await sendEmail(studentEmail, subject, html);
