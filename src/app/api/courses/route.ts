@@ -175,9 +175,6 @@ export async function GET(request: NextRequest) {
   }
 
   const user = await getRequestUser(request);
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
-  }
 
   if (!serviceRoleKey) {
     return NextResponse.json(
@@ -207,15 +204,19 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const { data: requestData } = await adminClient
-    .from("course_enrollment_requests")
-    .select("id, course_id, status")
-    .eq("student_id", user.id);
+  const { data: requestData } = user
+    ? await adminClient
+        .from("course_enrollment_requests")
+        .select("id, course_id, status")
+        .eq("student_id", user.id)
+    : { data: [] };
 
-  const { data: enrollmentData } = await adminClient
-    .from("course_enrollments")
-    .select("course_id")
-    .eq("student_id", user.id);
+  const { data: enrollmentData } = user
+    ? await adminClient
+        .from("course_enrollments")
+        .select("course_id")
+        .eq("student_id", user.id)
+    : { data: [] };
 
   const requestByCourse = new Map<string, { id: string; status: string }>();
   (requestData ?? []).forEach((request) => {

@@ -1,7 +1,6 @@
 import AuthStatusActions, { AuthStatusCard } from "@/components/AuthStatusActions";
 import DashboardMenus from "@/components/DashboardMenus";
 import Footer from "@/components/Footer";
-import PublicHome from "@/components/PublicHome";
 
 export default function Home() {
   return (
@@ -14,7 +13,6 @@ export default function Home() {
             <AuthStatusActions />
           </div>
         </div>
-        <PublicHome />
         <DashboardMenus />
         <Footer />
       </div>

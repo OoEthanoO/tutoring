@@ -151,11 +151,6 @@ export default function CoursesMenu() {
   }, []);
 
   useEffect(() => {
-    if (!userId) {
-      setCourses([]);
-      return;
-    }
-
     const loadCourses = async () => {
       setIsLoadingCourses(true);
       const response = await fetch("/api/courses");
@@ -250,9 +245,7 @@ export default function CoursesMenu() {
     return minutes;
   }, [courses, nowMs]);
 
-  if (!userId) {
-    return null;
-  }
+  const isGuest = !userId;
 
   return (
     <section className="space-y-6 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6">
@@ -337,7 +330,7 @@ export default function CoursesMenu() {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
-                  {course.enrollment_status === "enrolled" ? (
+                  {isGuest ? null : course.enrollment_status === "enrolled" ? (
                     <span className="rounded-full border border-emerald-300 px-3 py-1 text-xs font-semibold text-emerald-700">
                       Enrolled
                     </span>
@@ -483,7 +476,7 @@ export default function CoursesMenu() {
         </div>
       ) : null}
 
-      {selectedCourse ? (
+      {!isGuest && selectedCourse ? (
         <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/50 px-4">
           <div className="w-full max-w-lg space-y-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-xl">
             <div className="space-y-1">

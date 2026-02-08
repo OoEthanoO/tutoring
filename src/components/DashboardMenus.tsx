@@ -27,6 +27,7 @@ type MenuItem = {
 
 export default function DashboardMenus() {
   const [role, setRole] = useState<UserRole | null>(null);
+  const [isAuthResolved, setIsAuthResolved] = useState(false);
   const [active, setActive] = useState<MenuKey>("home");
 
   useEffect(() => {
@@ -35,6 +36,7 @@ export default function DashboardMenus() {
       if (!user) {
         setRole(null);
         setActive("home");
+        setIsAuthResolved(true);
         return;
       }
 
@@ -43,6 +45,7 @@ export default function DashboardMenus() {
         user.role ?? null
       );
       setRole(resolvedRole);
+      setIsAuthResolved(true);
       if (resolvedRole === "student") {
         setActive("home");
       }
@@ -57,8 +60,11 @@ export default function DashboardMenus() {
     const items: MenuItem[] = [
       { key: "home", label: "Home" },
       { key: "all_courses", label: "All courses" },
-      { key: "enrolled_courses", label: "Enrolled courses" },
     ];
+
+    if (role) {
+      items.push({ key: "enrolled_courses", label: "Enrolled courses" });
+    }
 
     if (role && canManageCourses(role)) {
       items.push({ key: "create", label: "Create" });
@@ -73,7 +79,7 @@ export default function DashboardMenus() {
     return items;
   }, [role]);
 
-  if (!role) {
+  if (!isAuthResolved) {
     return null;
   }
 
