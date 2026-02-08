@@ -111,7 +111,7 @@ export async function POST(request: NextRequest) {
       created_by_email: user.email ?? null,
     })
     .select(
-      "id, title, description, is_completed, completed_start_date, completed_end_date, completed_class_count, created_by, created_by_name, created_by_email, created_at"
+      "id, title, short_name, description, is_completed, completed_start_date, completed_end_date, completed_class_count, created_by, created_by_name, created_by_email, created_at"
     )
     .single();
 
@@ -193,7 +193,7 @@ export async function GET(request: NextRequest) {
   const query = adminClient
     .from("courses")
     .select(
-      "id, title, description, is_completed, completed_start_date, completed_end_date, completed_class_count, created_by, created_by_name, created_by_email, created_at, course_classes(id, title, starts_at, duration_hours, created_at)"
+      "id, title, short_name, description, is_completed, completed_start_date, completed_end_date, completed_class_count, created_by, created_by_name, created_by_email, created_at, course_classes(id, title, starts_at, duration_hours, created_at)"
     )
     .order("created_at", { ascending: false })
     .order("starts_at", { foreignTable: "course_classes", ascending: true });
@@ -343,6 +343,7 @@ export async function PATCH(request: NextRequest) {
     | {
         courseId?: string;
         title?: string;
+        shortName?: string | null;
         description?: string | null;
         createdBy?: string;
       }
@@ -356,6 +357,12 @@ export async function PATCH(request: NextRequest) {
     typeof body.title === "string" ? body.title.trim() : undefined;
   const description =
     typeof body.description === "string" ? body.description.trim() : undefined;
+  const shortName =
+    body.shortName === null
+      ? null
+      : typeof body.shortName === "string"
+        ? body.shortName.trim()
+        : undefined;
   const createdBy =
     typeof body.createdBy === "string" && body.createdBy.trim()
       ? body.createdBy.trim()
@@ -365,7 +372,12 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: "Title is required." }, { status: 400 });
   }
 
-  if (title === undefined && description === undefined && createdBy === undefined) {
+  if (
+    title === undefined &&
+    description === undefined &&
+    shortName === undefined &&
+    createdBy === undefined
+  ) {
     return NextResponse.json(
       { error: "Nothing to update." },
       { status: 400 }
@@ -378,6 +390,7 @@ export async function PATCH(request: NextRequest) {
 
   const updatePayload: {
     title?: string;
+    short_name?: string | null;
     description?: string | null;
     created_by?: string;
     created_by_name?: string | null;
@@ -388,6 +401,15 @@ export async function PATCH(request: NextRequest) {
   }
   if (description !== undefined) {
     updatePayload.description = description ? description : null;
+  }
+  if (shortName !== undefined) {
+    if (role !== "founder") {
+      return NextResponse.json(
+        { error: "Only the founder can set short name." },
+        { status: 403 }
+      );
+    }
+    updatePayload.short_name = shortName || null;
   }
 
   if (createdBy !== undefined) {
@@ -432,7 +454,7 @@ export async function PATCH(request: NextRequest) {
 
   const { data, error: updateError } = await updateQuery
     .select(
-      "id, title, description, is_completed, completed_start_date, completed_end_date, completed_class_count, created_by, created_by_name, created_by_email, created_at"
+      "id, title, short_name, description, is_completed, completed_start_date, completed_end_date, completed_class_count, created_by, created_by_name, created_by_email, created_at"
     )
     .single();
 

@@ -93,6 +93,7 @@ export default function CoursesMenu() {
   const [courses, setCourses] = useState<Course[]>([]);
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
   const [isEnrolling, setIsEnrolling] = useState(false);
+  const [nowMs, setNowMs] = useState<number>(() => new Date().getTime());
   const [status, setStatus] = useState<StatusState>({
     type: "idle",
     message: "",
@@ -108,6 +109,13 @@ export default function CoursesMenu() {
     load();
 
     return onAuthChange(load);
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setNowMs(Date.now());
+    }, 30000);
+    return () => window.clearInterval(timer);
   }, []);
 
   useEffect(() => {
@@ -139,13 +147,10 @@ export default function CoursesMenu() {
     loadCourses();
   }, [userId]);
 
-  const hasVisibleEnrollButton = (course: Course) =>
-    course.enrollment_status !== "enrolled" &&
-    course.enrollment_status !== "pending" &&
-    !isEnrollmentClosed(course);
+  const hasFutureClass = (course: Course) => !isEnrollmentClosed(course);
 
   const availableCourses = useMemo(
-    () => courses.filter((course) => hasVisibleEnrollButton(course)),
+    () => courses.filter((course) => hasFutureClass(course)),
     [courses]
   );
 
@@ -153,7 +158,7 @@ export default function CoursesMenu() {
     () =>
       courses.filter(
         (course) =>
-          !hasVisibleEnrollButton(course) &&
+          !hasFutureClass(course) &&
           !course.is_completed &&
           (!course.course_classes || course.course_classes.length === 0)
       ),
@@ -164,12 +169,51 @@ export default function CoursesMenu() {
     () =>
       courses.filter(
         (course) =>
-          !hasVisibleEnrollButton(course) &&
+          !hasFutureClass(course) &&
           (course.is_completed ||
             (course.course_classes && course.course_classes.length > 0))
       ),
     [courses]
   );
+
+  const totalClassTimeMinutes = useMemo(() => {
+    const minutes = courses.reduce((sum, course) => {
+      if (course.is_completed) {
+        const completedCount =
+          typeof course.completed_class_count === "number"
+            ? course.completed_class_count
+            : 0;
+        const safeCompletedCount =
+          Number.isFinite(completedCount) && completedCount > 0
+            ? completedCount
+            : 0;
+        return sum + safeCompletedCount * 60;
+      }
+
+      const classMinutes = (course.course_classes ?? []).reduce(
+        (classSum, courseClass) => {
+          const { start, end } = getClassTimes(courseClass.starts_at);
+          const startMs = start.getTime();
+          const endMs = end.getTime();
+          if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) {
+            return classSum;
+          }
+          if (nowMs >= endMs) {
+            return classSum + 60;
+          }
+          if (nowMs <= startMs) {
+            return classSum;
+          }
+          const elapsedMinutes = Math.floor((nowMs - startMs) / (60 * 1000));
+          const boundedElapsed = Math.max(0, Math.min(59, elapsedMinutes));
+          return classSum + boundedElapsed;
+        },
+        0
+      );
+      return sum + classMinutes;
+    }, 0);
+    return minutes;
+  }, [courses, nowMs]);
 
   if (!userId) {
     return null;
@@ -184,6 +228,9 @@ export default function CoursesMenu() {
         <h2 className="text-lg font-semibold text-[var(--foreground)]">
           All courses
         </h2>
+        <p className="text-xs text-[var(--muted)]">
+          Total class time: {totalClassTimeMinutes} minutes
+        </p>
       </header>
 
       {status.type === "error" ? (
@@ -255,15 +302,25 @@ export default function CoursesMenu() {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setSelectedCourse(course)}
-                    className="rounded-full border border-[var(--foreground)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)]"
-                  >
-                    {course.enrollment_status === "rejected"
-                      ? "Request again"
-                      : "Enroll"}
-                  </button>
+                  {course.enrollment_status === "enrolled" ? (
+                    <span className="rounded-full border border-emerald-300 px-3 py-1 text-xs font-semibold text-emerald-700">
+                      Enrolled
+                    </span>
+                  ) : course.enrollment_status === "pending" ? (
+                    <span className="rounded-full border border-amber-300 px-3 py-1 text-xs font-semibold text-amber-700">
+                      Pending approval
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedCourse(course)}
+                      className="rounded-full border border-[var(--foreground)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)]"
+                    >
+                      {course.enrollment_status === "rejected"
+                        ? "Request again"
+                        : "Enroll"}
+                    </button>
+                  )}
                 </div>
               </div>
             ))}

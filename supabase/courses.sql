@@ -28,6 +28,7 @@ create table if not exists public.app_email_verifications (
 create table if not exists public.courses (
   id uuid primary key default gen_random_uuid(),
   title text not null,
+  short_name text,
   description text,
   is_completed boolean not null default false,
   completed_start_date date,

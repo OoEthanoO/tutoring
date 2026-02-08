@@ -23,6 +23,7 @@ type CourseClass = {
 type Course = {
   id: string;
   title: string;
+  short_name?: string | null;
   description: string | null;
   is_completed?: boolean;
   completed_start_date?: string | null;
@@ -57,6 +58,7 @@ export default function ManageMyCoursesMenu() {
   const [pendingCourseId, setPendingCourseId] = useState<string | null>(null);
   const [editingCourseId, setEditingCourseId] = useState<string | null>(null);
   const [editCourseTitle, setEditCourseTitle] = useState("");
+  const [editCourseShortName, setEditCourseShortName] = useState("");
   const [editCourseDescription, setEditCourseDescription] = useState("");
   const [editCourseTutorId, setEditCourseTutorId] = useState<string>("");
   const [pendingCourseEditId, setPendingCourseEditId] = useState<string | null>(
@@ -67,6 +69,9 @@ export default function ManageMyCoursesMenu() {
   const [editStartsAt, setEditStartsAt] = useState("");
   const [pendingClassId, setPendingClassId] = useState<string | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [pendingEnrollmentDeleteId, setPendingEnrollmentDeleteId] = useState<
+    string | null
+  >(null);
   const [status, setStatus] = useState<StatusState>({
     type: "idle",
     message: "",
@@ -388,6 +393,7 @@ export default function ManageMyCoursesMenu() {
   const startEditCourse = (course: Course) => {
     setEditingCourseId(course.id);
     setEditCourseTitle(course.title ?? "");
+    setEditCourseShortName(course.short_name ?? "");
     setEditCourseDescription(course.description ?? "");
     setEditCourseTutorId(course.created_by ?? "");
   };
@@ -395,6 +401,7 @@ export default function ManageMyCoursesMenu() {
   const cancelEditCourse = () => {
     setEditingCourseId(null);
     setEditCourseTitle("");
+    setEditCourseShortName("");
     setEditCourseDescription("");
     setEditCourseTutorId("");
   };
@@ -421,6 +428,7 @@ export default function ManageMyCoursesMenu() {
       body: JSON.stringify({
         courseId,
         title: titleValue,
+        shortName: role === "founder" ? editCourseShortName.trim() : undefined,
         description: editCourseDescription.trim(),
         createdBy: role === "founder" ? editCourseTutorId : undefined,
       }),
@@ -449,6 +457,67 @@ export default function ManageMyCoursesMenu() {
     setStatus({ type: "success", message: "Course updated." });
     setPendingCourseEditId(null);
     cancelEditCourse();
+  };
+
+  const removeEnrolledStudent = async (
+    courseId: string,
+    student: EnrolledStudent
+  ) => {
+    if (role !== "founder") {
+      return;
+    }
+
+    const studentLabel = student.student_name || student.student_email || "student";
+    const firstConfirm = window.confirm(
+      `Remove ${studentLabel} from this course?`
+    );
+    if (!firstConfirm) {
+      return;
+    }
+
+    const secondConfirm = window.confirm(
+      `Please confirm again to remove ${studentLabel} from this course.`
+    );
+    if (!secondConfirm) {
+      return;
+    }
+
+    setPendingEnrollmentDeleteId(student.id);
+    setStatus({ type: "idle", message: "" });
+
+    const response = await fetch(`/api/course-enrollments/${student.id}`, {
+      method: "DELETE",
+    });
+
+    if (!response.ok) {
+      const payload = (await response.json().catch(() => null)) as
+        | { error?: string }
+        | null;
+      setStatus({
+        type: "error",
+        message: payload?.error ?? "Unable to remove enrolled student.",
+      });
+      setPendingEnrollmentDeleteId(null);
+      return;
+    }
+
+    setCourses((current) =>
+      current.map((course) =>
+        course.id === courseId
+          ? {
+              ...course,
+              course_enrollments: (course.course_enrollments ?? []).filter(
+                (enrollment) => enrollment.id !== student.id
+              ),
+            }
+          : course
+      )
+    );
+    setStatus({
+      type: "success",
+      message: `Removed ${studentLabel} from the course.`,
+    });
+    setPendingEnrollmentDeleteId(null);
   };
 
   if (!role || !canManageCourses(role)) {
@@ -529,20 +598,31 @@ export default function ManageMyCoursesMenu() {
                       className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
                     />
                     {role === "founder" ? (
-                      <select
-                        value={editCourseTutorId}
-                        onChange={(event) =>
-                          setEditCourseTutorId(event.target.value)
-                        }
-                        className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
-                      >
-                        <option value="">Select tutor</option>
-                        {tutorOptions.map((option) => (
-                          <option key={option.id} value={option.id}>
-                            {option.name} {option.email ? `(${option.email})` : ""}
-                          </option>
-                        ))}
-                      </select>
+                      <>
+                        <input
+                          type="text"
+                          value={editCourseShortName}
+                          onChange={(event) =>
+                            setEditCourseShortName(event.target.value)
+                          }
+                          placeholder="Short name (optional)"
+                          className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+                        />
+                        <select
+                          value={editCourseTutorId}
+                          onChange={(event) =>
+                            setEditCourseTutorId(event.target.value)
+                          }
+                          className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+                        >
+                          <option value="">Select tutor</option>
+                          {tutorOptions.map((option) => (
+                            <option key={option.id} value={option.id}>
+                              {option.name} {option.email ? `(${option.email})` : ""}
+                            </option>
+                          ))}
+                        </select>
+                      </>
                     ) : null}
                   </div>
                 ) : (
@@ -550,6 +630,11 @@ export default function ManageMyCoursesMenu() {
                     <p className="text-sm font-semibold text-[var(--foreground)]">
                       {course.title}
                     </p>
+                    {role === "founder" && course.short_name ? (
+                      <p className="text-xs text-[var(--muted)]">
+                        Short name: {course.short_name}
+                      </p>
+                    ) : null}
                     {course.description ? (
                       <p className="text-xs text-[var(--muted)]">
                         {course.description}
@@ -736,9 +821,26 @@ export default function ManageMyCoursesMenu() {
                         student.student_email ||
                         `${student.student_name ?? "student"}-${index}`
                       }
+                      className="flex flex-wrap items-center justify-between gap-2"
                     >
-                      {student.student_name || "Student"} ·{" "}
-                      {student.student_email || "No email"}
+                      <span>
+                        {student.student_name || "Student"} ·{" "}
+                        {student.student_email || "No email"}
+                      </span>
+                      {role === "founder" ? (
+                        <button
+                          type="button"
+                          disabled={pendingEnrollmentDeleteId === student.id}
+                          onClick={() =>
+                            removeEnrolledStudent(course.id, student)
+                          }
+                          className="rounded-full border border-red-200 px-3 py-1 text-[0.6rem] font-semibold text-red-500 transition hover:border-red-400 disabled:cursor-not-allowed disabled:opacity-70"
+                        >
+                          {pendingEnrollmentDeleteId === student.id
+                            ? "Removing..."
+                            : "Remove"}
+                        </button>
+                      ) : null}
                     </li>
                   ))}
                 </ul>

@@ -86,7 +86,7 @@ export async function PATCH(
   const { data: requestData, error: requestError } = await adminClient
     .from("course_enrollment_requests")
     .select(
-      "id, course_id, student_id, student_name, student_email, status, course:courses(id, title, created_by_name)"
+      "id, course_id, student_id, student_name, student_email, status, course:courses(id, title, short_name, created_by_name)"
     )
     .eq("id", requestId)
     .single();
@@ -148,6 +148,21 @@ export async function PATCH(
       ? requestData.course[0]?.created_by_name ?? "your tutor"
       : (requestData.course as { created_by_name?: string } | null)
           ?.created_by_name ?? "your tutor";
+  const courseShortName =
+    Array.isArray(requestData.course)
+      ? requestData.course[0]?.short_name ?? ""
+      : (requestData.course as { short_name?: string } | null)?.short_name ?? "";
+
+  const tutorNameParts = tutorName.trim().split(/\s+/).filter(Boolean);
+  const tutorFirstName = tutorNameParts[0] ?? "Tutor";
+  const tutorLastInitial =
+    tutorNameParts.length > 1
+      ? `${tutorNameParts[tutorNameParts.length - 1][0]}`
+      : "";
+  const breakoutRoomName =
+    courseShortName.trim().length > 0
+      ? `${tutorFirstName}${tutorLastInitial ? ` ${tutorLastInitial}` : ""}: ${courseShortName.trim()}`
+      : "";
 
   if (studentEmail) {
     const subject =
@@ -158,7 +173,11 @@ export async function PATCH(
       action === "approve"
         ? `<p>Your enrollment request for <strong>${courseTitle}</strong> has been approved.</p>
            <p>Please attend the class 5 minutes before the start time:</p>
-           <p>Zoom ID: ${defaultZoomId}<br/>Password: ${defaultZoomPassword}<br/>Breakout room: ${tutorName}</p>`
+           <p>Zoom ID: ${defaultZoomId}<br/>Password: ${defaultZoomPassword}<br/>${
+             breakoutRoomName
+               ? `Breakout room: "${breakoutRoomName}"`
+               : "Please join the breakout room that starts with your tutor's name followed by the name of the course."
+           }</p>`
         : `<p>Your enrollment request for <strong>${courseTitle}</strong> has been rejected.</p>`;
 
     await sendEmail(studentEmail, subject, html);
