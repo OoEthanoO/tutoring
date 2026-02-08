@@ -1,18 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import {
-  getCurrentUser,
-  getServerCurrentUser,
-  onAuthChange,
-} from "@/lib/authClient";
+import { getCurrentUser, onAuthChange } from "@/lib/authClient";
 import { resolveUserRole } from "@/lib/roles";
 
 type AccountInfo = {
   email: string;
   fullName: string;
   role: string;
-  isViewingAsOther: boolean;
 };
 
 export default function AccountCard() {
@@ -21,7 +16,6 @@ export default function AccountCard() {
   useEffect(() => {
     const loadAccount = async () => {
       const user = await getCurrentUser();
-      const actualUser = await getServerCurrentUser();
       if (!user?.email) {
         setAccount(null);
         return;
@@ -35,9 +29,6 @@ export default function AccountCard() {
         email: user.email,
         fullName,
         role,
-        isViewingAsOther: Boolean(
-          actualUser && actualUser.id && actualUser.id !== user.id
-        ),
       });
     };
 
@@ -57,9 +48,6 @@ export default function AccountCard() {
       <p className="font-semibold">{account.fullName}</p>
       <p className="text-xs text-[var(--muted)]">{account.email}</p>
       <p className="mt-2 text-xs text-[var(--muted)]">Role: {account.role}</p>
-      {account.isViewingAsOther ? (
-        <p className="mt-1 text-xs text-amber-500">Viewing as another account</p>
-      ) : null}
     </div>
   );
 }

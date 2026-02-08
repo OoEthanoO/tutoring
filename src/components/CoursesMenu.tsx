@@ -88,6 +88,38 @@ const isEnrollmentClosed = (course: Course) => {
   return !hasFutureClass;
 };
 
+const getCourseLastClassTime = (course: Course) => {
+  if (course.is_completed && course.completed_end_date) {
+    const completedAt = new Date(`${course.completed_end_date}T00:00:00`);
+    return completedAt.getTime();
+  }
+
+  const classStarts = (course.course_classes ?? [])
+    .map((item) => new Date(item.starts_at).getTime())
+    .filter((value) => Number.isFinite(value));
+  if (classStarts.length > 0) {
+    return Math.max(...classStarts);
+  }
+
+  return Number.NEGATIVE_INFINITY;
+};
+
+const sortCoursesByLastClassDesc = (left: Course, right: Course) => {
+  const leftLast = getCourseLastClassTime(left);
+  const rightLast = getCourseLastClassTime(right);
+  if (leftLast !== rightLast) {
+    return rightLast - leftLast;
+  }
+
+  const leftCreated = new Date(left.created_at).getTime();
+  const rightCreated = new Date(right.created_at).getTime();
+  if (Number.isFinite(leftCreated) && Number.isFinite(rightCreated)) {
+    return rightCreated - leftCreated;
+  }
+
+  return left.title.localeCompare(right.title);
+};
+
 export default function CoursesMenu() {
   const [userId, setUserId] = useState<string | null>(null);
   const [courses, setCourses] = useState<Course[]>([]);
@@ -150,7 +182,10 @@ export default function CoursesMenu() {
   const hasFutureClass = (course: Course) => !isEnrollmentClosed(course);
 
   const availableCourses = useMemo(
-    () => courses.filter((course) => hasFutureClass(course)),
+    () =>
+      courses
+        .filter((course) => hasFutureClass(course))
+        .sort(sortCoursesByLastClassDesc),
     [courses]
   );
 
@@ -161,7 +196,7 @@ export default function CoursesMenu() {
           !hasFutureClass(course) &&
           !course.is_completed &&
           (!course.course_classes || course.course_classes.length === 0)
-      ),
+      ).sort(sortCoursesByLastClassDesc),
     [courses]
   );
 
@@ -172,7 +207,7 @@ export default function CoursesMenu() {
           !hasFutureClass(course) &&
           (course.is_completed ||
             (course.course_classes && course.course_classes.length > 0))
-      ),
+      ).sort(sortCoursesByLastClassDesc),
     [courses]
   );
 
