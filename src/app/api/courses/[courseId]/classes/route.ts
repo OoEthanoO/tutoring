@@ -47,10 +47,6 @@ export async function POST(
 
   const title = body?.title?.trim() ?? "";
   const startsAt = body?.startsAt?.trim() ?? "";
-  const durationHours =
-    typeof body?.durationHours === "number" && body.durationHours > 0
-      ? body.durationHours
-      : 1;
 
   if (!title) {
     return NextResponse.json({ error: "Title is required." }, { status: 400 });
@@ -69,7 +65,7 @@ export async function POST(
 
   const { data: course, error: courseError } = await adminClient
     .from("courses")
-    .select("id, created_by")
+    .select("id, created_by, is_completed")
     .eq("id", courseId)
     .single();
 
@@ -90,13 +86,20 @@ export async function POST(
     );
   }
 
+  if (course.is_completed) {
+    return NextResponse.json(
+      { error: "Completed courses cannot have classes." },
+      { status: 400 }
+    );
+  }
+
   const { data, error: insertError } = await adminClient
     .from("course_classes")
     .insert({
       course_id: courseId,
       title,
       starts_at: startsAt,
-      duration_hours: durationHours,
+      duration_hours: 1,
       created_by: user.id,
     })
     .select("id, title, starts_at, duration_hours, created_at")

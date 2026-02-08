@@ -21,9 +21,12 @@ export default function CourseCreator() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [draftClassTitle, setDraftClassTitle] = useState("");
   const [draftClassStartsAt, setDraftClassStartsAt] = useState("");
-  const [draftClassDuration, setDraftClassDuration] = useState("1");
+  const [isCompletedCourse, setIsCompletedCourse] = useState(false);
+  const [completedStartDate, setCompletedStartDate] = useState("");
+  const [completedEndDate, setCompletedEndDate] = useState("");
+  const [completedClassCount, setCompletedClassCount] = useState("1");
   const [draftClasses, setDraftClasses] = useState<
-    { title: string; startsAt: string; durationHours: number }[]
+    { title: string; startsAt: string }[]
   >([]);
 
   useEffect(() => {
@@ -41,6 +44,9 @@ export default function CourseCreator() {
       );
       setUserRole(resolvedRole);
       setCanCreate(canManageCourses(resolvedRole));
+      if (resolvedRole !== "founder") {
+        setIsCompletedCourse(false);
+      }
     };
 
     load();
@@ -56,6 +62,33 @@ export default function CourseCreator() {
     if (!title.trim()) {
       setStatus({ type: "error", message: "Please add a title." });
       return;
+    }
+
+    if (isCompletedCourse) {
+      const classCount = Number(completedClassCount);
+      if (
+        !completedStartDate ||
+        !completedEndDate ||
+        !Number.isFinite(classCount) ||
+        classCount <= 0
+      ) {
+        setStatus({
+          type: "error",
+          message:
+            "Completed courses require start date, end date, and number of classes.",
+        });
+        return;
+      }
+      if (
+        new Date(completedEndDate).getTime() <
+        new Date(completedStartDate).getTime()
+      ) {
+        setStatus({
+          type: "error",
+          message: "End date must be after start date.",
+        });
+        return;
+      }
     }
 
     if (userRole === "tutor") {
@@ -88,11 +121,18 @@ export default function CourseCreator() {
       body: JSON.stringify({
         title: title.trim(),
         description: description.trim(),
-        classes: draftClasses.map((item) => ({
-          title: item.title,
-          startsAt: new Date(item.startsAt).toISOString(),
-          durationHours: item.durationHours,
-        })),
+        isCompleted: isCompletedCourse,
+        completedStartDate: isCompletedCourse ? completedStartDate : undefined,
+        completedEndDate: isCompletedCourse ? completedEndDate : undefined,
+        completedClassCount: isCompletedCourse
+          ? Number(completedClassCount)
+          : undefined,
+        classes: isCompletedCourse
+          ? []
+          : draftClasses.map((item) => ({
+              title: item.title,
+              startsAt: new Date(item.startsAt).toISOString(),
+            })),
       }),
     });
 
@@ -113,6 +153,10 @@ export default function CourseCreator() {
     setDescription("");
     setDraftClassTitle("");
     setDraftClassStartsAt("");
+    setIsCompletedCourse(false);
+    setCompletedStartDate("");
+    setCompletedEndDate("");
+    setCompletedClassCount("1");
     setDraftClasses([]);
     setStatus({ type: "success", message: "Course created." });
     setIsSubmitting(false);
@@ -124,7 +168,6 @@ export default function CourseCreator() {
 
     const titleValue = draftClassTitle.trim();
     const startsAtValue = draftClassStartsAt;
-    const durationValue = Number(draftClassDuration);
 
     if (!titleValue) {
       setStatus({ type: "error", message: "Class title is required." });
@@ -139,18 +182,15 @@ export default function CourseCreator() {
     const nextEntry = {
       title: titleValue,
       startsAt: startsAtValue,
-      durationHours: durationValue > 0 ? durationValue : 1,
     };
     const updatedDrafts = [...draftClasses, nextEntry];
 
     setDraftClasses((current) => [...current, nextEntry]);
 
     const nextDraftStart = getSuggestedStartValueFromDraft(updatedDrafts);
-    const nextDraftDuration = getSuggestedDurationFromDraft(updatedDrafts);
 
     setDraftClassTitle("");
     setDraftClassStartsAt(nextDraftStart);
-    setDraftClassDuration(nextDraftDuration || "1");
   };
 
   const removeDraftClass = (index: number) => {
@@ -160,7 +200,7 @@ export default function CourseCreator() {
   };
 
   const getSuggestedStartValueFromDraft = (
-    classes: { title: string; startsAt: string; durationHours: number }[]
+    classes: { title: string; startsAt: string }[]
   ) => {
     if (classes.length < 2) {
       return "";
@@ -180,20 +220,6 @@ export default function CourseCreator() {
 
     const suggested = new Date(new Date(latest.startsAt).getTime() + gap);
     return toLocalDateTimeInputValue(suggested);
-  };
-
-  const getSuggestedDurationFromDraft = (
-    classes: { title: string; startsAt: string; durationHours: number }[]
-  ) => {
-    if (classes.length === 0) {
-      return "1";
-    }
-
-    const sorted = [...classes].sort(
-      (a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()
-    );
-    const latest = sorted[sorted.length - 1];
-    return String(latest.durationHours || 1);
   };
 
   const toLocalDateTimeInputValue = (value: Date) => {
@@ -259,85 +285,126 @@ export default function CourseCreator() {
             className="mt-2 w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
           />
         </div>
-        <div className="space-y-3 rounded-xl border border-dashed border-[var(--border)] px-4 py-4">
-          <div className="space-y-1">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
-              Classes (Optional)
-            </p>
-            <p className="text-xs text-[var(--muted)]">
-              Add classes now or later.
-            </p>
+        {userRole === "founder" ? (
+          <div className="space-y-3 rounded-xl border border-[var(--border)] px-4 py-4">
+            <label className="flex items-center gap-2 text-xs text-[var(--foreground)]">
+              <input
+                type="checkbox"
+                checked={isCompletedCourse}
+                onChange={(event) => setIsCompletedCourse(event.target.checked)}
+              />
+              Create as completed course
+            </label>
+            {isCompletedCourse ? (
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="space-y-1">
+                  <label className="text-[0.6rem] font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
+                    Start date
+                  </label>
+                  <input
+                    type="date"
+                    value={completedStartDate}
+                    onChange={(event) => setCompletedStartDate(event.target.value)}
+                    className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+                    required={isCompletedCourse}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[0.6rem] font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
+                    End date
+                  </label>
+                  <input
+                    type="date"
+                    value={completedEndDate}
+                    onChange={(event) => setCompletedEndDate(event.target.value)}
+                    className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+                    required={isCompletedCourse}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[0.6rem] font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
+                    Number of classes
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={completedClassCount}
+                    onChange={(event) => setCompletedClassCount(event.target.value)}
+                    className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+                    required={isCompletedCourse}
+                  />
+                </div>
+              </div>
+            ) : null}
           </div>
-          <div className="grid gap-3 sm:grid-cols-[1.4fr_1fr_0.7fr_auto]">
+        ) : null}
+        {!isCompletedCourse ? (
+          <div className="space-y-3 rounded-xl border border-dashed border-[var(--border)] px-4 py-4">
             <div className="space-y-1">
-              <label className="text-[0.6rem] font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
-                Class title
-              </label>
-              <input
-                type="text"
-                placeholder="Class title"
-                value={draftClassTitle}
-                onChange={(event) => setDraftClassTitle(event.target.value)}
-                className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
-              />
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
+                Classes (Optional)
+              </p>
+              <p className="text-xs text-[var(--muted)]">
+                Add classes now or later.
+              </p>
             </div>
-            <div className="space-y-1">
-              <label className="text-[0.6rem] font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
-                Date &amp; time
-              </label>
-              <input
-                type="datetime-local"
-                value={draftClassStartsAt}
-                onChange={(event) => setDraftClassStartsAt(event.target.value)}
-                className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
-              />
+            <div className="grid gap-3 sm:grid-cols-[1.4fr_1fr_auto]">
+              <div className="space-y-1">
+                <label className="text-[0.6rem] font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
+                  Class title
+                </label>
+                <input
+                  type="text"
+                  placeholder="Class title"
+                  value={draftClassTitle}
+                  onChange={(event) => setDraftClassTitle(event.target.value)}
+                  className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[0.6rem] font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
+                  Date &amp; time
+                </label>
+                <input
+                  type="datetime-local"
+                  value={draftClassStartsAt}
+                  onChange={(event) => setDraftClassStartsAt(event.target.value)}
+                  className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={addDraftClass}
+                className="rounded-full border border-[var(--foreground)] px-4 py-3 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)] sm:col-span-4"
+              >
+                Add class
+              </button>
             </div>
-            <div className="space-y-1">
-              <label className="text-[0.6rem] font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
-                Duration (hrs)
-              </label>
-              <input
-                type="number"
-                min="0.5"
-                step="0.5"
-                value={draftClassDuration}
-                onChange={(event) => setDraftClassDuration(event.target.value)}
-                placeholder="Duration (hrs)"
-                className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
-              />
-            </div>
-            <button
-              type="button"
-              onClick={addDraftClass}
-              className="rounded-full border border-[var(--foreground)] px-4 py-3 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)] sm:col-span-4"
-            >
-              Add class
-            </button>
-          </div>
-          {draftClasses.length ? (
-            <ul className="space-y-2 text-xs text-[var(--muted)]">
-              {draftClasses.map((draftClass, index) => (
-                <li
-                  key={`${draftClass.title}-${draftClass.startsAt}-${index}`}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--border)] px-3 py-2"
-                >
+            {draftClasses.length ? (
+              <ul className="space-y-2 text-xs text-[var(--muted)]">
+                {draftClasses.map((draftClass, index) => (
+                  <li
+                    key={`${draftClass.title}-${draftClass.startsAt}-${index}`}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--border)] px-3 py-2"
+                  >
                     <span>
                       {draftClass.title} ·{" "}
-                      {new Date(draftClass.startsAt).toLocaleString()} ·{" "}
-                      {draftClass.durationHours} hrs
+                      {new Date(draftClass.startsAt).toLocaleString()} · 1 hr
                     </span>
-                  <button
-                    type="button"
-                    onClick={() => removeDraftClass(index)}
-                    className="text-xs font-semibold text-[var(--foreground)] transition hover:text-red-500"
-                  >
-                    Remove
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : null}
-        </div>
+                    <button
+                      type="button"
+                      onClick={() => removeDraftClass(index)}
+                      className="text-xs font-semibold text-[var(--foreground)] transition hover:text-red-500"
+                    >
+                      Remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
+        ) : null}
         <button
           type="submit"
           disabled={isSubmitting}

@@ -47,12 +47,8 @@ export async function PATCH(
 
   const nextTitle = body?.title?.trim();
   const nextStartsAt = body?.startsAt?.trim();
-  const nextDuration =
-    typeof body?.durationHours === "number" && body.durationHours > 0
-      ? body.durationHours
-      : undefined;
 
-  if (!nextTitle && !nextStartsAt && !nextDuration) {
+  if (!nextTitle && !nextStartsAt) {
     return NextResponse.json({ error: "No updates provided." }, { status: 400 });
   }
 
@@ -99,9 +95,7 @@ export async function PATCH(
   if (nextStartsAt) {
     updates.starts_at = nextStartsAt;
   }
-  if (typeof nextDuration === "number") {
-    updates.duration_hours = nextDuration;
-  }
+  updates.duration_hours = 1;
 
   const { data: updated, error: updateError } = await adminClient
     .from("course_classes")

@@ -24,6 +24,10 @@ type Course = {
   id: string;
   title: string;
   description: string | null;
+  is_completed?: boolean;
+  completed_start_date?: string | null;
+  completed_end_date?: string | null;
+  completed_class_count?: number | null;
   created_by?: string | null;
   created_by_name?: string | null;
   created_by_email?: string | null;
@@ -50,7 +54,6 @@ export default function ManageMyCoursesMenu() {
   const [tutorOptions, setTutorOptions] = useState<TutorOption[]>([]);
   const [classTitle, setClassTitle] = useState<Record<string, string>>({});
   const [classStartsAt, setClassStartsAt] = useState<Record<string, string>>({});
-  const [classDuration, setClassDuration] = useState<Record<string, string>>({});
   const [pendingCourseId, setPendingCourseId] = useState<string | null>(null);
   const [editingCourseId, setEditingCourseId] = useState<string | null>(null);
   const [editCourseTitle, setEditCourseTitle] = useState("");
@@ -62,7 +65,6 @@ export default function ManageMyCoursesMenu() {
   const [editingClassId, setEditingClassId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [editStartsAt, setEditStartsAt] = useState("");
-  const [editDuration, setEditDuration] = useState("1");
   const [pendingClassId, setPendingClassId] = useState<string | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [status, setStatus] = useState<StatusState>({
@@ -70,6 +72,17 @@ export default function ManageMyCoursesMenu() {
     message: "",
   });
   const [isLoading, setIsLoading] = useState(false);
+
+  const formatCompletedDate = (value?: string | null) => {
+    if (!value) {
+      return "Unknown";
+    }
+    const parsed = new Date(`${value}T00:00:00`);
+    if (Number.isNaN(parsed.getTime())) {
+      return value;
+    }
+    return parsed.toLocaleDateString();
+  };
 
   useEffect(() => {
     const load = async () => {
@@ -205,23 +218,6 @@ export default function ManageMyCoursesMenu() {
     return toLocalDateTimeInputValue(suggested);
   };
 
-  const getSuggestedDuration = (course: Course) => {
-    if (!course.course_classes || course.course_classes.length === 0) {
-      return "1";
-    }
-
-    const sorted = [...course.course_classes].sort(
-      (a, b) =>
-        new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime()
-    );
-    const latest = sorted[sorted.length - 1];
-    const value =
-      typeof latest.duration_hours === "number" && latest.duration_hours > 0
-        ? latest.duration_hours
-        : 1;
-    return String(value);
-  };
-
   const onCreateClass = async (
     courseId: string,
     event: React.FormEvent<HTMLFormElement>
@@ -233,9 +229,6 @@ export default function ManageMyCoursesMenu() {
     const course = courses.find((item) => item.id === courseId);
     const startsAtValue =
       classStartsAt[courseId] || (course ? getSuggestedStartValue(course) : "");
-    const durationValue = Number(
-      classDuration[courseId] || (course ? getSuggestedDuration(course) : "1")
-    );
 
     if (!titleValue) {
       setStatus({ type: "error", message: "Class title is required." });
@@ -254,7 +247,6 @@ export default function ManageMyCoursesMenu() {
       body: JSON.stringify({
         title: titleValue,
         startsAt: new Date(startsAtValue).toISOString(),
-        durationHours: durationValue > 0 ? durationValue : 1,
       }),
     });
 
@@ -284,7 +276,6 @@ export default function ManageMyCoursesMenu() {
 
     setClassTitle((current) => ({ ...current, [courseId]: "" }));
     setClassStartsAt((current) => ({ ...current, [courseId]: "" }));
-    setClassDuration((current) => ({ ...current, [courseId]: "1" }));
     setStatus({ type: "success", message: "Class added." });
     setPendingCourseId(null);
   };
@@ -295,14 +286,12 @@ export default function ManageMyCoursesMenu() {
     setEditStartsAt(
       toLocalDateTimeInputValue(new Date(courseClass.starts_at))
     );
-    setEditDuration(String(courseClass.duration_hours || 1));
   };
 
   const cancelEditClass = () => {
     setEditingClassId(null);
     setEditTitle("");
     setEditStartsAt("");
-    setEditDuration("1");
   };
 
   const saveClassEdit = async () => {
@@ -319,7 +308,6 @@ export default function ManageMyCoursesMenu() {
       body: JSON.stringify({
         title: editTitle.trim(),
         startsAt: editStartsAt ? new Date(editStartsAt).toISOString() : undefined,
-        durationHours: Number(editDuration || "1"),
       }),
     });
 
@@ -621,14 +609,20 @@ export default function ManageMyCoursesMenu() {
 
             <div className="space-y-2">
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
-                Classes
+                {course.is_completed ? "Course summary" : "Classes"}
               </p>
-              {course.course_classes?.length ? (
+              {course.is_completed ? (
+                <p className="text-xs text-[var(--muted)]">
+                  Completed course: {formatCompletedDate(course.completed_start_date)} to{" "}
+                  {formatCompletedDate(course.completed_end_date)} ·{" "}
+                  {course.completed_class_count ?? 0} classes
+                </p>
+              ) : course.course_classes?.length ? (
                 <ul className="space-y-2 text-xs text-[var(--muted)]">
                   {sortClassesByStart(course.course_classes).map((courseClass) => (
                     <li key={courseClass.id} className="space-y-2">
                       {editingClassId === courseClass.id ? (
-                        <div className="grid gap-3 sm:grid-cols-[1.4fr_1fr_0.7fr_auto]">
+                        <div className="grid gap-3 sm:grid-cols-[1.4fr_1fr_auto]">
                           <input
                             type="text"
                             value={editTitle}
@@ -640,16 +634,6 @@ export default function ManageMyCoursesMenu() {
                             value={editStartsAt}
                             onChange={(event) =>
                               setEditStartsAt(event.target.value)
-                            }
-                            className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
-                          />
-                          <input
-                            type="number"
-                            min="0.5"
-                            step="0.5"
-                            value={editDuration}
-                            onChange={(event) =>
-                              setEditDuration(event.target.value)
                             }
                             className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
                           />
@@ -678,7 +662,7 @@ export default function ManageMyCoursesMenu() {
                           <span>
                             {courseClass.title} ·{" "}
                             {new Date(courseClass.starts_at).toLocaleString()} ·{" "}
-                            {courseClass.duration_hours} hrs
+                            1 hr
                           </span>
                           <button
                             type="button"
@@ -697,58 +681,47 @@ export default function ManageMyCoursesMenu() {
               )}
             </div>
 
-            <form
-              className="grid gap-3 sm:grid-cols-[1.4fr_1fr_0.7fr_auto]"
-              onSubmit={(event) => onCreateClass(course.id, event)}
-            >
-              <input
-                type="text"
-                placeholder="Class title"
-                value={classTitle[course.id] ?? ""}
-                onChange={(event) =>
-                  setClassTitle((current) => ({
-                    ...current,
-                    [course.id]: event.target.value,
-                  }))
-                }
-                className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
-                required
-              />
-              <input
-                type="datetime-local"
-                value={classStartsAt[course.id] || getSuggestedStartValue(course) || ""}
-                onChange={(event) =>
-                  setClassStartsAt((current) => ({
-                    ...current,
-                    [course.id]: event.target.value,
-                  }))
-                }
-                className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
-                required
-              />
-              <input
-                type="number"
-                min="0.5"
-                step="0.5"
-                value={classDuration[course.id] || getSuggestedDuration(course) || "1"}
-                onChange={(event) =>
-                  setClassDuration((current) => ({
-                    ...current,
-                    [course.id]: event.target.value,
-                  }))
-                }
-                placeholder="Duration (hrs)"
-                className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
-                required
-              />
-              <button
-                type="submit"
-                disabled={pendingCourseId === course.id}
-                className="rounded-full border border-[var(--foreground)] px-4 py-3 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-70 sm:col-span-4"
+            {course.is_completed ? null : (
+              <form
+                className="grid gap-3 sm:grid-cols-[1.4fr_1fr_auto]"
+                onSubmit={(event) => onCreateClass(course.id, event)}
               >
-                {pendingCourseId === course.id ? "Adding..." : "Add class"}
-              </button>
-            </form>
+                <input
+                  type="text"
+                  placeholder="Class title"
+                  value={classTitle[course.id] ?? ""}
+                  onChange={(event) =>
+                    setClassTitle((current) => ({
+                      ...current,
+                      [course.id]: event.target.value,
+                    }))
+                  }
+                  className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+                  required
+                />
+                <input
+                  type="datetime-local"
+                  value={
+                    classStartsAt[course.id] || getSuggestedStartValue(course) || ""
+                  }
+                  onChange={(event) =>
+                    setClassStartsAt((current) => ({
+                      ...current,
+                      [course.id]: event.target.value,
+                    }))
+                  }
+                  className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+                  required
+                />
+                <button
+                  type="submit"
+                  disabled={pendingCourseId === course.id}
+                  className="rounded-full border border-[var(--foreground)] px-4 py-3 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-70 sm:col-span-4"
+                >
+                  {pendingCourseId === course.id ? "Adding..." : "Add class"}
+                </button>
+              </form>
+            )}
 
             <div className="space-y-2">
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">

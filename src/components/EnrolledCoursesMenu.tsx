@@ -26,10 +26,25 @@ type Course = {
   id: string;
   title: string;
   description: string | null;
+  is_completed?: boolean;
+  completed_start_date?: string | null;
+  completed_end_date?: string | null;
+  completed_class_count?: number | null;
   created_by_name?: string | null;
   created_by_email?: string | null;
   created_at: string;
   course_classes: CourseClass[];
+};
+
+const formatCompletedDate = (value?: string | null) => {
+  if (!value) {
+    return "Unknown";
+  }
+  const parsed = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+  return parsed.toLocaleDateString();
 };
 
 export default function EnrolledCoursesMenu() {
@@ -136,13 +151,19 @@ export default function EnrolledCoursesMenu() {
             </div>
 
             <div className="space-y-2">
-              {course.course_classes?.length ? (
+              {course.is_completed ? (
+                <p className="text-xs text-[var(--muted)]">
+                  Completed course: {formatCompletedDate(course.completed_start_date)} to{" "}
+                  {formatCompletedDate(course.completed_end_date)} ·{" "}
+                  {course.completed_class_count ?? 0} classes
+                </p>
+              ) : course.course_classes?.length ? (
                 <ul className="space-y-1 text-xs text-[var(--muted)]">
                   {sortClassesByStart(course.course_classes).map((courseClass) => (
                     <li key={courseClass.id}>
                       {courseClass.title} ·{" "}
                       {new Date(courseClass.starts_at).toLocaleString()} ·{" "}
-                      {courseClass.duration_hours} hrs
+                      1 hr
                     </li>
                   ))}
                 </ul>

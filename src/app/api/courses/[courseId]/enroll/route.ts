@@ -62,6 +62,33 @@ export async function POST(
     auth: { persistSession: false },
   });
 
+  const { data: course, error: courseError } = await adminClient
+    .from("courses")
+    .select("id, course_classes(starts_at)")
+    .eq("id", courseId)
+    .single();
+
+  if (courseError || !course) {
+    return NextResponse.json(
+      { error: courseError?.message ?? "Course not found." },
+      { status: 404 }
+    );
+  }
+
+  const now = Date.now();
+  const classStarts = (course.course_classes ?? [])
+    .map((courseClass) => new Date(courseClass.starts_at).getTime())
+    .filter((value) => Number.isFinite(value));
+  const hasFutureClass = classStarts.some((startsAt) => startsAt > now);
+  const enrollmentClosed = !hasFutureClass;
+
+  if (enrollmentClosed) {
+    return NextResponse.json(
+      { error: "Enrollment for this course is closed." },
+      { status: 400 }
+    );
+  }
+
   const { data: existingEnrollment } = await adminClient
     .from("course_enrollments")
     .select("id")

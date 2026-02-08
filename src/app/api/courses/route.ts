@@ -36,18 +36,61 @@ export async function POST(request: NextRequest) {
     | {
         title?: string;
         description?: string;
+        isCompleted?: boolean;
+        completedStartDate?: string;
+        completedEndDate?: string;
+        completedClassCount?: number;
         classes?: { title?: string; startsAt?: string; durationHours?: number }[];
       }
     | null;
 
   const title = body?.title?.trim() ?? "";
   const description = body?.description?.trim() ?? "";
+  const isCompleted = body?.isCompleted === true;
+  const completedStartDate = body?.completedStartDate?.trim() ?? "";
+  const completedEndDate = body?.completedEndDate?.trim() ?? "";
+  const completedClassCount =
+    typeof body?.completedClassCount === "number"
+      ? Math.floor(body.completedClassCount)
+      : 0;
   const classes = Array.isArray(body?.classes) ? body?.classes ?? [] : [];
   const creatorName =
     String(user.full_name ?? "").trim() || user.email || "Unknown tutor";
 
   if (!title) {
     return NextResponse.json({ error: "Title is required." }, { status: 400 });
+  }
+
+  if (isCompleted && role !== "founder") {
+    return NextResponse.json(
+      { error: "Only the founder can create completed courses." },
+      { status: 403 }
+    );
+  }
+
+  if (isCompleted) {
+    if (!completedStartDate || !completedEndDate || completedClassCount <= 0) {
+      return NextResponse.json(
+        {
+          error:
+            "Completed courses require start date, end date, and number of classes.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const startDate = new Date(completedStartDate);
+    const endDate = new Date(completedEndDate);
+    if (
+      Number.isNaN(startDate.getTime()) ||
+      Number.isNaN(endDate.getTime()) ||
+      endDate.getTime() < startDate.getTime()
+    ) {
+      return NextResponse.json(
+        { error: "Completed course dates are invalid." },
+        { status: 400 }
+      );
+    }
   }
 
   const adminClient = createClient(supabaseUrl, serviceRoleKey, {
@@ -59,12 +102,16 @@ export async function POST(request: NextRequest) {
     .insert({
       title,
       description,
+      is_completed: isCompleted,
+      completed_start_date: isCompleted ? completedStartDate : null,
+      completed_end_date: isCompleted ? completedEndDate : null,
+      completed_class_count: isCompleted ? completedClassCount : null,
       created_by: user.id,
       created_by_name: creatorName,
       created_by_email: user.email ?? null,
     })
     .select(
-      "id, title, description, created_by, created_by_name, created_by_email, created_at"
+      "id, title, description, is_completed, completed_start_date, completed_end_date, completed_class_count, created_by, created_by_name, created_by_email, created_at"
     )
     .single();
 
@@ -83,14 +130,11 @@ export async function POST(request: NextRequest) {
     .map((item) => ({
       title: item?.title?.trim() ?? "",
       startsAt: item?.startsAt?.trim() ?? "",
-      durationHours:
-        typeof item?.durationHours === "number" && item.durationHours > 0
-          ? item.durationHours
-          : 1,
+      durationHours: 1,
     }))
     .filter((item) => item.title && item.startsAt);
 
-  if (classRows.length > 0) {
+  if (!isCompleted && classRows.length > 0) {
     const { data: classData, error: classError } = await adminClient
       .from("course_classes")
       .insert(
@@ -146,10 +190,10 @@ export async function GET(request: NextRequest) {
     auth: { persistSession: false },
   });
 
-  let query = adminClient
+  const query = adminClient
     .from("courses")
     .select(
-      "id, title, description, created_by, created_by_name, created_by_email, created_at, course_classes(id, title, starts_at, duration_hours, created_at)"
+      "id, title, description, is_completed, completed_start_date, completed_end_date, completed_class_count, created_by, created_by_name, created_by_email, created_at, course_classes(id, title, starts_at, duration_hours, created_at)"
     )
     .order("created_at", { ascending: false })
     .order("starts_at", { foreignTable: "course_classes", ascending: true });
@@ -388,7 +432,7 @@ export async function PATCH(request: NextRequest) {
 
   const { data, error: updateError } = await updateQuery
     .select(
-      "id, title, description, created_by, created_by_name, created_by_email, created_at"
+      "id, title, description, is_completed, completed_start_date, completed_end_date, completed_class_count, created_by, created_by_name, created_by_email, created_at"
     )
     .single();
 
