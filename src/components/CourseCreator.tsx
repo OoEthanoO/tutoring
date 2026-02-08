@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getCurrentUser, onAuthChange } from "@/lib/authClient";
 import { canManageCourses, resolveUserRole } from "@/lib/roles";
 
@@ -10,6 +10,7 @@ type StatusState = {
 };
 
 export default function CourseCreator() {
+  const titleInputRef = useRef<HTMLInputElement | null>(null);
   const [canCreate, setCanCreate] = useState(false);
   const [userRole, setUserRole] = useState<string | null>(null);
   const [title, setTitle] = useState("");
@@ -120,7 +121,7 @@ export default function CourseCreator() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         title: title.trim(),
-        description: description.trim(),
+        description: isCompletedCourse ? "" : description.trim(),
         isCompleted: isCompletedCourse,
         completedStartDate: isCompletedCourse ? completedStartDate : undefined,
         completedEndDate: isCompletedCourse ? completedEndDate : undefined,
@@ -153,13 +154,20 @@ export default function CourseCreator() {
     setDescription("");
     setDraftClassTitle("");
     setDraftClassStartsAt("");
-    setIsCompletedCourse(false);
+    setDescription("");
+    if (userRole !== "founder" || !isCompletedCourse) {
+      setIsCompletedCourse(false);
+    }
     setCompletedStartDate("");
     setCompletedEndDate("");
     setCompletedClassCount("1");
     setDraftClasses([]);
     setStatus({ type: "success", message: "Course created." });
     setIsSubmitting(false);
+
+    if (userRole === "founder" && isCompletedCourse) {
+      titleInputRef.current?.focus();
+    }
   };
 
 
@@ -265,6 +273,7 @@ export default function CourseCreator() {
             Title
           </label>
           <input
+            ref={titleInputRef}
             type="text"
             value={title}
             onChange={(event) => setTitle(event.target.value)}
@@ -273,18 +282,20 @@ export default function CourseCreator() {
             required
           />
         </div>
-        <div>
-          <label className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
-            Description
-          </label>
-          <textarea
-            value={description}
-            onChange={(event) => setDescription(event.target.value)}
-            placeholder="What students will learn, projects, and outcomes."
-            rows={4}
-            className="mt-2 w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
-          />
-        </div>
+        {!isCompletedCourse ? (
+          <div>
+            <label className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
+              Description
+            </label>
+            <textarea
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+              placeholder="What students will learn, projects, and outcomes."
+              rows={4}
+              className="mt-2 w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+            />
+          </div>
+        ) : null}
         {userRole === "founder" ? (
           <div className="space-y-3 rounded-xl border border-[var(--border)] px-4 py-4">
             <label className="flex items-center gap-2 text-xs text-[var(--foreground)]">
@@ -331,6 +342,12 @@ export default function CourseCreator() {
                     step="1"
                     value={completedClassCount}
                     onChange={(event) => setCompletedClassCount(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        event.currentTarget.form?.requestSubmit();
+                      }
+                    }}
                     className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
                     required={isCompletedCourse}
                   />
