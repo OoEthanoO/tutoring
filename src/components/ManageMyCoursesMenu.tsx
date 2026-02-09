@@ -37,6 +37,38 @@ type Course = {
   course_enrollments: EnrolledStudent[];
 };
 
+const getCourseLastClassTime = (course: Course) => {
+  if (course.is_completed && course.completed_end_date) {
+    const completedAt = new Date(`${course.completed_end_date}T00:00:00`);
+    return completedAt.getTime();
+  }
+
+  const classStarts = (course.course_classes ?? [])
+    .map((item) => new Date(item.starts_at).getTime())
+    .filter((value) => Number.isFinite(value));
+  if (classStarts.length > 0) {
+    return Math.max(...classStarts);
+  }
+
+  return Number.NEGATIVE_INFINITY;
+};
+
+const sortCoursesByLastClassDesc = (left: Course, right: Course) => {
+  const leftLast = getCourseLastClassTime(left);
+  const rightLast = getCourseLastClassTime(right);
+  if (leftLast !== rightLast) {
+    return rightLast - leftLast;
+  }
+
+  const leftCreated = new Date(left.created_at).getTime();
+  const rightCreated = new Date(right.created_at).getTime();
+  if (Number.isFinite(leftCreated) && Number.isFinite(rightCreated)) {
+    return rightCreated - leftCreated;
+  }
+
+  return left.title.localeCompare(right.title);
+};
+
 type StatusState = {
   type: "idle" | "error" | "success";
   message: string;
@@ -524,6 +556,8 @@ export default function ManageMyCoursesMenu() {
     return null;
   }
 
+  const sortedCourses = [...courses].sort(sortCoursesByLastClassDesc);
+
   return (
     <section className="space-y-6 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6">
       <header className="space-y-1">
@@ -572,7 +606,7 @@ export default function ManageMyCoursesMenu() {
       ) : null}
 
       <div className="space-y-3">
-        {courses.map((course) => (
+        {sortedCourses.map((course) => (
           <div
             key={course.id}
             className="space-y-4 rounded-xl border border-[var(--border)] px-4 py-4"
