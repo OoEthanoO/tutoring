@@ -7,6 +7,7 @@ const resendApiKey = process.env.RESEND_API_KEY ?? "";
 const resendFrom = process.env.RESEND_FROM ?? "";
 const cronSecret = process.env.CRON_SECRET ?? "";
 const torontoTimeZone = "America/Toronto";
+const scheduleDriftToleranceMinutes = 5;
 
 type ReminderType = "one_hour" | "twenty_four_hours";
 
@@ -150,10 +151,15 @@ export async function POST(request: NextRequest) {
   const candidates: CandidateReminder[] = [];
 
   for (const target of reminderTargets) {
-    const windowStart = new Date(
+    const targetTime = new Date(
       base.getTime() + target.minutesBeforeStart * 60 * 1000
     );
-    const windowEnd = new Date(windowStart.getTime() + 5 * 60 * 1000);
+    // GitHub cron can drift a few minutes. We include a small catch-up window
+    // and rely on dedupe logs to prevent duplicate sends.
+    const windowStart = new Date(
+      targetTime.getTime() - scheduleDriftToleranceMinutes * 60 * 1000
+    );
+    const windowEnd = new Date(targetTime.getTime() + 5 * 60 * 1000);
 
     const { data: classes, error: classError } = await adminClient
       .from("course_classes")
@@ -322,4 +328,3 @@ export async function POST(request: NextRequest) {
     timezone: torontoTimeZone,
   });
 }
-

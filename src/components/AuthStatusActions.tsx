@@ -74,8 +74,7 @@ export default function AuthStatusActions() {
       setIsSigningOut(true);
       await fetch("/api/auth/logout", { method: "POST" });
       broadcastAuthChange();
-      setIsSigningOut(false);
-      setIsMenuOpen(false);
+      window.location.assign("/");
     };
 
     const onStopImpersonation = async () => {

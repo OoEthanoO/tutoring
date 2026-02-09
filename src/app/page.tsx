@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import Link from "next/link";
 import AuthStatusActions, { AuthStatusCard } from "@/components/AuthStatusActions";
 import DashboardMenus from "@/components/DashboardMenus";
 import Footer from "@/components/Footer";
@@ -23,6 +24,17 @@ export default async function Home() {
           <p className="max-w-xl text-sm text-[var(--muted)]">
             The website is currently under maintenance. Please try again later.
           </p>
+          <div className="space-y-2">
+            <p className="text-xs text-[var(--muted)]">
+              Founder access is still available.
+            </p>
+            <Link
+              href="/login"
+              className="inline-flex rounded-full border border-[var(--foreground)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)]"
+            >
+              Founder sign in
+            </Link>
+          </div>
         </div>
       </div>
     );
