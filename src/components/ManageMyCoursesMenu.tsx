@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { getCurrentUser, onAuthChange } from "@/lib/authClient";
 import { canManageCourses, resolveUserRole, type UserRole } from "@/lib/roles";
 
@@ -69,6 +69,40 @@ const sortCoursesByLastClassDesc = (left: Course, right: Course) => {
   return left.title.localeCompare(right.title);
 };
 
+const hasGrayClass = (course: Course, nowMs: number) =>
+  (course.course_classes ?? []).some((item) => {
+    const startsAt = new Date(item.starts_at).getTime();
+    return Number.isFinite(startsAt) && startsAt > nowMs;
+  });
+
+const hasYellowClass = (course: Course, nowMs: number) =>
+  (course.course_classes ?? []).some((item) => {
+    const startsAt = new Date(item.starts_at).getTime();
+    if (!Number.isFinite(startsAt)) {
+      return false;
+    }
+    const endsAt = startsAt + 60 * 60 * 1000;
+    return nowMs >= startsAt && nowMs <= endsAt;
+  });
+
+const getCourseSectionRank = (course: Course, nowMs: number) => {
+  const isAvailable =
+    !course.is_completed &&
+    (hasGrayClass(course, nowMs) || hasYellowClass(course, nowMs));
+  if (isAvailable) {
+    return 0;
+  }
+
+  const isUpcoming =
+    !course.is_completed &&
+    (!course.course_classes || course.course_classes.length === 0);
+  if (isUpcoming) {
+    return 1;
+  }
+
+  return 2;
+};
+
 type StatusState = {
   type: "idle" | "error" | "success";
   message: string;
@@ -104,6 +138,7 @@ export default function ManageMyCoursesMenu() {
   const [pendingEnrollmentDeleteId, setPendingEnrollmentDeleteId] = useState<
     string | null
   >(null);
+  const [nowMs, setNowMs] = useState<number>(() => Date.now());
   const [status, setStatus] = useState<StatusState>({
     type: "idle",
     message: "",
@@ -141,6 +176,13 @@ export default function ManageMyCoursesMenu() {
   }, []);
 
   useEffect(() => {
+    const timer = window.setInterval(() => {
+      setNowMs(Date.now());
+    }, 30000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
     if (!role || !canManageCourses(role)) {
       return;
     }
@@ -172,7 +214,6 @@ export default function ManageMyCoursesMenu() {
 
   useEffect(() => {
     if (role !== "tutor") {
-      setDonationLink("");
       return;
     }
 
@@ -191,7 +232,6 @@ export default function ManageMyCoursesMenu() {
 
   useEffect(() => {
     if (role !== "founder") {
-      setTutorOptions([]);
       return;
     }
 
@@ -552,11 +592,22 @@ export default function ManageMyCoursesMenu() {
     setPendingEnrollmentDeleteId(null);
   };
 
+  const orderedCourses = useMemo(
+    () =>
+      [...courses].sort((left, right) => {
+        const leftRank = getCourseSectionRank(left, nowMs);
+        const rightRank = getCourseSectionRank(right, nowMs);
+        if (leftRank !== rightRank) {
+          return leftRank - rightRank;
+        }
+        return sortCoursesByLastClassDesc(left, right);
+      }),
+    [courses, nowMs]
+  );
+
   if (!role || !canManageCourses(role)) {
     return null;
   }
-
-  const sortedCourses = [...courses].sort(sortCoursesByLastClassDesc);
 
   return (
     <section className="space-y-6 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6">
@@ -606,7 +657,7 @@ export default function ManageMyCoursesMenu() {
       ) : null}
 
       <div className="space-y-3">
-        {sortedCourses.map((course) => (
+        {orderedCourses.map((course) => (
           <div
             key={course.id}
             className="space-y-4 rounded-xl border border-[var(--border)] px-4 py-4"
