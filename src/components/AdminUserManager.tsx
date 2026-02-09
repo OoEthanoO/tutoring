@@ -25,6 +25,10 @@ type StatusState = {
 export default function AdminUserManager() {
   const [isFounder, setIsFounder] = useState(false);
   const [users, setUsers] = useState<AdminUser[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [roleFilter, setRoleFilter] = useState<"all" | "student" | "tutor">(
+    "all"
+  );
   const [status, setStatus] = useState<StatusState>({
     type: "idle",
     message: "",
@@ -135,10 +139,28 @@ export default function AdminUserManager() {
     fetchUsers();
   }, [isFounder]);
 
-  const nonFounderUsers = useMemo(
-    () => users.filter((user) => user.role !== "founder"),
-    [users]
-  );
+  const nonFounderUsers = useMemo(() => {
+    const normalizedSearch = searchQuery.trim().toLowerCase();
+    return users
+      .filter((user) => user.role !== "founder")
+      .filter((user) => {
+        if (roleFilter === "all") {
+          return true;
+        }
+        return user.role === roleFilter;
+      })
+      .filter((user) => {
+        if (!normalizedSearch) {
+          return true;
+        }
+        const fullName = (user.fullName ?? "").toLowerCase();
+        const email = (user.email ?? "").toLowerCase();
+        return (
+          fullName.includes(normalizedSearch) ||
+          email.includes(normalizedSearch)
+        );
+      });
+  }, [users, searchQuery, roleFilter]);
 
   const updateRole = async (userId: string, role: "tutor" | "student") => {
     const target = users.find((user) => user.id === userId);
@@ -381,6 +403,29 @@ export default function AdminUserManager() {
           Manage student and tutor accounts
         </h2>
       </header>
+
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(event) => setSearchQuery(event.target.value)}
+          placeholder="Search by name or email"
+          className="w-full rounded-full border border-[var(--border)] bg-[var(--surface)] px-4 py-2 text-xs text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)] sm:max-w-sm"
+        />
+        <select
+          value={roleFilter}
+          onChange={(event) =>
+            setRoleFilter(
+              event.target.value as "all" | "student" | "tutor"
+            )
+          }
+          className="w-full rounded-full border border-[var(--border)] bg-[var(--surface)] px-4 py-2 text-xs text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)] sm:w-44"
+        >
+          <option value="all">All roles</option>
+          <option value="student">Students</option>
+          <option value="tutor">Tutors</option>
+        </select>
+      </div>
 
       {status.type !== "idle" ? (
         <div
