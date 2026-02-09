@@ -1,7 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { getCurrentUser, onAuthChange } from "@/lib/authClient";
+import {
+  broadcastAuthChange,
+  getAuthContext,
+  onAuthChange,
+} from "@/lib/authClient";
 import { resolveUserRole } from "@/lib/roles";
 
 type AdminUser = {
@@ -27,6 +31,9 @@ export default function AdminUserManager() {
   });
   const [isLoading, setIsLoading] = useState(false);
   const [pendingId, setPendingId] = useState<string | null>(null);
+  const [impersonatedUserId, setImpersonatedUserId] = useState<string | null>(
+    null
+  );
   const [donationLinks, setDonationLinks] = useState<Record<string, string>>({});
   const [promotedDates, setPromotedDates] = useState<Record<string, string>>(
     {}
@@ -63,9 +70,11 @@ export default function AdminUserManager() {
 
   useEffect(() => {
     const load = async () => {
-      const user = await getCurrentUser();
+      const auth = await getAuthContext();
+      const user = auth.user;
       const role = resolveUserRole(user?.email ?? null, user?.role ?? null);
       setIsFounder(role === "founder");
+      setImpersonatedUserId(auth.impersonatedUserId);
       if (role !== "founder") {
         setUsers([]);
       }
@@ -181,6 +190,42 @@ export default function AdminUserManager() {
       message: `Updated ${data.user.fullName || data.user.email || "user"}.`,
     });
     setPendingId(null);
+  };
+
+  const startImpersonation = async (user: AdminUser) => {
+    const name = user.fullName || user.email || "this user";
+    const confirmed = window.confirm(`Impersonate ${name}?`);
+    if (!confirmed) {
+      return;
+    }
+
+    setPendingId(user.id);
+    setStatus({ type: "idle", message: "" });
+
+    const response = await fetch("/api/auth/impersonation", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId: user.id }),
+    });
+
+    if (!response.ok) {
+      const payload = (await response.json().catch(() => null)) as
+        | { error?: string }
+        | null;
+      setStatus({
+        type: "error",
+        message: payload?.error ?? "Could not start impersonation.",
+      });
+      setPendingId(null);
+      return;
+    }
+
+    setStatus({
+      type: "success",
+      message: `Now impersonating ${name}.`,
+    });
+    setPendingId(null);
+    broadcastAuthChange();
   };
 
   const updatePromotedDate = async (userId: string) => {
@@ -378,8 +423,21 @@ export default function AdminUserManager() {
                     Promoted: {formatPromotedDate(user.tutorPromotedAt)}
                   </p>
                 ) : null}
+                {impersonatedUserId === user.id ? (
+                  <p className="text-xs font-semibold text-amber-600">
+                    Currently impersonating this user
+                  </p>
+                ) : null}
               </div>
               <div className="flex flex-col gap-2">
+                <button
+                  type="button"
+                  disabled={isPending}
+                  onClick={() => startImpersonation(user)}
+                  className="rounded-full border border-[var(--foreground)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  {isPending ? "Working..." : "Impersonate"}
+                </button>
                 {user.role !== "tutor" ? (
                   <button
                     type="button"

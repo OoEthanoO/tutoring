@@ -3,16 +3,21 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
+  getAuthContext,
   getCurrentUser,
   onAuthChange,
   broadcastAuthChange,
 } from "@/lib/authClient";
+import { resolveUserRole } from "@/lib/roles";
 import AccountCard from "@/components/AccountCard";
 
 export default function AuthStatusActions() {
   const [isSignedIn, setIsSignedIn] = useState<boolean | null>(null);
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isActorFounder, setIsActorFounder] = useState(false);
+  const [isImpersonating, setIsImpersonating] = useState(false);
+  const [isStoppingImpersonation, setIsStoppingImpersonation] = useState(false);
   const [isEditNameOpen, setIsEditNameOpen] = useState(false);
   const [fullNameDraft, setFullNameDraft] = useState("");
   const [isSavingName, setIsSavingName] = useState(false);
@@ -24,8 +29,14 @@ export default function AuthStatusActions() {
 
   useEffect(() => {
     const load = async () => {
-      const user = await getCurrentUser();
-      setIsSignedIn(Boolean(user));
+      const auth = await getAuthContext();
+      setIsSignedIn(Boolean(auth.user));
+      setIsImpersonating(auth.isImpersonating);
+      const actorRole = resolveUserRole(
+        auth.actor?.email ?? null,
+        auth.actor?.role ?? null
+      );
+      setIsActorFounder(actorRole === "founder");
     };
 
     load();
@@ -64,6 +75,14 @@ export default function AuthStatusActions() {
       await fetch("/api/auth/logout", { method: "POST" });
       broadcastAuthChange();
       setIsSigningOut(false);
+      setIsMenuOpen(false);
+    };
+
+    const onStopImpersonation = async () => {
+      setIsStoppingImpersonation(true);
+      await fetch("/api/auth/impersonation", { method: "DELETE" });
+      broadcastAuthChange();
+      setIsStoppingImpersonation(false);
       setIsMenuOpen(false);
     };
 
@@ -128,6 +147,16 @@ export default function AuthStatusActions() {
         </button>
         {isMenuOpen ? (
           <div className="absolute right-0 z-30 mt-2 w-40 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-2 shadow-lg">
+            {isActorFounder && isImpersonating ? (
+              <button
+                type="button"
+                onClick={onStopImpersonation}
+                disabled={isStoppingImpersonation}
+                className="w-full rounded-lg px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                {isStoppingImpersonation ? "Stopping..." : "Stop impersonating"}
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={openNameEditor}

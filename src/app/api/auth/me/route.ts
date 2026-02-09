@@ -1,14 +1,24 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { getSessionUser } from "@/lib/authServer";
-
-const SESSION_COOKIE = "session";
+import { getRequestAuthContext } from "@/lib/authServer";
 
 export async function GET(request: NextRequest) {
-  const token = request.cookies.get(SESSION_COOKIE)?.value;
-  const user = await getSessionUser(token);
-  if (!user) {
-    return NextResponse.json({ user: null }, { status: 200 });
+  const auth = await getRequestAuthContext(request);
+  if (!auth.user) {
+    return NextResponse.json(
+      {
+        user: null,
+        actor: null,
+        isImpersonating: false,
+        impersonatedUserId: null,
+      },
+      { status: 200 }
+    );
   }
 
-  return NextResponse.json({ user });
+  return NextResponse.json({
+    user: auth.user,
+    actor: auth.actor,
+    isImpersonating: auth.isImpersonating,
+    impersonatedUserId: auth.impersonatedUserId,
+  });
 }

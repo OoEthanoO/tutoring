@@ -79,6 +79,10 @@ export default function DashboardMenus() {
     return items;
   }, [role]);
 
+  const activeMenu: MenuKey = menus.some((item) => item.key === active)
+    ? active
+    : "home";
+
   if (!isAuthResolved) {
     return null;
   }
@@ -87,37 +91,37 @@ export default function DashboardMenus() {
     <div className="space-y-6">
       <div className="sticky top-0 z-20 -mx-6 bg-[var(--background)]/90 px-6 py-3 backdrop-blur">
         <nav className="flex flex-wrap gap-2">
-        {menus.map((menu) => (
-          <button
-            key={menu.key}
-            type="button"
-            onClick={() => {
-              setActive(menu.key);
-              if (menu.key === "home") {
-                document.getElementById("home")?.scrollIntoView({
-                  behavior: "smooth",
-                });
+          {menus.map((menu) => (
+            <button
+              key={menu.key}
+              type="button"
+              onClick={() => {
+                setActive(menu.key);
+                if (menu.key === "home") {
+                  document.getElementById("home")?.scrollIntoView({
+                    behavior: "smooth",
+                  });
+                }
+              }}
+              className={
+                activeMenu === menu.key
+                  ? "rounded-full border border-[var(--foreground)] bg-[var(--foreground)] px-4 py-2 text-xs font-semibold text-[var(--background)] transition"
+                  : "rounded-full border border-[var(--border)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:border-[var(--foreground)]"
               }
-            }}
-            className={
-              active === menu.key
-                ? "rounded-full border border-[var(--foreground)] bg-[var(--foreground)] px-4 py-2 text-xs font-semibold text-[var(--background)] transition"
-                : "rounded-full border border-[var(--border)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:border-[var(--foreground)]"
-            }
-          >
-            {menu.label}
-          </button>
-        ))}
+            >
+              {menu.label}
+            </button>
+          ))}
         </nav>
       </div>
 
-      {active === "home" ? <HomeMenu /> : null}
-      {active === "all_courses" ? <CoursesMenu /> : null}
-      {active === "enrolled_courses" ? <EnrolledCoursesMenu /> : null}
-      {active === "create" ? <CourseCreator /> : null}
-      {active === "manage_courses" ? <ManageMyCoursesMenu /> : null}
-      {active === "manage_enrollments" ? <ManageEnrollmentsMenu /> : null}
-      {active === "founder_tools" ? <AdminUserManager /> : null}
+      {activeMenu === "home" ? <HomeMenu /> : null}
+      {activeMenu === "all_courses" ? <CoursesMenu /> : null}
+      {activeMenu === "enrolled_courses" ? <EnrolledCoursesMenu /> : null}
+      {activeMenu === "create" ? <CourseCreator /> : null}
+      {activeMenu === "manage_courses" ? <ManageMyCoursesMenu /> : null}
+      {activeMenu === "manage_enrollments" ? <ManageEnrollmentsMenu /> : null}
+      {activeMenu === "founder_tools" ? <AdminUserManager /> : null}
     </div>
   );
 }

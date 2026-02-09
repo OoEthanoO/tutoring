@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { getCurrentUser, onAuthChange } from "@/lib/authClient";
 
 type StatusState = {
@@ -79,15 +79,6 @@ const formatCompletedDate = (value?: string | null) => {
   return parsed.toLocaleDateString();
 };
 
-const isEnrollmentClosed = (course: Course) => {
-  const now = Date.now();
-  const classStarts = (course.course_classes ?? [])
-    .map((item) => new Date(item.starts_at).getTime())
-    .filter((value) => Number.isFinite(value));
-  const hasFutureClass = classStarts.some((startsAt) => startsAt > now);
-  return !hasFutureClass;
-};
-
 const getCourseLastClassTime = (course: Course) => {
   if (course.is_completed && course.completed_end_date) {
     const completedAt = new Date(`${course.completed_end_date}T00:00:00`);
@@ -118,6 +109,43 @@ const sortCoursesByLastClassDesc = (left: Course, right: Course) => {
   }
 
   return left.title.localeCompare(right.title);
+};
+
+const formatDateOnlyFromTimestamp = (value: number) => {
+  if (!Number.isFinite(value)) {
+    return "Unknown";
+  }
+  return new Date(value).toLocaleDateString();
+};
+
+const getCompletedCourseSummary = (course: Course) => {
+  if (course.is_completed) {
+    return {
+      startLabel: formatCompletedDate(course.completed_start_date),
+      endLabel: formatCompletedDate(course.completed_end_date),
+      classCount: course.completed_class_count ?? 0,
+    };
+  }
+
+  const classStarts = (course.course_classes ?? [])
+    .map((item) => new Date(item.starts_at).getTime())
+    .filter((value) => Number.isFinite(value))
+    .sort((a, b) => a - b);
+
+  const startLabel =
+    classStarts.length > 0
+      ? formatDateOnlyFromTimestamp(classStarts[0])
+      : "Unknown";
+  const endLabel =
+    classStarts.length > 0
+      ? formatDateOnlyFromTimestamp(classStarts[classStarts.length - 1])
+      : "Unknown";
+
+  return {
+    startLabel,
+    endLabel,
+    classCount: classStarts.length,
+  };
 };
 
 export default function CoursesMenu() {
@@ -174,36 +202,66 @@ export default function CoursesMenu() {
     loadCourses();
   }, [userId]);
 
-  const hasFutureClass = (course: Course) => !isEnrollmentClosed(course);
+  const hasGrayClass = useCallback(
+    (course: Course) =>
+      (course.course_classes ?? []).some((item) => {
+        const startsAt = new Date(item.starts_at).getTime();
+        return Number.isFinite(startsAt) && startsAt > nowMs;
+      }),
+    [nowMs]
+  );
+
+  const hasYellowClass = useCallback(
+    (course: Course) =>
+      (course.course_classes ?? []).some((item) => {
+        const startsAt = new Date(item.starts_at).getTime();
+        if (!Number.isFinite(startsAt)) {
+          return false;
+        }
+        const endsAt = startsAt + 60 * 60 * 1000;
+        return nowMs >= startsAt && nowMs <= endsAt;
+      }),
+    [nowMs]
+  );
+
+  const isAvailableSectionCourse = useCallback(
+    (course: Course) =>
+      !course.is_completed && (hasGrayClass(course) || hasYellowClass(course)),
+    [hasGrayClass, hasYellowClass]
+  );
 
   const availableCourses = useMemo(
     () =>
       courses
-        .filter((course) => hasFutureClass(course))
+        .filter((course) => isAvailableSectionCourse(course))
         .sort(sortCoursesByLastClassDesc),
-    [courses]
+    [courses, isAvailableSectionCourse]
   );
 
   const upcomingCourses = useMemo(
     () =>
-      courses.filter(
-        (course) =>
-          !hasFutureClass(course) &&
-          !course.is_completed &&
-          (!course.course_classes || course.course_classes.length === 0)
-      ).sort(sortCoursesByLastClassDesc),
-    [courses]
+      courses
+        .filter(
+          (course) =>
+            !isAvailableSectionCourse(course) &&
+            !course.is_completed &&
+            (!course.course_classes || course.course_classes.length === 0)
+        )
+        .sort(sortCoursesByLastClassDesc),
+    [courses, isAvailableSectionCourse]
   );
 
   const completedCourses = useMemo(
     () =>
-      courses.filter(
-        (course) =>
-          !hasFutureClass(course) &&
-          (course.is_completed ||
-            (course.course_classes && course.course_classes.length > 0))
-      ).sort(sortCoursesByLastClassDesc),
-    [courses]
+      courses
+        .filter(
+          (course) =>
+            !isAvailableSectionCourse(course) &&
+            (course.is_completed ||
+              (course.course_classes && course.course_classes.length > 0))
+        )
+        .sort(sortCoursesByLastClassDesc),
+    [courses, isAvailableSectionCourse]
   );
 
   const totalClassTimeMinutes = useMemo(() => {
@@ -338,7 +396,7 @@ export default function CoursesMenu() {
                     <span className="rounded-full border border-amber-300 px-3 py-1 text-xs font-semibold text-amber-700">
                       Pending approval
                     </span>
-                  ) : (
+                  ) : hasGrayClass(course) ? (
                     <button
                       type="button"
                       onClick={() => setSelectedCourse(course)}
@@ -348,7 +406,7 @@ export default function CoursesMenu() {
                         ? "Request again"
                         : "Enroll"}
                     </button>
-                  )}
+                  ) : null}
                 </div>
               </div>
             ))}
@@ -411,67 +469,46 @@ export default function CoursesMenu() {
             Completed courses
           </h3>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {completedCourses.map((course) => (
-              <div
-                key={course.id}
-                className="space-y-4 rounded-xl border border-[var(--border)] px-4 py-4"
-              >
-                <div>
-                  <p className="text-sm font-semibold text-[var(--foreground)]">
-                    {course.title}
-                  </p>
-                  <p className="text-xs text-[var(--muted)]">
-                    Tutor:{" "}
-                    {course.created_by_name ||
-                      course.created_by_email ||
-                      "Unknown tutor"}
-                  </p>
-                  {course.description ? (
-                    <p className="text-xs text-[var(--muted)]">
-                      {course.description}
+            {completedCourses.map((course) => {
+              const summary = getCompletedCourseSummary(course);
+              return (
+                <div
+                  key={course.id}
+                  className="space-y-4 rounded-xl border border-[var(--border)] px-4 py-4"
+                >
+                  <div>
+                    <p className="text-sm font-semibold text-[var(--foreground)]">
+                      {course.title}
                     </p>
-                  ) : null}
-                </div>
-
-                <div className="space-y-2">
-                  {course.is_completed ? (
                     <p className="text-xs text-[var(--muted)]">
-                      {formatCompletedDate(course.completed_start_date)} to{" "}
-                      {formatCompletedDate(course.completed_end_date)} ·{" "}
-                      {course.completed_class_count ?? 0} classes
+                      Tutor:{" "}
+                      {course.created_by_name ||
+                        course.created_by_email ||
+                        "Unknown tutor"}
                     </p>
-                  ) : course.course_classes?.length ? (
-                    <ul className="space-y-1 text-xs text-[var(--muted)]">
-                      {sortClassesByStart(course.course_classes).map((courseClass) => {
-                        const { start, end } = getClassTimes(
-                          courseClass.starts_at
-                        );
-                        const tone = getClassTimeStyle(start, end);
-                        return (
-                          <li key={courseClass.id} className={tone}>
-                            {courseClass.title} · {formatClassSchedule(start, end)}
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  ) : (
-                    <p className="text-xs text-[var(--muted)]">No classes yet.</p>
-                  )}
-                </div>
+                  </div>
 
-                <div className="flex flex-wrap items-center gap-2">
-                  {course.enrollment_status === "enrolled" ? (
-                    <span className="rounded-full border border-emerald-300 px-3 py-1 text-xs font-semibold text-emerald-700">
-                      Enrolled
-                    </span>
-                  ) : course.enrollment_status === "pending" ? (
-                    <span className="rounded-full border border-amber-300 px-3 py-1 text-xs font-semibold text-amber-700">
-                      Pending approval
-                    </span>
-                  ) : null}
+                  <div className="space-y-2">
+                    <p className="text-xs text-[var(--muted)]">
+                      {summary.startLabel} to {summary.endLabel} ·{" "}
+                      {summary.classCount} classes
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    {course.enrollment_status === "enrolled" ? (
+                      <span className="rounded-full border border-emerald-300 px-3 py-1 text-xs font-semibold text-emerald-700">
+                        Enrolled
+                      </span>
+                    ) : course.enrollment_status === "pending" ? (
+                      <span className="rounded-full border border-amber-300 px-3 py-1 text-xs font-semibold text-amber-700">
+                        Pending approval
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       ) : null}

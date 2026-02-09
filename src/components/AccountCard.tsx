@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getCurrentUser, onAuthChange } from "@/lib/authClient";
+import { getAuthContext, onAuthChange } from "@/lib/authClient";
 import { resolveUserRole } from "@/lib/roles";
 
 type AccountInfo = {
   email: string;
   fullName: string;
   role: string;
+  isImpersonating: boolean;
 };
 
 export default function AccountCard() {
@@ -15,7 +16,8 @@ export default function AccountCard() {
 
   useEffect(() => {
     const loadAccount = async () => {
-      const user = await getCurrentUser();
+      const auth = await getAuthContext();
+      const user = auth.user;
       if (!user?.email) {
         setAccount(null);
         return;
@@ -29,6 +31,7 @@ export default function AccountCard() {
         email: user.email,
         fullName,
         role,
+        isImpersonating: auth.isImpersonating,
       });
     };
 
@@ -48,6 +51,9 @@ export default function AccountCard() {
       <p className="font-semibold">{account.fullName}</p>
       <p className="text-xs text-[var(--muted)]">{account.email}</p>
       <p className="mt-2 text-xs text-[var(--muted)]">Role: {account.role}</p>
+      {account.isImpersonating ? (
+        <p className="mt-2 text-xs text-amber-600">Impersonation mode</p>
+      ) : null}
     </div>
   );
 }

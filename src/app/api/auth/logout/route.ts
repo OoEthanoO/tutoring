@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { getAdminClient, hashToken } from "@/lib/authServer";
+import { getAdminClient, hashToken, IMPERSONATE_COOKIE } from "@/lib/authServer";
 
 const SESSION_COOKIE = "session";
 
@@ -16,6 +16,14 @@ export async function POST(request: NextRequest) {
   const response = NextResponse.json({ success: true });
   response.cookies.set({
     name: SESSION_COOKIE,
+    value: "",
+    httpOnly: true,
+    sameSite: "lax",
+    path: "/",
+    maxAge: 0,
+  });
+  response.cookies.set({
+    name: IMPERSONATE_COOKIE,
     value: "",
     httpOnly: true,
     sameSite: "lax",

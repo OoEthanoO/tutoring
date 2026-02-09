@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
-import { getAdminClient, hashToken } from "@/lib/authServer";
+import { getAdminClient, hashToken, IMPERSONATE_COOKIE } from "@/lib/authServer";
 
 const SESSION_COOKIE = "session";
 
@@ -76,6 +76,15 @@ export async function POST(request: NextRequest) {
     sameSite: "lax",
     path: "/",
     maxAge: 60 * 60 * 24 * 30,
+    secure: process.env.NODE_ENV === "production",
+  });
+  response.cookies.set({
+    name: IMPERSONATE_COOKIE,
+    value: "",
+    httpOnly: true,
+    sameSite: "lax",
+    path: "/",
+    maxAge: 0,
     secure: process.env.NODE_ENV === "production",
   });
 
