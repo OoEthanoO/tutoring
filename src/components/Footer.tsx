@@ -33,8 +33,7 @@ export default function Footer() {
   return (
     <footer className="mt-auto border-t border-[var(--border)] pt-6 text-center text-xs text-[var(--muted)]">
       <p>
-        Made with ❤️ by Ethan Yan Xu | Current iteration of website is in beta
-        testing, bugs may arise | Iteration{" "}
+        Made with ❤️ by Ethan Yan Xu | Iteration{" "}
         {iteration}
       </p>
     </footer>

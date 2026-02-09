@@ -176,7 +176,7 @@ export async function PATCH(
            <p>Zoom ID: ${defaultZoomId}<br/>Password: ${defaultZoomPassword}<br/>${
              breakoutRoomName
                ? `Breakout room: "${breakoutRoomName}"`
-               : "Please join the breakout room that starts with your tutor's name followed by the name of the course."
+               : `Please join the breakout room that starts with "${tutorFirstName}${tutorLastInitial ? ` ${tutorLastInitial}` : ""}" followed by the name of the course.`
            }</p>`
         : `<p>Your enrollment request for <strong>${courseTitle}</strong> has been rejected.</p>`;
 

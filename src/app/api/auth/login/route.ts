@@ -2,6 +2,8 @@ import { NextResponse, type NextRequest } from "next/server";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import { getAdminClient, hashToken, IMPERSONATE_COOKIE } from "@/lib/authServer";
+import { founderEmail, resolveUserRole } from "@/lib/roles";
+import { getMaintenanceMode } from "@/lib/siteSettings";
 
 const SESSION_COOKIE = "session";
 
@@ -46,6 +48,19 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       { error: "Please verify your email before signing in." },
       { status: 401 }
+    );
+  }
+
+  const maintenanceEnabled = await getMaintenanceMode();
+  const userRole = resolveUserRole(user.email, user.role ?? null);
+  const isFounderAccount =
+    userRole === "founder" ||
+    String(user.role ?? "").toLowerCase() === "founder" ||
+    user.email.toLowerCase() === founderEmail.toLowerCase();
+  if (maintenanceEnabled && !isFounderAccount) {
+    return NextResponse.json(
+      { error: "The website is currently under maintenance." },
+      { status: 503 }
     );
   }
 

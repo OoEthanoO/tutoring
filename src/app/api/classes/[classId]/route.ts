@@ -7,6 +7,18 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 
+const isFiveMinuteSharp = (value: string) => {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return false;
+  }
+  return (
+    parsed.getUTCSeconds() === 0 &&
+    parsed.getUTCMilliseconds() === 0 &&
+    parsed.getUTCMinutes() % 5 === 0
+  );
+};
+
 export async function PATCH(
   request: NextRequest,
   { params }: { params: { classId: string } | Promise<{ classId: string }> }
@@ -50,6 +62,16 @@ export async function PATCH(
 
   if (!nextTitle && !nextStartsAt) {
     return NextResponse.json({ error: "No updates provided." }, { status: 400 });
+  }
+
+  if (nextStartsAt && !isFiveMinuteSharp(nextStartsAt)) {
+    return NextResponse.json(
+      {
+        error:
+          "Start time must be on a 5-minute mark (for example 12:00, 12:05, 12:10).",
+      },
+      { status: 400 }
+    );
   }
 
   const adminClient = createClient(supabaseUrl, serviceRoleKey, {

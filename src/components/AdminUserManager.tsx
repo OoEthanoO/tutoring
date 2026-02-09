@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   broadcastAuthChange,
   getAuthContext,
@@ -23,6 +24,7 @@ type StatusState = {
 };
 
 export default function AdminUserManager() {
+  const router = useRouter();
   const [isFounder, setIsFounder] = useState(false);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -34,6 +36,8 @@ export default function AdminUserManager() {
     message: "",
   });
   const [isLoading, setIsLoading] = useState(false);
+  const [maintenanceEnabled, setMaintenanceEnabled] = useState(false);
+  const [isSavingMaintenance, setIsSavingMaintenance] = useState(false);
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [impersonatedUserId, setImpersonatedUserId] = useState<string | null>(
     null
@@ -137,6 +141,23 @@ export default function AdminUserManager() {
     };
 
     fetchUsers();
+  }, [isFounder]);
+
+  useEffect(() => {
+    if (!isFounder) {
+      return;
+    }
+
+    const loadMaintenance = async () => {
+      const response = await fetch("/api/admin/maintenance");
+      if (!response.ok) {
+        return;
+      }
+      const data = (await response.json()) as { enabled?: boolean };
+      setMaintenanceEnabled(data.enabled === true);
+    };
+
+    loadMaintenance();
   }, [isFounder]);
 
   const nonFounderUsers = useMemo(() => {
@@ -389,6 +410,40 @@ export default function AdminUserManager() {
     setPendingId(null);
   };
 
+  const toggleMaintenanceMode = async () => {
+    setIsSavingMaintenance(true);
+    setStatus({ type: "idle", message: "" });
+
+    const nextValue = !maintenanceEnabled;
+    const response = await fetch("/api/admin/maintenance", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled: nextValue }),
+    });
+
+    if (!response.ok) {
+      const payload = (await response.json().catch(() => null)) as
+        | { error?: string }
+        | null;
+      setStatus({
+        type: "error",
+        message: payload?.error ?? "Could not update maintenance mode.",
+      });
+      setIsSavingMaintenance(false);
+      return;
+    }
+
+    setMaintenanceEnabled(nextValue);
+    setStatus({
+      type: "success",
+      message: nextValue
+        ? "Maintenance mode enabled."
+        : "Maintenance mode disabled.",
+    });
+    setIsSavingMaintenance(false);
+    router.refresh();
+  };
+
   if (!isFounder) {
     return null;
   }
@@ -403,6 +458,27 @@ export default function AdminUserManager() {
           Manage student and tutor accounts
         </h2>
       </header>
+
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-[var(--border)] px-4 py-3">
+        <p className="text-xs text-[var(--muted)]">
+          Maintenance mode:{" "}
+          <span className="font-semibold text-[var(--foreground)]">
+            {maintenanceEnabled ? "ON" : "OFF"}
+          </span>
+        </p>
+        <button
+          type="button"
+          onClick={toggleMaintenanceMode}
+          disabled={isSavingMaintenance}
+          className="rounded-full border border-[var(--foreground)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-70"
+        >
+          {isSavingMaintenance
+            ? "Saving..."
+            : maintenanceEnabled
+              ? "Turn off maintenance"
+              : "Turn on maintenance"}
+        </button>
+      </div>
 
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <input

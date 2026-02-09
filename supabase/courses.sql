@@ -118,3 +118,23 @@ alter table public.tutor_profiles enable row level security;
 create policy "tutors can view their profile" on public.tutor_profiles
   for select
   using (auth.uid() = user_id);
+
+create table if not exists public.class_reminder_logs (
+  id uuid primary key default gen_random_uuid(),
+  class_id uuid not null references public.course_classes(id) on delete cascade,
+  reminder_type text not null,
+  created_at timestamptz not null default now(),
+  unique(class_id, reminder_type)
+);
+
+create table if not exists public.site_settings (
+  id boolean primary key default true,
+  maintenance_mode boolean not null default false,
+  updated_by uuid references public.app_users(id) on delete set null,
+  updated_at timestamptz not null default now(),
+  check (id = true)
+);
+
+insert into public.site_settings (id, maintenance_mode)
+values (true, false)
+on conflict (id) do nothing;

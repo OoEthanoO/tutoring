@@ -7,6 +7,18 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 
+const isFiveMinuteSharp = (value: string) => {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return false;
+  }
+  return (
+    parsed.getUTCSeconds() === 0 &&
+    parsed.getUTCMilliseconds() === 0 &&
+    parsed.getUTCMinutes() % 5 === 0
+  );
+};
+
 export async function POST(request: NextRequest) {
   if (!supabaseUrl || !supabaseAnonKey) {
     return NextResponse.json(
@@ -133,6 +145,21 @@ export async function POST(request: NextRequest) {
       durationHours: 1,
     }))
     .filter((item) => item.title && item.startsAt);
+
+  if (!isCompleted) {
+    const invalidClassStart = classRows.find(
+      (item) => !isFiveMinuteSharp(item.startsAt)
+    );
+    if (invalidClassStart) {
+      return NextResponse.json(
+        {
+          error:
+            "Class start times must be on a 5-minute mark (for example 12:00, 12:05, 12:10).",
+        },
+        { status: 400 }
+      );
+    }
+  }
 
   if (!isCompleted && classRows.length > 0) {
     const { data: classData, error: classError } = await adminClient

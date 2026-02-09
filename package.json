@@ -2,12 +2,14 @@
   "name": "tutoring",
   "version": "0.1.0",
   "private": true,
-  "iteration": "19",
+  "iteration": "20",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "cron:reminders:once": "sh -c 'if [ -f ./.env.local ]; then set -a; . ./.env.local; set +a; fi; test -n \"$CRON_SECRET\" || { echo \"Set CRON_SECRET in .env.local or environment\"; exit 1; }; curl --fail --show-error --silent -X POST -H \"Authorization: Bearer $CRON_SECRET\" \"${CRON_URL:-http://localhost:3000/api/cron/class-reminders}\"'",
+    "cron:reminders:loop": "sh -c 'if [ -f ./.env.local ]; then set -a; . ./.env.local; set +a; fi; while true; do date; npm run -s cron:reminders:once; echo; sleep 300; done'"
   },
   "dependencies": {
     "@supabase/ssr": "^0.8.0",
