@@ -153,6 +153,8 @@ export default function CoursesMenu() {
   const [courses, setCourses] = useState<Course[]>([]);
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
   const [isEnrolling, setIsEnrolling] = useState(false);
+  const [hasOpenedDonationLink, setHasOpenedDonationLink] = useState(false);
+  const [hasOpenedApplicationLink, setHasOpenedApplicationLink] = useState(false);
   const [nowMs, setNowMs] = useState<number>(() => new Date().getTime());
   const [status, setStatus] = useState<StatusState>({
     type: "idle",
@@ -303,6 +305,17 @@ export default function CoursesMenu() {
     return minutes;
   }, [courses, nowMs]);
 
+  const canConfirmEnrollment = selectedCourse
+    ? (selectedCourse.donation_link ? hasOpenedDonationLink : true) &&
+      hasOpenedApplicationLink
+    : false;
+
+  const openEnrollmentModal = (course: Course) => {
+    setHasOpenedDonationLink(false);
+    setHasOpenedApplicationLink(false);
+    setSelectedCourse(course);
+  };
+
   const isGuest = !userId;
 
   return (
@@ -399,7 +412,7 @@ export default function CoursesMenu() {
                   ) : hasGrayClass(course) ? (
                     <button
                       type="button"
-                      onClick={() => setSelectedCourse(course)}
+                      onClick={() => openEnrollmentModal(course)}
                       className="rounded-full border border-[var(--foreground)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)]"
                     >
                       {course.enrollment_status === "rejected"
@@ -577,7 +590,10 @@ export default function CoursesMenu() {
                   href={selectedCourse.donation_link}
                   target="_blank"
                   rel="noreferrer"
-                  className="font-semibold text-[var(--foreground)] underline"
+                  onClick={() => setHasOpenedDonationLink(true)}
+                  className={`font-semibold underline ${
+                    hasOpenedDonationLink ? "text-emerald-500" : "text-red-500"
+                  }`}
                 >
                   this link
                 </a>{" "}
@@ -586,7 +602,10 @@ export default function CoursesMenu() {
                   href="https://forms.gle/tfxiH8zHfCifpBSa9"
                   target="_blank"
                   rel="noreferrer"
-                  className="font-semibold text-[var(--foreground)] underline"
+                  onClick={() => setHasOpenedApplicationLink(true)}
+                  className={`font-semibold underline ${
+                    hasOpenedApplicationLink ? "text-emerald-500" : "text-red-500"
+                  }`}
                 >
                   this form
                 </a>{" "}
@@ -599,7 +618,10 @@ export default function CoursesMenu() {
                   href="https://forms.gle/tfxiH8zHfCifpBSa9"
                   target="_blank"
                   rel="noreferrer"
-                  className="font-semibold text-[var(--foreground)] underline"
+                  onClick={() => setHasOpenedApplicationLink(true)}
+                  className={`font-semibold underline ${
+                    hasOpenedApplicationLink ? "text-emerald-500" : "text-red-500"
+                  }`}
                 >
                   this form
                 </a>{" "}
@@ -610,7 +632,11 @@ export default function CoursesMenu() {
             <div className="flex flex-wrap justify-end gap-2">
               <button
                 type="button"
-                onClick={() => setSelectedCourse(null)}
+                onClick={() => {
+                  setSelectedCourse(null);
+                  setHasOpenedDonationLink(false);
+                  setHasOpenedApplicationLink(false);
+                }}
                 className="rounded-full border border-[var(--border)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:border-[var(--foreground)]"
                 disabled={isEnrolling}
               >
@@ -647,9 +673,11 @@ export default function CoursesMenu() {
                     )
                   );
                   setSelectedCourse(null);
+                  setHasOpenedDonationLink(false);
+                  setHasOpenedApplicationLink(false);
                   setIsEnrolling(false);
                 }}
-                disabled={isEnrolling}
+                disabled={isEnrolling || !canConfirmEnrollment}
                 className="rounded-full border border-[var(--foreground)] bg-[var(--foreground)] px-4 py-2 text-xs font-semibold text-[var(--background)] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-70"
               >
                 {isEnrolling ? "Submitting..." : "Confirm enroll"}
