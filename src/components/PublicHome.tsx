@@ -96,7 +96,15 @@ export default function PublicHome() {
       </div>
       {raised !== null ? (
         <p className="text-sm font-semibold text-[var(--foreground)]">
-          Total money raised: ${raised.toLocaleString()}
+          <a
+            href="https://give.sickkidsfoundation.com/fundraisers/codingforsickkids/ethan--s-coding-class"
+            target="_blank"
+            rel="noreferrer"
+            className="underline"
+          >
+            Coding for SickKids
+          </a>{" "}
+          has raised ${raised.toLocaleString()}
         </p>
       ) : null}
       {tutors.length ? (

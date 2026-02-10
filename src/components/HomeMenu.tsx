@@ -1,10 +1,22 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { getCurrentUser, onAuthChange } from "@/lib/authClient";
 
 export default function HomeMenu() {
   const [tutors, setTutors] = useState<string[]>([]);
   const [raised, setRaised] = useState<number | null>(null);
+  const [isSignedIn, setIsSignedIn] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    const load = async () => {
+      const user = await getCurrentUser();
+      setIsSignedIn(Boolean(user));
+    };
+
+    load();
+    return onAuthChange(load);
+  }, []);
 
   useEffect(() => {
     const loadTutors = async () => {
@@ -79,7 +91,21 @@ export default function HomeMenu() {
       </div>
       {raised !== null ? (
         <p className="text-sm font-semibold text-[var(--foreground)]">
-          Total money raised: ${raised.toLocaleString()}
+          {isSignedIn === false ? (
+            <>
+              <a
+                href="https://give.sickkidsfoundation.com/fundraisers/codingforsickkids/ethan--s-coding-class"
+                target="_blank"
+                rel="noreferrer"
+                className="underline"
+              >
+                Coding for SickKids
+              </a>{" "}
+              has raised ${raised.toLocaleString()}
+            </>
+          ) : (
+            <>Coding for SickKids has raised ${raised.toLocaleString()}</>
+          )}
         </p>
       ) : null}
       {tutors.length ? (
