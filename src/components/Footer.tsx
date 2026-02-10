@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { iteration } from "@/lib/iteration";
 
 export default function Footer() {
+  const [isCreditHovered, setIsCreditHovered] = useState(false);
+
   useEffect(() => {
     const checkIteration = async () => {
       try {
@@ -33,8 +35,21 @@ export default function Footer() {
   return (
     <footer className="mt-auto border-t border-[var(--border)] pt-6 text-center text-xs text-[var(--muted)]">
       <p>
-        Made with ❤️ by Ethan Yan Xu | Iteration{" "}
-        {iteration}
+        <a
+          href="https://ethanyanxu.com"
+          target="_blank"
+          rel="noreferrer"
+          className="transition-colors"
+          onMouseEnter={() => setIsCreditHovered(true)}
+          onMouseLeave={() => setIsCreditHovered(false)}
+          onFocus={() => setIsCreditHovered(true)}
+          onBlur={() => setIsCreditHovered(false)}
+        >
+          <span style={{ color: isCreditHovered ? "#3b82f6" : "var(--muted)" }}>
+            Made with ❤️ by Ethan Yan Xu
+          </span>
+        </a>{" "}
+        | Iteration {iteration}
       </p>
     </footer>
   );

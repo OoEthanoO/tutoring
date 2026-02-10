@@ -1,22 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getCurrentUser, onAuthChange } from "@/lib/authClient";
 
-export default function HomeMenu() {
+type HomeMenuProps = {
+  isSignedIn: boolean;
+};
+
+export default function HomeMenu({ isSignedIn }: HomeMenuProps) {
   const [tutors, setTutors] = useState<string[]>([]);
   const [raised, setRaised] = useState<number | null>(null);
-  const [isSignedIn, setIsSignedIn] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    const load = async () => {
-      const user = await getCurrentUser();
-      setIsSignedIn(Boolean(user));
-    };
-
-    load();
-    return onAuthChange(load);
-  }, []);
 
   useEffect(() => {
     const loadTutors = async () => {
@@ -91,7 +83,7 @@ export default function HomeMenu() {
       </div>
       {raised !== null ? (
         <p className="text-sm font-semibold text-[var(--foreground)]">
-          {isSignedIn === false ? (
+          {!isSignedIn ? (
             <>
               <a
                 href="https://give.sickkidsfoundation.com/fundraisers/codingforsickkids/ethan--s-coding-class"

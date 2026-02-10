@@ -115,7 +115,7 @@ export default function DashboardMenus() {
         </nav>
       </div>
 
-      {activeMenu === "home" ? <HomeMenu /> : null}
+      {activeMenu === "home" ? <HomeMenu isSignedIn={Boolean(role)} /> : null}
       {activeMenu === "all_courses" ? <CoursesMenu /> : null}
       {activeMenu === "enrolled_courses" ? <EnrolledCoursesMenu /> : null}
       {activeMenu === "create" ? <CourseCreator /> : null}
