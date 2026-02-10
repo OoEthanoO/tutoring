@@ -149,6 +149,7 @@ export default function ManageMyCoursesMenu() {
   const [role, setRole] = useState<UserRole | null>(null);
   const [courses, setCourses] = useState<Course[]>([]);
   const [donationLink, setDonationLink] = useState<string>("");
+  const [donationRaised, setDonationRaised] = useState<number | null>(null);
   const [tutorOptions, setTutorOptions] = useState<TutorOption[]>([]);
   const [classTitle, setClassTitle] = useState<Record<string, string>>({});
   const [classStartsAt, setClassStartsAt] = useState<Record<string, string>>({});
@@ -254,8 +255,18 @@ export default function ManageMyCoursesMenu() {
         return;
       }
 
-      const data = (await response.json()) as { donationLink?: string };
+      const data = (await response.json()) as {
+        donationLink?: string;
+        donationProgress?: {
+          raised?: number | null;
+        };
+      };
       setDonationLink(data.donationLink ?? "");
+      setDonationRaised(
+        typeof data.donationProgress?.raised === "number"
+          ? data.donationProgress.raised
+          : null
+      );
     };
 
     loadDonationLink();
@@ -666,9 +677,18 @@ export default function ManageMyCoursesMenu() {
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
           Courses
         </p>
-        <h2 className="text-lg font-semibold text-[var(--foreground)]">
-          Manage my courses
-        </h2>
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold text-[var(--foreground)]">
+            Manage my courses
+          </h2>
+          {role === "tutor" &&
+          donationLink &&
+          donationRaised !== null ? (
+            <p className="text-sm font-semibold text-[var(--foreground)]">
+              ${donationRaised.toLocaleString()} raised
+            </p>
+          ) : null}
+        </div>
         <div className="flex flex-col gap-1">
           {role === "tutor" && donationLink ? (
             <a

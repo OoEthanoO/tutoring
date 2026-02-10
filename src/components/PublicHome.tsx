@@ -6,6 +6,7 @@ import { getCurrentUser, onAuthChange } from "@/lib/authClient";
 export default function PublicHome() {
   const [isSignedIn, setIsSignedIn] = useState<boolean | null>(null);
   const [tutors, setTutors] = useState<string[]>([]);
+  const [raised, setRaised] = useState<number | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -30,6 +31,19 @@ export default function PublicHome() {
     };
 
     loadTutors();
+  }, []);
+
+  useEffect(() => {
+    const loadRaised = async () => {
+      const response = await fetch("/api/fundraising/total");
+      if (!response.ok) {
+        return;
+      }
+      const data = (await response.json()) as { raised?: number | null };
+      setRaised(typeof data.raised === "number" ? data.raised : null);
+    };
+
+    loadRaised();
   }, []);
 
   if (isSignedIn || isSignedIn === null) {
@@ -80,6 +94,11 @@ export default function PublicHome() {
           taught and more than 230 people have participated in the program.
         </p>
       </div>
+      {raised !== null ? (
+        <p className="text-sm font-semibold text-[var(--foreground)]">
+          Total money raised: ${raised.toLocaleString()}
+        </p>
+      ) : null}
       {tutors.length ? (
         <div className="space-y-2">
           <h3 className="text-sm font-semibold text-[var(--foreground)]">
