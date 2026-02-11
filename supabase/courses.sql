@@ -138,3 +138,14 @@ create table if not exists public.site_settings (
 insert into public.site_settings (id, maintenance_mode)
 values (true, false)
 on conflict (id) do nothing;
+
+create table if not exists public.feedback_submissions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references public.app_users(id) on delete set null,
+  user_email text,
+  user_name text,
+  contact_email text,
+  message text not null,
+  status text not null default 'new',
+  created_at timestamptz not null default now()
+);

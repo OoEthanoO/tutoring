@@ -23,6 +23,16 @@ type StatusState = {
   message: string;
 };
 
+type FeedbackEntry = {
+  id: string;
+  userId: string | null;
+  userEmail: string | null;
+  userName: string | null;
+  message: string;
+  status: string | null;
+  createdAt: string;
+};
+
 export default function AdminUserManager() {
   const router = useRouter();
   const [isFounder, setIsFounder] = useState(false);
@@ -46,6 +56,12 @@ export default function AdminUserManager() {
   const [promotedDates, setPromotedDates] = useState<Record<string, string>>(
     {}
   );
+  const [feedback, setFeedback] = useState<FeedbackEntry[]>([]);
+  const [isLoadingFeedback, setIsLoadingFeedback] = useState(false);
+  const [feedbackError, setFeedbackError] = useState("");
+  const [pendingFeedbackId, setPendingFeedbackId] = useState<string | null>(
+    null
+  );
 
   const toLocalDateTimeInput = (value: string) => {
     const parsed = new Date(value);
@@ -66,6 +82,20 @@ export default function AdminUserManager() {
     const parsed = new Date(value);
     if (Number.isNaN(parsed.getTime())) {
       return "Unknown";
+    }
+    return new Intl.DateTimeFormat("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    }).format(parsed);
+  };
+
+  const formatFeedbackDate = (value: string) => {
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      return "Unknown time";
     }
     return new Intl.DateTimeFormat("en-US", {
       month: "short",
@@ -160,6 +190,32 @@ export default function AdminUserManager() {
     loadMaintenance();
   }, [isFounder]);
 
+  useEffect(() => {
+    if (!isFounder) {
+      return;
+    }
+
+    const fetchFeedback = async () => {
+      setIsLoadingFeedback(true);
+      setFeedbackError("");
+      const response = await fetch("/api/admin/feedback");
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as
+          | { error?: string }
+          | null;
+        setFeedbackError(payload?.error ?? "Unable to load feedback.");
+        setIsLoadingFeedback(false);
+        return;
+      }
+
+      const data = (await response.json()) as { feedback?: FeedbackEntry[] };
+      setFeedback(data.feedback ?? []);
+      setIsLoadingFeedback(false);
+    };
+
+    fetchFeedback();
+  }, [isFounder]);
+
   const nonFounderUsers = useMemo(() => {
     const normalizedSearch = searchQuery.trim().toLowerCase();
     return users
@@ -182,6 +238,34 @@ export default function AdminUserManager() {
         );
       });
   }, [users, searchQuery, roleFilter]);
+
+  const deleteFeedback = async (feedbackId: string) => {
+    const confirmed = window.confirm("Delete this feedback entry?");
+    if (!confirmed) {
+      return;
+    }
+
+    setPendingFeedbackId(feedbackId);
+    setFeedbackError("");
+
+    const response = await fetch("/api/admin/feedback", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ feedbackId }),
+    });
+
+    if (!response.ok) {
+      const payload = (await response.json().catch(() => null)) as
+        | { error?: string }
+        | null;
+      setFeedbackError(payload?.error ?? "Unable to delete feedback.");
+      setPendingFeedbackId(null);
+      return;
+    }
+
+    setFeedback((current) => current.filter((entry) => entry.id !== feedbackId));
+    setPendingFeedbackId(null);
+  };
 
   const updateRole = async (userId: string, role: "tutor" | "student") => {
     const target = users.find((user) => user.id === userId);
@@ -646,6 +730,56 @@ export default function AdminUserManager() {
             </div>
           );
         })}
+      </div>
+
+      <div className="space-y-3 rounded-xl border border-[var(--border)] px-4 py-4">
+        <div className="space-y-1">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
+            Feedback inbox
+          </p>
+          <p className="text-sm text-[var(--muted)]">
+            Recent submissions from logged-in users.
+          </p>
+        </div>
+        {isLoadingFeedback ? (
+          <p className="text-sm text-[var(--muted)]">Loading feedback...</p>
+        ) : null}
+        {feedbackError ? (
+          <p className="text-sm text-red-500">{feedbackError}</p>
+        ) : null}
+        {!isLoadingFeedback && !feedbackError && feedback.length === 0 ? (
+          <p className="text-sm text-[var(--muted)]">No feedback yet.</p>
+        ) : null}
+        {!isLoadingFeedback && !feedbackError && feedback.length > 0 ? (
+          <div className="space-y-2">
+            {feedback.map((entry) => (
+              <div
+                key={entry.id}
+                className="relative space-y-2 rounded-xl border border-[var(--border)] px-3 py-3 pr-28"
+              >
+                <button
+                  type="button"
+                  disabled={pendingFeedbackId === entry.id}
+                  onClick={() => deleteFeedback(entry.id)}
+                  className="absolute top-3 rounded-full border border-red-200 px-3 py-1 text-xs font-semibold text-red-500 transition hover:border-red-400 disabled:cursor-not-allowed disabled:opacity-70"
+                  style={{ right: "0.75rem" }}
+                >
+                  {pendingFeedbackId === entry.id ? "Deleting..." : "Delete"}
+                </button>
+                <p className="text-xs text-[var(--muted)]">
+                  {formatFeedbackDate(entry.createdAt)}
+                </p>
+                <p className="text-sm font-semibold text-[var(--foreground)]">
+                  {entry.userName?.trim() || "Unnamed user"}
+                </p>
+                <p className="text-xs text-[var(--muted)]">
+                  Account: {entry.userEmail || "Unknown"}
+                </p>
+                <p className="text-sm text-[var(--foreground)]">{entry.message}</p>
+              </div>
+            ))}
+          </div>
+        ) : null}
       </div>
     </section>
   );

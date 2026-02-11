@@ -7,14 +7,13 @@ const resendApiKey = process.env.RESEND_API_KEY ?? "";
 const resendFrom = process.env.RESEND_FROM ?? "";
 const cronSecret = process.env.CRON_SECRET ?? "";
 const torontoTimeZone = "America/Toronto";
-const scheduleDriftToleranceMinutes = 5;
-
 type ReminderType = "one_hour" | "twenty_four_hours";
 
 type ReminderTarget = {
   type: ReminderType;
   minutesBeforeStart: number;
   label: string;
+  lowerBoundDriftMinutes: number;
 };
 
 const reminderTargets: ReminderTarget[] = [
@@ -22,11 +21,13 @@ const reminderTargets: ReminderTarget[] = [
     type: "twenty_four_hours",
     minutesBeforeStart: 24 * 60,
     label: "24 hours",
+    lowerBoundDriftMinutes: 5,
   },
   {
     type: "one_hour",
     minutesBeforeStart: 60,
     label: "1 hour",
+    lowerBoundDriftMinutes: 0,
   },
 ];
 
@@ -157,7 +158,7 @@ export async function POST(request: NextRequest) {
     // GitHub cron can drift a few minutes. We include a small catch-up window
     // and rely on dedupe logs to prevent duplicate sends.
     const windowStart = new Date(
-      targetTime.getTime() - scheduleDriftToleranceMinutes * 60 * 1000
+      targetTime.getTime() - target.lowerBoundDriftMinutes * 60 * 1000
     );
     const windowEnd = new Date(targetTime.getTime() + 5 * 60 * 1000);
 
@@ -255,7 +256,7 @@ export async function POST(request: NextRequest) {
       continue;
     }
 
-    const { data: logRow, error: logError } = await adminClient
+    const { error: logError } = await adminClient
       .from("class_reminder_logs")
       .insert({
         class_id: classRow.id,
@@ -276,13 +277,15 @@ export async function POST(request: NextRequest) {
     }
 
     const recipients = new Set<string>(
-      enrollmentsByCourseId.get(classRow.course_id) ?? []
+      (enrollmentsByCourseId.get(classRow.course_id) ?? []).map((email) =>
+        email.toLowerCase()
+      )
     );
     const tutorEmail =
       String(course.created_by_email ?? "").trim() ||
       (course.created_by ? tutorEmailById.get(course.created_by) ?? "" : "");
     if (tutorEmail) {
-      recipients.add(tutorEmail);
+      recipients.add(tutorEmail.toLowerCase());
     }
 
     if (recipients.size === 0) {
@@ -304,20 +307,44 @@ export async function POST(request: NextRequest) {
       <p><strong>Start time (${torontoTimeZone}):</strong> ${startLabel}</p>
     `;
 
-    try {
-      await Promise.all(
-        Array.from(recipients).map((recipient) =>
-          sendEmail(recipient, subject, html)
-        )
-      );
-      sentClassCount += 1;
-      sentEmailCount += recipients.size;
-    } catch (error) {
+    const recipientList = Array.from(recipients);
+    const sendResults = await Promise.allSettled(
+      recipientList.map(async (recipient) => {
+        await sendEmail(recipient, subject, html);
+        return recipient;
+      })
+    );
+
+    const failedRecipients: { email: string; reason: string }[] = [];
+    let successfulSends = 0;
+    sendResults.forEach((result, index) => {
+      if (result.status === "fulfilled") {
+        successfulSends += 1;
+        return;
+      }
+
+      const recipient = recipientList[index] ?? "unknown";
+      failedRecipients.push({
+        email: recipient,
+        reason:
+          result.reason instanceof Error
+            ? result.reason.message
+            : "Failed to send email.",
+      });
+    });
+
+    if (failedRecipients.length > 0) {
       failedClasses.push({
         classId: classRow.id,
-        reason: error instanceof Error ? error.message : "Failed to send emails.",
+        reason: `Failed recipients: ${failedRecipients
+          .map((item) => `${item.email} (${item.reason})`)
+          .join("; ")}`,
       });
-      await adminClient.from("class_reminder_logs").delete().eq("id", logRow.id);
+    }
+
+    if (successfulSends > 0) {
+      sentClassCount += 1;
+      sentEmailCount += successfulSends;
     }
   }
 
