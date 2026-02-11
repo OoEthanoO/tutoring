@@ -9,6 +9,8 @@ create table if not exists public.app_users (
   created_at timestamptz not null default now()
 );
 
+alter table public.app_users enable row level security;
+
 create table if not exists public.app_sessions (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references public.app_users(id) on delete cascade,
@@ -17,6 +19,8 @@ create table if not exists public.app_sessions (
   created_at timestamptz not null default now()
 );
 
+alter table public.app_sessions enable row level security;
+
 create table if not exists public.app_email_verifications (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references public.app_users(id) on delete cascade,
@@ -24,6 +28,8 @@ create table if not exists public.app_email_verifications (
   expires_at timestamptz not null,
   created_at timestamptz not null default now()
 );
+
+alter table public.app_email_verifications enable row level security;
 
 create table if not exists public.courses (
   id uuid primary key default gen_random_uuid(),
@@ -127,6 +133,8 @@ create table if not exists public.class_reminder_logs (
   unique(class_id, reminder_type)
 );
 
+alter table public.class_reminder_logs enable row level security;
+
 create table if not exists public.site_settings (
   id boolean primary key default true,
   maintenance_mode boolean not null default false,
@@ -134,6 +142,8 @@ create table if not exists public.site_settings (
   updated_at timestamptz not null default now(),
   check (id = true)
 );
+
+alter table public.site_settings enable row level security;
 
 insert into public.site_settings (id, maintenance_mode)
 values (true, false)
@@ -149,3 +159,5 @@ create table if not exists public.feedback_submissions (
   status text not null default 'new',
   created_at timestamptz not null default now()
 );
+
+alter table public.feedback_submissions enable row level security;
