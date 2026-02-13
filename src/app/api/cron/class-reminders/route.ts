@@ -199,7 +199,7 @@ export async function POST(request: NextRequest) {
   );
   const { data: enrollments, error: enrollmentError } = await adminClient
     .from("course_enrollments")
-    .select("course_id, student_email")
+    .select("course_id, student_id, student_email")
     .in("course_id", courseIds);
 
   if (enrollmentError) {
@@ -210,15 +210,51 @@ export async function POST(request: NextRequest) {
   }
 
   const enrollmentsByCourseId = new Map<string, string[]>();
+  const missingStudentEmailIds = new Set<string>();
   for (const enrollment of enrollments ?? []) {
     const courseId = enrollment.course_id as string;
     const email = String(enrollment.student_email ?? "").trim();
     if (!email) {
+      const studentId = String(enrollment.student_id ?? "").trim();
+      if (studentId) {
+        missingStudentEmailIds.add(studentId);
+      }
       continue;
     }
     const current = enrollmentsByCourseId.get(courseId) ?? [];
     current.push(email);
     enrollmentsByCourseId.set(courseId, current);
+  }
+
+  if (missingStudentEmailIds.size > 0) {
+    const { data: studentRows } = await adminClient
+      .from("app_users")
+      .select("id, email")
+      .in("id", Array.from(missingStudentEmailIds));
+    const studentEmailById = new Map<string, string>();
+    for (const student of studentRows ?? []) {
+      const studentId = String(student.id ?? "").trim();
+      const email = String(student.email ?? "").trim();
+      if (studentId && email) {
+        studentEmailById.set(studentId, email);
+      }
+    }
+
+    for (const enrollment of enrollments ?? []) {
+      const courseId = String(enrollment.course_id ?? "").trim();
+      const studentId = String(enrollment.student_id ?? "").trim();
+      const storedEmail = String(enrollment.student_email ?? "").trim();
+      if (!courseId || !studentId || storedEmail) {
+        continue;
+      }
+      const fallbackEmail = studentEmailById.get(studentId);
+      if (!fallbackEmail) {
+        continue;
+      }
+      const current = enrollmentsByCourseId.get(courseId) ?? [];
+      current.push(fallbackEmail);
+      enrollmentsByCourseId.set(courseId, current);
+    }
   }
 
   const missingTutorIds = Array.from(
