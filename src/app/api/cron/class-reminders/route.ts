@@ -7,6 +7,8 @@ const resendApiKey = process.env.RESEND_API_KEY ?? "";
 const resendFrom = process.env.RESEND_FROM ?? "";
 const cronSecret = process.env.CRON_SECRET ?? "";
 const torontoTimeZone = "America/Toronto";
+const defaultZoomId = "822 9677 5321";
+const defaultZoomPassword = "youth";
 type ReminderType = "one_hour" | "twenty_four_hours";
 
 type ReminderTarget = {
@@ -34,6 +36,7 @@ const reminderTargets: ReminderTarget[] = [
 type CourseRow = {
   id: string;
   title: string;
+  short_name?: string | null;
   created_by?: string | null;
   created_by_name?: string | null;
   created_by_email?: string | null;
@@ -165,7 +168,7 @@ export async function POST(request: NextRequest) {
     const { data: classes, error: classError } = await adminClient
       .from("course_classes")
       .select(
-        "id, title, starts_at, course_id, course:courses(id, title, created_by, created_by_name, created_by_email)"
+        "id, title, starts_at, course_id, course:courses(id, title, short_name, created_by, created_by_name, created_by_email)"
       )
       .gte("starts_at", windowStart.toISOString())
       .lt("starts_at", windowEnd.toISOString());
@@ -210,15 +213,18 @@ export async function POST(request: NextRequest) {
   }
 
   const enrollmentsByCourseId = new Map<string, string[]>();
-  const missingStudentEmailIds = new Set<string>();
+  const studentIds = new Set<string>();
   for (const enrollment of enrollments ?? []) {
-    const courseId = enrollment.course_id as string;
+    const courseId = String(enrollment.course_id ?? "").trim();
+    if (!courseId) {
+      continue;
+    }
+    const studentId = String(enrollment.student_id ?? "").trim();
+    if (studentId) {
+      studentIds.add(studentId);
+    }
     const email = String(enrollment.student_email ?? "").trim();
     if (!email) {
-      const studentId = String(enrollment.student_id ?? "").trim();
-      if (studentId) {
-        missingStudentEmailIds.add(studentId);
-      }
       continue;
     }
     const current = enrollmentsByCourseId.get(courseId) ?? [];
@@ -226,11 +232,11 @@ export async function POST(request: NextRequest) {
     enrollmentsByCourseId.set(courseId, current);
   }
 
-  if (missingStudentEmailIds.size > 0) {
+  if (studentIds.size > 0) {
     const { data: studentRows } = await adminClient
       .from("app_users")
       .select("id, email")
-      .in("id", Array.from(missingStudentEmailIds));
+      .in("id", Array.from(studentIds));
     const studentEmailById = new Map<string, string>();
     for (const student of studentRows ?? []) {
       const studentId = String(student.id ?? "").trim();
@@ -243,16 +249,15 @@ export async function POST(request: NextRequest) {
     for (const enrollment of enrollments ?? []) {
       const courseId = String(enrollment.course_id ?? "").trim();
       const studentId = String(enrollment.student_id ?? "").trim();
-      const storedEmail = String(enrollment.student_email ?? "").trim();
-      if (!courseId || !studentId || storedEmail) {
+      if (!courseId || !studentId) {
         continue;
       }
-      const fallbackEmail = studentEmailById.get(studentId);
-      if (!fallbackEmail) {
+      const canonicalEmail = studentEmailById.get(studentId);
+      if (!canonicalEmail) {
         continue;
       }
       const current = enrollmentsByCourseId.get(courseId) ?? [];
-      current.push(fallbackEmail);
+      current.push(canonicalEmail);
       enrollmentsByCourseId.set(courseId, current);
     }
   }
@@ -330,9 +335,20 @@ export async function POST(request: NextRequest) {
 
     const classTitle = escapeHtml(classRow.title);
     const courseTitle = escapeHtml(course.title);
-    const tutorName = escapeHtml(
-      String(course.created_by_name ?? "Your tutor").trim() || "Your tutor"
-    );
+    const tutorNameRaw =
+      String(course.created_by_name ?? "").trim() || "your tutor";
+    const tutorName = escapeHtml(tutorNameRaw);
+    const courseShortName = String(course.short_name ?? "").trim();
+    const tutorNameParts = tutorNameRaw.split(/\s+/).filter(Boolean);
+    const tutorFirstName = tutorNameParts[0] ?? "Tutor";
+    const tutorLastInitial =
+      tutorNameParts.length > 1
+        ? `${tutorNameParts[tutorNameParts.length - 1][0]}`
+        : "";
+    const breakoutRoomName =
+      courseShortName.length > 0
+        ? `${tutorFirstName}${tutorLastInitial ? ` ${tutorLastInitial}` : ""}: ${courseShortName}`
+        : "";
     const startLabel = escapeHtml(formatTorontoDateTime(classRow.starts_at));
     const subject = `Class reminder: starts in ${reminderLabel} (${course.title})`;
     const html = `
@@ -341,6 +357,14 @@ export async function POST(request: NextRequest) {
       <p><strong>Class:</strong> ${classTitle}</p>
       <p><strong>Tutor:</strong> ${tutorName}</p>
       <p><strong>Start time (${torontoTimeZone}):</strong> ${startLabel}</p>
+      <p>Please attend the class 5 minutes before the start time:</p>
+      <p>Zoom ID: ${escapeHtml(defaultZoomId)}<br/>Password: ${escapeHtml(defaultZoomPassword)}<br/>${
+        breakoutRoomName
+          ? `Breakout room: "${escapeHtml(breakoutRoomName)}"`
+          : `Please join the breakout room that starts with "${escapeHtml(
+              `${tutorFirstName}${tutorLastInitial ? ` ${tutorLastInitial}` : ""}`
+            )}" followed by the name of the course.`
+      }</p>
     `;
 
     const recipientList = Array.from(recipients);

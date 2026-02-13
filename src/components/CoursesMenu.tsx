@@ -305,10 +305,14 @@ export default function CoursesMenu() {
     return minutes;
   }, [courses, nowMs]);
 
+  const requiresDonationLink = Boolean(selectedCourse?.donation_link);
+  const hasClickedBothLinks = hasOpenedDonationLink && hasOpenedApplicationLink;
   const canConfirmEnrollment = selectedCourse
-    ? (selectedCourse.donation_link ? hasOpenedDonationLink : true) &&
-      hasOpenedApplicationLink
+    ? requiresDonationLink
+      ? hasClickedBothLinks
+      : hasOpenedApplicationLink
     : false;
+  const isConfirmEnrollmentDisabled = isEnrolling || !canConfirmEnrollment;
 
   const openEnrollmentModal = (course: Course) => {
     setHasOpenedDonationLink(false);
@@ -628,6 +632,15 @@ export default function CoursesMenu() {
                 in order for your enrollment to be accepted.
               </p>
             )}
+            {requiresDonationLink ? (
+              <p className="text-xs font-semibold text-[var(--muted)]">
+                To finish enrollment, you must click on both links above.
+              </p>
+            ) : (
+              <p className="text-xs font-semibold text-[var(--muted)]">
+                To finish enrollment, you must click on the required link above.
+              </p>
+            )}
 
             <div className="flex flex-wrap justify-end gap-2">
               <button
@@ -677,10 +690,23 @@ export default function CoursesMenu() {
                   setHasOpenedApplicationLink(false);
                   setIsEnrolling(false);
                 }}
-                disabled={isEnrolling || !canConfirmEnrollment}
-                className="rounded-full border border-[var(--foreground)] bg-[var(--foreground)] px-4 py-2 text-xs font-semibold text-[var(--background)] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-70"
+                disabled={isConfirmEnrollmentDisabled}
+                title={
+                  isConfirmEnrollmentDisabled
+                    ? "Click all required links above to enable enrollment."
+                    : undefined
+                }
+                className={`rounded-full border px-4 py-2 text-xs font-semibold transition ${
+                  isConfirmEnrollmentDisabled
+                    ? "cursor-not-allowed border-amber-300 bg-amber-100 text-amber-800 shadow-inner"
+                    : "border-[var(--foreground)] bg-[var(--foreground)] text-[var(--background)] hover:opacity-90"
+                }`}
               >
-                {isEnrolling ? "Submitting..." : "Confirm enroll"}
+                {isEnrolling
+                  ? "Submitting..."
+                  : isConfirmEnrollmentDisabled
+                    ? "Confirm enrollment (locked)"
+                    : "Confirm enrollment"}
               </button>
             </div>
           </div>
