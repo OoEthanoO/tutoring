@@ -93,24 +93,49 @@ const formatTorontoDateTime = (value: string) =>
     hour12: true,
   }).format(new Date(value));
 
-const sendEmail = async (to: string, subject: string, html: string) => {
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${resendApiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from: resendFrom,
-      to,
-      subject,
-      html,
-    }),
+const sleep = (ms: number) =>
+  new Promise<void>((resolve) => {
+    setTimeout(resolve, ms);
   });
 
-  if (!response.ok) {
+const sendEmail = async (to: string, subject: string, html: string) => {
+  const maxAttempts = 4;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${resendApiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: resendFrom,
+        to,
+        subject,
+        html,
+      }),
+    });
+
+    if (response.ok) {
+      return;
+    }
+
     const details = await response.text().catch(() => "");
-    throw new Error(details || `Failed to send email (${response.status}).`);
+    const retryAfterHeader = response.headers.get("retry-after");
+    const retryAfterSeconds = retryAfterHeader
+      ? Number.parseFloat(retryAfterHeader)
+      : Number.NaN;
+    const isRetriable = response.status === 429 || response.status >= 500;
+
+    if (!isRetriable || attempt === maxAttempts) {
+      throw new Error(details || `Failed to send email (${response.status}).`);
+    }
+
+    const backoffMs =
+      Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+        ? Math.ceil(retryAfterSeconds * 1000)
+        : 500 * 2 ** (attempt - 1);
+    await sleep(backoffMs);
   }
 };
 
@@ -367,31 +392,24 @@ export async function POST(request: NextRequest) {
       }</p>
     `;
 
-    const recipientList = Array.from(recipients);
-    const sendResults = await Promise.allSettled(
-      recipientList.map(async (recipient) => {
-        await sendEmail(recipient, subject, html);
-        return recipient;
-      })
-    );
-
+    const recipientList = Array.from(recipients).sort();
     const failedRecipients: { email: string; reason: string }[] = [];
     let successfulSends = 0;
-    sendResults.forEach((result, index) => {
-      if (result.status === "fulfilled") {
-        successfulSends += 1;
-        return;
-      }
 
-      const recipient = recipientList[index] ?? "unknown";
-      failedRecipients.push({
-        email: recipient,
-        reason:
-          result.reason instanceof Error
-            ? result.reason.message
-            : "Failed to send email.",
-      });
-    });
+    for (const recipient of recipientList) {
+      try {
+        await sendEmail(recipient, subject, html);
+        successfulSends += 1;
+        // Pace requests to reduce email provider throttling on bursts.
+        await sleep(150);
+      } catch (error) {
+        failedRecipients.push({
+          email: recipient,
+          reason:
+            error instanceof Error ? error.message : "Failed to send email.",
+        });
+      }
+    }
 
     if (failedRecipients.length > 0) {
       failedClasses.push({
