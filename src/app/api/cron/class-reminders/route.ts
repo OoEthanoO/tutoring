@@ -9,7 +9,7 @@ const cronSecret = process.env.CRON_SECRET ?? "";
 const torontoTimeZone = "America/Toronto";
 const defaultZoomId = "822 9677 5321";
 const defaultZoomPassword = "youth";
-type ReminderType = "one_hour" | "twenty_four_hours";
+type ReminderType = "one_hour" | "twenty_four_hours" | "class_follow_up";
 
 type ReminderTarget = {
   type: ReminderType;
@@ -46,6 +46,7 @@ type ClassRow = {
   id: string;
   title: string;
   starts_at: string;
+  duration_hours: number | string;
   course_id: string;
   course: CourseRow | CourseRow[] | null;
 };
@@ -193,7 +194,7 @@ export async function POST(request: NextRequest) {
     const { data: classes, error: classError } = await adminClient
       .from("course_classes")
       .select(
-        "id, title, starts_at, course_id, course:courses(id, title, short_name, created_by, created_by_name, created_by_email)"
+        "id, title, starts_at, duration_hours, course_id, course:courses(id, title, short_name, created_by, created_by_name, created_by_email)"
       )
       .gte("starts_at", windowStart.toISOString())
       .lt("starts_at", windowEnd.toISOString());
@@ -209,6 +210,47 @@ export async function POST(request: NextRequest) {
       candidates.push({
         reminderType: target.type,
         reminderLabel: target.label,
+        classRow,
+      });
+    }
+  }
+
+  // Follow-ups
+  const followUpWindowStart = new Date(base.getTime() - 2 * 60 * 1000);
+  const followUpWindowEnd = new Date(base.getTime() + 5 * 60 * 1000);
+  const searchStart = new Date(base.getTime() - 24 * 60 * 60 * 1000);
+
+  const { data: pastClasses, error: pastClassError } = await adminClient
+    .from("course_classes")
+    .select(
+      "id, title, starts_at, duration_hours, course_id, course:courses(id, title, short_name, created_by, created_by_name, created_by_email)"
+    )
+    .gte("starts_at", searchStart.toISOString())
+    .lt("starts_at", followUpWindowEnd.toISOString());
+
+  if (pastClassError) {
+    return NextResponse.json(
+      { error: pastClassError.message ?? "Failed to load classes for follow-up." },
+      { status: 500 }
+    );
+  }
+
+  for (const classRow of (pastClasses ?? []) as ClassRow[]) {
+    const startsAt = new Date(classRow.starts_at);
+    const durationHours = typeof classRow.duration_hours === 'number'
+      ? classRow.duration_hours
+      : Number.parseFloat(String(classRow.duration_hours));
+
+    if (Number.isNaN(durationHours)) {
+      continue;
+    }
+
+    const endsAt = new Date(startsAt.getTime() + durationHours * 60 * 60 * 1000);
+
+    if (endsAt >= followUpWindowStart && endsAt < followUpWindowEnd) {
+      candidates.push({
+        reminderType: "class_follow_up",
+        reminderLabel: "0 minutes",
         classRow,
       });
     }
@@ -342,11 +384,14 @@ export async function POST(request: NextRequest) {
       continue;
     }
 
-    const recipients = new Set<string>(
-      (enrollmentsByCourseId.get(classRow.course_id) ?? []).map((email) =>
-        email.toLowerCase()
-      )
-    );
+    const recipients = new Set<string>();
+
+    if (reminderType !== "class_follow_up") {
+      for (const email of enrollmentsByCourseId.get(classRow.course_id) ?? []) {
+        recipients.add(email.toLowerCase());
+      }
+    }
+
     const tutorEmail =
       String(course.created_by_email ?? "").trim() ||
       (course.created_by ? tutorEmailById.get(course.created_by) ?? "" : "");
@@ -375,22 +420,43 @@ export async function POST(request: NextRequest) {
         ? `${tutorFirstName}${tutorLastInitial ? ` ${tutorLastInitial}` : ""}: ${courseShortName}`
         : "";
     const startLabel = escapeHtml(formatTorontoDateTime(classRow.starts_at));
-    const subject = `Class reminder: starts in ${reminderLabel} (${course.title})`;
-    const html = `
-      <p>Your class starts in <strong>${escapeHtml(reminderLabel)}</strong>.</p>
-      <p><strong>Course:</strong> ${courseTitle}</p>
-      <p><strong>Class:</strong> ${classTitle}</p>
-      <p><strong>Tutor:</strong> ${tutorName}</p>
-      <p><strong>Start time (${torontoTimeZone}):</strong> ${startLabel}</p>
-      <p>Please attend the class 5 minutes before the start time:</p>
-      <p>Zoom ID: ${escapeHtml(defaultZoomId)}<br/>Password: ${escapeHtml(defaultZoomPassword)}<br/>${
-        breakoutRoomName
+    let subject = "";
+    let html = "";
+
+    if (reminderType === "class_follow_up") {
+      subject = `Class follow-up: Please submit the tutor form for ${course.title}`;
+      const formUrl = "https://docs.google.com/forms/d/e/1FAIpQLSfbp8hNm_hpGUfH-SvGbnF7LbsiemBbeXhjddVccSHS8di2nw/viewform";
+      html = `
+        <p>Hi ${tutorName},</p>
+        <p>Your class <strong>${classTitle}</strong> for <strong>${courseTitle}</strong> recently ended.</p>
+        <p>Please remember to complete the tutor form:</p>
+        <p><a href="${formUrl}"><strong>${formUrl}</strong></a></p>
+        <br/>
+        <p><strong>Class details:</strong></p>
+        <ul>
+          <li><strong>Course:</strong> ${courseTitle}</li>
+          <li><strong>Class:</strong> ${classTitle}</li>
+          <li><strong>Start time (${torontoTimeZone}):</strong> ${startLabel}</li>
+        </ul>
+        <p>Thank you!</p>
+      `;
+    } else {
+      subject = `Class reminder: starts in ${reminderLabel} (${course.title})`;
+      html = `
+        <p>Your class starts in <strong>${escapeHtml(reminderLabel)}</strong>.</p>
+        <p><strong>Course:</strong> ${courseTitle}</p>
+        <p><strong>Class:</strong> ${classTitle}</p>
+        <p><strong>Tutor:</strong> ${tutorName}</p>
+        <p><strong>Start time (${torontoTimeZone}):</strong> ${startLabel}</p>
+        <p>Please attend the class 5 minutes before the start time:</p>
+        <p>Zoom ID: ${escapeHtml(defaultZoomId)}<br/>Password: ${escapeHtml(defaultZoomPassword)}<br/>${breakoutRoomName
           ? `Breakout room: "${escapeHtml(breakoutRoomName)}"`
           : `Please join the breakout room that starts with "${escapeHtml(
-              `${tutorFirstName}${tutorLastInitial ? ` ${tutorLastInitial}` : ""}`
-            )}" followed by the name of the course.`
-      }</p>
-    `;
+            `${tutorFirstName}${tutorLastInitial ? ` ${tutorLastInitial}` : ""}`
+          )}" followed by the name of the course.`
+        }</p>
+      `;
+    }
 
     const recipientList = Array.from(recipients).sort();
     const failedRecipients: { email: string; reason: string }[] = [];
