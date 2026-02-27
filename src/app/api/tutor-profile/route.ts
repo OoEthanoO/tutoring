@@ -39,7 +39,7 @@ const fetchDonationProgress = async (donationLink: string) => {
       signal: controller.signal,
       headers: {
         "User-Agent":
-          "Mozilla/5.0 (compatible; EthanCodingClassBot/1.0; +https://class.ethanyanxu.com)",
+          "Mozilla/5.0 (compatible; YanLearnBot/1.0; +https://class.ethanyanxu.com)",
       },
       cache: "no-store",
     });

@@ -60,7 +60,7 @@ export default function PublicHome() {
           Home
         </p>
         <h2 className="text-lg font-semibold text-[var(--foreground)]">
-          Ethan&apos;s Coding Classroom
+          YanLearn
         </h2>
       </header>
 
@@ -69,10 +69,10 @@ export default function PublicHome() {
           About the Program
         </h3>
         <p className="text-sm text-[var(--muted)]">
-          Ethan&apos;s Coding Classroom is a free coding tutoring program. This
-          program was launched in July 2023 and is aimed at students in grades
-          6-12. The courses are taught online and provides a series of different
-          languages, mainly including Java, C++, and Python.
+          YanLearn is a free online tutoring platform. Originally launched in July
+          2023 as Ethan&apos;s Coding Classroom, it has expanded to include multiple
+          passionate tutors teaching a variety of subjects to students in grades
+          6-12.
         </p>
         <p className="text-sm text-[var(--muted)]">
           In addition, The &quot;Coding for SickKids&quot; fundraising campaign

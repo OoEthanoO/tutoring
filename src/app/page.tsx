@@ -57,7 +57,7 @@ export default async function Home() {
           </div>
         ) : null}
         <div className="flex flex-wrap items-center justify-between gap-4">
-          <h1 className="text-xl font-semibold">Ethan&apos;s Coding Class</h1>
+          <h1 className="text-xl font-semibold">YanLearn</h1>
           <div className="flex flex-wrap items-center gap-4">
             <AuthStatusCard />
             <AuthStatusActions />
