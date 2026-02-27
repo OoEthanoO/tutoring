@@ -128,6 +128,17 @@ export async function middleware(request: NextRequest) {
   const isFounder = maintenanceEnabled ? await isFounderSession(request) : false;
   const isPublicMaintenanceAccess = pathname === "/login" || pathname === maintenancePath;
 
+  const host = request.headers.get("host");
+
+  if (host === "class.ethanyanxu.com") {
+    const url = request.nextUrl.clone();
+    url.host = "learn.ethanyanxu.com";
+    url.port = ""; // Ensure standard HTTPS port for the new domain
+    url.protocol = "https:";
+    url.searchParams.set("redirected", "true");
+    return NextResponse.redirect(url, 301); // 301 Permanent Redirect
+  }
+
   if (maintenanceEnabled && !isFounder && !isPublicMaintenanceAccess) {
     return NextResponse.redirect(new URL(maintenancePath, request.url));
   }
