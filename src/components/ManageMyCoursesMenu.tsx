@@ -166,6 +166,7 @@ export default function ManageMyCoursesMenu() {
   const [editTitle, setEditTitle] = useState("");
   const [editStartsAt, setEditStartsAt] = useState("");
   const [pendingClassId, setPendingClassId] = useState<string | null>(null);
+  const [pendingClassDeleteId, setPendingClassDeleteId] = useState<string | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [pendingEnrollmentDeleteId, setPendingEnrollmentDeleteId] = useState<
     string | null
@@ -396,9 +397,9 @@ export default function ManageMyCoursesMenu() {
       current.map((courseItem) =>
         courseItem.id === courseId
           ? {
-              ...courseItem,
-              course_classes: [...(courseItem.course_classes ?? []), payload.class],
-            }
+            ...courseItem,
+            course_classes: [...(courseItem.course_classes ?? []), payload.class],
+          }
           : courseItem
       )
     );
@@ -474,6 +475,50 @@ export default function ManageMyCoursesMenu() {
     setStatus({ type: "success", message: "Class updated." });
     setPendingClassId(null);
     cancelEditClass();
+  };
+
+  const deleteClass = async (courseId: string, courseClass: CourseClass) => {
+    const name = courseClass.title || "this class";
+    const firstConfirm = window.confirm(
+      `Are you sure you want to delete "${name}"? This cannot be undone.`
+    );
+    if (!firstConfirm) {
+      return;
+    }
+
+    setPendingClassDeleteId(courseClass.id);
+    setStatus({ type: "idle", message: "" });
+
+    const response = await fetch(`/api/classes/${courseClass.id}`, {
+      method: "DELETE",
+    });
+
+    if (!response.ok) {
+      const payload = (await response.json().catch(() => null)) as
+        | { error?: string }
+        | null;
+      setStatus({
+        type: "error",
+        message: payload?.error ?? "Unable to delete class.",
+      });
+      setPendingClassDeleteId(null);
+      return;
+    }
+
+    setCourses((current) =>
+      current.map((courseItem) =>
+        courseItem.id === courseId
+          ? {
+            ...courseItem,
+            course_classes: (courseItem.course_classes ?? []).filter(
+              (c) => c.id !== courseClass.id
+            ),
+          }
+          : courseItem
+      )
+    );
+    setStatus({ type: "success", message: "Class deleted." });
+    setPendingClassDeleteId(null);
   };
 
   const deleteCourse = async (course: Course) => {
@@ -639,11 +684,11 @@ export default function ManageMyCoursesMenu() {
       current.map((course) =>
         course.id === courseId
           ? {
-              ...course,
-              course_enrollments: (course.course_enrollments ?? []).filter(
-                (enrollment) => enrollment.id !== student.id
-              ),
-            }
+            ...course,
+            course_enrollments: (course.course_enrollments ?? []).filter(
+              (enrollment) => enrollment.id !== student.id
+            ),
+          }
           : course
       )
     );
@@ -682,8 +727,8 @@ export default function ManageMyCoursesMenu() {
             Manage my courses
           </h2>
           {role === "tutor" &&
-          donationLink &&
-          donationRaised !== null ? (
+            donationLink &&
+            donationRaised !== null ? (
             <p className="text-sm font-semibold text-[var(--foreground)]">
               ${donationRaised.toLocaleString()} raised
             </p>
@@ -913,13 +958,23 @@ export default function ManageMyCoursesMenu() {
                             {new Date(courseClass.starts_at).toLocaleString()} ·{" "}
                             1 hr
                           </span>
-                          <button
-                            type="button"
-                            onClick={() => startEditClass(courseClass)}
-                            className="rounded-full border border-[var(--border)] px-3 py-1 text-[0.6rem] font-semibold text-[var(--foreground)] transition hover:border-[var(--foreground)]"
-                          >
-                            Edit
-                          </button>
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => startEditClass(courseClass)}
+                              className="rounded-full border border-[var(--border)] px-3 py-1 text-[0.6rem] font-semibold text-[var(--foreground)] transition hover:border-[var(--foreground)]"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              disabled={pendingClassDeleteId === courseClass.id}
+                              onClick={() => deleteClass(course.id, courseClass)}
+                              className="rounded-full border border-red-200 px-3 py-1 text-[0.6rem] font-semibold text-red-500 transition hover:border-red-400 disabled:cursor-not-allowed disabled:opacity-70"
+                            >
+                              {pendingClassDeleteId === courseClass.id ? "Deleting..." : "Delete"}
+                            </button>
+                          </div>
                         </div>
                       )}
                     </li>
