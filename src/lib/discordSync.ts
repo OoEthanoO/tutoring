@@ -147,6 +147,55 @@ const normalizeRoleName = (title: string, fallbackCourseId: string): string => {
   return `Course ${fallbackCourseId.slice(0, 8)}`;
 };
 
+const getCourseRoleSuffix = (courseId: string) => {
+  const compact = courseId.replace(/[^a-z0-9]/gi, "").toLowerCase();
+  return compact.slice(0, 10) || "course";
+};
+
+const roleNameExists = (
+  roles: DiscordRole[],
+  name: string,
+  excludeRoleId?: string
+) => {
+  const normalized = name.trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+
+  return roles.some((role) => {
+    if (role.managed) {
+      return false;
+    }
+    if (excludeRoleId && role.id === excludeRoleId) {
+      return false;
+    }
+    return role.name.trim().toLowerCase() === normalized;
+  });
+};
+
+const buildUniqueCourseRoleName = (
+  baseName: string,
+  courseId: string,
+  roles: DiscordRole[]
+) => {
+  const normalizedBase = baseName.trim().slice(0, roleNameLimit) || "Course";
+  if (!roleNameExists(roles, normalizedBase)) {
+    return normalizedBase;
+  }
+
+  const suffixSeed = getCourseRoleSuffix(courseId);
+  for (let attempt = 1; attempt <= 999; attempt += 1) {
+    const suffix = attempt === 1 ? ` (${suffixSeed})` : ` (${suffixSeed}-${attempt})`;
+    const maxBaseLength = Math.max(1, roleNameLimit - suffix.length);
+    const candidate = `${normalizedBase.slice(0, maxBaseLength)}${suffix}`;
+    if (!roleNameExists(roles, candidate)) {
+      return candidate;
+    }
+  }
+
+  return `${normalizedBase.slice(0, roleNameLimit - 4)}-alt`;
+};
+
 const getCourseTopicMarker = (courseId: string) => `${courseTopicPrefix}${courseId}`;
 
 const readCourseIdFromTopic = (topic?: string | null) => {
@@ -991,11 +1040,103 @@ export const runDiscordSync = async ({
     enrollmentsByCourseId.set(courseId, current);
   }
 
+  const createCourseRole = async (course: CourseRow) => {
+    const baseName = normalizeRoleName(course.title, course.id);
+    const uniqueName = buildUniqueCourseRoleName(baseName, course.id, mutableRoles);
+
+    const existing = findRoleByName(mutableRoles, uniqueName);
+    if (existing) {
+      return existing;
+    }
+
+    const createdRole = await apiClient.createGuildRole(discordGuildId, uniqueName);
+    mutableRoles.push(createdRole);
+    result.createdRoleCount += 1;
+    result.createdCourseRoleCount += 1;
+    return createdRole;
+  };
+
+  const courseRoleIdFromManagedChannelByCourseId = new Map<string, string>();
+  const courseIdsWithManagedChannels = new Set<string>();
+  for (const channel of mutableChannels) {
+    if (channel.type !== discordTextChannelType) {
+      continue;
+    }
+
+    const courseId = readCourseIdFromTopic(channel.topic);
+    if (!courseId) {
+      continue;
+    }
+
+    courseIdsWithManagedChannels.add(courseId);
+    if (courseRoleIdFromManagedChannelByCourseId.has(courseId)) {
+      continue;
+    }
+
+    const candidateRoleId = getRoleIdsFromOverwrites(channel, discordGuildId)
+      .filter((roleId) => {
+        if (baseRoleIds.has(roleId)) {
+          return false;
+        }
+        const role = mutableRoles.find((item) => item.id === roleId);
+        return Boolean(role && !role.managed);
+      })
+      .sort((left, right) => left.localeCompare(right))[0];
+
+    if (candidateRoleId) {
+      courseRoleIdFromManagedChannelByCourseId.set(courseId, candidateRoleId);
+    }
+  }
+
+  const websiteCourseById = new Map(
+    websiteCourses.map((course) => [course.id, course] as const)
+  );
   const courseRoleIdByCourseId = new Map<string, string>();
   for (const course of websiteCourses) {
-    const roleName = normalizeRoleName(course.title, course.id);
-    const role = await ensureRole(roleName, true);
+    const shouldArchive = shouldArchiveByCourseId.get(course.id) === true;
+    const hasManagedChannel = courseIdsWithManagedChannels.has(course.id);
+
+    // Completed courses without a managed channel should not create roles/channels.
+    if (shouldArchive && !hasManagedChannel) {
+      continue;
+    }
+
+    const existingRoleId = courseRoleIdFromManagedChannelByCourseId.get(course.id);
+    if (existingRoleId) {
+      courseRoleIdByCourseId.set(course.id, existingRoleId);
+      continue;
+    }
+
+    const role = await createCourseRole(course);
     courseRoleIdByCourseId.set(course.id, role.id);
+  }
+
+  const courseIdsByRoleId = new Map<string, string[]>();
+  for (const [courseId, roleId] of courseRoleIdByCourseId) {
+    const current = courseIdsByRoleId.get(roleId) ?? [];
+    current.push(courseId);
+    courseIdsByRoleId.set(roleId, current);
+  }
+
+  for (const courseIds of courseIdsByRoleId.values()) {
+    if (courseIds.length <= 1) {
+      continue;
+    }
+
+    const sortedCourseIds = [...courseIds].sort((left, right) =>
+      left.localeCompare(right)
+    );
+
+    for (let index = 1; index < sortedCourseIds.length; index += 1) {
+      const courseId = sortedCourseIds[index];
+      const course = websiteCourseById.get(courseId);
+      if (!course) {
+        continue;
+      }
+
+      const replacementRole = await createCourseRole(course);
+      courseRoleIdByCourseId.set(courseId, replacementRole.id);
+    }
   }
 
   const discordUserIdByWebsiteUserId = new Map<string, string>();

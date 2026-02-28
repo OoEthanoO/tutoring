@@ -11,6 +11,8 @@ import {
 import { resolveUserRole } from "@/lib/roles";
 import AccountCard from "@/components/AccountCard";
 
+const discordServerInviteUrl = "https://discord.gg/yDMdWcs64R";
+
 export default function AuthStatusActions() {
   const [isSignedIn, setIsSignedIn] = useState<boolean | null>(null);
   const [isSigningOut, setIsSigningOut] = useState(false);
@@ -149,7 +151,19 @@ export default function AuthStatusActions() {
       window.location.assign("/api/auth/discord/connect");
     };
 
+    const onJoinDiscordServer = () => {
+      setIsMenuOpen(false);
+      window.open(discordServerInviteUrl, "_blank", "noopener,noreferrer");
+    };
+
     const onDisconnectDiscord = async () => {
+      const confirmed = window.confirm(
+        "Disconnecting Discord will kick you from the YanLearn Discord server. Continue?"
+      );
+      if (!confirmed) {
+        return;
+      }
+
       setIsDisconnectingDiscord(true);
       setDiscordStatus({ type: "idle", message: "" });
 
@@ -198,14 +212,23 @@ export default function AuthStatusActions() {
               Edit name
             </button>
             {isDiscordLinked ? (
-              <button
-                type="button"
-                onClick={onDisconnectDiscord}
-                disabled={isDisconnectingDiscord}
-                className="w-full rounded-lg px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-70"
-              >
-                {isDisconnectingDiscord ? "Disconnecting..." : "Disconnect Discord"}
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={onDisconnectDiscord}
+                  disabled={isDisconnectingDiscord}
+                  className="w-full rounded-lg px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  {isDisconnectingDiscord ? "Disconnecting..." : "Disconnect Discord"}
+                </button>
+                <button
+                  type="button"
+                  onClick={onJoinDiscordServer}
+                  className="w-full rounded-lg px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--border)]"
+                >
+                  Join Discord Server
+                </button>
+              </>
             ) : (
               <button
                 type="button"
