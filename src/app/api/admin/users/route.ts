@@ -67,7 +67,9 @@ export async function GET(request: NextRequest) {
 
   const { data, error: listError } = await adminClient
     .from("app_users")
-    .select("id, email, full_name, role, created_at, tutor_promoted_at")
+    .select(
+      "id, email, full_name, role, created_at, tutor_promoted_at, discord_user_id, discord_username, discord_connected_at"
+    )
     .ilike("email", search ? `%${search}%` : "%")
     .order("created_at", { ascending: false })
     .range((page - 1) * perPage, page * perPage - 1);
@@ -88,6 +90,9 @@ export async function GET(request: NextRequest) {
     role: resolveUserRole(item.email, item.role ?? null),
     donationLink: "",
     tutorPromotedAt: item.tutor_promoted_at ?? null,
+    discordUserId: item.discord_user_id ?? null,
+    discordUsername: item.discord_username ?? null,
+    discordConnectedAt: item.discord_connected_at ?? null,
   }));
 
   const userIds = users.map((user) => user.id);
@@ -201,11 +206,15 @@ export async function PATCH(request: NextRequest) {
       .from("app_users")
       .update(updatePayload)
       .eq("id", body.userId)
-      .select("id, email, full_name, role, created_at, tutor_promoted_at")
+      .select(
+        "id, email, full_name, role, created_at, tutor_promoted_at, discord_user_id, discord_username, discord_connected_at"
+      )
       .single()
     : await adminClient
       .from("app_users")
-      .select("id, email, full_name, role, created_at, tutor_promoted_at")
+      .select(
+        "id, email, full_name, role, created_at, tutor_promoted_at, discord_user_id, discord_username, discord_connected_at"
+      )
       .eq("id", body.userId)
       .single();
 
@@ -251,6 +260,9 @@ export async function PATCH(request: NextRequest) {
     ),
     donationLink: body.donationLink ?? "",
     tutorPromotedAt: updatedUser.tutor_promoted_at ?? null,
+    discordUserId: updatedUser.discord_user_id ?? null,
+    discordUsername: updatedUser.discord_username ?? null,
+    discordConnectedAt: updatedUser.discord_connected_at ?? null,
   };
 
   return NextResponse.json({ user: responseUser });

@@ -22,6 +22,8 @@ export default function AuthStatusActions() {
   const [isStoppingImpersonation, setIsStoppingImpersonation] = useState(false);
   const [isDiscordLinked, setIsDiscordLinked] = useState(false);
   const [isDisconnectingDiscord, setIsDisconnectingDiscord] = useState(false);
+  const [isDisconnectConfirmOpen, setIsDisconnectConfirmOpen] = useState(false);
+  const [isJoinGuidanceActive, setIsJoinGuidanceActive] = useState(false);
   const [isEditNameOpen, setIsEditNameOpen] = useState(false);
   const [fullNameDraft, setFullNameDraft] = useState("");
   const [isSavingName, setIsSavingName] = useState(false);
@@ -74,6 +76,20 @@ export default function AuthStatusActions() {
       document.removeEventListener("mousedown", handleClick);
     };
   }, [isMenuOpen]);
+
+  useEffect(() => {
+    if (discordStatus.type !== "success") {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setDiscordStatus({ type: "idle", message: "" });
+    }, 3500);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [discordStatus.type]);
 
   if (isSignedIn === null) {
     return null;
@@ -147,22 +163,27 @@ export default function AuthStatusActions() {
 
     const onConnectDiscord = () => {
       setDiscordStatus({ type: "idle", message: "" });
+      setIsJoinGuidanceActive(false);
       setIsMenuOpen(false);
       window.location.assign("/api/auth/discord/connect");
     };
 
     const onJoinDiscordServer = () => {
+      if (!isDiscordLinked) {
+        return;
+      }
       setIsMenuOpen(false);
       window.open(discordServerInviteUrl, "_blank", "noopener,noreferrer");
     };
 
+    const requestDisconnectDiscord = () => {
+      setDiscordStatus({ type: "idle", message: "" });
+      setIsMenuOpen(false);
+      setIsDisconnectConfirmOpen(true);
+    };
+
     const onDisconnectDiscord = async () => {
-      const confirmed = window.confirm(
-        "Disconnecting Discord will kick you from the YanLearn Discord server. Continue?"
-      );
-      if (!confirmed) {
-        return;
-      }
+      setIsDisconnectConfirmOpen(false);
 
       setIsDisconnectingDiscord(true);
       setDiscordStatus({ type: "idle", message: "" });
@@ -212,32 +233,59 @@ export default function AuthStatusActions() {
               Edit name
             </button>
             {isDiscordLinked ? (
-              <>
-                <button
-                  type="button"
-                  onClick={onDisconnectDiscord}
-                  disabled={isDisconnectingDiscord}
-                  className="w-full rounded-lg px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-70"
-                >
-                  {isDisconnectingDiscord ? "Disconnecting..." : "Disconnect Discord"}
-                </button>
-                <button
-                  type="button"
-                  onClick={onJoinDiscordServer}
-                  className="w-full rounded-lg px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--border)]"
-                >
-                  Join Discord Server
-                </button>
-              </>
+              <button
+                type="button"
+                onClick={requestDisconnectDiscord}
+                disabled={isDisconnectingDiscord}
+                className="w-full rounded-lg px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                {isDisconnectingDiscord ? "Disconnecting..." : "Disconnect Discord"}
+              </button>
             ) : (
               <button
                 type="button"
                 onClick={onConnectDiscord}
-                className="w-full rounded-lg px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--border)]"
+                className={`w-full rounded-lg px-3 py-2 text-left text-sm transition ${
+                  isJoinGuidanceActive
+                    ? "text-red-600 animate-pulse"
+                    : "text-[var(--foreground)] hover:bg-[var(--border)]"
+                }`}
               >
                 Connect Discord
               </button>
             )}
+            <div
+              className="relative"
+              onMouseEnter={() => {
+                if (!isDiscordLinked) {
+                  setIsJoinGuidanceActive(true);
+                }
+              }}
+              onMouseLeave={() => {
+                if (!isDiscordLinked) {
+                  setIsJoinGuidanceActive(false);
+                }
+              }}
+              onFocusCapture={() => {
+                if (!isDiscordLinked) {
+                  setIsJoinGuidanceActive(true);
+                }
+              }}
+              onBlurCapture={() => setIsJoinGuidanceActive(false)}
+            >
+              <button
+                type="button"
+                onClick={onJoinDiscordServer}
+                disabled={!isDiscordLinked}
+                className={`w-full rounded-lg px-3 py-2 text-left text-sm transition ${
+                  isDiscordLinked
+                    ? "text-[var(--foreground)] hover:bg-[var(--border)]"
+                    : "cursor-not-allowed text-[var(--muted)] opacity-50"
+                }`}
+              >
+                Join Discord Server
+              </button>
+            </div>
             <button
               type="button"
               onClick={onSignOut}
@@ -256,6 +304,46 @@ export default function AuthStatusActions() {
           >
             {discordStatus.message}
           </p>
+        ) : null}
+        {isDisconnectConfirmOpen ? (
+          <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 px-4">
+            <div className="w-full max-w-sm space-y-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-xl">
+              <div className="space-y-1">
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
+                  Confirm
+                </p>
+                <h3 className="text-lg font-semibold text-[var(--foreground)]">
+                  Disconnect Discord?
+                </h3>
+                <p className="text-sm text-[var(--muted)]">
+                  If you disconnect, you will be kicked from the YanLearn Discord
+                  server.
+                </p>
+              </div>
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsDisconnectConfirmOpen(false)}
+                  disabled={isDisconnectingDiscord}
+                  className="rounded-full border border-[var(--border)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:border-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={onDisconnectDiscord}
+                  disabled={isDisconnectingDiscord}
+                  className={`rounded-full border px-4 py-2 text-xs font-semibold transition ${
+                    isDisconnectingDiscord
+                      ? "cursor-not-allowed border-[var(--border)] text-[var(--muted)] opacity-70"
+                      : "border-red-500 text-red-600 hover:bg-red-50"
+                  }`}
+                >
+                  {isDisconnectingDiscord ? "Disconnecting..." : "Disconnect"}
+                </button>
+              </div>
+            </div>
+          </div>
         ) : null}
         {isEditNameOpen ? (
           <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 px-4">

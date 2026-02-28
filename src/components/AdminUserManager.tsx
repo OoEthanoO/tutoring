@@ -16,6 +16,9 @@ type AdminUser = {
   role: "founder" | "tutor" | "student";
   donationLink?: string;
   tutorPromotedAt?: string | null;
+  discordUserId?: string | null;
+  discordUsername?: string | null;
+  discordConnectedAt?: string | null;
 };
 
 type StatusState = {
@@ -622,6 +625,14 @@ export default function AdminUserManager() {
                 <p className="text-xs text-[var(--muted)]">{user.email}</p>
                 <p className="mt-1 text-xs text-[var(--muted)]">
                   Role: {user.role}
+                </p>
+                <p className="text-xs text-[var(--muted)]">
+                  Discord:{" "}
+                  {user.discordUserId
+                    ? user.discordUsername
+                      ? `Connected (${user.discordUsername})`
+                      : "Connected"
+                    : "Not connected"}
                 </p>
                 {user.role === "tutor" ? (
                   <p className="text-xs text-[var(--muted)]">
