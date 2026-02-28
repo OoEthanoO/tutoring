@@ -7,6 +7,11 @@ const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 const resendApiKey = process.env.RESEND_API_KEY ?? "";
 const resendFrom = process.env.RESEND_FROM ?? "";
 const cronSecret = process.env.CRON_SECRET ?? "";
+const discordBotToken = process.env.DISCORD_BOT_TOKEN ?? "";
+const discordGuildId = process.env.DISCORD_GUILD_ID ?? "";
+const discordApiBase = "https://discord.com/api/v10";
+const courseTopicPrefix = "yanlearn-course-id:";
+const discordTextChannelType = 0;
 const torontoTimeZone = "America/Toronto";
 const defaultZoomId = "822 9677 5321";
 const defaultZoomPassword = "youth";
@@ -58,6 +63,26 @@ type CandidateReminder = {
   classRow: ClassRow;
 };
 
+type DiscordPermissionOverwrite = {
+  id: string;
+  type: 0 | 1;
+  allow: string;
+  deny: string;
+};
+
+type DiscordGuildChannel = {
+  id: string;
+  name: string;
+  type: number;
+  topic?: string | null;
+  permission_overwrites?: DiscordPermissionOverwrite[];
+};
+
+type DiscordCourseReminderTarget = {
+  channelId: string;
+  roleId: string;
+};
+
 const escapeHtml = (value: string) =>
   value
     .replaceAll("&", "&amp;")
@@ -65,6 +90,8 @@ const escapeHtml = (value: string) =>
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
+
+const escapeDiscordText = (value: string) => value.replaceAll("@", "@\u200b");
 
 const readCourse = (value: ClassRow["course"]): CourseRow | null => {
   if (Array.isArray(value)) {
@@ -98,6 +125,143 @@ const formatTorontoDateTime = (value: string) =>
 const sleep = (ms: number) =>
   new Promise<void>((resolve) => {
     setTimeout(resolve, ms);
+  });
+
+const readCourseIdFromTopic = (topic?: string | null) => {
+  const value = String(topic ?? "").trim();
+  if (!value.startsWith(courseTopicPrefix)) {
+    return "";
+  }
+  return value.slice(courseTopicPrefix.length).trim();
+};
+
+const getCourseRoleIdsFromOverwrites = (
+  channel: DiscordGuildChannel,
+  guildId: string
+) =>
+  (channel.permission_overwrites ?? [])
+    .filter((overwrite) => overwrite.type === 0 && overwrite.id !== guildId)
+    .map((overwrite) => overwrite.id)
+    .sort((left, right) => left.localeCompare(right));
+
+const buildDiscordCourseTargetMap = (
+  channels: DiscordGuildChannel[],
+  guildId: string
+) => {
+  const map = new Map<string, DiscordCourseReminderTarget>();
+
+  for (const channel of channels) {
+    if (channel.type !== discordTextChannelType) {
+      continue;
+    }
+
+    const courseId = readCourseIdFromTopic(channel.topic);
+    if (!courseId) {
+      continue;
+    }
+
+    const roleId = getCourseRoleIdsFromOverwrites(channel, guildId)[0];
+    if (!roleId) {
+      continue;
+    }
+
+    const current = map.get(courseId);
+    if (!current || channel.id.localeCompare(current.channelId) < 0) {
+      map.set(courseId, { channelId: channel.id, roleId });
+    }
+  }
+
+  return map;
+};
+
+const requestDiscord = async <T>({
+  method,
+  path,
+  body,
+}: {
+  method: string;
+  path: string;
+  body?: unknown;
+}) => {
+  if (!discordBotToken) {
+    throw new Error("Missing DISCORD_BOT_TOKEN.");
+  }
+
+  const url = `${discordApiBase}${path}`;
+  const maxAttempts = 6;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const response = await fetch(url, {
+      method,
+      headers: {
+        Authorization: `Bot ${discordBotToken}`,
+        ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
+      },
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+
+    const textPayload = await response.text().catch(() => "");
+    let jsonPayload: Record<string, unknown> | null = null;
+    if (textPayload) {
+      try {
+        jsonPayload = JSON.parse(textPayload) as Record<string, unknown>;
+      } catch {
+        jsonPayload = null;
+      }
+    }
+
+    if (response.status === 429 && attempt < maxAttempts) {
+      const retryAfterFromBody = Number(jsonPayload?.retry_after);
+      const retryAfterHeader = Number(response.headers.get("retry-after"));
+      const retryAfterMs = Number.isFinite(retryAfterFromBody)
+        ? Math.ceil(retryAfterFromBody * 1000)
+        : Number.isFinite(retryAfterHeader)
+          ? Math.ceil(retryAfterHeader * 1000)
+          : 500 * 2 ** (attempt - 1);
+      await sleep(Math.max(100, retryAfterMs));
+      continue;
+    }
+
+    if (!response.ok) {
+      const errorMessage =
+        (jsonPayload?.message as string | undefined)?.trim() ||
+        textPayload.trim() ||
+        `Discord API error (${response.status}).`;
+      throw new Error(errorMessage);
+    }
+
+    if (response.status === 204 || !textPayload) {
+      return undefined as T;
+    }
+
+    return jsonPayload as T;
+  }
+
+  throw new Error("Discord API request retry attempts exceeded.");
+};
+
+const listDiscordGuildChannels = async (guildId: string) =>
+  requestDiscord<DiscordGuildChannel[]>({
+    method: "GET",
+    path: `/guilds/${guildId}/channels`,
+  });
+
+const sendDiscordCourseReminderMessage = async (
+  channelId: string,
+  roleId: string,
+  content: string
+) =>
+  requestDiscord<void>({
+    method: "POST",
+    path: `/channels/${channelId}/messages`,
+    body: {
+      content,
+      allowed_mentions: {
+        parse: [],
+        roles: [roleId],
+        users: [],
+      },
+    },
   });
 
 const sendEmail = async (to: string, subject: string, html: string) => {
@@ -199,15 +363,31 @@ export async function POST(request: NextRequest) {
     };
   }
 
-  if (!resendApiKey || !resendFrom) {
-    return NextResponse.json({
-      sentClassCount: 0,
-      sentEmailCount: 0,
-      failedClasses: [],
-      timezone: torontoTimeZone,
-      reminderSkippedReason: "Missing RESEND_API_KEY or RESEND_FROM.",
-      discordSync,
-    });
+  const emailRemindersEnabled = Boolean(resendApiKey && resendFrom);
+  const reminderSkippedReason = emailRemindersEnabled
+    ? null
+    : "Missing RESEND_API_KEY or RESEND_FROM.";
+
+  const discordRemindersEnabled = Boolean(discordBotToken && discordGuildId);
+  let discordReminderSkippedReason: string | null = null;
+  let discordCourseTargetByCourseId = new Map<string, DiscordCourseReminderTarget>();
+
+  if (!discordRemindersEnabled) {
+    discordReminderSkippedReason =
+      "Missing DISCORD_BOT_TOKEN or DISCORD_GUILD_ID.";
+  } else {
+    try {
+      const guildChannels = await listDiscordGuildChannels(discordGuildId);
+      discordCourseTargetByCourseId = buildDiscordCourseTargetMap(
+        guildChannels,
+        discordGuildId
+      );
+    } catch (error) {
+      discordReminderSkippedReason =
+        error instanceof Error
+          ? `Failed to load Discord channels: ${error.message}`
+          : "Failed to load Discord channels.";
+    }
   }
 
   const base = floorToFiveMinuteBoundary(new Date());
@@ -299,8 +479,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       sentClassCount: 0,
       sentEmailCount: 0,
+      sentDiscordReminderCount: 0,
       failedClasses: [],
       timezone: torontoTimeZone,
+      reminderSkippedReason,
+      discordReminderSkippedReason,
       discordSync,
     });
   }
@@ -399,12 +582,22 @@ export async function POST(request: NextRequest) {
 
   let sentClassCount = 0;
   let sentEmailCount = 0;
+  let sentDiscordReminderCount = 0;
   const failedClasses: { classId: string; reason: string }[] = [];
+  const discordReminderDeliveryEnabled =
+    discordRemindersEnabled && !discordReminderSkippedReason;
 
   for (const candidate of candidates) {
     const { classRow, reminderType, reminderLabel } = candidate;
     const course = readCourse(classRow.course);
     if (!course) {
+      continue;
+    }
+
+    const shouldSendDiscordReminder =
+      reminderType !== "class_follow_up" && discordReminderDeliveryEnabled;
+    const shouldSendAnyEmail = emailRemindersEnabled;
+    if (!shouldSendDiscordReminder && !shouldSendAnyEmail) {
       continue;
     }
 
@@ -443,12 +636,14 @@ export async function POST(request: NextRequest) {
       recipients.add(tutorEmail.toLowerCase());
     }
 
-    if (recipients.size === 0) {
+    if (!shouldSendDiscordReminder && recipients.size === 0) {
       continue;
     }
 
-    const classTitle = escapeHtml(classRow.title);
-    const courseTitle = escapeHtml(course.title);
+    const classTitleRaw = String(classRow.title ?? "").trim() || "Class";
+    const courseTitleRaw = String(course.title ?? "").trim() || "Course";
+    const classTitle = escapeHtml(classTitleRaw);
+    const courseTitle = escapeHtml(courseTitleRaw);
     const tutorNameRaw =
       String(course.created_by_name ?? "").trim() || "your tutor";
     const tutorName = escapeHtml(tutorNameRaw);
@@ -466,6 +661,7 @@ export async function POST(request: NextRequest) {
     const startLabel = escapeHtml(formatTorontoDateTime(classRow.starts_at));
     let subject = "";
     let html = "";
+    let discordContent = "";
 
     if (reminderType === "class_follow_up") {
       subject = `Class follow-up: Please submit the tutor form for ${course.title}`;
@@ -500,24 +696,43 @@ export async function POST(request: NextRequest) {
           )}" followed by the name of the course.`
         }</p>
       `;
+      discordContent = [
+        `Your class starts in **${escapeDiscordText(reminderLabel)}**.`,
+        `**Course:** ${escapeDiscordText(courseTitleRaw)}`,
+        `**Class:** ${escapeDiscordText(classTitleRaw)}`,
+        `**Tutor:** ${escapeDiscordText(tutorNameRaw)}`,
+        `**Start time (${torontoTimeZone}):** ${escapeDiscordText(
+          formatTorontoDateTime(classRow.starts_at)
+        )}`,
+        "Please attend the class 5 minutes before the start time:",
+        `Zoom ID: ${escapeDiscordText(defaultZoomId)}`,
+        `Password: ${escapeDiscordText(defaultZoomPassword)}`,
+        breakoutRoomName
+          ? `Breakout room: "${escapeDiscordText(breakoutRoomName)}"`
+          : `Please join the breakout room that starts with "${escapeDiscordText(
+            `${tutorFirstName}${tutorLastInitial ? ` ${tutorLastInitial}` : ""}`
+          )}" followed by the name of the course.`,
+      ].join("\n");
     }
 
     const recipientList = Array.from(recipients).sort();
     const failedRecipients: { email: string; reason: string }[] = [];
     let successfulSends = 0;
 
-    for (const recipient of recipientList) {
-      try {
-        await sendEmail(recipient, subject, html);
-        successfulSends += 1;
-        // Pace requests to reduce email provider throttling on bursts.
-        await sleep(150);
-      } catch (error) {
-        failedRecipients.push({
-          email: recipient,
-          reason:
-            error instanceof Error ? error.message : "Failed to send email.",
-        });
+    if (emailRemindersEnabled && recipientList.length > 0) {
+      for (const recipient of recipientList) {
+        try {
+          await sendEmail(recipient, subject, html);
+          successfulSends += 1;
+          // Pace requests to reduce email provider throttling on bursts.
+          await sleep(150);
+        } catch (error) {
+          failedRecipients.push({
+            email: recipient,
+            reason:
+              error instanceof Error ? error.message : "Failed to send email.",
+          });
+        }
       }
     }
 
@@ -534,13 +749,45 @@ export async function POST(request: NextRequest) {
       sentClassCount += 1;
       sentEmailCount += successfulSends;
     }
+
+    if (shouldSendDiscordReminder) {
+      const discordTarget = discordCourseTargetByCourseId.get(classRow.course_id);
+      if (!discordTarget) {
+        failedClasses.push({
+          classId: classRow.id,
+          reason: `Missing Discord course channel or role mapping for course "${course.title}".`,
+        });
+      } else {
+        try {
+          const message = `<@&${discordTarget.roleId}>\n${discordContent}`;
+          await sendDiscordCourseReminderMessage(
+            discordTarget.channelId,
+            discordTarget.roleId,
+            message
+          );
+          sentDiscordReminderCount += 1;
+          await sleep(150);
+        } catch (error) {
+          failedClasses.push({
+            classId: classRow.id,
+            reason: `Failed Discord reminder send: ${error instanceof Error
+              ? error.message
+              : "Unknown Discord message send failure."
+              }`,
+          });
+        }
+      }
+    }
   }
 
   return NextResponse.json({
     sentClassCount,
     sentEmailCount,
+    sentDiscordReminderCount,
     failedClasses,
     timezone: torontoTimeZone,
+    reminderSkippedReason,
+    discordReminderSkippedReason,
     discordSync,
   });
 }
