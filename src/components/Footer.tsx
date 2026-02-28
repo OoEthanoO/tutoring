@@ -3,6 +3,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { getCurrentUser, onAuthChange } from "@/lib/authClient";
 import { iteration } from "@/lib/iteration";
+import { setHasUnsavedData, hasAnyUnsavedData } from "@/lib/unsavedData";
 
 export default function Footer() {
   const [isCreditHovered, setIsCreditHovered] = useState(false);
@@ -30,7 +31,9 @@ export default function Footer() {
         const data = (await response.json()) as { iteration?: string };
         const serverIteration = data.iteration ?? iteration;
         if (serverIteration !== iteration) {
-          window.location.reload();
+          if (!hasAnyUnsavedData()) {
+            window.location.reload();
+          }
         }
       } catch {
         // Ignore iteration check errors.
@@ -51,6 +54,12 @@ export default function Footer() {
     load();
     return onAuthChange(load);
   }, []);
+
+  useEffect(() => {
+    const hasUnsavedFeedback = isFeedbackOpen && message.trim().length > 0;
+    setHasUnsavedData("footer-feedback", hasUnsavedFeedback);
+    return () => setHasUnsavedData("footer-feedback", false);
+  }, [isFeedbackOpen, message]);
 
   const onSubmitFeedback = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();

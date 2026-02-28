@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { getCurrentUser, onAuthChange } from "@/lib/authClient";
 import { canManageCourses, resolveUserRole, type UserRole } from "@/lib/roles";
+import { setHasUnsavedData } from "@/lib/unsavedData";
 
 type EnrolledStudent = {
   id: string;
@@ -177,6 +178,19 @@ export default function ManageMyCoursesMenu() {
     message: "",
   });
   const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    const hasUnsavedCourseEdit = editingCourseId !== null;
+    const hasUnsavedClassEdit = editingClassId !== null;
+    const hasUnsavedClassCreation =
+      Object.values(classTitle).some((val) => val.trim().length > 0) ||
+      Object.values(classStartsAt).some((val) => val.trim().length > 0);
+    const hasUnsavedData =
+      hasUnsavedCourseEdit || hasUnsavedClassEdit || hasUnsavedClassCreation;
+
+    setHasUnsavedData("manage-courses", hasUnsavedData);
+    return () => setHasUnsavedData("manage-courses", false);
+  }, [editingCourseId, editingClassId, classTitle, classStartsAt]);
 
   const formatCompletedDate = (value?: string | null) => {
     if (!value) {

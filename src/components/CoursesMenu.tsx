@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { getCurrentUser, onAuthChange } from "@/lib/authClient";
+import { setHasUnsavedData } from "@/lib/unsavedData";
 
 type StatusState = {
   type: "idle" | "error";
@@ -161,6 +162,11 @@ export default function CoursesMenu() {
     message: "",
   });
   const [isLoadingCourses, setIsLoadingCourses] = useState(false);
+
+  useEffect(() => {
+    setHasUnsavedData("courses-menu", selectedCourse !== null);
+    return () => setHasUnsavedData("courses-menu", false);
+  }, [selectedCourse]);
 
   useEffect(() => {
     const load = async () => {
@@ -419,9 +425,7 @@ export default function CoursesMenu() {
                       onClick={() => openEnrollmentModal(course)}
                       className="rounded-full border border-[var(--foreground)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)]"
                     >
-                      {course.enrollment_status === "rejected"
-                        ? "Request again"
-                        : "Enroll"}
+                      Enroll
                     </button>
                   ) : null}
                 </div>
@@ -595,9 +599,8 @@ export default function CoursesMenu() {
                   target="_blank"
                   rel="noreferrer"
                   onClick={() => setHasOpenedDonationLink(true)}
-                  className={`font-semibold underline ${
-                    hasOpenedDonationLink ? "text-emerald-500" : "text-red-500"
-                  }`}
+                  className={`font-semibold underline ${hasOpenedDonationLink ? "text-emerald-500" : "text-red-500"
+                    }`}
                 >
                   this link
                 </a>{" "}
@@ -607,9 +610,8 @@ export default function CoursesMenu() {
                   target="_blank"
                   rel="noreferrer"
                   onClick={() => setHasOpenedApplicationLink(true)}
-                  className={`font-semibold underline ${
-                    hasOpenedApplicationLink ? "text-emerald-500" : "text-red-500"
-                  }`}
+                  className={`font-semibold underline ${hasOpenedApplicationLink ? "text-emerald-500" : "text-red-500"
+                    }`}
                 >
                   this form
                 </a>{" "}
@@ -623,9 +625,8 @@ export default function CoursesMenu() {
                   target="_blank"
                   rel="noreferrer"
                   onClick={() => setHasOpenedApplicationLink(true)}
-                  className={`font-semibold underline ${
-                    hasOpenedApplicationLink ? "text-emerald-500" : "text-red-500"
-                  }`}
+                  className={`font-semibold underline ${hasOpenedApplicationLink ? "text-emerald-500" : "text-red-500"
+                    }`}
                 >
                   this form
                 </a>{" "}
@@ -696,11 +697,10 @@ export default function CoursesMenu() {
                     ? "Click all required links above to enable enrollment."
                     : undefined
                 }
-                className={`rounded-full border px-4 py-2 text-xs font-semibold transition ${
-                  isConfirmEnrollmentDisabled
-                    ? "cursor-not-allowed border-amber-300 bg-amber-100 text-amber-800 shadow-inner"
-                    : "border-[var(--foreground)] bg-[var(--foreground)] text-[var(--background)] hover:opacity-90"
-                }`}
+                className={`rounded-full border px-4 py-2 text-xs font-semibold transition ${isConfirmEnrollmentDisabled
+                  ? "cursor-not-allowed border-amber-300 bg-amber-100 text-amber-800 shadow-inner"
+                  : "border-[var(--foreground)] bg-[var(--foreground)] text-[var(--background)] hover:opacity-90"
+                  }`}
               >
                 {isEnrolling
                   ? "Submitting..."

@@ -7,6 +7,29 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 
+const resendApiKey = process.env.RESEND_API_KEY ?? "";
+const resendFrom = process.env.RESEND_FROM ?? "";
+
+const sendEmail = async (to: string, subject: string, html: string) => {
+  if (!resendApiKey || !resendFrom || !to) {
+    return;
+  }
+
+  await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${resendApiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from: resendFrom,
+      to,
+      subject,
+      html,
+    }),
+  });
+};
+
 export async function GET(request: NextRequest) {
   if (!supabaseUrl || !supabaseAnonKey) {
     return NextResponse.json(
@@ -112,11 +135,11 @@ export async function PATCH(request: NextRequest) {
 
   const body = (await request.json().catch(() => null)) as
     | {
-        userId?: string;
-        role?: string;
-        donationLink?: string;
-        tutorPromotedAt?: string | null;
-      }
+      userId?: string;
+      role?: string;
+      donationLink?: string;
+      tutorPromotedAt?: string | null;
+    }
     | null;
 
   if (
@@ -141,10 +164,10 @@ export async function PATCH(request: NextRequest) {
 
   const existingUser = body.role !== undefined || body.tutorPromotedAt !== undefined
     ? await adminClient
-        .from("app_users")
-        .select("id, email, role")
-        .eq("id", body.userId)
-        .single()
+      .from("app_users")
+      .select("id, email, role")
+      .eq("id", body.userId)
+      .single()
     : null;
 
   if ((body.role !== undefined || body.tutorPromotedAt !== undefined) && (existingUser?.error || !existingUser?.data)) {
@@ -165,26 +188,26 @@ export async function PATCH(request: NextRequest) {
   const updatePayload =
     body.role || shouldUpdatePromotedAt
       ? {
-          role: body.role ?? existingRole ?? "student",
-          tutor_promoted_at: isPromotingToTutor
-            ? new Date().toISOString()
-            : shouldUpdatePromotedAt
-              ? normalizedPromotedAt
-              : undefined,
-        }
+        role: body.role ?? existingRole ?? "student",
+        tutor_promoted_at: isPromotingToTutor
+          ? new Date().toISOString()
+          : shouldUpdatePromotedAt
+            ? normalizedPromotedAt
+            : undefined,
+      }
       : null;
   const updateResult = updatePayload
     ? await adminClient
-        .from("app_users")
-        .update(updatePayload)
-        .eq("id", body.userId)
-        .select("id, email, full_name, role, created_at, tutor_promoted_at")
-        .single()
+      .from("app_users")
+      .update(updatePayload)
+      .eq("id", body.userId)
+      .select("id, email, full_name, role, created_at, tutor_promoted_at")
+      .single()
     : await adminClient
-        .from("app_users")
-        .select("id, email, full_name, role, created_at, tutor_promoted_at")
-        .eq("id", body.userId)
-        .single();
+      .from("app_users")
+      .select("id, email, full_name, role, created_at, tutor_promoted_at")
+      .eq("id", body.userId)
+      .single();
 
   const updated = updateResult.data;
   const updateError = updateResult.error;
@@ -204,6 +227,15 @@ export async function PATCH(request: NextRequest) {
         donation_link: body.donationLink,
         updated_at: new Date().toISOString(),
       });
+  }
+
+  if (isPromotingToTutor && updated.email) {
+    const formUrl = "https://docs.google.com/forms/d/e/1FAIpQLSeuaZhER3fUbkl1ijHy0k-COLAcpOy8QvYM5sgtcWGEqtHmNw/viewform";
+    await sendEmail(
+      updated.email,
+      "You've been promoted to Tutor!",
+      `<p>Congratulations! You have been promoted to a tutor.</p><p>Please fill out the tutor application form here: <a href="${formUrl}">${formUrl}</a></p>`
+    );
   }
 
   const updatedUser = updated;

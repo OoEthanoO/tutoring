@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useState, type FormEvent, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { broadcastAuthChange } from "@/lib/authClient";
+import { setHasUnsavedData } from "@/lib/unsavedData";
 
 type Mode = "signin" | "signup";
 
@@ -15,6 +16,13 @@ export default function LoginPageClient() {
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const router = useRouter();
+
+  useEffect(() => {
+    const hasUnsavedAuth =
+      email.length > 0 || password.length > 0 || fullName.length > 0;
+    setHasUnsavedData("login-page", hasUnsavedAuth);
+    return () => setHasUnsavedData("login-page", false);
+  }, [email, password, fullName]);
 
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -45,7 +53,7 @@ export default function LoginPageClient() {
         }
 
         setStatus(
-          "Check your inbox to confirm your email. You can sign in after verification."
+          "Check your inbox to confirm your email. You can sign in after verification. There might be a delay between clicking create account and the verification email getting sent."
         );
       } else {
         const response = await fetch("/api/auth/login", {
@@ -93,22 +101,20 @@ export default function LoginPageClient() {
           <button
             type="button"
             onClick={() => setMode("signin")}
-            className={`rounded border px-3 py-2 text-sm ${
-              mode === "signin"
-                ? "border-[var(--foreground)]"
-                : "border-[var(--border)]"
-            }`}
+            className={`rounded border px-3 py-2 text-sm ${mode === "signin"
+              ? "border-[var(--foreground)]"
+              : "border-[var(--border)]"
+              }`}
           >
             Sign in
           </button>
           <button
             type="button"
             onClick={() => setMode("signup")}
-            className={`rounded border px-3 py-2 text-sm ${
-              mode === "signup"
-                ? "border-[var(--foreground)]"
-                : "border-[var(--border)]"
-            }`}
+            className={`rounded border px-3 py-2 text-sm ${mode === "signup"
+              ? "border-[var(--foreground)]"
+              : "border-[var(--border)]"
+              }`}
           >
             Sign up
           </button>
