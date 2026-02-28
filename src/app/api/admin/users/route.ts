@@ -18,39 +18,62 @@ const escapeHtml = (value: string) =>
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
 
+const normalizeEmail = (value: string) => value.trim().toLowerCase();
+
+const sleep = (ms: number) =>
+  new Promise<void>((resolve) => {
+    setTimeout(resolve, ms);
+  });
+
 const sendEmail = async (to: string, subject: string, html: string) => {
   if (!resendApiKey || !resendFrom || !to) {
     return { ok: false, error: "Missing email configuration." };
   }
 
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${resendApiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from: resendFrom,
-      to,
-      subject,
-      html,
-    }),
-  });
+  const maxAttempts = 4;
 
-  if (!response.ok) {
-    const payload = (await response.json().catch(() => null)) as
-      | { message?: string; error?: string }
-      | null;
-    return {
-      ok: false,
-      error:
-        payload?.message ??
-        payload?.error ??
-        `Email provider error (${response.status}).`,
-    };
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${resendApiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: resendFrom,
+        to,
+        subject,
+        html,
+      }),
+    });
+
+    if (response.ok) {
+      return { ok: true as const };
+    }
+
+    const details = (await response.text().catch(() => "")).trim();
+    const retryAfterHeader = response.headers.get("retry-after");
+    const retryAfterSeconds = retryAfterHeader
+      ? Number.parseFloat(retryAfterHeader)
+      : Number.NaN;
+    const isRetriable = response.status === 429 || response.status >= 500;
+
+    if (!isRetriable || attempt === maxAttempts) {
+      return {
+        ok: false,
+        error: details || `Email provider error (${response.status}).`,
+      };
+    }
+
+    const backoffMs =
+      Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+        ? Math.ceil(retryAfterSeconds * 1000)
+        : 500 * 2 ** (attempt - 1);
+
+    await sleep(backoffMs);
   }
 
-  return { ok: true as const };
+  return { ok: false, error: "Unknown email failure." };
 };
 
 export async function GET(request: NextRequest) {
@@ -326,12 +349,23 @@ export async function POST(request: NextRequest) {
   }
 
   const body = (await request.json().catch(() => null)) as
-    | { action?: string }
+    | { action?: string; skipEmails?: string[] }
     | null;
 
   if (body?.action && body.action !== "notify_discord_unlinked") {
     return NextResponse.json({ error: "Invalid action." }, { status: 400 });
   }
+
+  const skipEmails = Array.isArray(body?.skipEmails)
+    ? Array.from(
+      new Set(
+        body!.skipEmails
+          .map((item) => normalizeEmail(String(item ?? "")))
+          .filter(Boolean)
+      )
+    )
+    : [];
+  const skipEmailSet = new Set(skipEmails);
 
   const adminClient = createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false },
@@ -348,18 +382,24 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const targets = users.filter((item) => {
-    const email = (item.email ?? "").trim();
+  const unlinkedUsers = users.filter((item) => {
+    const email = normalizeEmail(String(item.email ?? ""));
     const discordUserId = (item.discord_user_id ?? "").trim();
     return Boolean(email) && !discordUserId;
   });
+  const skippedUsers = unlinkedUsers.filter((item) =>
+    skipEmailSet.has(normalizeEmail(String(item.email ?? "")))
+  );
+  const targets = unlinkedUsers.filter(
+    (item) => !skipEmailSet.has(normalizeEmail(String(item.email ?? "")))
+  );
 
   const subject = "YanLearn Discord server is now live";
   const failed: Array<{ email: string; error: string }> = [];
   let sentCount = 0;
 
-  for (const target of targets) {
-    const email = (target.email ?? "").trim();
+  for (const [index, target] of targets.entries()) {
+    const email = normalizeEmail(String(target.email ?? ""));
     if (!email) {
       continue;
     }
@@ -386,16 +426,24 @@ export async function POST(request: NextRequest) {
         email,
         error: emailResult.error ?? "Unknown email failure.",
       });
-      continue;
+    } else {
+      sentCount += 1;
     }
 
-    sentCount += 1;
+    // Pace requests to reduce provider throttling on larger batches.
+    if (index < targets.length - 1) {
+      await sleep(150);
+    }
   }
 
   return NextResponse.json({
     targetCount: targets.length,
     sentCount,
     failedCount: failed.length,
+    skippedCount: skippedUsers.length,
+    skippedEmails: skippedUsers
+      .map((item) => normalizeEmail(String(item.email ?? "")))
+      .filter(Boolean),
     failed,
   });
 }

@@ -53,6 +53,7 @@ export default function AdminUserManager() {
   const [isSavingMaintenance, setIsSavingMaintenance] = useState(false);
   const [isSendingDiscordReminder, setIsSendingDiscordReminder] =
     useState(false);
+  const [discordReminderSkipList, setDiscordReminderSkipList] = useState("");
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [impersonatedUserId, setImpersonatedUserId] = useState<string | null>(
     null
@@ -534,8 +535,18 @@ export default function AdminUserManager() {
   };
 
   const notifyDiscordUnlinkedUsers = async () => {
+    const skipEmails = Array.from(
+      new Set(
+        discordReminderSkipList
+          .split(/[\s,;]+/)
+          .map((value) => value.trim().toLowerCase())
+          .filter(Boolean)
+      )
+    );
     const confirmed = window.confirm(
-      "Send an email to every account without a connected Discord account?"
+      skipEmails.length > 0
+        ? `Send an email to every account without a connected Discord account? ${skipEmails.length} email(s) in the skip list will be excluded.`
+        : "Send an email to every account without a connected Discord account?"
     );
     if (!confirmed) {
       return;
@@ -547,7 +558,10 @@ export default function AdminUserManager() {
     const response = await fetch("/api/admin/users", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "notify_discord_unlinked" }),
+      body: JSON.stringify({
+        action: "notify_discord_unlinked",
+        skipEmails,
+      }),
     });
 
     if (!response.ok) {
@@ -566,14 +580,17 @@ export default function AdminUserManager() {
       targetCount: number;
       sentCount: number;
       failedCount: number;
+      skippedCount: number;
     };
+    const skipSummary =
+      data.skippedCount > 0 ? ` (${data.skippedCount} skipped)` : "";
 
     setStatus({
       type: data.failedCount > 0 ? "error" : "success",
       message:
         data.failedCount > 0
-          ? `Sent ${data.sentCount} of ${data.targetCount} Discord reminder emails (${data.failedCount} failed).`
-          : `Sent ${data.sentCount} Discord reminder emails.`,
+          ? `Sent ${data.sentCount} of ${data.targetCount} Discord reminder emails (${data.failedCount} failed)${skipSummary}.`
+          : `Sent ${data.sentCount} Discord reminder emails${skipSummary}.`,
     });
     setIsSendingDiscordReminder(false);
   };
@@ -593,35 +610,53 @@ export default function AdminUserManager() {
         </h2>
       </header>
 
-      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-[var(--border)] px-4 py-3">
-        <p className="text-xs text-[var(--muted)]">
-          Maintenance mode:{" "}
-          <span className="font-semibold text-[var(--foreground)]">
-            {maintenanceEnabled ? "ON" : "OFF"}
-          </span>
-        </p>
-        <button
-          type="button"
-          onClick={toggleMaintenanceMode}
-          disabled={isSavingMaintenance}
-          className="rounded-full border border-[var(--foreground)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-70"
-        >
-          {isSavingMaintenance
-            ? "Saving..."
-            : maintenanceEnabled
-              ? "Turn off maintenance"
-              : "Turn on maintenance"}
-        </button>
-        <button
-          type="button"
-          onClick={notifyDiscordUnlinkedUsers}
-          disabled={isSendingDiscordReminder}
-          className="rounded-full border border-[var(--foreground)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-70"
-        >
-          {isSendingDiscordReminder
-            ? "Sending emails..."
-            : "Notify users to connect Discord"}
-        </button>
+      <div className="space-y-3 rounded-xl border border-[var(--border)] px-4 py-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="text-xs text-[var(--muted)]">
+            Maintenance mode:{" "}
+            <span className="font-semibold text-[var(--foreground)]">
+              {maintenanceEnabled ? "ON" : "OFF"}
+            </span>
+          </p>
+          <button
+            type="button"
+            onClick={toggleMaintenanceMode}
+            disabled={isSavingMaintenance}
+            className="rounded-full border border-[var(--foreground)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            {isSavingMaintenance
+              ? "Saving..."
+              : maintenanceEnabled
+                ? "Turn off maintenance"
+                : "Turn on maintenance"}
+          </button>
+          <button
+            type="button"
+            onClick={notifyDiscordUnlinkedUsers}
+            disabled={isSendingDiscordReminder}
+            className="rounded-full border border-[var(--foreground)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            {isSendingDiscordReminder
+              ? "Sending emails..."
+              : "Notify users to connect Discord"}
+          </button>
+        </div>
+        <div className="space-y-1">
+          <label
+            htmlFor="discord-reminder-skip-list"
+            className="text-xs text-[var(--muted)]"
+          >
+            Skip emails for Discord reminder (comma, space, semicolon, or new line separated)
+          </label>
+          <textarea
+            id="discord-reminder-skip-list"
+            value={discordReminderSkipList}
+            onChange={(event) => setDiscordReminderSkipList(event.target.value)}
+            rows={2}
+            placeholder="example1@email.com, example2@email.com"
+            className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-xs text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+          />
+        </div>
       </div>
 
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
