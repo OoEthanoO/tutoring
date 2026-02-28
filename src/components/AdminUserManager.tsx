@@ -51,6 +51,8 @@ export default function AdminUserManager() {
   const [isLoading, setIsLoading] = useState(false);
   const [maintenanceEnabled, setMaintenanceEnabled] = useState(false);
   const [isSavingMaintenance, setIsSavingMaintenance] = useState(false);
+  const [isSendingDiscordReminder, setIsSendingDiscordReminder] =
+    useState(false);
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [impersonatedUserId, setImpersonatedUserId] = useState<string | null>(
     null
@@ -531,6 +533,51 @@ export default function AdminUserManager() {
     router.refresh();
   };
 
+  const notifyDiscordUnlinkedUsers = async () => {
+    const confirmed = window.confirm(
+      "Send an email to every account without a connected Discord account?"
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setIsSendingDiscordReminder(true);
+    setStatus({ type: "idle", message: "" });
+
+    const response = await fetch("/api/admin/users", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "notify_discord_unlinked" }),
+    });
+
+    if (!response.ok) {
+      const payload = (await response.json().catch(() => null)) as
+        | { error?: string }
+        | null;
+      setStatus({
+        type: "error",
+        message: payload?.error ?? "Could not send Discord reminder emails.",
+      });
+      setIsSendingDiscordReminder(false);
+      return;
+    }
+
+    const data = (await response.json()) as {
+      targetCount: number;
+      sentCount: number;
+      failedCount: number;
+    };
+
+    setStatus({
+      type: data.failedCount > 0 ? "error" : "success",
+      message:
+        data.failedCount > 0
+          ? `Sent ${data.sentCount} of ${data.targetCount} Discord reminder emails (${data.failedCount} failed).`
+          : `Sent ${data.sentCount} Discord reminder emails.`,
+    });
+    setIsSendingDiscordReminder(false);
+  };
+
   if (!isFounder) {
     return null;
   }
@@ -564,6 +611,16 @@ export default function AdminUserManager() {
             : maintenanceEnabled
               ? "Turn off maintenance"
               : "Turn on maintenance"}
+        </button>
+        <button
+          type="button"
+          onClick={notifyDiscordUnlinkedUsers}
+          disabled={isSendingDiscordReminder}
+          className="rounded-full border border-[var(--foreground)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-70"
+        >
+          {isSendingDiscordReminder
+            ? "Sending emails..."
+            : "Notify users to connect Discord"}
         </button>
       </div>
 

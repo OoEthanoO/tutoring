@@ -169,6 +169,22 @@ export default function CoursesMenu() {
   }, [selectedCourse]);
 
   useEffect(() => {
+    if (!selectedCourse) {
+      return;
+    }
+
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [selectedCourse]);
+
+  useEffect(() => {
     const load = async () => {
       const user = await getCurrentUser();
       setUserId(user?.id ?? null);
@@ -634,13 +650,28 @@ export default function CoursesMenu() {
               </p>
             )}
             {requiresDonationLink ? (
-              <p className="text-xs font-semibold text-[var(--muted)]">
-                To finish enrollment, you must click on both links above.
-              </p>
+              <>
+                <p className="text-xs font-semibold text-[var(--muted)]">
+                  To finish enrollment, you must click on both links above.
+                </p>
+                <p className="text-xs text-[var(--muted)]">
+                  If you have already clicked on the required link above but
+                  didn&apos;t click &quot;Confirm enrollment&quot;, simply click on
+                  both links above but do not submit the form nor make a donation
+                  again.
+                </p>
+              </>
             ) : (
-              <p className="text-xs font-semibold text-[var(--muted)]">
-                To finish enrollment, you must click on the required link above.
-              </p>
+              <>
+                <p className="text-xs font-semibold text-[var(--muted)]">
+                  To finish enrollment, you must click on the required link above.
+                </p>
+                <p className="text-xs text-[var(--muted)]">
+                  If you have already clicked on the required link above but
+                  didn&apos;t click &quot;Confirm enrollment&quot;, simply click on
+                  the link above but do not submit the form again.
+                </p>
+              </>
             )}
 
             <div className="flex flex-wrap justify-end gap-2">

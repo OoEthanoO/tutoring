@@ -10,12 +10,20 @@ const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 const resendApiKey = process.env.RESEND_API_KEY ?? "";
 const resendFrom = process.env.RESEND_FROM ?? "";
 
+const escapeHtml = (value: string) =>
+  value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+
 const sendEmail = async (to: string, subject: string, html: string) => {
   if (!resendApiKey || !resendFrom || !to) {
-    return;
+    return { ok: false, error: "Missing email configuration." };
   }
 
-  await fetch("https://api.resend.com/emails", {
+  const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${resendApiKey}`,
@@ -28,6 +36,21 @@ const sendEmail = async (to: string, subject: string, html: string) => {
       html,
     }),
   });
+
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as
+      | { message?: string; error?: string }
+      | null;
+    return {
+      ok: false,
+      error:
+        payload?.message ??
+        payload?.error ??
+        `Email provider error (${response.status}).`,
+    };
+  }
+
+  return { ok: true as const };
 };
 
 export async function GET(request: NextRequest) {
@@ -266,6 +289,115 @@ export async function PATCH(request: NextRequest) {
   };
 
   return NextResponse.json({ user: responseUser });
+}
+
+export async function POST(request: NextRequest) {
+  if (!supabaseUrl || !supabaseAnonKey) {
+    return NextResponse.json(
+      { error: "Missing Supabase environment configuration." },
+      { status: 500 }
+    );
+  }
+
+  const user = await getRequestUser(request);
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  }
+
+  if (resolveUserRole(user.email, user.role ?? null) !== "founder") {
+    return NextResponse.json({ error: "Forbidden." }, { status: 403 });
+  }
+
+  if (!serviceRoleKey) {
+    return NextResponse.json(
+      { error: "Missing SUPABASE_SERVICE_ROLE_KEY." },
+      { status: 500 }
+    );
+  }
+
+  if (!resendApiKey || !resendFrom) {
+    return NextResponse.json(
+      {
+        error:
+          "Missing RESEND_API_KEY or RESEND_FROM. Cannot send notification emails.",
+      },
+      { status: 500 }
+    );
+  }
+
+  const body = (await request.json().catch(() => null)) as
+    | { action?: string }
+    | null;
+
+  if (body?.action && body.action !== "notify_discord_unlinked") {
+    return NextResponse.json({ error: "Invalid action." }, { status: 400 });
+  }
+
+  const adminClient = createClient(supabaseUrl, serviceRoleKey, {
+    auth: { persistSession: false },
+  });
+
+  const { data: users, error: listError } = await adminClient
+    .from("app_users")
+    .select("id, email, full_name, discord_user_id");
+
+  if (listError || !users) {
+    return NextResponse.json(
+      { error: listError?.message ?? "Failed to fetch users." },
+      { status: 500 }
+    );
+  }
+
+  const targets = users.filter((item) => {
+    const email = (item.email ?? "").trim();
+    const discordUserId = (item.discord_user_id ?? "").trim();
+    return Boolean(email) && !discordUserId;
+  });
+
+  const subject = "YanLearn Discord server is now live";
+  const failed: Array<{ email: string; error: string }> = [];
+  let sentCount = 0;
+
+  for (const target of targets) {
+    const email = (target.email ?? "").trim();
+    if (!email) {
+      continue;
+    }
+
+    const recipientName = escapeHtml((target.full_name ?? "").trim() || "there");
+    const emailResult = await sendEmail(
+      email,
+      subject,
+      `<p>Hi ${recipientName},</p>
+<p>We have just launched the YanLearn Discord server.</p>
+<p>To join, please follow these steps:</p>
+<ol>
+  <li>Sign in to your YanLearn account.</li>
+  <li>Click your profile card in the top-right corner.</li>
+  <li>Click <strong>Connect Discord</strong> and authorize your Discord account.</li>
+  <li>Click <strong>Join Discord Server</strong>.</li>
+</ol>
+<p>This keeps server access limited to verified YanLearn users.</p>
+<p>Thanks,<br/>Ethan Yan Xu</p>`
+    );
+
+    if (!emailResult.ok) {
+      failed.push({
+        email,
+        error: emailResult.error ?? "Unknown email failure.",
+      });
+      continue;
+    }
+
+    sentCount += 1;
+  }
+
+  return NextResponse.json({
+    targetCount: targets.length,
+    sentCount,
+    failedCount: failed.length,
+    failed,
+  });
 }
 
 export async function DELETE(request: NextRequest) {

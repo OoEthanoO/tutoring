@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { founderEmail, resolveUserRole } from "@/lib/roles";
+import { fetchFundraisingRaisedAmount } from "@/lib/fundraising";
 
 const discordApiBase = "https://discord.com/api/v10";
 const courseTopicPrefix = "yanlearn-course-id:";
@@ -8,6 +9,7 @@ const defaultArchiveCategoryName = "Archived";
 const defaultCommunityCategoryName = "Community";
 const defaultInfoChannelName = "info";
 const defaultWebsiteVoiceChannelName = "learn.ethanyanxu.com";
+const defaultFounderOnlyChannelName = "founder-only";
 const defaultEveryoneChatChannelName = "everyone";
 const defaultTutorOnlyChannelName = "tutor-only";
 const discordTextChannelType = 0;
@@ -20,6 +22,7 @@ const viewChannelPermission = 1024;
 const sendMessagesPermission = 2048;
 const readMessageHistoryPermission = 65536;
 const connectPermission = 1048576;
+const fundraiserVoiceChannelNamePattern = /^\$\d[\d,]*\sraised$/i;
 
 type WebsiteUserRow = {
   id: string;
@@ -404,6 +407,37 @@ const buildTutorOnlyPermissionOverwrites = (
   ];
 };
 
+const buildFounderOnlyPermissionOverwrites = (
+  guildId: string,
+  founderRoleId: string,
+  botUserId: string
+): DiscordPermissionOverwrite[] => {
+  const activeAllow = String(
+    viewChannelPermission | sendMessagesPermission | readMessageHistoryPermission
+  );
+
+  return [
+    {
+      id: guildId,
+      type: 0,
+      allow: "0",
+      deny: String(viewChannelPermission),
+    },
+    {
+      id: founderRoleId,
+      type: 0,
+      allow: activeAllow,
+      deny: "0",
+    },
+    {
+      id: botUserId,
+      type: 1,
+      allow: activeAllow,
+      deny: "0",
+    },
+  ];
+};
+
 const sortOverwriteKeys = (overwrites: DiscordPermissionOverwrite[] | undefined) =>
   (overwrites ?? [])
     .map(
@@ -646,6 +680,35 @@ const findChannelByNameAndType = (
   );
 };
 
+const findFundraiserVoiceChannel = (
+  channels: DiscordGuildChannel[],
+  expectedName: string | null,
+  excludedChannelIds: Set<string>
+) => {
+  if (expectedName) {
+    const exact = channels.find(
+      (channel) =>
+        channel.type === discordVoiceChannelType &&
+        channel.name === expectedName &&
+        !excludedChannelIds.has(channel.id)
+    );
+    if (exact) {
+      return exact;
+    }
+  }
+
+  return (
+    channels
+      .filter(
+        (channel) =>
+          channel.type === discordVoiceChannelType &&
+          fundraiserVoiceChannelNamePattern.test(channel.name) &&
+          !excludedChannelIds.has(channel.id)
+      )
+      .sort((left, right) => left.id.localeCompare(right.id))[0] ?? null
+  );
+};
+
 const findCourseChannel = (
   channels: DiscordGuildChannel[],
   courseId: string,
@@ -730,6 +793,9 @@ export const runDiscordSync = async ({
   const websiteVoiceChannelName =
     String(process.env.DISCORD_URL_VOICE_CHANNEL_NAME ?? "").trim() ||
     defaultWebsiteVoiceChannelName;
+  const founderOnlyChannelName =
+    String(process.env.DISCORD_FOUNDER_ONLY_CHANNEL_NAME ?? "").trim() ||
+    defaultFounderOnlyChannelName;
   const everyoneChatChannelName =
     String(process.env.DISCORD_EVERYONE_CHANNEL_NAME ?? "").trim() ||
     defaultEveryoneChatChannelName;
@@ -813,6 +879,11 @@ export const runDiscordSync = async ({
 
   const mutableRoles = [...guildRoles];
   const mutableChannels = [...guildChannels];
+  const fundraiserRaisedAmount = await fetchFundraisingRaisedAmount();
+  const fundraiserVoiceChannelName =
+    typeof fundraiserRaisedAmount === "number"
+      ? `$${fundraiserRaisedAmount.toLocaleString("en-US")} raised`
+      : null;
 
   const ensureRole = async (name: string, isCourseRole: boolean) => {
     const existing = findRoleByName(mutableRoles, name);
@@ -1492,6 +1563,94 @@ export const runDiscordSync = async ({
     ),
   });
 
+  const ensureFundraiserVoiceChannel = async () => {
+    const excludedChannelIds = new Set<string>();
+    if (websiteVoiceChannel) {
+      excludedChannelIds.add(websiteVoiceChannel.id);
+    }
+
+    const existing = findFundraiserVoiceChannel(
+      mutableChannels,
+      fundraiserVoiceChannelName,
+      excludedChannelIds
+    );
+
+    if (!fundraiserVoiceChannelName && !existing) {
+      result.errors.push(
+        "Fundraiser voice channel sync skipped: unable to fetch fundraiser total."
+      );
+      return null;
+    }
+
+    const targetName = fundraiserVoiceChannelName ?? existing?.name ?? null;
+    if (!targetName) {
+      return null;
+    }
+
+    const expectedOverwrites = buildWebsiteVoicePermissionOverwrites(
+      discordGuildId,
+      botUser.id
+    );
+
+    if (!existing) {
+      try {
+        const createdChannel = await apiClient.createGuildChannel(discordGuildId, {
+          name: targetName,
+          type: discordVoiceChannelType,
+          permission_overwrites: expectedOverwrites,
+        });
+        mutableChannels.push(createdChannel);
+        result.createdChannelCount += 1;
+        return createdChannel;
+      } catch (error) {
+        result.errors.push(
+          `Failed to create fundraiser voice channel "${targetName}": ${toErrorMessage(
+            error,
+            "Unknown create channel error."
+          )}`
+        );
+        return null;
+      }
+    }
+
+    const payload: UpdateGuildChannelPayload = {};
+    if (existing.name !== targetName) {
+      payload.name = targetName;
+    }
+    if (String(existing.parent_id ?? "") !== "") {
+      payload.parent_id = null;
+    }
+    if (!areOverwritesEqual(existing.permission_overwrites, expectedOverwrites)) {
+      payload.permission_overwrites = expectedOverwrites;
+    }
+
+    if (Object.keys(payload).length === 0) {
+      return existing;
+    }
+
+    try {
+      const updatedChannel = await apiClient.updateGuildChannel(existing.id, payload);
+      const channelIndex = mutableChannels.findIndex(
+        (channel) => channel.id === existing.id
+      );
+      if (channelIndex >= 0) {
+        mutableChannels[channelIndex] = updatedChannel;
+      }
+      result.updatedChannelCount += 1;
+      return updatedChannel;
+    } catch (error) {
+      result.errors.push(
+        `Failed to update fundraiser voice channel "${existing.name}": ${toErrorMessage(
+          error,
+          "Unknown update channel error."
+        )}`
+      );
+      return existing;
+    }
+  };
+
+  const fundraiserVoiceChannel = await ensureFundraiserVoiceChannel();
+
   const everyoneChatChannel = await ensureFixedChannel({
     name: everyoneChatChannelName,
     channelType: discordTextChannelType,
@@ -1512,6 +1671,17 @@ export const runDiscordSync = async ({
     permissionOverwrites: buildTutorOnlyPermissionOverwrites(
       discordGuildId,
       tutorRole.id,
+      botUser.id
+    ),
+  });
+
+  const founderOnlyChannel = await ensureFixedChannel({
+    name: founderOnlyChannelName,
+    channelType: discordTextChannelType,
+    parentId: communityCategory.id,
+    permissionOverwrites: buildFounderOnlyPermissionOverwrites(
+      discordGuildId,
+      founderRole.id,
       botUser.id
     ),
   });
@@ -1557,19 +1727,48 @@ export const runDiscordSync = async ({
     }
   };
 
+  let nextTopLevelPosition = 0;
   if (infoChannel) {
-    await enforceTopLevelPosition(infoChannel.id, infoChannelName, 0);
+    await enforceTopLevelPosition(
+      infoChannel.id,
+      infoChannelName,
+      nextTopLevelPosition
+    );
+    nextTopLevelPosition += 1;
   }
   if (websiteVoiceChannel) {
     await enforceTopLevelPosition(
       websiteVoiceChannel.id,
       websiteVoiceChannelName,
-      1
+      nextTopLevelPosition
     );
+    nextTopLevelPosition += 1;
   }
-  await enforceTopLevelPosition(communityCategory.id, communityCategoryName, 2);
-  await enforceTopLevelPosition(coursesCategory.id, coursesCategoryName, 3);
-  await enforceTopLevelPosition(archiveCategory.id, archiveCategoryName, 4);
+  if (fundraiserVoiceChannel) {
+    await enforceTopLevelPosition(
+      fundraiserVoiceChannel.id,
+      fundraiserVoiceChannel.name,
+      nextTopLevelPosition
+    );
+    nextTopLevelPosition += 1;
+  }
+  await enforceTopLevelPosition(
+    communityCategory.id,
+    communityCategoryName,
+    nextTopLevelPosition
+  );
+  nextTopLevelPosition += 1;
+  await enforceTopLevelPosition(
+    coursesCategory.id,
+    coursesCategoryName,
+    nextTopLevelPosition
+  );
+  nextTopLevelPosition += 1;
+  await enforceTopLevelPosition(
+    archiveCategory.id,
+    archiveCategoryName,
+    nextTopLevelPosition
+  );
 
   const allowedTextChannelIds = new Set<string>(usedChannelIds);
   if (infoChannel) {
@@ -1581,10 +1780,16 @@ export const runDiscordSync = async ({
   if (tutorOnlyChannel) {
     allowedTextChannelIds.add(tutorOnlyChannel.id);
   }
+  if (founderOnlyChannel) {
+    allowedTextChannelIds.add(founderOnlyChannel.id);
+  }
 
   const allowedVoiceChannelIds = new Set<string>();
   if (websiteVoiceChannel) {
     allowedVoiceChannelIds.add(websiteVoiceChannel.id);
+  }
+  if (fundraiserVoiceChannel) {
+    allowedVoiceChannelIds.add(fundraiserVoiceChannel.id);
   }
 
   const allowedCategoryIds = new Set<string>([
