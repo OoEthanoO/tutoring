@@ -415,8 +415,9 @@ export async function POST(request: NextRequest) {
   <li>Sign in to your YanLearn account.</li>
   <li>Click your profile card in the top-right corner.</li>
   <li>Click <strong>Connect Discord</strong> and authorize your Discord account.</li>
-  <li>Click <strong>Join Discord Server</strong>.</li>
+  <li>After authorization, you will be redirected directly to the Discord server invite page to join.</li>
 </ol>
+<p>If you authorized Discord but closed that tab before joining, open your profile card and click <strong>Join Discord Server</strong> to retry.</p>
 <p>This keeps server access limited to verified YanLearn users.</p>
 <p>Thanks,<br/>Ethan Yan Xu</p>`
     );

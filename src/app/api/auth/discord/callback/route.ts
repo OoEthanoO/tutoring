@@ -4,6 +4,7 @@ import { getAdminClient, getRequestActor } from "@/lib/authServer";
 const discordTokenUrl = "https://discord.com/api/v10/oauth2/token";
 const discordIdentityUrl = "https://discord.com/api/v10/users/@me";
 const discordStateCookieName = "discord_oauth_state";
+const defaultDiscordInviteUrl = "https://discord.gg/yDMdWcs64R";
 
 type DiscordTokenResponse = {
   access_token?: string;
@@ -36,6 +37,22 @@ const getRedirectBackUrl = (request: NextRequest, status: string) => {
   const url = new URL("/", request.url);
   url.searchParams.set("discord", status);
   return url;
+};
+
+const getDiscordInviteUrl = () => {
+  const configured = String(
+    process.env.DISCORD_SERVER_INVITE_URL ??
+    process.env.NEXT_PUBLIC_DISCORD_SERVER_INVITE_URL ??
+    ""
+  ).trim();
+  const value = configured || defaultDiscordInviteUrl;
+  if (
+    value.startsWith("https://discord.gg/") ||
+    value.startsWith("https://discord.com/invite/")
+  ) {
+    return value;
+  }
+  return defaultDiscordInviteUrl;
 };
 
 const clearStateCookie = (response: NextResponse) => {
@@ -178,5 +195,7 @@ export async function GET(request: NextRequest) {
     return redirectWithStatus("link_failed");
   }
 
-  return redirectWithStatus("connected");
+  const response = NextResponse.redirect(getDiscordInviteUrl());
+  clearStateCookie(response);
+  return response;
 }

@@ -79,9 +79,10 @@ export async function GET(request: NextRequest) {
       <p><strong>How to connect your Discord:</strong></p>
       <ol>
         <li>Sign in and click your profile card in the top-right corner.</li>
-        <li>Click <strong>Connect Discord</strong>.</li>
-        <li>After connecting, click <strong>Join Discord Server</strong>.</li>
+        <li>Click <strong>Connect Discord</strong> and authorize your Discord account.</li>
+        <li>After authorization, you will be redirected directly to the Discord server invite page to join.</li>
       </ol>
+      <p>If you authorized Discord but closed that tab before joining, open your profile card and click <strong>Join Discord Server</strong> to retry.</p>
       <p><a href="${dashboardUrl}">Open YanLearn</a></p>
     `;
 
