@@ -4,6 +4,9 @@ export type ClientUser = {
   full_name: string | null;
   role: string;
   email_verified_at: string | null;
+  discord_user_id: string | null;
+  discord_username: string | null;
+  discord_connected_at: string | null;
 };
 
 export type AuthContext = {
@@ -23,7 +26,7 @@ export const broadcastAuthChange = () => {
 
 export const onAuthChange = (callback: () => void) => {
   if (typeof window === "undefined") {
-    return () => {};
+    return () => { };
   }
 
   window.addEventListener(authEvent, callback);

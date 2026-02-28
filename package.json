@@ -2,7 +2,7 @@
   "name": "tutoring",
   "version": "0.1.0",
   "private": true,
-  "iteration": "35",
+  "iteration": "36",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -15,6 +15,7 @@
     "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.93.3",
     "bcryptjs": "^2.4.3",
+    "dotenv": "^17.3.1",
     "next": "16.1.6",
     "react": "19.2.3",
     "react-dom": "19.2.3"

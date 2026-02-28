@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { runDiscordSync, type DiscordSyncResult } from "@/lib/discordSync";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
@@ -166,16 +167,48 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  if (!resendApiKey || !resendFrom) {
-    return NextResponse.json(
-      { error: "Missing RESEND_API_KEY or RESEND_FROM." },
-      { status: 500 }
-    );
-  }
-
   const adminClient = createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false },
   });
+
+  let discordSync: DiscordSyncResult;
+  try {
+    discordSync = await runDiscordSync({ adminClient });
+  } catch (error) {
+    discordSync = {
+      enabled: true,
+      skippedReason: null,
+      kickedMemberCount: 0,
+      createdCategoryCount: 0,
+      createdRoleCount: 0,
+      createdCourseRoleCount: 0,
+      baseRoleAddedCount: 0,
+      baseRoleRemovedCount: 0,
+      courseRoleAddedCount: 0,
+      courseRoleRemovedCount: 0,
+      createdChannelCount: 0,
+      updatedChannelCount: 0,
+      archivedChannelCount: 0,
+      deletedChannelCount: 0,
+      deletedCourseRoleCount: 0,
+      errors: [
+        error instanceof Error
+          ? error.message
+          : "Unknown Discord sync failure.",
+      ],
+    };
+  }
+
+  if (!resendApiKey || !resendFrom) {
+    return NextResponse.json({
+      sentClassCount: 0,
+      sentEmailCount: 0,
+      failedClasses: [],
+      timezone: torontoTimeZone,
+      reminderSkippedReason: "Missing RESEND_API_KEY or RESEND_FROM.",
+      discordSync,
+    });
+  }
 
   const base = floorToFiveMinuteBoundary(new Date());
   const candidates: CandidateReminder[] = [];
@@ -201,7 +234,10 @@ export async function POST(request: NextRequest) {
 
     if (classError) {
       return NextResponse.json(
-        { error: classError.message ?? "Failed to load classes." },
+        {
+          error: classError.message ?? "Failed to load classes.",
+          discordSync,
+        },
         { status: 500 }
       );
     }
@@ -230,7 +266,10 @@ export async function POST(request: NextRequest) {
 
   if (pastClassError) {
     return NextResponse.json(
-      { error: pastClassError.message ?? "Failed to load classes for follow-up." },
+      {
+        error: pastClassError.message ?? "Failed to load classes for follow-up.",
+        discordSync,
+      },
       { status: 500 }
     );
   }
@@ -261,6 +300,8 @@ export async function POST(request: NextRequest) {
       sentClassCount: 0,
       sentEmailCount: 0,
       failedClasses: [],
+      timezone: torontoTimeZone,
+      discordSync,
     });
   }
 
@@ -274,7 +315,10 @@ export async function POST(request: NextRequest) {
 
   if (enrollmentError) {
     return NextResponse.json(
-      { error: enrollmentError.message ?? "Failed to load enrollments." },
+      {
+        error: enrollmentError.message ?? "Failed to load enrollments.",
+        discordSync,
+      },
       { status: 500 }
     );
   }
@@ -497,5 +541,6 @@ export async function POST(request: NextRequest) {
     sentEmailCount,
     failedClasses,
     timezone: torontoTimeZone,
+    discordSync,
   });
 }

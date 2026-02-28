@@ -18,10 +18,16 @@ export default function AuthStatusActions() {
   const [isActorFounder, setIsActorFounder] = useState(false);
   const [isImpersonating, setIsImpersonating] = useState(false);
   const [isStoppingImpersonation, setIsStoppingImpersonation] = useState(false);
+  const [isDiscordLinked, setIsDiscordLinked] = useState(false);
+  const [isDisconnectingDiscord, setIsDisconnectingDiscord] = useState(false);
   const [isEditNameOpen, setIsEditNameOpen] = useState(false);
   const [fullNameDraft, setFullNameDraft] = useState("");
   const [isSavingName, setIsSavingName] = useState(false);
   const [nameStatus, setNameStatus] = useState<{
+    type: "idle" | "error" | "success";
+    message: string;
+  }>({ type: "idle", message: "" });
+  const [discordStatus, setDiscordStatus] = useState<{
     type: "idle" | "error" | "success";
     message: string;
   }>({ type: "idle", message: "" });
@@ -32,6 +38,8 @@ export default function AuthStatusActions() {
       const auth = await getAuthContext();
       setIsSignedIn(Boolean(auth.user));
       setIsImpersonating(auth.isImpersonating);
+      setIsDiscordLinked(Boolean(auth.user?.discord_user_id));
+
       const actorRole = resolveUserRole(
         auth.actor?.email ?? null,
         auth.actor?.role ?? null
@@ -127,25 +135,51 @@ export default function AuthStatusActions() {
         return;
       }
 
-      setIsSavingName(false);
       setNameStatus({ type: "success", message: "Name updated." });
-      broadcastAuthChange();
       setTimeout(() => {
         setIsEditNameOpen(false);
+        setIsSavingName(false);
+        broadcastAuthChange();
       }, 500);
+    };
+
+    const onConnectDiscord = () => {
+      setDiscordStatus({ type: "idle", message: "" });
+      setIsMenuOpen(false);
+      window.location.assign("/api/auth/discord/connect");
+    };
+
+    const onDisconnectDiscord = async () => {
+      setIsDisconnectingDiscord(true);
+      setDiscordStatus({ type: "idle", message: "" });
+
+      const response = await fetch("/api/auth/discord/disconnect", {
+        method: "POST",
+      });
+
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as
+          | { error?: string }
+          | null;
+        setDiscordStatus({
+          type: "error",
+          message: payload?.error ?? "Unable to disconnect Discord account.",
+        });
+        setIsDisconnectingDiscord(false);
+        return;
+      }
+
+      setDiscordStatus({ type: "success", message: "Discord account disconnected." });
+      setIsDisconnectingDiscord(false);
+      setIsMenuOpen(false);
+      broadcastAuthChange();
     };
 
     return (
       <div className="relative" ref={menuRef}>
-        <button
-          type="button"
-          onClick={() => setIsMenuOpen((open) => !open)}
-          className="rounded border border-[var(--border)] px-3 py-2 text-sm transition hover:border-[var(--foreground)]"
-        >
-          Account
-        </button>
+        <AccountCard onClick={() => setIsMenuOpen((open) => !open)} />
         {isMenuOpen ? (
-          <div className="absolute right-0 z-30 mt-2 w-40 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-2 shadow-lg">
+          <div className="absolute right-0 z-30 mt-2 w-44 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-2 shadow-lg">
             {isActorFounder && isImpersonating ? (
               <button
                 type="button"
@@ -163,6 +197,24 @@ export default function AuthStatusActions() {
             >
               Edit name
             </button>
+            {isDiscordLinked ? (
+              <button
+                type="button"
+                onClick={onDisconnectDiscord}
+                disabled={isDisconnectingDiscord}
+                className="w-full rounded-lg px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                {isDisconnectingDiscord ? "Disconnecting..." : "Disconnect Discord"}
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={onConnectDiscord}
+                className="w-full rounded-lg px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--border)]"
+              >
+                Connect Discord
+              </button>
+            )}
             <button
               type="button"
               onClick={onSignOut}
@@ -172,6 +224,15 @@ export default function AuthStatusActions() {
               {isSigningOut ? "Signing out..." : "Sign out"}
             </button>
           </div>
+        ) : null}
+        {discordStatus.type !== "idle" ? (
+          <p
+            className={`mt-2 text-right text-xs ${
+              discordStatus.type === "error" ? "text-red-500" : "text-emerald-500"
+            }`}
+          >
+            {discordStatus.message}
+          </p>
         ) : null}
         {isEditNameOpen ? (
           <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 px-4">
@@ -213,7 +274,11 @@ export default function AuthStatusActions() {
                   type="button"
                   onClick={saveName}
                   disabled={isSavingName}
-                  className="rounded-full border border-[var(--foreground)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-70"
+                  className={`rounded-full border border-[var(--foreground)] px-4 py-2 text-xs font-semibold transition ${
+                    isSavingName
+                      ? "opacity-70 text-[var(--muted)] border-[var(--border)] cursor-not-allowed"
+                      : "text-[var(--foreground)] hover:bg-[var(--border)]"
+                  }`}
                 >
                   {isSavingName ? "Saving..." : "Save"}
                 </button>
@@ -258,25 +323,4 @@ export function AuthStatusLink() {
       Login
     </Link>
   );
-}
-
-export function AuthStatusCard() {
-  const [isSignedIn, setIsSignedIn] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    const load = async () => {
-      const user = await getCurrentUser();
-      setIsSignedIn(Boolean(user));
-    };
-
-    load();
-
-    return onAuthChange(load);
-  }, []);
-
-  if (!isSignedIn) {
-    return null;
-  }
-
-  return <AccountCard />;
 }

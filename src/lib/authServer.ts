@@ -11,6 +11,9 @@ export type SessionUser = {
   full_name: string | null;
   role: string;
   email_verified_at: string | null;
+  discord_user_id: string | null;
+  discord_username: string | null;
+  discord_connected_at: string | null;
 };
 
 export const IMPERSONATE_COOKIE = "impersonate_user_id";
@@ -40,7 +43,7 @@ export const getSessionUser = async (token?: string | null) => {
   const { data } = await adminClient
     .from("app_sessions")
     .select(
-      "user:app_users(id, email, full_name, role, email_verified_at), expires_at"
+      "user:app_users(id, email, full_name, role, email_verified_at, discord_user_id, discord_username, discord_connected_at), expires_at"
     )
     .eq("token_hash", tokenHash)
     .gt("expires_at", now)
@@ -82,7 +85,9 @@ export const getRequestUser = async (
   const adminClient = getAdminClient();
   const { data: impersonatedUser } = await adminClient
     .from("app_users")
-    .select("id, email, full_name, role, email_verified_at")
+    .select(
+      "id, email, full_name, role, email_verified_at, discord_user_id, discord_username, discord_connected_at"
+    )
     .eq("id", impersonatedUserId)
     .maybeSingle();
 
@@ -122,7 +127,9 @@ export const getRequestAuthContext = async (
   const adminClient = getAdminClient();
   const { data: impersonatedUser } = await adminClient
     .from("app_users")
-    .select("id, email, full_name, role, email_verified_at")
+    .select(
+      "id, email, full_name, role, email_verified_at, discord_user_id, discord_username, discord_connected_at"
+    )
     .eq("id", impersonatedUserId)
     .maybeSingle();
 

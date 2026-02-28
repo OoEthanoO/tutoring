@@ -11,21 +11,38 @@ export async function PATCH(request: NextRequest) {
   }
 
   const body = (await request.json().catch(() => null)) as
-    | { fullName?: string }
+    | { fullName?: string; discordUsername?: string }
     | null;
 
-  const fullName = body?.fullName?.trim() ?? "";
-  if (!fullName) {
+  if (body?.fullName === undefined && body?.discordUsername === undefined) {
     return NextResponse.json(
-      { error: "Full name is required." },
+      { error: "Full name must be provided." },
       { status: 400 }
     );
   }
 
+  if (body?.discordUsername !== undefined) {
+    return NextResponse.json(
+      {
+        error:
+          "Manual Discord username updates are disabled. Use Connect Discord.",
+      },
+      { status: 400 }
+    );
+  }
+
+  const fullName = body?.fullName?.trim() ?? "";
+  if (!fullName) {
+    return NextResponse.json({ error: "Name cannot be empty." }, { status: 400 });
+  }
+
+  const updates: Record<string, string | null> = {};
+  if (fullName) updates.full_name = fullName;
+
   const adminClient = getAdminClient();
   const { error } = await adminClient
     .from("app_users")
-    .update({ full_name: fullName })
+    .update(updates)
     .eq("id", user.id);
 
   if (error) {

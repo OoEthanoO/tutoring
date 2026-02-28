@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import Link from "next/link";
-import AuthStatusActions, { AuthStatusCard } from "@/components/AuthStatusActions";
+import AuthStatusActions from "@/components/AuthStatusActions";
 import DashboardMenus from "@/components/DashboardMenus";
 import Footer from "@/components/Footer";
 import { getSessionUser } from "@/lib/authServer";
@@ -59,7 +59,6 @@ export default async function Home() {
         <div className="flex flex-wrap items-center justify-between gap-4">
           <h1 className="text-xl font-semibold">YanLearn</h1>
           <div className="flex flex-wrap items-center gap-4">
-            <AuthStatusCard />
             <AuthStatusActions />
           </div>
         </div>

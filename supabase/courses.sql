@@ -6,6 +6,9 @@ create table if not exists public.app_users (
   tutor_promoted_at timestamptz,
   password_hash text not null,
   email_verified_at timestamptz,
+  discord_user_id text unique,
+  discord_username text,
+  discord_connected_at timestamptz,
   created_at timestamptz not null default now()
 );
 
