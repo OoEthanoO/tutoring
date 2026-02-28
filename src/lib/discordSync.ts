@@ -179,10 +179,11 @@ const roleNameExists = (
 const buildUniqueCourseRoleName = (
   baseName: string,
   courseId: string,
-  roles: DiscordRole[]
+  roles: DiscordRole[],
+  excludeRoleId?: string
 ) => {
   const normalizedBase = baseName.trim().slice(0, roleNameLimit) || "Course";
-  if (!roleNameExists(roles, normalizedBase)) {
+  if (!roleNameExists(roles, normalizedBase, excludeRoleId)) {
     return normalizedBase;
   }
 
@@ -191,7 +192,7 @@ const buildUniqueCourseRoleName = (
     const suffix = attempt === 1 ? ` (${suffixSeed})` : ` (${suffixSeed}-${attempt})`;
     const maxBaseLength = Math.max(1, roleNameLimit - suffix.length);
     const candidate = `${normalizedBase.slice(0, maxBaseLength)}${suffix}`;
-    if (!roleNameExists(roles, candidate)) {
+    if (!roleNameExists(roles, candidate, excludeRoleId)) {
       return candidate;
     }
   }
@@ -574,6 +575,14 @@ class DiscordApiClient {
       method: "POST",
       path: `/guilds/${guildId}/roles`,
       body: { name },
+    });
+  }
+
+  updateGuildRole(guildId: string, roleId: string, payload: { name?: string }) {
+    return this.request<DiscordRole>({
+      method: "PATCH",
+      path: `/guilds/${guildId}/roles/${roleId}`,
+      body: payload,
     });
   }
 
@@ -1207,6 +1216,56 @@ export const runDiscordSync = async ({
 
       const replacementRole = await createCourseRole(course);
       courseRoleIdByCourseId.set(courseId, replacementRole.id);
+    }
+  }
+
+  // Keep course role names synchronized with course titles, while gracefully
+  // handling duplicate course titles by assigning deterministic suffixes.
+  const roleRenameCourseIds = Array.from(courseRoleIdByCourseId.keys()).sort((a, b) =>
+    a.localeCompare(b)
+  );
+
+  for (const courseId of roleRenameCourseIds) {
+    const course = websiteCourseById.get(courseId);
+    const courseRoleId = courseRoleIdByCourseId.get(courseId);
+    if (!course || !courseRoleId) {
+      continue;
+    }
+
+    const role = mutableRoles.find((item) => item.id === courseRoleId);
+    if (!role || role.managed) {
+      continue;
+    }
+
+    const baseName = normalizeRoleName(course.title, course.id);
+    const expectedRoleName = buildUniqueCourseRoleName(
+      baseName,
+      course.id,
+      mutableRoles,
+      role.id
+    );
+
+    if (role.name === expectedRoleName) {
+      continue;
+    }
+
+    try {
+      const updatedRole = await apiClient.updateGuildRole(
+        discordGuildId,
+        role.id,
+        { name: expectedRoleName }
+      );
+      const roleIndex = mutableRoles.findIndex((item) => item.id === role.id);
+      if (roleIndex >= 0) {
+        mutableRoles[roleIndex] = updatedRole;
+      }
+    } catch (error) {
+      result.errors.push(
+        `Failed to rename course role "${role.name}" for course "${course.title}": ${toErrorMessage(
+          error,
+          "Unknown update role error."
+        )}`
+      );
     }
   }
 
