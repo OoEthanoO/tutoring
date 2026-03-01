@@ -13,7 +13,7 @@ type AdminUser = {
   id: string;
   email: string | null;
   fullName: string;
-  role: "founder" | "tutor" | "student";
+  role: "founder" | "executive" | "student";
   donationLink?: string;
   tutorPromotedAt?: string | null;
   discordUserId?: string | null;
@@ -41,7 +41,7 @@ export default function AdminUserManager() {
   const [isFounder, setIsFounder] = useState(false);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
-  const [roleFilter, setRoleFilter] = useState<"all" | "student" | "tutor">(
+  const [roleFilter, setRoleFilter] = useState<"all" | "student" | "executive">(
     "all"
   );
   const [status, setStatus] = useState<StatusState>({
@@ -273,11 +273,11 @@ export default function AdminUserManager() {
     setPendingFeedbackId(null);
   };
 
-  const updateRole = async (userId: string, role: "tutor" | "student") => {
+  const updateRole = async (userId: string, role: "executive" | "student") => {
     const target = users.find((user) => user.id === userId);
     const name = target?.fullName || target?.email || "this user";
     const action =
-      role === "tutor"
+      role === "executive"
         ? `Promote ${name} to executive?`
         : `Demote ${name} to student?`;
     if (!window.confirm(action)) {
@@ -671,14 +671,14 @@ export default function AdminUserManager() {
           value={roleFilter}
           onChange={(event) =>
             setRoleFilter(
-              event.target.value as "all" | "student" | "tutor"
+              event.target.value as "all" | "student" | "executive"
             )
           }
           className="w-full rounded-full border border-[var(--border)] bg-[var(--surface)] px-4 py-2 text-xs text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)] sm:w-44"
         >
           <option value="all">All roles</option>
           <option value="student">Students</option>
-          <option value="tutor">Executives</option>
+          <option value="executive">Executives</option>
         </select>
       </div>
 
@@ -726,7 +726,7 @@ export default function AdminUserManager() {
                       : "Connected"
                     : "Not connected"}
                 </p>
-                {user.role === "tutor" ? (
+                {user.role === "executive" ? (
                   <p className="text-xs text-[var(--muted)]">
                     Promoted: {formatPromotedDate(user.tutorPromotedAt)}
                   </p>
@@ -746,11 +746,11 @@ export default function AdminUserManager() {
                 >
                   {isPending ? "Working..." : "Impersonate"}
                 </button>
-                {user.role !== "tutor" ? (
+                {user.role !== "executive" ? (
                   <button
                     type="button"
                     disabled={isPending}
-                    onClick={() => updateRole(user.id, "tutor")}
+                    onClick={() => updateRole(user.id, "executive")}
                     className="rounded-full border border-[var(--foreground)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-70"
                   >
                     {isPending ? "Updating..." : "Make executive"}

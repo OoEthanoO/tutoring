@@ -205,7 +205,7 @@ export async function PATCH(request: NextRequest) {
     );
   }
 
-  if (body.role && body.role !== "tutor" && body.role !== "student") {
+  if (body.role && body.role !== "executive" && body.role !== "tutor" && body.role !== "student") {
     return NextResponse.json({ error: "Invalid role." }, { status: 400 });
   }
 
@@ -230,7 +230,7 @@ export async function PATCH(request: NextRequest) {
 
   const existingRole = existingUser?.data?.role ?? null;
   const isPromotingToTutor =
-    body.role === "tutor" && existingRole !== "tutor";
+    (body.role === "executive" || body.role === "tutor") && (existingRole !== "executive" && existingRole !== "tutor");
 
   const shouldUpdatePromotedAt = body.tutorPromotedAt !== undefined;
   const normalizedPromotedAt =
@@ -239,7 +239,7 @@ export async function PATCH(request: NextRequest) {
   const updatePayload =
     body.role || shouldUpdatePromotedAt
       ? {
-        role: body.role ?? existingRole ?? "student",
+        role: body.role === "executive" ? "tutor" : (body.role ?? existingRole ?? "student"),
         tutor_promoted_at: isPromotingToTutor
           ? new Date().toISOString()
           : shouldUpdatePromotedAt
