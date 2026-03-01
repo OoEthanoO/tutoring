@@ -112,12 +112,19 @@ export default function PublicHome() {
           <h3 className="text-sm font-semibold text-[var(--foreground)]">
             Our Team
           </h3>
-          <ul className="space-y-1 text-sm text-[var(--muted)]">
+          <div className="flex flex-wrap gap-2 transition-all duration-300">
             {tutors.map((name, index) => {
               const displayName = name.replace(/\bExecutive\b/gi, "EXEC");
-              return <li key={`${name}-${index}`}>{displayName}</li>;
+              return (
+                <span
+                  key={`${name}-${index}`}
+                  className="inline-flex items-center rounded-full border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-1 text-xs font-medium text-[var(--muted)] hover:border-[var(--foreground)] hover:text-[var(--foreground)] transition-colors"
+                >
+                  {displayName}
+                </span>
+              );
             })}
-          </ul>
+          </div>
         </div>
       ) : null}
     </section>
