@@ -1,4 +1,4 @@
-export type UserRole = "founder" | "tutor" | "student";
+export type UserRole = "founder" | "executive" | "student";
 
 const fallbackFounderEmail = "ethans.coding.class@gmail.com";
 
@@ -22,7 +22,7 @@ const normalizeRole = (role?: string | null): UserRole | null => {
 
   const value = role.toLowerCase();
 
-  if (value === "founder" || value === "tutor" || value === "student") {
+  if (value === "founder" || value === "executive" || value === "student") {
     return value as UserRole;
   }
 
@@ -39,12 +39,12 @@ export const resolveUserRole = (
   }
 
   const role = normalizeRole(roleValue);
-  if (role === "tutor") {
-    return "tutor";
+  if (role === "executive") {
+    return "executive";
   }
 
   return "student";
 };
 
 export const canManageCourses = (role: UserRole): boolean =>
-  role === "founder" || role === "tutor";
+  role === "founder" || role === "executive";

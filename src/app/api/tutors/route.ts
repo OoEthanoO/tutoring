@@ -47,7 +47,7 @@ export async function GET() {
         promotedAt: user.tutor_promoted_at ?? user.created_at,
       };
     })
-    .filter((user) => user.role === "founder" || user.role === "tutor")
+    .filter((user) => user.role === "founder" || user.role === "executive")
     .sort((a, b) => {
       if (a.role === "founder" && b.role !== "founder") {
         return -1;

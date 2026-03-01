@@ -43,7 +43,7 @@ export async function GET(request: NextRequest) {
     )
     .order("created_at", { ascending: false });
 
-  if (role === "tutor") {
+  if (role === "executive") {
     query = query.eq("created_by", user.id);
   }
 

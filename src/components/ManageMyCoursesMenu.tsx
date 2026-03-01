@@ -260,7 +260,7 @@ export default function ManageMyCoursesMenu() {
   }, [role]);
 
   useEffect(() => {
-    if (role !== "tutor") {
+    if (role !== "executive") {
       return;
     }
 
@@ -740,7 +740,7 @@ export default function ManageMyCoursesMenu() {
           <h2 className="text-lg font-semibold text-[var(--foreground)]">
             Manage my courses
           </h2>
-          {role === "tutor" &&
+          {role === "executive" &&
             donationLink &&
             donationRaised !== null ? (
             <p className="text-sm font-semibold text-[var(--foreground)]">
@@ -749,7 +749,7 @@ export default function ManageMyCoursesMenu() {
           ) : null}
         </div>
         <div className="flex flex-col gap-1">
-          {role === "tutor" && donationLink ? (
+          {role === "executive" && donationLink ? (
             <a
               href={donationLink}
               target="_blank"

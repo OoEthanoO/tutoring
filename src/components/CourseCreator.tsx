@@ -136,7 +136,7 @@ export default function CourseCreator() {
         currentUser?.email ?? null,
         currentUser?.role ?? null
       );
-      if (currentRole === "tutor") {
+      if (currentRole === "executive") {
         const ok = window.confirm(
           "This course will immediately become public. You will not be able to delete it unless you contact the admin (ethans.coding.class@gmail.com), but you can still edit it after creation. Do you want to continue?"
         );
@@ -162,9 +162,9 @@ export default function CourseCreator() {
         classes: isCompletedCourse
           ? []
           : draftClasses.map((item) => ({
-              title: item.title,
-              startsAt: new Date(item.startsAt).toISOString(),
-            })),
+            title: item.title,
+            startsAt: new Date(item.startsAt).toISOString(),
+          })),
       }),
     });
 

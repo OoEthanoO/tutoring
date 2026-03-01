@@ -6,13 +6,18 @@ const discordApiBase = "https://discord.com/api/v10";
 const courseTopicPrefix = "yanlearn-course-id:";
 const defaultCoursesCategoryName = "Courses";
 const defaultArchiveCategoryName = "Archived";
-const defaultCommunityCategoryName = "Community";
+const defaultTextCategoryName = "Text";
+const defaultVoiceCategoryName = "Voice";
 const defaultInfoChannelName = "info";
 const defaultWebsiteVoiceChannelName = "learn.ethanyanxu.com";
-const defaultFounderOnlyChannelName = "founder-only";
 const defaultEveryoneChatChannelName = "everyone";
-const defaultTutorOnlyChannelName = "tutor-only";
-const defaultTutorVoiceChannelName = "Tutor VC";
+const defaultExecutivesOnlyChannelName = "executives";
+const defaultSocialMediaChannelName = "social-media";
+const defaultScienceTutorsChannelName = "science-tutors";
+const defaultEveryoneVoiceChannelName = "Everyone";
+const defaultExecutivesVoiceChannelName = "Executives";
+const defaultSocialMediaVoiceChannelName = "Social Media";
+const defaultScienceTutorsVoiceChannelName = "Science Tutors";
 const discordTextChannelType = 0;
 const discordVoiceChannelType = 2;
 const discordCategoryChannelType = 4;
@@ -336,7 +341,7 @@ const buildWebsiteVoicePermissionOverwrites = (
 const buildEveryoneChatPermissionOverwrites = (
   guildId: string,
   studentRoleId: string,
-  tutorRoleId: string,
+  executiveRoleId: string,
   founderRoleId: string,
   botUserId: string
 ): DiscordPermissionOverwrite[] => {
@@ -358,7 +363,7 @@ const buildEveryoneChatPermissionOverwrites = (
       deny: "0",
     },
     {
-      id: tutorRoleId,
+      id: executiveRoleId,
       type: 0,
       allow: activeAllow,
       deny: "0",
@@ -378,40 +383,12 @@ const buildEveryoneChatPermissionOverwrites = (
   ];
 };
 
-const buildTutorOnlyPermissionOverwrites = (
-  guildId: string,
-  tutorRoleId: string,
-  botUserId: string
-): DiscordPermissionOverwrite[] => {
-  const activeAllow = String(
-    viewChannelPermission | sendMessagesPermission | readMessageHistoryPermission
-  );
 
-  return [
-    {
-      id: guildId,
-      type: 0,
-      allow: "0",
-      deny: String(viewChannelPermission),
-    },
-    {
-      id: tutorRoleId,
-      type: 0,
-      allow: activeAllow,
-      deny: "0",
-    },
-    {
-      id: botUserId,
-      type: 1,
-      allow: activeAllow,
-      deny: "0",
-    },
-  ];
-};
-
-const buildTutorVoicePermissionOverwrites = (
+const buildEveryoneVoicePermissionOverwrites = (
   guildId: string,
-  tutorRoleId: string,
+  studentRoleId: string,
+  executiveRoleId: string,
+  founderRoleId: string,
   botUserId: string
 ): DiscordPermissionOverwrite[] => {
   const activeAllow = String(viewChannelPermission | connectPermission);
@@ -424,35 +401,16 @@ const buildTutorVoicePermissionOverwrites = (
       deny: String(viewChannelPermission),
     },
     {
-      id: tutorRoleId,
+      id: studentRoleId,
       type: 0,
       allow: activeAllow,
       deny: "0",
     },
     {
-      id: botUserId,
-      type: 1,
+      id: executiveRoleId,
+      type: 0,
       allow: activeAllow,
       deny: "0",
-    },
-  ];
-};
-
-const buildFounderOnlyPermissionOverwrites = (
-  guildId: string,
-  founderRoleId: string,
-  botUserId: string
-): DiscordPermissionOverwrite[] => {
-  const activeAllow = String(
-    viewChannelPermission | sendMessagesPermission | readMessageHistoryPermission
-  );
-
-  return [
-    {
-      id: guildId,
-      type: 0,
-      allow: "0",
-      deny: String(viewChannelPermission),
     },
     {
       id: founderRoleId,
@@ -467,6 +425,122 @@ const buildFounderOnlyPermissionOverwrites = (
       deny: "0",
     },
   ];
+};
+
+const buildExecutivesOnlyPermissionOverwrites = (
+  guildId: string,
+  executiveRoleId: string,
+  botUserId: string
+): DiscordPermissionOverwrite[] => {
+  const activeAllow = String(
+    viewChannelPermission | sendMessagesPermission | readMessageHistoryPermission
+  );
+
+  return [
+    {
+      id: guildId,
+      type: 0,
+      allow: "0",
+      deny: String(viewChannelPermission),
+    },
+    {
+      id: executiveRoleId,
+      type: 0,
+      allow: activeAllow,
+      deny: "0",
+    },
+    {
+      id: botUserId,
+      type: 1,
+      allow: activeAllow,
+      deny: "0",
+    },
+  ];
+};
+
+
+
+
+const buildRoleExclusiveTextPermissionOverwrites = (
+  guildId: string,
+  roleId: string,
+  botUserId: string,
+  extraRoleIds: string[] = []
+): DiscordPermissionOverwrite[] => {
+  const activeAllow = String(
+    viewChannelPermission | sendMessagesPermission | readMessageHistoryPermission
+  );
+
+  const overwrites = [
+    {
+      id: guildId,
+      type: 0 as const,
+      allow: "0",
+      deny: String(viewChannelPermission),
+    },
+    {
+      id: roleId,
+      type: 0 as const,
+      allow: activeAllow,
+      deny: "0",
+    },
+    {
+      id: botUserId,
+      type: 1 as const,
+      allow: activeAllow,
+      deny: "0",
+    },
+  ];
+
+  for (const extra of extraRoleIds) {
+    overwrites.push({
+      id: extra,
+      type: 0 as const,
+      allow: activeAllow,
+      deny: "0",
+    });
+  }
+
+  return overwrites;
+};
+
+const buildRoleExclusiveVoicePermissionOverwrites = (
+  guildId: string,
+  roleId: string,
+  botUserId: string,
+  extraRoleIds: string[] = []
+): DiscordPermissionOverwrite[] => {
+  const activeAllow = String(viewChannelPermission | connectPermission);
+
+  const overwrites = [
+    {
+      id: guildId,
+      type: 0 as const,
+      allow: "0",
+      deny: String(viewChannelPermission),
+    },
+    {
+      id: roleId,
+      type: 0 as const,
+      allow: activeAllow,
+      deny: "0",
+    },
+    {
+      id: botUserId,
+      type: 1 as const,
+      allow: activeAllow,
+      deny: "0",
+    },
+  ];
+  for (const extra of extraRoleIds) {
+    overwrites.push({
+      id: extra,
+      type: 0 as const,
+      allow: activeAllow,
+      deny: "0",
+    });
+  }
+  return overwrites;
 };
 
 const sortOverwriteKeys = (overwrites: DiscordPermissionOverwrite[] | undefined) =>
@@ -823,27 +897,32 @@ export const runDiscordSync = async ({
   const archiveCategoryName =
     String(process.env.DISCORD_ARCHIVE_CATEGORY_NAME ?? "").trim() ||
     defaultArchiveCategoryName;
-  const communityCategoryName =
-    String(process.env.DISCORD_COMMUNITY_CATEGORY_NAME ?? "").trim() ||
-    defaultCommunityCategoryName;
+  const textCategoryName =
+    String(process.env.DISCORD_TEXT_CATEGORY_NAME ?? "").trim() ||
+    defaultTextCategoryName;
+  const voiceCategoryName =
+    String(process.env.DISCORD_VOICE_CATEGORY_NAME ?? "").trim() ||
+    defaultVoiceCategoryName;
   const infoChannelName =
     String(process.env.DISCORD_INFO_CHANNEL_NAME ?? "").trim() ||
     defaultInfoChannelName;
   const websiteVoiceChannelName =
     String(process.env.DISCORD_URL_VOICE_CHANNEL_NAME ?? "").trim() ||
     defaultWebsiteVoiceChannelName;
-  const founderOnlyChannelName =
-    String(process.env.DISCORD_FOUNDER_ONLY_CHANNEL_NAME ?? "").trim() ||
-    defaultFounderOnlyChannelName;
+
   const everyoneChatChannelName =
     String(process.env.DISCORD_EVERYONE_CHANNEL_NAME ?? "").trim() ||
     defaultEveryoneChatChannelName;
-  const tutorOnlyChannelName =
-    String(process.env.DISCORD_TUTOR_ONLY_CHANNEL_NAME ?? "").trim() ||
-    defaultTutorOnlyChannelName;
-  const tutorVoiceChannelName =
-    String(process.env.DISCORD_TUTOR_VOICE_CHANNEL_NAME ?? "").trim() ||
-    defaultTutorVoiceChannelName;
+  const executivesOnlyChannelName =
+    String(process.env.DISCORD_EXECUTIVES_ONLY_CHANNEL_NAME ?? "").trim() ||
+    defaultExecutivesOnlyChannelName;
+  const socialMediaChannelName = String(process.env.DISCORD_SOCIAL_MEDIA_CHANNEL_NAME ?? "").trim() || defaultSocialMediaChannelName;
+  const scienceTutorsChannelName = String(process.env.DISCORD_SCIENCE_TUTORS_CHANNEL_NAME ?? "").trim() || defaultScienceTutorsChannelName;
+  const everyoneVoiceChannelName = String(process.env.DISCORD_EVERYONE_VOICE_CHANNEL_NAME ?? "").trim() || defaultEveryoneVoiceChannelName;
+  const executivesVoiceChannelName = String(process.env.DISCORD_EXECUTIVES_VOICE_CHANNEL_NAME ?? "").trim() || defaultExecutivesVoiceChannelName;
+  const socialMediaVoiceChannelName = String(process.env.DISCORD_SOCIAL_MEDIA_VOICE_CHANNEL_NAME ?? "").trim() || defaultSocialMediaVoiceChannelName;
+  const scienceTutorsVoiceChannelName = String(process.env.DISCORD_SCIENCE_TUTORS_VOICE_CHANNEL_NAME ?? "").trim() || defaultScienceTutorsVoiceChannelName;
+
   const protectedRoleNames = new Set(
     String(process.env.DISCORD_PROTECTED_ROLE_NAMES ?? "")
       .split(",")
@@ -956,9 +1035,11 @@ export const runDiscordSync = async ({
   };
 
   const studentRole = await ensureRole("Student", false);
-  const tutorRole = await ensureRole("Tutor", false);
+  const executiveRole = await ensureRole("Executive", false);
+  const socialMediaRole = await ensureRole("Social Media", false);
+  const scienceTutorsRole = await ensureRole("Science Tutors", false);
   const founderRole = await ensureRole("Founder", false);
-  const baseRoleIds = new Set([studentRole.id, tutorRole.id, founderRole.id]);
+  const baseRoleIds = new Set([studentRole.id, executiveRole.id, founderRole.id, socialMediaRole.id, scienceTutorsRole.id]);
   const founderDiscordUserId =
     websiteUsers.find(
       (user) =>
@@ -1046,7 +1127,7 @@ export const runDiscordSync = async ({
     const websiteRole = resolveUserRole(websiteUser.email, websiteUser.role);
     const shouldBeFounder =
       Boolean(founderDiscordUserId) && memberId === founderDiscordUserId;
-    const shouldBeTutor = websiteRole === "tutor";
+    const shouldBeExecutive = websiteRole === "executive";
 
     if (shouldBeFounder) {
       if (!roleSet.has(founderRole.id)) {
@@ -1058,10 +1139,10 @@ export const runDiscordSync = async ({
         );
       }
 
-      if (roleSet.has(tutorRole.id)) {
+      if (roleSet.has(executiveRole.id)) {
         await addRoleToMember(
           memberId,
-          tutorRole.id,
+          executiveRole.id,
           roleSet,
           "baseRoleRemovedCount",
           true
@@ -1080,11 +1161,11 @@ export const runDiscordSync = async ({
       continue;
     }
 
-    if (shouldBeTutor) {
-      if (!roleSet.has(tutorRole.id)) {
+    if (shouldBeExecutive) {
+      if (!roleSet.has(executiveRole.id)) {
         await addRoleToMember(
           memberId,
-          tutorRole.id,
+          executiveRole.id,
           roleSet,
           "baseRoleAddedCount"
         );
@@ -1120,10 +1201,10 @@ export const runDiscordSync = async ({
       );
     }
 
-    if (roleSet.has(tutorRole.id)) {
+    if (roleSet.has(executiveRole.id)) {
       await addRoleToMember(
         memberId,
-        tutorRole.id,
+        executiveRole.id,
         roleSet,
         "baseRoleRemovedCount",
         true
@@ -1452,7 +1533,8 @@ export const runDiscordSync = async ({
     }
   }
 
-  const communityCategory = await ensureCategory(communityCategoryName);
+  const textCategory = await ensureCategory(textCategoryName);
+  const voiceCategory = await ensureCategory(voiceCategoryName);
   const coursesCategory = await ensureCategory(coursesCategoryName);
   const archiveCategory = await ensureCategory(archiveCategoryName);
   const usedChannelIds = new Set<string>();
@@ -1558,16 +1640,21 @@ export const runDiscordSync = async ({
 
   const ensureFixedChannel = async ({
     name,
+    oldName,
     channelType,
     parentId,
     permissionOverwrites,
   }: {
     name: string;
+    oldName?: string;
     channelType: number;
     parentId: string | null;
     permissionOverwrites: DiscordPermissionOverwrite[];
   }) => {
-    const existing = findChannelByNameAndType(mutableChannels, name, channelType);
+    let existing = findChannelByNameAndType(mutableChannels, name, channelType);
+    if (!existing && oldName) {
+      existing = findChannelByNameAndType(mutableChannels, oldName, channelType);
+    }
 
     if (!existing) {
       try {
@@ -1746,50 +1833,107 @@ export const runDiscordSync = async ({
   const everyoneChatChannel = await ensureFixedChannel({
     name: everyoneChatChannelName,
     channelType: discordTextChannelType,
-    parentId: communityCategory.id,
+    parentId: textCategory.id,
     permissionOverwrites: buildEveryoneChatPermissionOverwrites(
       discordGuildId,
       studentRole.id,
-      tutorRole.id,
+      executiveRole.id,
       founderRole.id,
       botUser.id
     ),
   });
 
-  const tutorOnlyChannel = await ensureFixedChannel({
-    name: tutorOnlyChannelName,
+
+
+
+
+  const executivesOnlyChannel = await ensureFixedChannel({
+    name: executivesOnlyChannelName,
+    oldName: "tutor-only",
     channelType: discordTextChannelType,
-    parentId: communityCategory.id,
-    permissionOverwrites: buildTutorOnlyPermissionOverwrites(
+    parentId: textCategory.id,
+    permissionOverwrites: buildRoleExclusiveTextPermissionOverwrites(
       discordGuildId,
-      tutorRole.id,
-      botUser.id
+      executiveRole.id,
+      botUser.id,
+      [founderRole.id]
     ),
   });
 
-  const founderOnlyChannel = await ensureFixedChannel({
-    name: founderOnlyChannelName,
+  const socialMediaChannel = await ensureFixedChannel({
+    name: socialMediaChannelName,
     channelType: discordTextChannelType,
-    parentId: communityCategory.id,
-    permissionOverwrites: buildFounderOnlyPermissionOverwrites(
+    parentId: textCategory.id,
+    permissionOverwrites: buildRoleExclusiveTextPermissionOverwrites(
       discordGuildId,
-      founderRole.id,
-      botUser.id
+      socialMediaRole.id,
+      botUser.id,
+      [founderRole.id]
     ),
   });
 
-  const tutorVoiceChannel = await ensureFixedChannel({
-    name: tutorVoiceChannelName,
+  const scienceTutorsChannel = await ensureFixedChannel({
+    name: scienceTutorsChannelName,
+    channelType: discordTextChannelType,
+    parentId: textCategory.id,
+    permissionOverwrites: buildRoleExclusiveTextPermissionOverwrites(
+      discordGuildId,
+      scienceTutorsRole.id,
+      botUser.id,
+      [founderRole.id]
+    ),
+  });
+
+  const everyoneVoiceChannel = await ensureFixedChannel({
+    name: everyoneVoiceChannelName,
     channelType: discordVoiceChannelType,
-    parentId: communityCategory.id,
-    permissionOverwrites: buildTutorVoicePermissionOverwrites(
+    parentId: voiceCategory.id,
+    permissionOverwrites: buildEveryoneVoicePermissionOverwrites(
       discordGuildId,
-      tutorRole.id,
+      studentRole.id,
+      executiveRole.id,
+      founderRole.id,
       botUser.id
     ),
   });
 
-  const enforceCommunityPosition = async (
+  const executivesVoiceChannel = await ensureFixedChannel({
+    name: executivesVoiceChannelName,
+    channelType: discordVoiceChannelType,
+    parentId: voiceCategory.id,
+    permissionOverwrites: buildRoleExclusiveVoicePermissionOverwrites(
+      discordGuildId,
+      executiveRole.id,
+      botUser.id,
+      [founderRole.id]
+    ),
+  });
+
+  const socialMediaVoiceChannel = await ensureFixedChannel({
+    name: socialMediaVoiceChannelName,
+    channelType: discordVoiceChannelType,
+    parentId: voiceCategory.id,
+    permissionOverwrites: buildRoleExclusiveVoicePermissionOverwrites(
+      discordGuildId,
+      socialMediaRole.id,
+      botUser.id,
+      [founderRole.id]
+    ),
+  });
+
+  const scienceTutorsVoiceChannel = await ensureFixedChannel({
+    name: scienceTutorsVoiceChannelName,
+    channelType: discordVoiceChannelType,
+    parentId: voiceCategory.id,
+    permissionOverwrites: buildRoleExclusiveVoicePermissionOverwrites(
+      discordGuildId,
+      scienceTutorsRole.id,
+      botUser.id,
+      [founderRole.id]
+    ),
+  });
+
+  const enforceTextPosition = async (
     channelId: string,
     label: string,
     position: number
@@ -1800,8 +1944,8 @@ export const runDiscordSync = async ({
     }
 
     const payload: UpdateGuildChannelPayload = {};
-    if (String(existing.parent_id ?? "") !== communityCategory.id) {
-      payload.parent_id = communityCategory.id;
+    if (String(existing.parent_id ?? "") !== textCategory.id) {
+      payload.parent_id = textCategory.id;
     }
     if (typeof existing.position !== "number" || existing.position !== position) {
       payload.position = position;
@@ -1830,38 +1974,101 @@ export const runDiscordSync = async ({
     }
   };
 
-  let nextCommunityPosition = 0;
+  let nextTextPosition = 0;
   if (everyoneChatChannel) {
-    await enforceCommunityPosition(
+    await enforceTextPosition(
       everyoneChatChannel.id,
       everyoneChatChannelName,
-      nextCommunityPosition
+      nextTextPosition
     );
-    nextCommunityPosition += 1;
+    nextTextPosition += 1;
   }
-  if (tutorOnlyChannel) {
-    await enforceCommunityPosition(
-      tutorOnlyChannel.id,
-      tutorOnlyChannelName,
-      nextCommunityPosition
+  if (executivesOnlyChannel) {
+    await enforceTextPosition(
+      executivesOnlyChannel.id,
+      executivesOnlyChannelName,
+      nextTextPosition
     );
-    nextCommunityPosition += 1;
+    nextTextPosition += 1;
   }
-  if (founderOnlyChannel) {
-    await enforceCommunityPosition(
-      founderOnlyChannel.id,
-      founderOnlyChannelName,
-      nextCommunityPosition
+  if (socialMediaChannel) {
+    await enforceTextPosition(
+      socialMediaChannel.id,
+      socialMediaChannelName,
+      nextTextPosition
     );
-    nextCommunityPosition += 1;
+    nextTextPosition += 1;
   }
-  if (tutorVoiceChannel) {
-    await enforceCommunityPosition(
-      tutorVoiceChannel.id,
-      tutorVoiceChannelName,
-      nextCommunityPosition
+  if (scienceTutorsChannel) {
+    await enforceTextPosition(
+      scienceTutorsChannel.id,
+      scienceTutorsChannelName,
+      nextTextPosition
     );
-    nextCommunityPosition += 1;
+    nextTextPosition += 1;
+  }
+
+
+
+
+
+  const enforceVoicePosition = async (
+    channelId: string,
+    label: string,
+    position: number
+  ) => {
+    const existing = mutableChannels.find((channel) => channel.id === channelId);
+    if (!existing) {
+      return;
+    }
+
+    const payload: UpdateGuildChannelPayload = {};
+    if (String(existing.parent_id ?? "") !== voiceCategory.id) {
+      payload.parent_id = voiceCategory.id;
+    }
+    if (typeof existing.position !== "number" || existing.position !== position) {
+      payload.position = position;
+    }
+
+    if (Object.keys(payload).length === 0) {
+      return;
+    }
+
+    try {
+      const updatedChannel = await apiClient.updateGuildChannel(channelId, payload);
+      const channelIndex = mutableChannels.findIndex(
+        (channel) => channel.id === channelId
+      );
+      if (channelIndex >= 0) {
+        mutableChannels[channelIndex] = updatedChannel;
+      }
+      result.updatedChannelCount += 1;
+    } catch (error) {
+      result.errors.push(
+        `Failed to reorder channel "${label}": ${toErrorMessage(
+          error,
+          "Unknown reorder channel error."
+        )}`
+      );
+    }
+  };
+
+  let nextVoicePosition = 0;
+  if (everyoneVoiceChannel) {
+    await enforceVoicePosition(everyoneVoiceChannel.id, everyoneVoiceChannelName, nextVoicePosition);
+    nextVoicePosition += 1;
+  }
+  if (executivesVoiceChannel) {
+    await enforceVoicePosition(executivesVoiceChannel.id, executivesVoiceChannelName, nextVoicePosition);
+    nextVoicePosition += 1;
+  }
+  if (socialMediaVoiceChannel) {
+    await enforceVoicePosition(socialMediaVoiceChannel.id, socialMediaVoiceChannelName, nextVoicePosition);
+    nextVoicePosition += 1;
+  }
+  if (scienceTutorsVoiceChannel) {
+    await enforceVoicePosition(scienceTutorsVoiceChannel.id, scienceTutorsVoiceChannelName, nextVoicePosition);
+    nextVoicePosition += 1;
   }
 
   const enforceTopLevelPosition = async (
@@ -1931,8 +2138,14 @@ export const runDiscordSync = async ({
     nextTopLevelPosition += 1;
   }
   await enforceTopLevelPosition(
-    communityCategory.id,
-    communityCategoryName,
+    textCategory.id,
+    textCategoryName,
+    nextTopLevelPosition
+  );
+  nextTopLevelPosition += 1;
+  await enforceTopLevelPosition(
+    voiceCategory.id,
+    voiceCategoryName,
     nextTopLevelPosition
   );
   nextTopLevelPosition += 1;
@@ -1955,12 +2168,13 @@ export const runDiscordSync = async ({
   if (everyoneChatChannel) {
     allowedTextChannelIds.add(everyoneChatChannel.id);
   }
-  if (tutorOnlyChannel) {
-    allowedTextChannelIds.add(tutorOnlyChannel.id);
-  }
-  if (founderOnlyChannel) {
-    allowedTextChannelIds.add(founderOnlyChannel.id);
-  }
+
+
+
+
+  if (executivesOnlyChannel) allowedTextChannelIds.add(executivesOnlyChannel.id);
+  if (socialMediaChannel) allowedTextChannelIds.add(socialMediaChannel.id);
+  if (scienceTutorsChannel) allowedTextChannelIds.add(scienceTutorsChannel.id);
 
   const allowedVoiceChannelIds = new Set<string>();
   if (websiteVoiceChannel) {
@@ -1969,12 +2183,13 @@ export const runDiscordSync = async ({
   if (fundraiserVoiceChannel) {
     allowedVoiceChannelIds.add(fundraiserVoiceChannel.id);
   }
-  if (tutorVoiceChannel) {
-    allowedVoiceChannelIds.add(tutorVoiceChannel.id);
-  }
+  if (everyoneVoiceChannel) allowedVoiceChannelIds.add(everyoneVoiceChannel.id);
+  if (executivesVoiceChannel) allowedVoiceChannelIds.add(executivesVoiceChannel.id);
+  if (socialMediaVoiceChannel) allowedVoiceChannelIds.add(socialMediaVoiceChannel.id);
+  if (scienceTutorsVoiceChannel) allowedVoiceChannelIds.add(scienceTutorsVoiceChannel.id);
 
   const allowedCategoryIds = new Set<string>([
-    communityCategory.id,
+    textCategory.id,
     coursesCategory.id,
     archiveCategory.id,
   ]);

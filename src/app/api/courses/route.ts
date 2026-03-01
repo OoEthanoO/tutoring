@@ -46,14 +46,14 @@ export async function POST(request: NextRequest) {
 
   const body = (await request.json().catch(() => null)) as
     | {
-        title?: string;
-        description?: string;
-        isCompleted?: boolean;
-        completedStartDate?: string;
-        completedEndDate?: string;
-        completedClassCount?: number;
-        classes?: { title?: string; startsAt?: string; durationHours?: number }[];
-      }
+      title?: string;
+      description?: string;
+      isCompleted?: boolean;
+      completedStartDate?: string;
+      completedEndDate?: string;
+      completedClassCount?: number;
+      classes?: { title?: string; startsAt?: string; durationHours?: number }[];
+    }
     | null;
 
   const title = body?.title?.trim() ?? "";
@@ -233,16 +233,16 @@ export async function GET(request: NextRequest) {
 
   const { data: requestData } = user
     ? await adminClient
-        .from("course_enrollment_requests")
-        .select("id, course_id, status")
-        .eq("student_id", user.id)
+      .from("course_enrollment_requests")
+      .select("id, course_id, status")
+      .eq("student_id", user.id)
     : { data: [] };
 
   const { data: enrollmentData } = user
     ? await adminClient
-        .from("course_enrollments")
-        .select("course_id")
-        .eq("student_id", user.id)
+      .from("course_enrollments")
+      .select("course_id")
+      .eq("student_id", user.id)
     : { data: [] };
 
   const requestByCourse = new Map<string, { id: string; status: string }>();
@@ -263,9 +263,9 @@ export async function GET(request: NextRequest) {
 
   const { data: donationData } = creatorIds.length
     ? await adminClient
-        .from("tutor_profiles")
-        .select("user_id, donation_link")
-        .in("user_id", creatorIds)
+      .from("tutor_profiles")
+      .select("user_id, donation_link")
+      .in("user_id", creatorIds)
     : { data: [] };
 
   const donationMap = new Map(
@@ -369,12 +369,12 @@ export async function PATCH(request: NextRequest) {
 
   const body = (await request.json().catch(() => null)) as
     | {
-        courseId?: string;
-        title?: string;
-        shortName?: string | null;
-        description?: string | null;
-        createdBy?: string;
-      }
+      courseId?: string;
+      title?: string;
+      shortName?: string | null;
+      description?: string | null;
+      createdBy?: string;
+    }
     | null;
 
   if (!body?.courseId) {
@@ -476,7 +476,7 @@ export async function PATCH(request: NextRequest) {
     .update(updatePayload)
     .eq("id", body.courseId);
 
-  if (role === "tutor" && createdBy === undefined) {
+  if (role === "executive" && createdBy === undefined) {
     updateQuery = updateQuery.eq("created_by", user.id);
   }
 

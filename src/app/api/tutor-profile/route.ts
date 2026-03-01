@@ -80,7 +80,7 @@ export async function GET(request: NextRequest) {
   }
 
   const role = resolveUserRole(user.email, user.role ?? null);
-  if (role !== "tutor") {
+  if (role !== "executive") {
     return NextResponse.json({ donationLink: "" });
   }
 
