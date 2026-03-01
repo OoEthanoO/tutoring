@@ -110,7 +110,7 @@ export default function PublicHome() {
       {tutors.length ? (
         <div className="space-y-2">
           <h3 className="text-sm font-semibold text-[var(--foreground)]">
-            Our Tutors
+            Our Team
           </h3>
           <ul className="space-y-1 text-sm text-[var(--muted)]">
             {tutors.map((name, index) => (
