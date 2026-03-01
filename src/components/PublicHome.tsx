@@ -59,8 +59,10 @@ export default function PublicHome() {
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
           Home
         </p>
-        <h2 className="text-lg font-semibold text-[var(--foreground)]">
-          YanLearn
+        <h2 className="text-lg font-semibold text-[var(--foreground)] flex items-center">
+          <img src="/logo.svg" alt="Y" className="h-[1.1em] w-auto -mt-[0.1em] dark:hidden" />
+          <img src="/logo-white.svg" alt="Y" className="hidden h-[1.1em] w-auto -mt-[0.1em] dark:block" />
+          <span style={{ marginLeft: "-0.2em" }}>anLearn</span>
         </h2>
       </header>
 
