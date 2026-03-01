@@ -113,9 +113,10 @@ export default function PublicHome() {
             Our Team
           </h3>
           <ul className="space-y-1 text-sm text-[var(--muted)]">
-            {tutors.map((name, index) => (
-              <li key={`${name}-${index}`}>{name}</li>
-            ))}
+            {tutors.map((name, index) => {
+              const displayName = name.replace(/\bExecutive\b/gi, "Exec");
+              return <li key={`${name}-${index}`}>{displayName}</li>;
+            })}
           </ul>
         </div>
       ) : null}

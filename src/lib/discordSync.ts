@@ -13,11 +13,11 @@ const defaultWebsiteVoiceChannelName = "learn.ethanyanxu.com";
 const defaultEveryoneChatChannelName = "everyone";
 const defaultExecutivesOnlyChannelName = "executives";
 const defaultSocialMediaChannelName = "social-media";
-const defaultScienceTutorsChannelName = "science-tutor";
+const defaultScienceTutorsChannelName = "science-tutors";
 const defaultEveryoneVoiceChannelName = "Everyone";
 const defaultExecutivesVoiceChannelName = "Executives";
 const defaultSocialMediaVoiceChannelName = "Social Media";
-const defaultScienceTutorsVoiceChannelName = "Science Tutor";
+const defaultScienceTutorsVoiceChannelName = "Science Tutors";
 const discordTextChannelType = 0;
 const discordVoiceChannelType = 2;
 const discordCategoryChannelType = 4;
@@ -1874,6 +1874,7 @@ export const runDiscordSync = async ({
 
   const scienceTutorsChannel = await ensureFixedChannel({
     name: scienceTutorsChannelName,
+    oldName: "science-tutor",
     channelType: discordTextChannelType,
     parentId: textCategory.id,
     permissionOverwrites: buildRoleExclusiveTextPermissionOverwrites(
@@ -1923,6 +1924,7 @@ export const runDiscordSync = async ({
 
   const scienceTutorsVoiceChannel = await ensureFixedChannel({
     name: scienceTutorsVoiceChannelName,
+    oldName: "Science Tutor",
     channelType: discordVoiceChannelType,
     parentId: voiceCategory.id,
     permissionOverwrites: buildRoleExclusiveVoicePermissionOverwrites(
