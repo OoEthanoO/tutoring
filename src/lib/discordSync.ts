@@ -29,6 +29,7 @@ const viewChannelPermission = 1024;
 const sendMessagesPermission = 2048;
 const readMessageHistoryPermission = 65536;
 const connectPermission = 1048576;
+const manageChannelsPermission = 16;
 const fundraiserVoiceChannelNamePattern = /^\$\d[\d,]*\sraised$/i;
 
 type WebsiteUserRow = {
@@ -276,14 +277,14 @@ const buildCoursePermissionOverwrites = (
     {
       id: courseRoleId,
       type: 0,
-      allow: archived ? readOnlyAllow : activeAllow,
+      allow: (BigInt(archived ? readOnlyAllow : activeAllow) | BigInt(manageChannelsPermission)).toString(),
       deny: archived ? String(sendMessagesPermission) : "0",
     },
     {
       // Keep bot access so future sync runs can still patch the channel.
       id: botUserId,
       type: 1,
-      allow: activeAllow,
+      allow: (BigInt(activeAllow) | BigInt(manageChannelsPermission)).toString(),
       deny: "0",
     },
   ];
@@ -315,7 +316,7 @@ const buildInfoPermissionOverwrites = (
     {
       id: botUserId,
       type: 1,
-      allow: founderAllow,
+      allow: (BigInt(founderAllow) | BigInt(manageChannelsPermission)).toString(),
       deny: "0",
     },
   ];
@@ -354,7 +355,7 @@ const buildTasksPermissionOverwrites = (
     {
       id: botUserId,
       type: 1,
-      allow: founderAllow,
+      allow: (BigInt(founderAllow) | BigInt(manageChannelsPermission)).toString(),
       deny: "0",
     },
   ];
@@ -373,7 +374,7 @@ const buildWebsiteVoicePermissionOverwrites = (
     {
       id: botUserId,
       type: 1,
-      allow: String(viewChannelPermission),
+      allow: String(viewChannelPermission | manageChannelsPermission),
       deny: String(connectPermission),
     },
   ];
@@ -417,7 +418,7 @@ const buildEveryoneChatPermissionOverwrites = (
     {
       id: botUserId,
       type: 1,
-      allow: activeAllow,
+      allow: (BigInt(activeAllow) | BigInt(manageChannelsPermission)).toString(),
       deny: "0",
     },
   ];
@@ -461,7 +462,7 @@ const buildEveryoneVoicePermissionOverwrites = (
     {
       id: botUserId,
       type: 1,
-      allow: activeAllow,
+      allow: (BigInt(activeAllow) | BigInt(manageChannelsPermission)).toString(),
       deny: "0",
     },
   ];
@@ -492,7 +493,7 @@ const buildExecutivesOnlyPermissionOverwrites = (
     {
       id: botUserId,
       type: 1,
-      allow: activeAllow,
+      allow: (BigInt(activeAllow) | BigInt(manageChannelsPermission)).toString(),
       deny: "0",
     },
   ];
@@ -527,7 +528,7 @@ const buildRoleExclusiveTextPermissionOverwrites = (
     {
       id: botUserId,
       type: 1 as const,
-      allow: activeAllow,
+      allow: (BigInt(activeAllow) | BigInt(manageChannelsPermission)).toString(),
       deny: "0",
     },
   ];
@@ -568,7 +569,7 @@ const buildRoleExclusiveVoicePermissionOverwrites = (
     {
       id: botUserId,
       type: 1 as const,
-      allow: activeAllow,
+      allow: (BigInt(activeAllow) | BigInt(manageChannelsPermission)).toString(),
       deny: "0",
     },
   ];
@@ -2023,7 +2024,7 @@ export const runDiscordSync = async ({
       result.updatedChannelCount += 1;
     } catch (error) {
       result.errors.push(
-        `Failed to reorder channel "${label}": ${toErrorMessage(
+        `Failed to reorder channel "${label}" to position ${position}: ${toErrorMessage(
           error,
           "Unknown reorder channel error."
         )}`
@@ -2102,7 +2103,7 @@ export const runDiscordSync = async ({
       result.updatedChannelCount += 1;
     } catch (error) {
       result.errors.push(
-        `Failed to reorder channel "${label}": ${toErrorMessage(
+        `Failed to reorder channel "${label}" to position ${position}: ${toErrorMessage(
           error,
           "Unknown reorder channel error."
         )}`
@@ -2161,7 +2162,7 @@ export const runDiscordSync = async ({
       result.updatedChannelCount += 1;
     } catch (error) {
       result.errors.push(
-        `Failed to reorder channel "${label}": ${toErrorMessage(
+        `Failed to reorder channel "${label}" to position ${position}: ${toErrorMessage(
           error,
           "Unknown reorder channel error."
         )}`
