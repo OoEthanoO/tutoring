@@ -51,15 +51,12 @@ export default function CourseCreator() {
     message: "",
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [draftClassTitle, setDraftClassTitle] = useState("");
   const [draftClassStartsAt, setDraftClassStartsAt] = useState("");
   const [isCompletedCourse, setIsCompletedCourse] = useState(false);
   const [completedStartDate, setCompletedStartDate] = useState("");
   const [completedEndDate, setCompletedEndDate] = useState("");
   const [completedClassCount, setCompletedClassCount] = useState("1");
-  const [draftClasses, setDraftClasses] = useState<
-    { title: string; startsAt: string }[]
-  >([]);
+  const [draftClasses, setDraftClasses] = useState<{ startsAt: string }[]>([]);
 
   useEffect(() => {
     const load = async () => {
@@ -161,10 +158,15 @@ export default function CourseCreator() {
           : undefined,
         classes: isCompletedCourse
           ? []
-          : draftClasses.map((item) => ({
-            title: item.title,
-            startsAt: new Date(item.startsAt).toISOString(),
-          })),
+          : [...draftClasses]
+            .sort(
+              (a, b) =>
+                new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()
+            )
+            .map((item, index) => ({
+              title: `Class ${index + 1}`,
+              startsAt: new Date(item.startsAt).toISOString(),
+            })),
       }),
     });
 
@@ -183,7 +185,6 @@ export default function CourseCreator() {
     await response.json().catch(() => null);
     setTitle("");
     setDescription("");
-    setDraftClassTitle("");
     setDraftClassStartsAt("");
     setDescription("");
     if (userRole !== "founder" || !isCompletedCourse) {
@@ -205,13 +206,7 @@ export default function CourseCreator() {
   const addDraftClass = () => {
     setStatus({ type: "idle", message: "" });
 
-    const titleValue = draftClassTitle.trim();
     const startsAtValue = draftClassStartsAt;
-
-    if (!titleValue) {
-      setStatus({ type: "error", message: "Class title is required." });
-      return;
-    }
 
     if (!startsAtValue) {
       setStatus({ type: "error", message: "Class date/time is required." });
@@ -227,16 +222,14 @@ export default function CourseCreator() {
     }
 
     const nextEntry = {
-      title: titleValue,
       startsAt: startsAtValue,
     };
     const updatedDrafts = [...draftClasses, nextEntry];
 
-    setDraftClasses((current) => [...current, nextEntry]);
+    setDraftClasses(updatedDrafts);
 
     const nextDraftStart = getSuggestedStartValueFromDraft(updatedDrafts);
 
-    setDraftClassTitle("");
     setDraftClassStartsAt(nextDraftStart);
   };
 
@@ -247,9 +240,9 @@ export default function CourseCreator() {
   };
 
   const getSuggestedStartValueFromDraft = (
-    classes: { title: string; startsAt: string }[]
+    classes: { startsAt: string }[]
   ) => {
-    if (classes.length < 2) {
+    if (classes.length === 0) {
       return "";
     }
 
@@ -257,15 +250,10 @@ export default function CourseCreator() {
       (a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()
     );
     const latest = sorted[sorted.length - 1];
-    const previous = sorted[sorted.length - 2];
-    const gap =
-      new Date(latest.startsAt).getTime() -
-      new Date(previous.startsAt).getTime();
-    if (!Number.isFinite(gap) || gap <= 0) {
-      return "";
-    }
 
-    const suggested = new Date(new Date(latest.startsAt).getTime() + gap);
+    const suggested = new Date(latest.startsAt);
+    suggested.setDate(suggested.getDate() + 7);
+
     return snapDateTimeLocalToFiveMinutes(toLocalDateTimeInputValue(suggested));
   };
 
@@ -405,19 +393,7 @@ export default function CourseCreator() {
                 Add classes now or later.
               </p>
             </div>
-            <div className="grid gap-3 sm:grid-cols-[1.4fr_1fr_auto]">
-              <div className="space-y-1">
-                <label className="text-[0.6rem] font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
-                  Class title
-                </label>
-                <input
-                  type="text"
-                  placeholder="Class title"
-                  value={draftClassTitle}
-                  onChange={(event) => setDraftClassTitle(event.target.value)}
-                  className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
-                />
-              </div>
+            <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
               <div className="space-y-1">
                 <label className="text-[0.6rem] font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
                   Date &amp; time
@@ -441,31 +417,56 @@ export default function CourseCreator() {
               <button
                 type="button"
                 onClick={addDraftClass}
-                className="rounded-full border border-[var(--foreground)] px-4 py-3 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)] sm:col-span-4"
+                className="rounded-full border border-[var(--foreground)] px-4 py-3 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)] sm:col-span-2"
               >
                 Add class
               </button>
             </div>
             {draftClasses.length ? (
               <ul className="space-y-2 text-xs text-[var(--muted)]">
-                {draftClasses.map((draftClass, index) => (
-                  <li
-                    key={`${draftClass.title}-${draftClass.startsAt}-${index}`}
-                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--border)] px-3 py-2"
-                  >
-                    <span>
-                      {draftClass.title} ·{" "}
-                      {new Date(draftClass.startsAt).toLocaleString()} · 1 hr
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => removeDraftClass(index)}
-                      className="text-xs font-semibold text-[var(--foreground)] transition hover:text-red-500"
+                {[...draftClasses]
+                  .sort(
+                    (a, b) =>
+                      new Date(a.startsAt).getTime() -
+                      new Date(b.startsAt).getTime()
+                  )
+                  .map((draftClass, index) => (
+                    <li
+                      key={`${draftClass.startsAt}-${index}`}
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--border)] px-3 py-2"
                     >
-                      Remove
-                    </button>
-                  </li>
-                ))}
+                      <span>
+                        Class {index + 1} · {draftClass.startsAt.split("T")[0]}{" "}
+                        ·{" "}
+                        {new Date(draftClass.startsAt).toLocaleTimeString([], {
+                          hour: "numeric",
+                          minute: "2-digit",
+                        })}{" "}
+                        -{" "}
+                        {new Date(
+                          new Date(draftClass.startsAt).getTime() +
+                          60 * 60 * 1000
+                        ).toLocaleTimeString([], {
+                          hour: "numeric",
+                          minute: "2-digit",
+                        })}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const originalIndex = draftClasses.findIndex(
+                            (c) => c.startsAt === draftClass.startsAt
+                          );
+                          if (originalIndex !== -1) {
+                            removeDraftClass(originalIndex);
+                          }
+                        }}
+                        className="text-xs font-semibold text-[var(--foreground)] transition hover:text-red-500"
+                      >
+                        Remove
+                      </button>
+                    </li>
+                  ))}
               </ul>
             ) : null}
           </div>

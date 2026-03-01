@@ -278,7 +278,7 @@ export default function AdminUserManager() {
     const name = target?.fullName || target?.email || "this user";
     const action =
       role === "tutor"
-        ? `Promote ${name} to tutor?`
+        ? `Promote ${name} to executive?`
         : `Demote ${name} to student?`;
     if (!window.confirm(action)) {
       return;
@@ -606,7 +606,7 @@ export default function AdminUserManager() {
           Manage accounts
         </p>
         <h2 className="text-lg font-semibold text-[var(--foreground)]">
-          Manage student and tutor accounts
+          Manage student and executive accounts
         </h2>
       </header>
 
@@ -678,7 +678,7 @@ export default function AdminUserManager() {
         >
           <option value="all">All roles</option>
           <option value="student">Students</option>
-          <option value="tutor">Tutors</option>
+          <option value="tutor">Executives</option>
         </select>
       </div>
 
@@ -753,7 +753,7 @@ export default function AdminUserManager() {
                     onClick={() => updateRole(user.id, "tutor")}
                     className="rounded-full border border-[var(--foreground)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-70"
                   >
-                    {isPending ? "Updating..." : "Make tutor"}
+                    {isPending ? "Updating..." : "Make executive"}
                   </button>
                 ) : (
                   <>
@@ -767,7 +767,7 @@ export default function AdminUserManager() {
                     </button>
                     <div className="space-y-2 rounded-xl border border-[var(--border)]/70 bg-[var(--surface)] px-3 py-3">
                       <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
-                        Tutor settings
+                        Executive settings
                       </p>
                       <div className="flex flex-wrap items-center gap-2">
                         <label className="text-xs text-[var(--muted)]">

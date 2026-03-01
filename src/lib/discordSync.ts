@@ -9,6 +9,7 @@ const defaultArchiveCategoryName = "Archived";
 const defaultTextCategoryName = "Text";
 const defaultVoiceCategoryName = "Voice";
 const defaultInfoChannelName = "info";
+const defaultTasksChannelName = "tasks";
 const defaultWebsiteVoiceChannelName = "learn.ethanyanxu.com";
 const defaultEveryoneChatChannelName = "everyone";
 const defaultExecutivesOnlyChannelName = "executives";
@@ -301,6 +302,45 @@ const buildInfoPermissionOverwrites = (
   return [
     {
       id: guildId,
+      type: 0,
+      allow: readOnlyAllow,
+      deny: String(sendMessagesPermission),
+    },
+    {
+      id: founderRoleId,
+      type: 0,
+      allow: founderAllow,
+      deny: "0",
+    },
+    {
+      id: botUserId,
+      type: 1,
+      allow: founderAllow,
+      deny: "0",
+    },
+  ];
+};
+
+const buildTasksPermissionOverwrites = (
+  guildId: string,
+  executiveRoleId: string,
+  founderRoleId: string,
+  botUserId: string
+): DiscordPermissionOverwrite[] => {
+  const readOnlyAllow = String(viewChannelPermission | readMessageHistoryPermission);
+  const founderAllow = String(
+    viewChannelPermission | sendMessagesPermission | readMessageHistoryPermission
+  );
+
+  return [
+    {
+      id: guildId,
+      type: 0,
+      allow: "0",
+      deny: String(viewChannelPermission),
+    },
+    {
+      id: executiveRoleId,
       type: 0,
       allow: readOnlyAllow,
       deny: String(sendMessagesPermission),
@@ -906,6 +946,9 @@ export const runDiscordSync = async ({
   const infoChannelName =
     String(process.env.DISCORD_INFO_CHANNEL_NAME ?? "").trim() ||
     defaultInfoChannelName;
+  const tasksChannelName =
+    String(process.env.DISCORD_TASKS_CHANNEL_NAME ?? "").trim() ||
+    defaultTasksChannelName;
   const websiteVoiceChannelName =
     String(process.env.DISCORD_URL_VOICE_CHANNEL_NAME ?? "").trim() ||
     defaultWebsiteVoiceChannelName;
@@ -1732,6 +1775,18 @@ export const runDiscordSync = async ({
     ),
   });
 
+  const tasksChannel = await ensureFixedChannel({
+    name: tasksChannelName,
+    channelType: discordTextChannelType,
+    parentId: null,
+    permissionOverwrites: buildTasksPermissionOverwrites(
+      discordGuildId,
+      executiveRole.id,
+      founderRole.id,
+      botUser.id
+    ),
+  });
+
   const websiteVoiceChannel = await ensureFixedChannel({
     name: websiteVoiceChannelName,
     channelType: discordVoiceChannelType,
@@ -2123,6 +2178,14 @@ export const runDiscordSync = async ({
     );
     nextTopLevelPosition += 1;
   }
+  if (tasksChannel) {
+    await enforceTopLevelPosition(
+      tasksChannel.id,
+      tasksChannelName,
+      nextTopLevelPosition
+    );
+    nextTopLevelPosition += 1;
+  }
   if (websiteVoiceChannel) {
     await enforceTopLevelPosition(
       websiteVoiceChannel.id,
@@ -2166,6 +2229,9 @@ export const runDiscordSync = async ({
   const allowedTextChannelIds = new Set<string>(usedChannelIds);
   if (infoChannel) {
     allowedTextChannelIds.add(infoChannel.id);
+  }
+  if (tasksChannel) {
+    allowedTextChannelIds.add(tasksChannel.id);
   }
   if (everyoneChatChannel) {
     allowedTextChannelIds.add(everyoneChatChannel.id);

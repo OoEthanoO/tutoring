@@ -288,8 +288,8 @@ export async function PATCH(request: NextRequest) {
     const formUrl = "https://docs.google.com/forms/d/e/1FAIpQLSeuaZhER3fUbkl1ijHy0k-COLAcpOy8QvYM5sgtcWGEqtHmNw/viewform";
     await sendEmail(
       updated.email,
-      "You've been promoted to Tutor!",
-      `<p>Congratulations! You have been promoted to a tutor.</p><p>Please fill out the tutor application form here: <a href="${formUrl}">${formUrl}</a></p>`
+      "You've been promoted to Executive!",
+      `<p>Congratulations! You have been promoted to an executive.</p><p>If you are applying as a tutor role, please fill out the tutor application form here: <a href="${formUrl}">${formUrl}</a></p>`
     );
   }
 

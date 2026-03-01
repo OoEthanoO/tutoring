@@ -107,7 +107,7 @@ export default function HomeMenu({ isSignedIn }: HomeMenuProps) {
           </h3>
           <ul className="space-y-1 text-sm text-[var(--muted)]">
             {tutors.map((name, index) => {
-              const displayName = name.replace(/\bExecutive\b/gi, "Exec");
+              const displayName = name.replace(/\bExecutive\b/gi, "EXEC");
               return <li key={`${name}-${index}`}>{displayName}</li>;
             })}
           </ul>
