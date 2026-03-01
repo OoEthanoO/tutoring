@@ -57,11 +57,7 @@ export default async function Home() {
           </div>
         ) : null}
         <div className="flex flex-wrap items-center justify-between gap-4">
-          <h1 className="text-xl font-semibold flex items-center">
-            <img src="/logo.svg" alt="Y" className="h-[1.1em] w-auto -mt-[0.1em] dark:hidden" />
-            <img src="/logo-white.svg" alt="Y" className="hidden h-[1.1em] w-auto -mt-[0.1em] dark:block" />
-            <span style={{ marginLeft: "-0.2em" }}>anLearn</span>
-          </h1>
+          <h1 className="text-xl font-semibold">YanLearn</h1>
           <div className="flex flex-wrap items-center gap-4">
             <AuthStatusActions />
           </div>
