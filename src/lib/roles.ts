@@ -22,8 +22,13 @@ const normalizeRole = (role?: string | null): UserRole | null => {
 
   const value = role.toLowerCase();
 
-  if (value === "founder" || value === "executive" || value === "student") {
-    return value as UserRole;
+  if (
+    value === "founder" ||
+    value === "executive" ||
+    value === "student" ||
+    value === "tutor"
+  ) {
+    return (value === "tutor" ? "executive" : value) as UserRole;
   }
 
   return null;

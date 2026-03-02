@@ -19,6 +19,7 @@ type AdminUser = {
   discordUserId?: string | null;
   discordUsername?: string | null;
   discordConnectedAt?: string | null;
+  isJunior: boolean;
 };
 
 type StatusState = {
@@ -444,6 +445,39 @@ export default function AdminUserManager() {
     setPendingId(null);
   };
 
+  const toggleJuniorStatus = async (userId: string, isJunior: boolean) => {
+    setPendingId(userId);
+    setStatus({ type: "idle", message: "" });
+
+    const response = await fetch("/api/admin/users", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, isJunior }),
+    });
+
+    if (!response.ok) {
+      const payload = (await response.json().catch(() => null)) as
+        | { error?: string }
+        | null;
+      setStatus({
+        type: "error",
+        message: payload?.error ?? "Could not update junior status.",
+      });
+      setPendingId(null);
+      return;
+    }
+
+    const data = (await response.json()) as { user: AdminUser };
+    setUsers((current) =>
+      current.map((user) => (user.id === data.user.id ? data.user : user))
+    );
+    setStatus({
+      type: "success",
+      message: `Updated junior status for ${data.user.fullName || data.user.email || "user"}.`,
+    });
+    setPendingId(null);
+  };
+
   const deleteAccount = async (user: AdminUser) => {
     const name = user.fullName || user.email || "this user";
     const firstConfirm = window.confirm(
@@ -769,6 +803,22 @@ export default function AdminUserManager() {
                       <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
                         Executive settings
                       </p>
+                      <div className="flex items-center gap-2">
+                        <input
+                          id={`junior-toggle-${user.id}`}
+                          type="checkbox"
+                          checked={!!user.isJunior}
+                          disabled={isPending}
+                          onChange={(event) => toggleJuniorStatus(user.id, event.target.checked)}
+                          className="h-4 w-4 rounded border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)] transition focus:ring-0"
+                        />
+                        <label
+                          htmlFor={`junior-toggle-${user.id}`}
+                          className="text-xs font-medium text-[var(--foreground)]"
+                        >
+                          Junior Executive (Hidden from "Our Team" list)
+                        </label>
+                      </div>
                       <div className="flex flex-wrap items-center gap-2">
                         <label className="text-xs text-[var(--muted)]">
                           Donation link
@@ -884,6 +934,6 @@ export default function AdminUserManager() {
           </div>
         ) : null}
       </div>
-    </section>
+    </section >
   );
 }

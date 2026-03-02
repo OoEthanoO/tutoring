@@ -7,6 +7,7 @@ export type ClientUser = {
   discord_user_id: string | null;
   discord_username: string | null;
   discord_connected_at: string | null;
+  is_junior: boolean;
 };
 
 export type AuthContext = {

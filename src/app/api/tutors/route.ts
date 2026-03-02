@@ -27,7 +27,7 @@ export async function GET() {
 
   const { data, error } = await adminClient
     .from("app_users")
-    .select("id, email, full_name, role, created_at, tutor_promoted_at");
+    .select("id, email, full_name, role, created_at, tutor_promoted_at, is_junior");
 
   if (error || !data) {
     return NextResponse.json(
@@ -45,9 +45,10 @@ export async function GET() {
         role,
         email: user.email ?? "",
         promotedAt: user.tutor_promoted_at ?? user.created_at,
+        isJunior: user.is_junior,
       };
     })
-    .filter((user) => user.role === "founder" || user.role === "executive")
+    .filter((user) => (user.role === "founder" || user.role === "executive") && !user.isJunior)
     .sort((a, b) => {
       if (a.role === "founder" && b.role !== "founder") {
         return -1;
