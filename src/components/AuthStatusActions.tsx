@@ -38,9 +38,23 @@ export default function AuthStatusActions() {
   const menuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
+    let isMounted = true;
+    let previousSignedIn: boolean | null = null;
+
     const load = async () => {
       const auth = await getAuthContext();
-      setIsSignedIn(Boolean(auth.user));
+      if (!isMounted) return;
+
+      const currentSignedIn = Boolean(auth.user);
+
+      // If transition from signed in to signed out, force reload/redirect
+      if (previousSignedIn === true && currentSignedIn === false) {
+        window.location.assign("/");
+        return;
+      }
+
+      previousSignedIn = currentSignedIn;
+      setIsSignedIn(currentSignedIn);
       setIsImpersonating(auth.isImpersonating);
       setIsDiscordLinked(Boolean(auth.user?.discord_user_id));
 
@@ -53,7 +67,22 @@ export default function AuthStatusActions() {
 
     load();
 
-    return onAuthChange(load);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        load();
+      }
+    };
+
+    const intervalId = window.setInterval(load, 2 * 60 * 1000); // 2 minute heartbeat
+    window.addEventListener("visibilitychange", handleVisibilityChange);
+    const removeAuthListener = onAuthChange(load);
+
+    return () => {
+      isMounted = false;
+      window.clearInterval(intervalId);
+      window.removeEventListener("visibilitychange", handleVisibilityChange);
+      removeAuthListener();
+    };
   }, []);
 
   useEffect(() => {
@@ -245,11 +274,10 @@ export default function AuthStatusActions() {
               <button
                 type="button"
                 onClick={onConnectDiscord}
-                className={`w-full rounded-lg px-3 py-2 text-left text-sm transition ${
-                  isJoinGuidanceActive
-                    ? "text-red-600 animate-pulse"
-                    : "text-[var(--foreground)] hover:bg-[var(--border)]"
-                }`}
+                className={`w-full rounded-lg px-3 py-2 text-left text-sm transition ${isJoinGuidanceActive
+                  ? "text-red-600 animate-pulse"
+                  : "text-[var(--foreground)] hover:bg-[var(--border)]"
+                  }`}
               >
                 Connect Discord
               </button>
@@ -277,11 +305,10 @@ export default function AuthStatusActions() {
                 type="button"
                 onClick={onJoinDiscordServer}
                 disabled={!isDiscordLinked}
-                className={`w-full rounded-lg px-3 py-2 text-left text-sm transition ${
-                  isDiscordLinked
-                    ? "text-[var(--foreground)] hover:bg-[var(--border)]"
-                    : "cursor-not-allowed text-[var(--muted)] opacity-50"
-                }`}
+                className={`w-full rounded-lg px-3 py-2 text-left text-sm transition ${isDiscordLinked
+                  ? "text-[var(--foreground)] hover:bg-[var(--border)]"
+                  : "cursor-not-allowed text-[var(--muted)] opacity-50"
+                  }`}
               >
                 Join Discord Server
               </button>
@@ -298,9 +325,8 @@ export default function AuthStatusActions() {
         ) : null}
         {discordStatus.type !== "idle" ? (
           <p
-            className={`mt-2 text-right text-xs ${
-              discordStatus.type === "error" ? "text-red-500" : "text-emerald-500"
-            }`}
+            className={`mt-2 text-right text-xs ${discordStatus.type === "error" ? "text-red-500" : "text-emerald-500"
+              }`}
           >
             {discordStatus.message}
           </p>
@@ -333,11 +359,10 @@ export default function AuthStatusActions() {
                   type="button"
                   onClick={onDisconnectDiscord}
                   disabled={isDisconnectingDiscord}
-                  className={`rounded-full border px-4 py-2 text-xs font-semibold transition ${
-                    isDisconnectingDiscord
-                      ? "cursor-not-allowed border-[var(--border)] text-[var(--muted)] opacity-70"
-                      : "border-red-500 text-red-600 hover:bg-red-50"
-                  }`}
+                  className={`rounded-full border px-4 py-2 text-xs font-semibold transition ${isDisconnectingDiscord
+                    ? "cursor-not-allowed border-[var(--border)] text-[var(--muted)] opacity-70"
+                    : "border-red-500 text-red-600 hover:bg-red-50"
+                    }`}
                 >
                   {isDisconnectingDiscord ? "Disconnecting..." : "Disconnect"}
                 </button>
@@ -385,11 +410,10 @@ export default function AuthStatusActions() {
                   type="button"
                   onClick={saveName}
                   disabled={isSavingName}
-                  className={`rounded-full border border-[var(--foreground)] px-4 py-2 text-xs font-semibold transition ${
-                    isSavingName
-                      ? "opacity-70 text-[var(--muted)] border-[var(--border)] cursor-not-allowed"
-                      : "text-[var(--foreground)] hover:bg-[var(--border)]"
-                  }`}
+                  className={`rounded-full border border-[var(--foreground)] px-4 py-2 text-xs font-semibold transition ${isSavingName
+                    ? "opacity-70 text-[var(--muted)] border-[var(--border)] cursor-not-allowed"
+                    : "text-[var(--foreground)] hover:bg-[var(--border)]"
+                    }`}
                 >
                   {isSavingName ? "Saving..." : "Save"}
                 </button>

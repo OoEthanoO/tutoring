@@ -442,9 +442,9 @@ export default function CoursesMenu() {
                     <span className="rounded-full border border-emerald-300 px-3 py-1 text-xs font-semibold text-emerald-700">
                       Enrolled
                     </span>
-                  ) : course.enrollment_status === "pending" ? (
-                    <span className="rounded-full border border-amber-300 px-3 py-1 text-xs font-semibold text-amber-700">
-                      Pending approval
+                  ) : course.enrollment_status === "rejected" ? (
+                    <span className="rounded-full border border-red-300 px-3 py-1 text-xs font-semibold text-red-700">
+                      Rejected
                     </span>
                   ) : hasGrayClass(course) ? (
                     <button
@@ -503,6 +503,10 @@ export default function CoursesMenu() {
                     <span className="rounded-full border border-amber-300 px-3 py-1 text-xs font-semibold text-amber-700">
                       Pending approval
                     </span>
+                  ) : course.enrollment_status === "rejected" ? (
+                    <span className="rounded-full border border-red-300 px-3 py-1 text-xs font-semibold text-red-700">
+                      Rejected
+                    </span>
                   ) : null}
                 </div>
               </div>
@@ -551,6 +555,10 @@ export default function CoursesMenu() {
                     ) : course.enrollment_status === "pending" ? (
                       <span className="rounded-full border border-amber-300 px-3 py-1 text-xs font-semibold text-amber-700">
                         Pending approval
+                      </span>
+                    ) : course.enrollment_status === "rejected" ? (
+                      <span className="rounded-full border border-red-300 px-3 py-1 text-xs font-semibold text-red-700">
+                        Rejected
                       </span>
                     ) : null}
                   </div>

@@ -111,6 +111,12 @@ export async function POST(
     .maybeSingle();
 
   if (existingRequest) {
+    if (existingRequest.status === "rejected") {
+      return NextResponse.json(
+        { error: "Enrollment request has been rejected." },
+        { status: 400 }
+      );
+    }
     if (existingRequest.status === "approved") {
       // Stale approved request can exist if a founder manually removed enrollment.
       await adminClient
@@ -118,16 +124,10 @@ export async function POST(
         .delete()
         .eq("id", existingRequest.id);
     } else {
-      if (existingRequest.status !== "rejected") {
-        return NextResponse.json(
-          { error: `Enrollment request already ${existingRequest.status}.` },
-          { status: 400 }
-        );
-      }
-      await adminClient
-        .from("course_enrollment_requests")
-        .delete()
-        .eq("id", existingRequest.id);
+      return NextResponse.json(
+        { error: `Enrollment request already ${existingRequest.status}.` },
+        { status: 400 }
+      );
     }
   }
 
