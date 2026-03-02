@@ -592,6 +592,13 @@ export default function CoursesMenu() {
                 </p>
               </div>
 
+              <div className="flex items-start gap-2 rounded-lg border border-amber-400 bg-amber-50 px-3 py-2">
+                <span className="mt-0.5 flex-shrink-0 text-amber-600 text-base leading-none" aria-hidden="true">⚠️</span>
+                <p className="text-xs font-semibold text-amber-800">
+                  Before registering, please carefully check the course instructor and course time you select. Each course has a different donation link, and if you select the wrong one, your donation cannot be refunded.
+                </p>
+              </div>
+
               {selectedCourse.description ? (
                 <p className="text-sm text-[var(--muted)]">
                   {selectedCourse.description}

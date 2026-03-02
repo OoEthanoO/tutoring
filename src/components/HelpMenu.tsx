@@ -48,7 +48,7 @@ export default function HelpMenu() {
                         Step 2
                     </p>
                     <p className="text-sm text-[var(--foreground)]">
-                        After entering the website, click <span className="font-semibold">&quot;All courses,&quot;</span> find the course you wish to enroll in, check the instructor and class time, and then click <span className="font-semibold">&quot;Enroll.&quot;</span> You will see two red links: one for the donation and the other for registration form. Please make a donation of $50 and fill out the registration form.
+                        After entering the website, click <span className="font-semibold">&quot;All courses,&quot;</span> find the course you wish to enroll in, check the instructor and class time, and then click <span className="font-semibold">&quot;Enroll.&quot;</span> You will see two red links: one for the donation and the other for registration form. Please make a donation of $50 and fill out the registration form. After completing this, return to the enroll page. The two red links will have turned green, and "Confirm enrollment (locked)" will have changed to "Confirm enrollment." Please click it.
                     </p>
 
                     <div className="grid gap-3 sm:grid-cols-2">

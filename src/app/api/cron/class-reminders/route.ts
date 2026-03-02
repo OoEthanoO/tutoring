@@ -12,6 +12,7 @@ const discordGuildId = process.env.DISCORD_GUILD_ID ?? "";
 const discordApiBase = "https://discord.com/api/v10";
 const courseTopicPrefix = "yanlearn-course-id:";
 const discordTextChannelType = 0;
+const defaultExecutivesChannelName = "executives";
 const torontoTimeZone = "America/Toronto";
 const defaultZoomId = "822 9677 5321";
 const defaultZoomPassword = "youth";
@@ -264,6 +265,24 @@ const sendDiscordCourseReminderMessage = async (
     },
   });
 
+const sendDiscordUserMentionMessage = async (
+  channelId: string,
+  userId: string,
+  content: string
+) =>
+  requestDiscord<void>({
+    method: "POST",
+    path: `/channels/${channelId}/messages`,
+    body: {
+      content,
+      allowed_mentions: {
+        parse: [],
+        roles: [],
+        users: [userId],
+      },
+    },
+  });
+
 const sendEmail = async (to: string, subject: string, html: string) => {
   const maxAttempts = 4;
 
@@ -373,6 +392,11 @@ export async function POST(request: NextRequest) {
   let discordReminderSkippedReason: string | null = null;
   let discordCourseTargetByCourseId = new Map<string, DiscordCourseReminderTarget>();
 
+  const executivesChannelName =
+    String(process.env.DISCORD_EXECUTIVES_ONLY_CHANNEL_NAME ?? "").trim() ||
+    defaultExecutivesChannelName;
+  let executivesChannelId: string | null = null;
+
   if (!discordRemindersEnabled) {
     discordReminderSkippedReason =
       "Missing DISCORD_BOT_TOKEN or DISCORD_GUILD_ID.";
@@ -383,6 +407,10 @@ export async function POST(request: NextRequest) {
         guildChannels,
         discordGuildId
       );
+      const execChannel = guildChannels.find(
+        (ch) => ch.type === discordTextChannelType && ch.name === executivesChannelName
+      );
+      executivesChannelId = execChannel?.id ?? null;
     } catch (error) {
       discordReminderSkippedReason =
         error instanceof Error
@@ -581,6 +609,33 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // Look up tutor Discord IDs for follow-up messages.
+  const allTutorIds = Array.from(
+    new Set(
+      candidates
+        .filter((item) => item.reminderType === "class_follow_up")
+        .map((item) => readCourse(item.classRow.course))
+        .filter(Boolean)
+        .filter((course) => course?.created_by)
+        .map((course) => course!.created_by as string)
+    )
+  );
+  const tutorDiscordIdById = new Map<string, string>();
+  if (allTutorIds.length > 0) {
+    const { data: tutorDiscordRows } = await adminClient
+      .from("app_users")
+      .select("id, discord_user_id")
+      .in("id", allTutorIds);
+    for (const tutor of tutorDiscordRows ?? []) {
+      const discordId = String(tutor.discord_user_id ?? "").trim();
+      if (discordId) {
+        tutorDiscordIdById.set(tutor.id as string, discordId);
+      }
+    }
+  }
+
+  let sentDiscordFollowUpCount = 0;
+
   let sentClassCount = 0;
   let sentEmailCount = 0;
   let sentDiscordReminderCount = 0;
@@ -681,6 +736,21 @@ export async function POST(request: NextRequest) {
         </ul>
         <p>Thank you!</p>
       `;
+      const tutorDiscordId = course.created_by
+        ? tutorDiscordIdById.get(course.created_by) ?? ""
+        : "";
+      if (tutorDiscordId) {
+        discordContent = [
+          `<@${tutorDiscordId}> Your class **${escapeDiscordText(classTitleRaw)}** for **${escapeDiscordText(courseTitleRaw)}** recently ended.`,
+          `Please remember to complete the tutor log form:`,
+          formUrl,
+          `**Course:** ${escapeDiscordText(courseTitleRaw)}`,
+          `**Class:** ${escapeDiscordText(classTitleRaw)}`,
+          `**Start time (${torontoTimeZone}):** ${escapeDiscordText(
+            formatTorontoDateTime(classRow.starts_at)
+          )}`,
+        ].join("\n");
+      }
     } else {
       subject = `Class reminder: starts in ${reminderLabel} (${course.title})`;
       html = `
@@ -779,12 +849,44 @@ export async function POST(request: NextRequest) {
         }
       }
     }
+
+    // Send follow-up to the executives channel with a tutor user mention.
+    if (
+      reminderType === "class_follow_up" &&
+      discordReminderDeliveryEnabled &&
+      executivesChannelId &&
+      discordContent
+    ) {
+      const tutorDiscordId = course.created_by
+        ? tutorDiscordIdById.get(course.created_by) ?? ""
+        : "";
+      if (tutorDiscordId) {
+        try {
+          await sendDiscordUserMentionMessage(
+            executivesChannelId,
+            tutorDiscordId,
+            discordContent
+          );
+          sentDiscordFollowUpCount += 1;
+          await sleep(150);
+        } catch (error) {
+          failedClasses.push({
+            classId: classRow.id,
+            reason: `Failed Discord follow-up send: ${error instanceof Error
+              ? error.message
+              : "Unknown Discord follow-up send failure."
+              }`,
+          });
+        }
+      }
+    }
   }
 
   return NextResponse.json({
     sentClassCount,
     sentEmailCount,
     sentDiscordReminderCount,
+    sentDiscordFollowUpCount,
     failedClasses,
     timezone: torontoTimeZone,
     reminderSkippedReason,
