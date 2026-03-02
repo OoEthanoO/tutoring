@@ -15,10 +15,12 @@ const defaultEveryoneChatChannelName = "everyone";
 const defaultExecutivesOnlyChannelName = "executives";
 const defaultSocialMediaChannelName = "social-media";
 const defaultScienceTutorsChannelName = "science-tutors";
+const defaultMathTutorsChannelName = "math-tutors";
 const defaultEveryoneVoiceChannelName = "Everyone";
 const defaultExecutivesVoiceChannelName = "Executives";
 const defaultSocialMediaVoiceChannelName = "Social Media";
 const defaultScienceTutorsVoiceChannelName = "Science Tutors";
+const defaultMathTutorsVoiceChannelName = "Math Tutors";
 const discordTextChannelType = 0;
 const discordVoiceChannelType = 2;
 const discordCategoryChannelType = 4;
@@ -37,6 +39,7 @@ type WebsiteUserRow = {
   email: string | null;
   role: string | null;
   discord_user_id: string | null;
+  is_junior: boolean | null;
 };
 
 type CourseRow = {
@@ -962,10 +965,12 @@ export const runDiscordSync = async ({
     defaultExecutivesOnlyChannelName;
   const socialMediaChannelName = String(process.env.DISCORD_SOCIAL_MEDIA_CHANNEL_NAME ?? "").trim() || defaultSocialMediaChannelName;
   const scienceTutorsChannelName = String(process.env.DISCORD_SCIENCE_TUTORS_CHANNEL_NAME ?? "").trim() || defaultScienceTutorsChannelName;
+  const mathTutorsChannelName = String(process.env.DISCORD_MATH_TUTORS_CHANNEL_NAME ?? "").trim() || defaultMathTutorsChannelName;
   const everyoneVoiceChannelName = String(process.env.DISCORD_EVERYONE_VOICE_CHANNEL_NAME ?? "").trim() || defaultEveryoneVoiceChannelName;
   const executivesVoiceChannelName = String(process.env.DISCORD_EXECUTIVES_VOICE_CHANNEL_NAME ?? "").trim() || defaultExecutivesVoiceChannelName;
   const socialMediaVoiceChannelName = String(process.env.DISCORD_SOCIAL_MEDIA_VOICE_CHANNEL_NAME ?? "").trim() || defaultSocialMediaVoiceChannelName;
   const scienceTutorsVoiceChannelName = String(process.env.DISCORD_SCIENCE_TUTORS_VOICE_CHANNEL_NAME ?? "").trim() || defaultScienceTutorsVoiceChannelName;
+  const mathTutorsVoiceChannelName = String(process.env.DISCORD_MATH_TUTORS_VOICE_CHANNEL_NAME ?? "").trim() || defaultMathTutorsVoiceChannelName;
 
   const protectedRoleNames = new Set(
     String(process.env.DISCORD_PROTECTED_ROLE_NAMES ?? "")
@@ -988,7 +993,7 @@ export const runDiscordSync = async ({
     await Promise.all([
       adminClient
         .from("app_users")
-        .select("id, email, role, discord_user_id"),
+        .select("id, email, role, discord_user_id, is_junior"),
       adminClient
         .from("courses")
         .select("id, title, is_completed, created_by, course_classes(starts_at, duration_hours)"),
@@ -1080,10 +1085,20 @@ export const runDiscordSync = async ({
 
   const studentRole = await ensureRole("Student", false);
   const executiveRole = await ensureRole("Executive", false);
+  const juniorExecutiveRole = await ensureRole("Junior Executive", false);
   const socialMediaRole = await ensureRole("Social Media", false);
   const scienceTutorsRole = await ensureRole("Science Tutor", false);
+  const mathTutorsRole = await ensureRole("Math Tutors", false);
   const founderRole = await ensureRole("Founder", false);
-  const baseRoleIds = new Set([studentRole.id, executiveRole.id, founderRole.id, socialMediaRole.id, scienceTutorsRole.id]);
+  const baseRoleIds = new Set([
+    studentRole.id,
+    executiveRole.id,
+    juniorExecutiveRole.id,
+    founderRole.id,
+    socialMediaRole.id,
+    scienceTutorsRole.id,
+    mathTutorsRole.id,
+  ]);
   const founderDiscordUserId =
     websiteUsers.find(
       (user) =>
@@ -1202,6 +1217,16 @@ export const runDiscordSync = async ({
           true
         );
       }
+
+      if (roleSet.has(juniorExecutiveRole.id)) {
+        await addRoleToMember(
+          memberId,
+          juniorExecutiveRole.id,
+          roleSet,
+          "baseRoleRemovedCount",
+          true
+        );
+      }
       continue;
     }
 
@@ -1212,6 +1237,25 @@ export const runDiscordSync = async ({
           executiveRole.id,
           roleSet,
           "baseRoleAddedCount"
+        );
+      }
+
+      if (websiteUser.is_junior) {
+        if (!roleSet.has(juniorExecutiveRole.id)) {
+          await addRoleToMember(
+            memberId,
+            juniorExecutiveRole.id,
+            roleSet,
+            "baseRoleAddedCount"
+          );
+        }
+      } else if (roleSet.has(juniorExecutiveRole.id)) {
+        await addRoleToMember(
+          memberId,
+          juniorExecutiveRole.id,
+          roleSet,
+          "baseRoleRemovedCount",
+          true
         );
       }
 
@@ -1234,6 +1278,16 @@ export const runDiscordSync = async ({
         );
       }
       continue;
+    }
+
+    if (roleSet.has(juniorExecutiveRole.id)) {
+      await addRoleToMember(
+        memberId,
+        juniorExecutiveRole.id,
+        roleSet,
+        "baseRoleRemovedCount",
+        true
+      );
     }
 
     if (!roleSet.has(studentRole.id)) {
@@ -1912,7 +1966,7 @@ export const runDiscordSync = async ({
       discordGuildId,
       executiveRole.id,
       botUser.id,
-      [founderRole.id]
+      [founderRole.id, juniorExecutiveRole.id]
     ),
   });
 
@@ -1941,6 +1995,18 @@ export const runDiscordSync = async ({
     ),
   });
 
+  const mathTutorsChannel = await ensureFixedChannel({
+    name: mathTutorsChannelName,
+    channelType: discordTextChannelType,
+    parentId: textCategory.id,
+    permissionOverwrites: buildRoleExclusiveTextPermissionOverwrites(
+      discordGuildId,
+      mathTutorsRole.id,
+      botUser.id,
+      [founderRole.id]
+    ),
+  });
+
   const everyoneVoiceChannel = await ensureFixedChannel({
     name: everyoneVoiceChannelName,
     channelType: discordVoiceChannelType,
@@ -1962,7 +2028,7 @@ export const runDiscordSync = async ({
       discordGuildId,
       executiveRole.id,
       botUser.id,
-      [founderRole.id]
+      [founderRole.id, juniorExecutiveRole.id]
     ),
   });
 
@@ -1986,6 +2052,18 @@ export const runDiscordSync = async ({
     permissionOverwrites: buildRoleExclusiveVoicePermissionOverwrites(
       discordGuildId,
       scienceTutorsRole.id,
+      botUser.id,
+      [founderRole.id]
+    ),
+  });
+
+  const mathTutorsVoiceChannel = await ensureFixedChannel({
+    name: mathTutorsVoiceChannelName,
+    channelType: discordVoiceChannelType,
+    parentId: voiceCategory.id,
+    permissionOverwrites: buildRoleExclusiveVoicePermissionOverwrites(
+      discordGuildId,
+      mathTutorsRole.id,
       botUser.id,
       [founderRole.id]
     ),
@@ -2065,6 +2143,14 @@ export const runDiscordSync = async ({
     );
     nextTextPosition += 1;
   }
+  if (mathTutorsChannel) {
+    await enforceTextPosition(
+      mathTutorsChannel.id,
+      mathTutorsChannelName,
+      nextTextPosition
+    );
+    nextTextPosition += 1;
+  }
 
 
 
@@ -2126,6 +2212,10 @@ export const runDiscordSync = async ({
   }
   if (scienceTutorsVoiceChannel) {
     await enforceVoicePosition(scienceTutorsVoiceChannel.id, scienceTutorsVoiceChannelName, nextVoicePosition);
+    nextVoicePosition += 1;
+  }
+  if (mathTutorsVoiceChannel) {
+    await enforceVoicePosition(mathTutorsVoiceChannel.id, mathTutorsVoiceChannelName, nextVoicePosition);
     nextVoicePosition += 1;
   }
 
@@ -2244,6 +2334,7 @@ export const runDiscordSync = async ({
   if (executivesOnlyChannel) allowedTextChannelIds.add(executivesOnlyChannel.id);
   if (socialMediaChannel) allowedTextChannelIds.add(socialMediaChannel.id);
   if (scienceTutorsChannel) allowedTextChannelIds.add(scienceTutorsChannel.id);
+  if (mathTutorsChannel) allowedTextChannelIds.add(mathTutorsChannel.id);
 
   const allowedVoiceChannelIds = new Set<string>();
   if (websiteVoiceChannel) {
@@ -2256,6 +2347,7 @@ export const runDiscordSync = async ({
   if (executivesVoiceChannel) allowedVoiceChannelIds.add(executivesVoiceChannel.id);
   if (socialMediaVoiceChannel) allowedVoiceChannelIds.add(socialMediaVoiceChannel.id);
   if (scienceTutorsVoiceChannel) allowedVoiceChannelIds.add(scienceTutorsVoiceChannel.id);
+  if (mathTutorsVoiceChannel) allowedVoiceChannelIds.add(mathTutorsVoiceChannel.id);
 
   const allowedCategoryIds = new Set<string>([
     textCategory.id,
