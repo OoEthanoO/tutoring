@@ -331,6 +331,7 @@ const buildInfoPermissionOverwrites = (
 const buildTasksPermissionOverwrites = (
   guildId: string,
   executiveRoleId: string,
+  juniorExecutiveRoleId: string,
   founderRoleId: string,
   botUserId: string
 ): DiscordPermissionOverwrite[] => {
@@ -348,6 +349,12 @@ const buildTasksPermissionOverwrites = (
     },
     {
       id: executiveRoleId,
+      type: 0,
+      allow: readOnlyAllow,
+      deny: String(sendMessagesPermission),
+    },
+    {
+      id: juniorExecutiveRoleId,
       type: 0,
       allow: readOnlyAllow,
       deny: String(sendMessagesPermission),
@@ -1891,6 +1898,7 @@ export const runDiscordSync = async ({
     permissionOverwrites: buildTasksPermissionOverwrites(
       discordGuildId,
       executiveRole.id,
+      juniorExecutiveRole.id,
       founderRole.id,
       botUser.id
     ),
