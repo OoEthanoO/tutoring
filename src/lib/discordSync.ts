@@ -37,6 +37,7 @@ const fundraiserVoiceChannelNamePattern = /^\$\d[\d,]*\sraised$/i;
 type WebsiteUserRow = {
   id: string;
   email: string | null;
+  full_name: string | null;
   role: string | null;
   discord_user_id: string | null;
   is_junior: boolean | null;
@@ -68,6 +69,7 @@ type DiscordUser = {
 
 type DiscordGuildMember = {
   user?: DiscordUser;
+  nick?: string | null;
   roles?: string[];
 };
 
@@ -126,6 +128,7 @@ export type DiscordSyncResult = {
   archivedChannelCount: number;
   deletedChannelCount: number;
   deletedCourseRoleCount: number;
+  nicknameUpdatedCount: number;
   errors: string[];
 };
 
@@ -762,6 +765,18 @@ class DiscordApiClient {
     });
   }
 
+  modifyGuildMember(
+    guildId: string,
+    memberId: string,
+    payload: { nick?: string }
+  ) {
+    return this.request<void>({
+      method: "PATCH",
+      path: `/guilds/${guildId}/members/${memberId}`,
+      body: payload,
+    });
+  }
+
   listGuildChannels(guildId: string) {
     return this.request<DiscordGuildChannel[]>({
       method: "GET",
@@ -927,6 +942,7 @@ const buildZeroResult = (
   archivedChannelCount: 0,
   deletedChannelCount: 0,
   deletedCourseRoleCount: 0,
+  nicknameUpdatedCount: 0,
   errors: [],
 });
 
@@ -993,7 +1009,7 @@ export const runDiscordSync = async ({
     await Promise.all([
       adminClient
         .from("app_users")
-        .select("id, email, role, discord_user_id, is_junior"),
+        .select("id, email, full_name, role, discord_user_id, is_junior"),
       adminClient
         .from("courses")
         .select("id, title, is_completed, created_by, course_classes(starts_at, duration_hours)"),
@@ -1331,6 +1347,30 @@ export const runDiscordSync = async ({
         "baseRoleRemovedCount",
         true
       );
+    }
+
+    // Nickname sync for students
+    const websiteName = String(websiteUser.full_name ?? "").trim();
+    if (websiteName) {
+      const currentMember = humanMembers.find(
+        (m) => (m.user?.id ?? "") === memberId
+      );
+      const currentNick = String(currentMember?.nick ?? "").trim();
+      if (currentNick !== websiteName) {
+        try {
+          await apiClient.modifyGuildMember(discordGuildId, memberId, {
+            nick: websiteName,
+          });
+          result.nicknameUpdatedCount += 1;
+        } catch (error) {
+          result.errors.push(
+            `Failed to set nickname for member ${memberId}: ${toErrorMessage(
+              error,
+              "Unknown nickname error."
+            )}`
+          );
+        }
+      }
     }
   }
 
