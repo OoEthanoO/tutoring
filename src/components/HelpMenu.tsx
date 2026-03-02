@@ -51,24 +51,21 @@ export default function HelpMenu() {
                         After entering the website, click <span className="font-semibold">&quot;All courses,&quot;</span> find the course you wish to enroll in, check the instructor and class time, and then click <span className="font-semibold">&quot;Enroll.&quot;</span> You will see two red links: one for the donation and the other for registration form. Please make a donation of $50 and fill out the registration form.
                     </p>
 
-                    <div className="overflow-hidden rounded-xl border border-[var(--border)]">
-                        <img
-                            src="/images/help/enroll-step-2.jpg"
-                            alt="Enrollment modal showing two red links"
-                            style={{ display: "block", width: "100%", height: "auto" }}
-                        />
-                    </div>
-
-                    <p className="text-sm text-[var(--foreground)]">
-                        After completing this, return to the enroll page. The two red links will have turned green, and <span className="font-semibold">&quot;Confirm enrollment (locked)&quot;</span> will have changed to <span className="font-semibold">&quot;Confirm enrollment.&quot;</span> Please click it.
-                    </p>
-
-                    <div className="overflow-hidden rounded-xl border border-[var(--border)]">
-                        <img
-                            src="/images/help/enroll-step-3.jpg"
-                            alt="Enrollment modal showing two green links and unlocked confirm button"
-                            style={{ display: "block", width: "100%", height: "auto" }}
-                        />
+                    <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="overflow-hidden rounded-xl border border-[var(--border)]">
+                            <img
+                                src="/images/help/enroll-step-2.jpg"
+                                alt="Enrollment modal showing two red links"
+                                style={{ display: "block", width: "100%", height: "auto" }}
+                            />
+                        </div>
+                        <div className="overflow-hidden rounded-xl border border-[var(--border)]">
+                            <img
+                                src="/images/help/enroll-step-3.jpg"
+                                alt="Enrollment modal showing two green links and unlocked confirm button"
+                                style={{ display: "block", width: "100%", height: "auto" }}
+                            />
+                        </div>
                     </div>
                 </div>
 
