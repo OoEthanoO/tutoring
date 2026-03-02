@@ -20,7 +20,7 @@ const defaultEveryoneVoiceChannelName = "Everyone";
 const defaultExecutivesVoiceChannelName = "Executives";
 const defaultSocialMediaVoiceChannelName = "Social Media";
 const defaultScienceTutorsVoiceChannelName = "Science Tutors";
-const defaultMathTutorsVoiceChannelName = "Math Tutors";
+const defaultMathTutorsVoiceChannelName = "Math Tutor";
 const discordTextChannelType = 0;
 const discordVoiceChannelType = 2;
 const discordCategoryChannelType = 4;
@@ -1088,7 +1088,7 @@ export const runDiscordSync = async ({
   const juniorExecutiveRole = await ensureRole("Junior Executive", false);
   const socialMediaRole = await ensureRole("Social Media", false);
   const scienceTutorsRole = await ensureRole("Science Tutor", false);
-  const mathTutorsRole = await ensureRole("Math Tutors", false);
+  const mathTutorsRole = await ensureRole("Math Tutor", false);
   const founderRole = await ensureRole("Founder", false);
   const baseRoleIds = new Set([
     studentRole.id,
