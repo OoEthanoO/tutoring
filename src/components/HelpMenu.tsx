@@ -80,7 +80,7 @@ export default function HelpMenu() {
                 </div>
 
                 {/* Important notices */}
-                <div className="space-y-4 rounded-xl border border-red-200 bg-red-50 px-4 py-4">
+                <div className="space-y-4 rounded-xl px-4 py-4" style={{ border: "1px solid rgba(239,68,68,0.35)", backgroundColor: "rgba(239,68,68,0.08)" }}>
                     <p className="text-xs font-semibold uppercase tracking-[0.2em] text-red-600">
                         Important
                     </p>
