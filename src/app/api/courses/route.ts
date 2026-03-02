@@ -272,12 +272,21 @@ export async function GET(request: NextRequest) {
     (donationData ?? []).map((row) => [row.user_id, row.donation_link ?? null])
   );
 
+  const userRole = user
+    ? resolveUserRole(user.email, user.role ?? null)
+    : null;
+
   const courses = data.map((course) => {
     const request = requestByCourse.get(course.id);
     const enrolled = enrolledSet.has(course.id);
-    const enrollmentStatus = enrolled
+    let enrollmentStatus: string | null = enrolled
       ? "enrolled"
       : request?.status ?? null;
+
+    // Founders should never be stuck with "rejected" – let them re-enroll.
+    if (userRole === "founder" && enrollmentStatus === "rejected") {
+      enrollmentStatus = null;
+    }
 
     return {
       ...course,
