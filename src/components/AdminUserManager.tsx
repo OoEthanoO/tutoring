@@ -962,7 +962,7 @@ export default function AdminUserManager() {
                           [user.id]: event.target.value,
                         }))
                       }
-                      placeholder="e.g. 10th"
+                      placeholder="e.g. 10"
                       className="w-24 rounded-full border border-[var(--border)] bg-[var(--surface)] px-4 py-2 text-xs text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
                     />
                   </div>
