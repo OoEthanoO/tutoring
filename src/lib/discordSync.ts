@@ -1231,16 +1231,8 @@ export const runDiscordSync = async ({
     }
 
     if (shouldBeExecutive) {
-      if (!roleSet.has(executiveRole.id)) {
-        await addRoleToMember(
-          memberId,
-          executiveRole.id,
-          roleSet,
-          "baseRoleAddedCount"
-        );
-      }
-
       if (websiteUser.is_junior) {
+        // Junior Executive logic
         if (!roleSet.has(juniorExecutiveRole.id)) {
           await addRoleToMember(
             memberId,
@@ -1249,14 +1241,36 @@ export const runDiscordSync = async ({
             "baseRoleAddedCount"
           );
         }
-      } else if (roleSet.has(juniorExecutiveRole.id)) {
-        await addRoleToMember(
-          memberId,
-          juniorExecutiveRole.id,
-          roleSet,
-          "baseRoleRemovedCount",
-          true
-        );
+        // Remove Executive role if it exists for a Junior
+        if (roleSet.has(executiveRole.id)) {
+          await addRoleToMember(
+            memberId,
+            executiveRole.id,
+            roleSet,
+            "baseRoleRemovedCount",
+            true
+          );
+        }
+      } else {
+        // Regular Executive logic
+        if (!roleSet.has(executiveRole.id)) {
+          await addRoleToMember(
+            memberId,
+            executiveRole.id,
+            roleSet,
+            "baseRoleAddedCount"
+          );
+        }
+        // Remove Junior Executive role if it exists for a regular Executive
+        if (roleSet.has(juniorExecutiveRole.id)) {
+          await addRoleToMember(
+            memberId,
+            juniorExecutiveRole.id,
+            roleSet,
+            "baseRoleRemovedCount",
+            true
+          );
+        }
       }
 
       if (roleSet.has(studentRole.id)) {
