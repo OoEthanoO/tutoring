@@ -169,6 +169,17 @@ export default function CoursesMenu() {
   }, [selectedCourse]);
 
   useEffect(() => {
+    if (selectedCourse) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [selectedCourse]);
+
+  useEffect(() => {
     if (!selectedCourse) {
       return;
     }
@@ -551,194 +562,196 @@ export default function CoursesMenu() {
       ) : null}
 
       {!isGuest && selectedCourse ? (
-        <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/50 px-4">
-          <div className="w-full max-w-lg space-y-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-xl">
-            <div className="space-y-1">
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
-                Confirm enrollment
-              </p>
-              <h3 className="text-lg font-semibold text-[var(--foreground)]">
-                {selectedCourse.title}
-              </h3>
-              <p className="text-xs text-[var(--muted)]">
-                Tutor:{" "}
-                {selectedCourse.created_by_name ||
-                  selectedCourse.created_by_email ||
-                  "Unknown tutor"}
-              </p>
-            </div>
-
-            {selectedCourse.description ? (
-              <p className="text-sm text-[var(--muted)]">
-                {selectedCourse.description}
-              </p>
-            ) : null}
-
-            <div className="space-y-2">
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
-                {selectedCourse.is_completed ? "Course summary" : "Classes"}
-              </p>
-              {selectedCourse.is_completed ? (
-                <p className="text-xs text-[var(--muted)]">
-                  Completed course: {formatCompletedDate(selectedCourse.completed_start_date)} to{" "}
-                  {formatCompletedDate(selectedCourse.completed_end_date)} ·{" "}
-                  {selectedCourse.completed_class_count ?? 0} classes
+        <div className="fixed inset-0 z-30 grid place-items-center p-4 overflow-y-auto overscroll-contain bg-black/50">
+          <div className="w-full max-w-lg max-h-full flex flex-col rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-xl overflow-hidden overscroll-contain min-h-0">
+            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-6 space-y-4">
+              <div className="space-y-1">
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
+                  Confirm enrollment
                 </p>
-              ) : selectedCourse.course_classes?.length ? (
-                <ul className="space-y-1 text-xs text-[var(--muted)]">
-                  {sortClassesByStart(selectedCourse.course_classes).map((courseClass) => {
-                    const { start, end } = getClassTimes(
-                      courseClass.starts_at
-                    );
-                    const tone = getClassTimeStyle(start, end);
-                    return (
-                      <li key={courseClass.id} className={tone}>
-                        {courseClass.title} · {formatClassSchedule(start, end)}
-                      </li>
-                    );
-                  })}
-                </ul>
+                <h3 className="text-lg font-semibold text-[var(--foreground)]">
+                  {selectedCourse.title}
+                </h3>
+                <p className="text-xs text-[var(--muted)]">
+                  Tutor:{" "}
+                  {selectedCourse.created_by_name ||
+                    selectedCourse.created_by_email ||
+                    "Unknown tutor"}
+                </p>
+              </div>
+
+              {selectedCourse.description ? (
+                <p className="text-sm text-[var(--muted)]">
+                  {selectedCourse.description}
+                </p>
+              ) : null}
+
+              <div className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
+                  {selectedCourse.is_completed ? "Course summary" : "Classes"}
+                </p>
+                {selectedCourse.is_completed ? (
+                  <p className="text-xs text-[var(--muted)]">
+                    Completed course: {formatCompletedDate(selectedCourse.completed_start_date)} to{" "}
+                    {formatCompletedDate(selectedCourse.completed_end_date)} ·{" "}
+                    {selectedCourse.completed_class_count ?? 0} classes
+                  </p>
+                ) : selectedCourse.course_classes?.length ? (
+                  <ul className="space-y-1 text-xs text-[var(--muted)]">
+                    {sortClassesByStart(selectedCourse.course_classes).map((courseClass) => {
+                      const { start, end } = getClassTimes(
+                        courseClass.starts_at
+                      );
+                      const tone = getClassTimeStyle(start, end);
+                      return (
+                        <li key={courseClass.id} className={tone}>
+                          {courseClass.title} · {formatClassSchedule(start, end)}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                ) : (
+                  <p className="text-xs text-[var(--muted)]">No classes yet.</p>
+                )}
+              </div>
+
+              <p className="text-xs text-[var(--muted)]">
+                When you enroll, the founder will review your request. You will
+                receive an email when it is approved or rejected.
+              </p>
+              {selectedCourse.donation_link ? (
+                <p className="text-xs text-[var(--muted)]">
+                  You MUST donate via{" "}
+                  <a
+                    href={selectedCourse.donation_link}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={() => setHasOpenedDonationLink(true)}
+                    className={`font-semibold underline ${hasOpenedDonationLink ? "text-emerald-500" : "text-red-500"
+                      }`}
+                  >
+                    this link
+                  </a>{" "}
+                  and complete{" "}
+                  <a
+                    href="https://forms.gle/tfxiH8zHfCifpBSa9"
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={() => setHasOpenedApplicationLink(true)}
+                    className={`font-semibold underline ${hasOpenedApplicationLink ? "text-emerald-500" : "text-red-500"
+                      }`}
+                  >
+                    this form
+                  </a>{" "}
+                  in order for your enrollment to be accepted.
+                </p>
               ) : (
-                <p className="text-xs text-[var(--muted)]">No classes yet.</p>
+                <p className="text-xs text-[var(--muted)]">
+                  You MUST complete{" "}
+                  <a
+                    href="https://forms.gle/tfxiH8zHfCifpBSa9"
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={() => setHasOpenedApplicationLink(true)}
+                    className={`font-semibold underline ${hasOpenedApplicationLink ? "text-emerald-500" : "text-red-500"
+                      }`}
+                  >
+                    this form
+                  </a>{" "}
+                  in order for your enrollment to be accepted.
+                </p>
               )}
-            </div>
+              {requiresDonationLink ? (
+                <>
+                  <p className="text-xs font-semibold text-[var(--muted)]">
+                    To finish enrollment, you must click on both links above.
+                  </p>
+                  <p className="text-xs text-[var(--muted)]">
+                    If you have already clicked on the required link above but
+                    didn&apos;t click &quot;Confirm enrollment&quot;, simply click on
+                    both links above but do not submit the form nor make a donation
+                    again.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="text-xs font-semibold text-[var(--muted)]">
+                    To finish enrollment, you must click on the required link above.
+                  </p>
+                  <p className="text-xs text-[var(--muted)]">
+                    If you have already clicked on the required link above but
+                    didn&apos;t click &quot;Confirm enrollment&quot;, simply click on
+                    the link above but do not submit the form again.
+                  </p>
+                </>
+              )}
 
-            <p className="text-xs text-[var(--muted)]">
-              When you enroll, the founder will review your request. You will
-              receive an email when it is approved or rejected.
-            </p>
-            {selectedCourse.donation_link ? (
-              <p className="text-xs text-[var(--muted)]">
-                You MUST donate via{" "}
-                <a
-                  href={selectedCourse.donation_link}
-                  target="_blank"
-                  rel="noreferrer"
-                  onClick={() => setHasOpenedDonationLink(true)}
-                  className={`font-semibold underline ${hasOpenedDonationLink ? "text-emerald-500" : "text-red-500"
-                    }`}
+              <div className="flex flex-wrap justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedCourse(null);
+                    setHasOpenedDonationLink(false);
+                    setHasOpenedApplicationLink(false);
+                  }}
+                  className="rounded-full border border-[var(--border)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:border-[var(--foreground)]"
+                  disabled={isEnrolling}
                 >
-                  this link
-                </a>{" "}
-                and complete{" "}
-                <a
-                  href="https://forms.gle/tfxiH8zHfCifpBSa9"
-                  target="_blank"
-                  rel="noreferrer"
-                  onClick={() => setHasOpenedApplicationLink(true)}
-                  className={`font-semibold underline ${hasOpenedApplicationLink ? "text-emerald-500" : "text-red-500"
-                    }`}
-                >
-                  this form
-                </a>{" "}
-                in order for your enrollment to be accepted.
-              </p>
-            ) : (
-              <p className="text-xs text-[var(--muted)]">
-                You MUST complete{" "}
-                <a
-                  href="https://forms.gle/tfxiH8zHfCifpBSa9"
-                  target="_blank"
-                  rel="noreferrer"
-                  onClick={() => setHasOpenedApplicationLink(true)}
-                  className={`font-semibold underline ${hasOpenedApplicationLink ? "text-emerald-500" : "text-red-500"
-                    }`}
-                >
-                  this form
-                </a>{" "}
-                in order for your enrollment to be accepted.
-              </p>
-            )}
-            {requiresDonationLink ? (
-              <>
-                <p className="text-xs font-semibold text-[var(--muted)]">
-                  To finish enrollment, you must click on both links above.
-                </p>
-                <p className="text-xs text-[var(--muted)]">
-                  If you have already clicked on the required link above but
-                  didn&apos;t click &quot;Confirm enrollment&quot;, simply click on
-                  both links above but do not submit the form nor make a donation
-                  again.
-                </p>
-              </>
-            ) : (
-              <>
-                <p className="text-xs font-semibold text-[var(--muted)]">
-                  To finish enrollment, you must click on the required link above.
-                </p>
-                <p className="text-xs text-[var(--muted)]">
-                  If you have already clicked on the required link above but
-                  didn&apos;t click &quot;Confirm enrollment&quot;, simply click on
-                  the link above but do not submit the form again.
-                </p>
-              </>
-            )}
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setIsEnrolling(true);
+                    setStatus({ type: "idle", message: "" });
+                    const response = await fetch(
+                      `/api/courses/${selectedCourse.id}/enroll`,
+                      { method: "POST" }
+                    );
 
-            <div className="flex flex-wrap justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedCourse(null);
-                  setHasOpenedDonationLink(false);
-                  setHasOpenedApplicationLink(false);
-                }}
-                className="rounded-full border border-[var(--border)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:border-[var(--foreground)]"
-                disabled={isEnrolling}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={async () => {
-                  setIsEnrolling(true);
-                  setStatus({ type: "idle", message: "" });
-                  const response = await fetch(
-                    `/api/courses/${selectedCourse.id}/enroll`,
-                    { method: "POST" }
-                  );
+                    if (!response.ok) {
+                      const payload = (await response.json().catch(() => null)) as
+                        | { error?: string }
+                        | null;
+                      setStatus({
+                        type: "error",
+                        message:
+                          payload?.error ?? "Unable to submit enrollment request.",
+                      });
+                      setIsEnrolling(false);
+                      return;
+                    }
 
-                  if (!response.ok) {
-                    const payload = (await response.json().catch(() => null)) as
-                      | { error?: string }
-                      | null;
-                    setStatus({
-                      type: "error",
-                      message:
-                        payload?.error ?? "Unable to submit enrollment request.",
-                    });
+                    setCourses((current) =>
+                      current.map((course) =>
+                        course.id === selectedCourse.id
+                          ? { ...course, enrollment_status: "pending" }
+                          : course
+                      )
+                    );
+                    setSelectedCourse(null);
+                    setHasOpenedDonationLink(false);
+                    setHasOpenedApplicationLink(false);
                     setIsEnrolling(false);
-                    return;
+                  }}
+                  disabled={isConfirmEnrollmentDisabled}
+                  title={
+                    isConfirmEnrollmentDisabled
+                      ? "Click all required links above to enable enrollment."
+                      : undefined
                   }
-
-                  setCourses((current) =>
-                    current.map((course) =>
-                      course.id === selectedCourse.id
-                        ? { ...course, enrollment_status: "pending" }
-                        : course
-                    )
-                  );
-                  setSelectedCourse(null);
-                  setHasOpenedDonationLink(false);
-                  setHasOpenedApplicationLink(false);
-                  setIsEnrolling(false);
-                }}
-                disabled={isConfirmEnrollmentDisabled}
-                title={
-                  isConfirmEnrollmentDisabled
-                    ? "Click all required links above to enable enrollment."
-                    : undefined
-                }
-                className={`rounded-full border px-4 py-2 text-xs font-semibold transition ${isConfirmEnrollmentDisabled
-                  ? "cursor-not-allowed border-amber-300 bg-amber-100 text-amber-800 shadow-inner"
-                  : "border-[var(--foreground)] bg-[var(--foreground)] text-[var(--background)] hover:opacity-90"
-                  }`}
-              >
-                {isEnrolling
-                  ? "Submitting..."
-                  : isConfirmEnrollmentDisabled
-                    ? "Confirm enrollment (locked)"
-                    : "Confirm enrollment"}
-              </button>
+                  className={`rounded-full border px-4 py-2 text-xs font-semibold transition ${isConfirmEnrollmentDisabled
+                    ? "cursor-not-allowed border-amber-300 bg-amber-100 text-amber-800 shadow-inner"
+                    : "border-[var(--foreground)] bg-[var(--foreground)] text-[var(--background)] hover:opacity-90"
+                    }`}
+                >
+                  {isEnrolling
+                    ? "Submitting..."
+                    : isConfirmEnrollmentDisabled
+                      ? "Confirm enrollment (locked)"
+                      : "Confirm enrollment"}
+                </button>
+              </div>
             </div>
           </div>
         </div>
