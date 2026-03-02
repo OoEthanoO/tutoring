@@ -106,6 +106,21 @@ export default function HelpMenu() {
                         </p>
                     </div>
                 </div>
+
+                <div className="space-y-3">
+                    <p className="text-sm font-semibold text-[var(--foreground)]">
+                        Contact us
+                    </p>
+                    <p className="text-sm text-[var(--foreground)]">
+                        If you have any questions or need further assistance, please email us at{" "}
+                        <a
+                            href="mailto:ethans.coding.class@gmail.com"
+                            className="font-semibold underline"
+                        >
+                            ethans.coding.class@gmail.com
+                        </a>.
+                    </p>
+                </div>
             </div>
         </section>
     );
