@@ -56,5 +56,45 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  return NextResponse.json({ courses: data });
+  // Enrich enrollments with grade/school from app_users
+  const studentIds = Array.from(
+    new Set(
+      data.flatMap((course: Record<string, unknown>) =>
+        ((course.course_enrollments as Array<Record<string, unknown>>) ?? []).map(
+          (e) => e.student_id as string
+        )
+      ).filter(Boolean)
+    )
+  );
+
+  let gradeSchoolMap = new Map<string, { grade: string; school: string }>();
+  if (studentIds.length > 0) {
+    const { data: studentData } = await adminClient
+      .from("app_users")
+      .select("id, grade, school")
+      .in("id", studentIds);
+
+    gradeSchoolMap = new Map(
+      (studentData ?? []).map((row) => [
+        row.id as string,
+        { grade: (row.grade as string) ?? "", school: (row.school as string) ?? "" },
+      ])
+    );
+  }
+
+  const enrichedCourses = data.map((course: Record<string, unknown>) => ({
+    ...course,
+    course_enrollments: (
+      (course.course_enrollments as Array<Record<string, unknown>>) ?? []
+    ).map((enrollment) => {
+      const info = gradeSchoolMap.get(enrollment.student_id as string);
+      return {
+        ...enrollment,
+        student_grade: info?.grade ?? "",
+        student_school: info?.school ?? "",
+      };
+    }),
+  }));
+
+  return NextResponse.json({ courses: enrichedCourses });
 }

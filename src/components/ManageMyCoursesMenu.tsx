@@ -10,6 +10,8 @@ type EnrolledStudent = {
   student_id: string;
   student_name?: string | null;
   student_email?: string | null;
+  student_grade?: string | null;
+  student_school?: string | null;
   created_at: string;
 };
 
@@ -1060,6 +1062,12 @@ export default function ManageMyCoursesMenu() {
                       <span>
                         {student.student_name || "Student"} ·{" "}
                         {student.student_email || "No email"}
+                        {student.student_grade ? (
+                          <> · Grade {student.student_grade}</>
+                        ) : null}
+                        {student.student_school ? (
+                          <> · {student.student_school}</>
+                        ) : null}
                       </span>
                       {role === "founder" ? (
                         <button

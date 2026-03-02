@@ -20,6 +20,8 @@ type AdminUser = {
   discordUsername?: string | null;
   discordConnectedAt?: string | null;
   isJunior: boolean;
+  grade?: string;
+  school?: string;
 };
 
 type StatusState = {
@@ -63,6 +65,9 @@ export default function AdminUserManager() {
   const [promotedDates, setPromotedDates] = useState<Record<string, string>>(
     {}
   );
+  const [grades, setGrades] = useState<Record<string, string>>({});
+  const [schools, setSchools] = useState<Record<string, string>>({});
+  const [allSchools, setAllSchools] = useState<string[]>([]);
   const [feedback, setFeedback] = useState<FeedbackEntry[]>([]);
   const [isLoadingFeedback, setIsLoadingFeedback] = useState(false);
   const [feedbackError, setFeedbackError] = useState("");
@@ -174,10 +179,37 @@ export default function AdminUserManager() {
           ])
         )
       );
+      setGrades(
+        Object.fromEntries(
+          (data.users ?? []).map((user) => [user.id, user.grade ?? ""])
+        )
+      );
+      setSchools(
+        Object.fromEntries(
+          (data.users ?? []).map((user) => [user.id, user.school ?? ""])
+        )
+      );
       setIsLoading(false);
     };
 
     fetchUsers();
+  }, [isFounder]);
+
+  useEffect(() => {
+    if (!isFounder) {
+      return;
+    }
+
+    const fetchSchools = async () => {
+      const response = await fetch("/api/admin/users?schools=true");
+      if (!response.ok) {
+        return;
+      }
+      const data = (await response.json()) as { schools?: string[] };
+      setAllSchools(data.schools ?? []);
+    };
+
+    fetchSchools();
   }, [isFounder]);
 
   useEffect(() => {
@@ -476,6 +508,50 @@ export default function AdminUserManager() {
       message: `Updated junior status for ${data.user.fullName || data.user.email || "user"}.`,
     });
     setPendingId(null);
+  };
+
+  const updateGradeSchool = async (userId: string) => {
+    setPendingId(userId);
+    setStatus({ type: "idle", message: "" });
+
+    const response = await fetch("/api/admin/users", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userId,
+        grade: grades[userId] ?? "",
+        school: schools[userId] ?? "",
+      }),
+    });
+
+    if (!response.ok) {
+      const payload = (await response.json().catch(() => null)) as
+        | { error?: string }
+        | null;
+      setStatus({
+        type: "error",
+        message: payload?.error ?? "Could not update grade/school.",
+      });
+      setPendingId(null);
+      return;
+    }
+
+    const data = (await response.json()) as { user: AdminUser };
+    setUsers((current) =>
+      current.map((user) => (user.id === data.user.id ? data.user : user))
+    );
+    setStatus({
+      type: "success",
+      message: `Updated grade/school for ${data.user.fullName || data.user.email || "user"}.`,
+    });
+    setPendingId(null);
+
+    // Refresh school suggestions
+    const schoolsResponse = await fetch("/api/admin/users?schools=true");
+    if (schoolsResponse.ok) {
+      const schoolsData = (await schoolsResponse.json()) as { schools?: string[] };
+      setAllSchools(schoolsData.schools ?? []);
+    }
   };
 
   const deleteAccount = async (user: AdminUser) => {
@@ -871,6 +947,55 @@ export default function AdminUserManager() {
                     </div>
                   </>
                 )}
+                <div className="space-y-2 rounded-xl border border-[var(--border)]/70 bg-[var(--surface)] px-3 py-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+                    Student info
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <label className="text-xs text-[var(--muted)]">Grade</label>
+                    <input
+                      type="text"
+                      value={grades[user.id] ?? ""}
+                      onChange={(event) =>
+                        setGrades((current) => ({
+                          ...current,
+                          [user.id]: event.target.value,
+                        }))
+                      }
+                      placeholder="e.g. 10th"
+                      className="w-24 rounded-full border border-[var(--border)] bg-[var(--surface)] px-4 py-2 text-xs text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+                    />
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <label className="text-xs text-[var(--muted)]">School</label>
+                    <input
+                      type="text"
+                      list={`school-options-${user.id}`}
+                      value={schools[user.id] ?? ""}
+                      onChange={(event) =>
+                        setSchools((current) => ({
+                          ...current,
+                          [user.id]: event.target.value,
+                        }))
+                      }
+                      placeholder="School name"
+                      className="min-w-[12rem] flex-1 rounded-full border border-[var(--border)] bg-[var(--surface)] px-4 py-2 text-xs text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+                    />
+                    <datalist id={`school-options-${user.id}`}>
+                      {allSchools.map((name) => (
+                        <option key={name} value={name} />
+                      ))}
+                    </datalist>
+                    <button
+                      type="button"
+                      disabled={isPending}
+                      onClick={() => updateGradeSchool(user.id)}
+                      className="rounded-full border border-[var(--foreground)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-70"
+                    >
+                      {isPending ? "Saving..." : "Save info"}
+                    </button>
+                  </div>
+                </div>
                 <button
                   type="button"
                   disabled={isPending}
