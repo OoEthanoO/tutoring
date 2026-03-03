@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getCurrentUser, onAuthChange } from "@/lib/authClient";
 import { setHasUnsavedData } from "@/lib/unsavedData";
 
@@ -163,9 +163,17 @@ export default function CoursesMenu() {
   });
   const [isLoadingCourses, setIsLoadingCourses] = useState(false);
 
+  const modalScrollRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     setHasUnsavedData("courses-menu", selectedCourse !== null);
     return () => setHasUnsavedData("courses-menu", false);
+  }, [selectedCourse]);
+
+  useEffect(() => {
+    if (selectedCourse && modalScrollRef.current) {
+      modalScrollRef.current.scrollTop = modalScrollRef.current.scrollHeight;
+    }
   }, [selectedCourse]);
 
   useEffect(() => {
@@ -576,7 +584,7 @@ export default function CoursesMenu() {
       {!isGuest && selectedCourse ? (
         <div className="fixed inset-0 z-30 grid place-items-center p-4 overflow-y-auto overscroll-contain bg-black/50">
           <div className="w-full max-w-lg max-h-full flex flex-col rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-xl overflow-hidden overscroll-contain min-h-0">
-            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-6 space-y-4">
+            <div ref={modalScrollRef} className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-6 space-y-4">
               <div className="space-y-1">
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
                   Confirm enrollment

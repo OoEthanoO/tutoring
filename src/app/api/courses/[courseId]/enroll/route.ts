@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getRequestUser } from "@/lib/authServer";
+import { resolveUserRole } from "@/lib/roles";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
@@ -111,13 +112,22 @@ export async function POST(
     .maybeSingle();
 
   if (existingRequest) {
+    const role = resolveUserRole(user.email, user.role ?? null);
+
     if (existingRequest.status === "rejected") {
-      return NextResponse.json(
-        { error: "Enrollment request has been rejected." },
-        { status: 400 }
-      );
-    }
-    if (existingRequest.status === "approved") {
+      if (role === "founder") {
+        // Founders can re-enroll after rejection.
+        await adminClient
+          .from("course_enrollment_requests")
+          .delete()
+          .eq("id", existingRequest.id);
+      } else {
+        return NextResponse.json(
+          { error: "Enrollment request has been rejected." },
+          { status: 400 }
+        );
+      }
+    } else if (existingRequest.status === "approved") {
       // Stale approved request can exist if a founder manually removed enrollment.
       await adminClient
         .from("course_enrollment_requests")

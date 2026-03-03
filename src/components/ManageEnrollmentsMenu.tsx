@@ -176,6 +176,9 @@ export default function ManageEnrollmentsMenu() {
                   {request.course?.title ?? "Course"}
                 </p>
                 <p className="text-xs text-[var(--muted)]">
+                  Tutor: {request.course?.created_by_name || request.course?.created_by_email || "Unknown"}
+                </p>
+                <p className="text-xs text-[var(--muted)]">
                   Student: {request.student_name || request.student_email || "Unknown"}
                 </p>
                 <p className="text-xs text-[var(--muted)]">
