@@ -128,7 +128,6 @@ export type DiscordSyncResult = {
   archivedChannelCount: number;
   deletedChannelCount: number;
   deletedCourseRoleCount: number;
-  nicknameUpdatedCount: number;
   errors: string[];
 };
 
@@ -772,17 +771,7 @@ class DiscordApiClient {
     });
   }
 
-  modifyGuildMember(
-    guildId: string,
-    memberId: string,
-    payload: { nick?: string }
-  ) {
-    return this.request<void>({
-      method: "PATCH",
-      path: `/guilds/${guildId}/members/${memberId}`,
-      body: payload,
-    });
-  }
+
 
   listGuildChannels(guildId: string) {
     return this.request<DiscordGuildChannel[]>({
@@ -949,7 +938,7 @@ const buildZeroResult = (
   archivedChannelCount: 0,
   deletedChannelCount: 0,
   deletedCourseRoleCount: 0,
-  nicknameUpdatedCount: 0,
+
   errors: [],
 });
 
@@ -1356,29 +1345,7 @@ export const runDiscordSync = async ({
       );
     }
 
-    // Nickname sync for students
-    const websiteName = String(websiteUser.full_name ?? "").trim();
-    if (websiteName) {
-      const currentMember = humanMembers.find(
-        (m) => (m.user?.id ?? "") === memberId
-      );
-      const currentNick = String(currentMember?.nick ?? "").trim();
-      if (currentNick !== websiteName) {
-        try {
-          await apiClient.modifyGuildMember(discordGuildId, memberId, {
-            nick: websiteName,
-          });
-          result.nicknameUpdatedCount += 1;
-        } catch (error) {
-          result.errors.push(
-            `Failed to set nickname for member ${memberId}: ${toErrorMessage(
-              error,
-              "Unknown nickname error."
-            )}`
-          );
-        }
-      }
-    }
+
   }
 
   const enrollmentsByCourseId = new Map<string, Set<string>>();

@@ -374,7 +374,6 @@ export async function POST(request: NextRequest) {
       archivedChannelCount: 0,
       deletedChannelCount: 0,
       deletedCourseRoleCount: 0,
-      nicknameUpdatedCount: 0,
       errors: [
         error instanceof Error
           ? error.message
