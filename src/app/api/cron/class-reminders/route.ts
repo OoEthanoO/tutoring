@@ -721,7 +721,8 @@ export async function POST(request: NextRequest) {
 
     if (reminderType === "class_follow_up") {
       subject = `Class follow-up: Please submit the tutor form for ${course.title}`;
-      const formUrl = "https://docs.google.com/forms/d/e/1FAIpQLSfbp8hNm_hpGUfH-SvGbnF7LbsiemBbeXhjddVccSHS8di2nw/viewform";
+      const siteBase = (process.env.NEXT_PUBLIC_SITE_URL ?? "").replace(/\/+$/, "");
+      const formUrl = siteBase ? `${siteBase}/redirect/tutor-log` : "https://docs.google.com/forms/d/e/1FAIpQLSfbp8hNm_hpGUfH-SvGbnF7LbsiemBbeXhjddVccSHS8di2nw/viewform";
       html = `
         <p>Hi ${tutorName},</p>
         <p>Your class <strong>${classTitle}</strong> for <strong>${courseTitle}</strong> recently ended.</p>

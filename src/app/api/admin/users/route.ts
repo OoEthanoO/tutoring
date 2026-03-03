@@ -318,7 +318,8 @@ export async function PATCH(request: NextRequest) {
   }
 
   if (isPromotingToTutor && updated.email) {
-    const formUrl = "https://docs.google.com/forms/d/e/1FAIpQLSeuaZhER3fUbkl1ijHy0k-COLAcpOy8QvYM5sgtcWGEqtHmNw/viewform";
+    const siteBase = (process.env.NEXT_PUBLIC_SITE_URL ?? "").replace(/\/+$/, "");
+    const formUrl = siteBase ? `${siteBase}/redirect/tutor-form` : "https://docs.google.com/forms/d/e/1FAIpQLSeuaZhER3fUbkl1ijHy0k-COLAcpOy8QvYM5sgtcWGEqtHmNw/viewform";
     await sendEmail(
       updated.email,
       "You've been promoted to Executive!",
