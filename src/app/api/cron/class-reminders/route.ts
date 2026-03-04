@@ -12,7 +12,7 @@ const discordGuildId = process.env.DISCORD_GUILD_ID ?? "";
 const discordApiBase = "https://discord.com/api/v10";
 const courseTopicPrefix = "yanlearn-course-id:";
 const discordTextChannelType = 0;
-
+const defaultExecutivesChannelName = "executives";
 const torontoTimeZone = "America/Toronto";
 const defaultZoomId = "822 9677 5321";
 const defaultZoomPassword = "youth";
@@ -283,25 +283,6 @@ const sendDiscordUserMentionMessage = async (
     },
   });
 
-const createDiscordDmChannel = async (userId: string) =>
-  requestDiscord<{ id: string }>({
-    method: "POST",
-    path: `/users/@me/channels`,
-    body: { recipient_id: userId },
-  });
-
-const sendDiscordDm = async (userId: string, content: string) => {
-  const dmChannel = await createDiscordDmChannel(userId);
-  await requestDiscord<void>({
-    method: "POST",
-    path: `/channels/${dmChannel.id}/messages`,
-    body: {
-      content,
-      allowed_mentions: { parse: [], roles: [], users: [] },
-    },
-  });
-};
-
 const sendEmail = async (to: string, subject: string, html: string) => {
   const maxAttempts = 4;
 
@@ -410,6 +391,11 @@ export async function POST(request: NextRequest) {
   let discordReminderSkippedReason: string | null = null;
   let discordCourseTargetByCourseId = new Map<string, DiscordCourseReminderTarget>();
 
+  const executivesChannelName =
+    String(process.env.DISCORD_EXECUTIVES_ONLY_CHANNEL_NAME ?? "").trim() ||
+    defaultExecutivesChannelName;
+  let executivesChannelId: string | null = null;
+
   if (!discordRemindersEnabled) {
     discordReminderSkippedReason =
       "Missing DISCORD_BOT_TOKEN or DISCORD_GUILD_ID.";
@@ -420,6 +406,10 @@ export async function POST(request: NextRequest) {
         guildChannels,
         discordGuildId
       );
+      const execChannel = guildChannels.find(
+        (ch) => ch.type === discordTextChannelType && ch.name === executivesChannelName
+      );
+      executivesChannelId = execChannel?.id ?? null;
     } catch (error) {
       discordReminderSkippedReason =
         error instanceof Error
@@ -751,7 +741,7 @@ export async function POST(request: NextRequest) {
         : "";
       if (tutorDiscordId) {
         discordContent = [
-          `Your class **${escapeDiscordText(classTitleRaw)}** for **${escapeDiscordText(courseTitleRaw)}** recently ended.`,
+          `<@${tutorDiscordId}> Your class **${escapeDiscordText(classTitleRaw)}** for **${escapeDiscordText(courseTitleRaw)}** recently ended.`,
           `Please remember to complete the tutor log form:`,
           formUrl,
           `**Course:** ${escapeDiscordText(courseTitleRaw)}`,
@@ -860,10 +850,11 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Send follow-up DM to the tutor.
+    // Send follow-up to the executives channel with a tutor user mention.
     if (
       reminderType === "class_follow_up" &&
       discordReminderDeliveryEnabled &&
+      executivesChannelId &&
       discordContent
     ) {
       const tutorDiscordId = course.created_by
@@ -871,15 +862,19 @@ export async function POST(request: NextRequest) {
         : "";
       if (tutorDiscordId) {
         try {
-          await sendDiscordDm(tutorDiscordId, discordContent);
+          await sendDiscordUserMentionMessage(
+            executivesChannelId,
+            tutorDiscordId,
+            discordContent
+          );
           sentDiscordFollowUpCount += 1;
           await sleep(150);
         } catch (error) {
           failedClasses.push({
             classId: classRow.id,
-            reason: `Failed Discord follow-up DM: ${error instanceof Error
+            reason: `Failed Discord follow-up send: ${error instanceof Error
               ? error.message
-              : "Unknown Discord DM send failure."
+              : "Unknown Discord follow-up send failure."
               }`,
           });
         }
