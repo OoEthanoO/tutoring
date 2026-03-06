@@ -138,6 +138,7 @@ export async function GET(request: NextRequest) {
     .select(
       "id, email, full_name, role, created_at, tutor_promoted_at, discord_user_id, discord_username, discord_connected_at, is_junior, grade, school"
     )
+    .not("email_verified_at", "is", null)
     .ilike("email", search ? `%${search}%` : "%")
     .order("created_at", { ascending: false })
     .range((page - 1) * perPage, page * perPage - 1);
@@ -410,7 +411,8 @@ export async function POST(request: NextRequest) {
 
   const { data: users, error: listError } = await adminClient
     .from("app_users")
-    .select("id, email, full_name, discord_user_id");
+    .select("id, email, full_name, discord_user_id")
+    .not("email_verified_at", "is", null);
 
   if (listError || !users) {
     return NextResponse.json(
