@@ -56,6 +56,7 @@ export default function CourseCreator() {
   const [completedStartDate, setCompletedStartDate] = useState("");
   const [completedEndDate, setCompletedEndDate] = useState("");
   const [completedClassCount, setCompletedClassCount] = useState("1");
+  const [maxStudents, setMaxStudents] = useState<string>("");
   const [draftClasses, setDraftClasses] = useState<{ startsAt: string }[]>([]);
 
   useEffect(() => {
@@ -156,6 +157,7 @@ export default function CourseCreator() {
         completedClassCount: isCompletedCourse
           ? Number(completedClassCount)
           : undefined,
+        maxStudents: userRole === "founder" && maxStudents ? Number(maxStudents) : undefined,
         classes: isCompletedCourse
           ? []
           : [...draftClasses]
@@ -193,6 +195,7 @@ export default function CourseCreator() {
     setCompletedStartDate("");
     setCompletedEndDate("");
     setCompletedClassCount("1");
+    setMaxStudents("");
     setDraftClasses([]);
     setStatus({ type: "success", message: "Course created." });
     setIsSubmitting(false);
@@ -319,6 +322,22 @@ export default function CourseCreator() {
               onChange={(event) => setDescription(event.target.value)}
               placeholder="What students will learn, projects, and outcomes."
               rows={4}
+              className="mt-2 w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+            />
+          </div>
+        ) : null}
+        {userRole === "founder" ? (
+          <div>
+            <label className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
+              Max Students (Optional)
+            </label>
+            <input
+              type="number"
+              min="1"
+              step="1"
+              value={maxStudents}
+              onChange={(event) => setMaxStudents(event.target.value)}
+              placeholder="Leave blank for unlimited"
               className="mt-2 w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
             />
           </div>

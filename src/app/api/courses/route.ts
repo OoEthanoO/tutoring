@@ -52,6 +52,7 @@ export async function POST(request: NextRequest) {
       completedStartDate?: string;
       completedEndDate?: string;
       completedClassCount?: number;
+      maxStudents?: number;
       classes?: { title?: string; startsAt?: string; durationHours?: number }[];
     }
     | null;
@@ -65,6 +66,10 @@ export async function POST(request: NextRequest) {
     typeof body?.completedClassCount === "number"
       ? Math.floor(body.completedClassCount)
       : 0;
+  const maxStudents =
+    typeof body?.maxStudents === "number" && body.maxStudents > 0
+      ? Math.floor(body.maxStudents)
+      : null;
   const classes = Array.isArray(body?.classes) ? body?.classes ?? [] : [];
   const creatorName =
     String(user.full_name ?? "").trim() || user.email || "Unknown tutor";
@@ -118,12 +123,13 @@ export async function POST(request: NextRequest) {
       completed_start_date: isCompleted ? completedStartDate : null,
       completed_end_date: isCompleted ? completedEndDate : null,
       completed_class_count: isCompleted ? completedClassCount : null,
+      max_students: role === "founder" ? maxStudents : null,
       created_by: user.id,
       created_by_name: creatorName,
       created_by_email: user.email ?? null,
     })
     .select(
-      "id, title, short_name, description, is_completed, completed_start_date, completed_end_date, completed_class_count, created_by, created_by_name, created_by_email, created_at"
+      "id, title, short_name, description, is_completed, completed_start_date, completed_end_date, completed_class_count, max_students, created_by, created_by_name, created_by_email, created_at"
     )
     .single();
 
@@ -217,7 +223,7 @@ export async function GET(request: NextRequest) {
   const query = adminClient
     .from("courses")
     .select(
-      "id, title, short_name, description, is_completed, completed_start_date, completed_end_date, completed_class_count, created_by, created_by_name, created_by_email, created_at, course_classes(id, title, starts_at, duration_hours, created_at)"
+      "id, title, short_name, description, is_completed, completed_start_date, completed_end_date, completed_class_count, max_students, created_by, created_by_name, created_by_email, created_at, course_classes(id, title, starts_at, duration_hours, created_at), course_enrollments(count)"
     )
     .order("created_at", { ascending: false })
     .order("starts_at", { foreignTable: "course_classes", ascending: true });
@@ -290,6 +296,7 @@ export async function GET(request: NextRequest) {
 
     return {
       ...course,
+      enrollment_count: course.course_enrollments?.[0]?.count ?? 0,
       donation_link: donationMap.get(course.created_by ?? "") ?? null,
       enrollment_status: enrollmentStatus,
       enrollment_request_id: request?.id ?? null,
@@ -383,6 +390,7 @@ export async function PATCH(request: NextRequest) {
       shortName?: string | null;
       description?: string | null;
       createdBy?: string;
+      maxStudents?: number | null;
     }
     | null;
 
@@ -404,6 +412,12 @@ export async function PATCH(request: NextRequest) {
     typeof body.createdBy === "string" && body.createdBy.trim()
       ? body.createdBy.trim()
       : undefined;
+  const maxStudents =
+    body.maxStudents === null
+      ? null
+      : typeof body.maxStudents === "number" && body.maxStudents > 0
+        ? Math.floor(body.maxStudents)
+        : undefined;
 
   if (title !== undefined && !title) {
     return NextResponse.json({ error: "Title is required." }, { status: 400 });
@@ -413,7 +427,8 @@ export async function PATCH(request: NextRequest) {
     title === undefined &&
     description === undefined &&
     shortName === undefined &&
-    createdBy === undefined
+    createdBy === undefined &&
+    maxStudents === undefined
   ) {
     return NextResponse.json(
       { error: "Nothing to update." },
@@ -429,6 +444,7 @@ export async function PATCH(request: NextRequest) {
     title?: string;
     short_name?: string | null;
     description?: string | null;
+    max_students?: number | null;
     created_by?: string;
     created_by_name?: string | null;
     created_by_email?: string | null;
@@ -447,6 +463,15 @@ export async function PATCH(request: NextRequest) {
       );
     }
     updatePayload.short_name = shortName || null;
+  }
+  if (maxStudents !== undefined) {
+    if (role !== "founder") {
+      return NextResponse.json(
+        { error: "Only the founder can set max students." },
+        { status: 403 }
+      );
+    }
+    updatePayload.max_students = maxStudents;
   }
 
   if (createdBy !== undefined) {
@@ -491,7 +516,7 @@ export async function PATCH(request: NextRequest) {
 
   const { data, error: updateError } = await updateQuery
     .select(
-      "id, title, short_name, description, is_completed, completed_start_date, completed_end_date, completed_class_count, created_by, created_by_name, created_by_email, created_at"
+      "id, title, short_name, description, is_completed, completed_start_date, completed_end_date, completed_class_count, max_students, created_by, created_by_name, created_by_email, created_at"
     )
     .single();
 

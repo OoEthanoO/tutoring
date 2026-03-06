@@ -65,7 +65,7 @@ export async function POST(
 
   const { data: course, error: courseError } = await adminClient
     .from("courses")
-    .select("id, course_classes(starts_at)")
+    .select("id, max_students, course_classes(starts_at), course_enrollments(count)")
     .eq("id", courseId)
     .single();
 
@@ -74,6 +74,17 @@ export async function POST(
       { error: courseError?.message ?? "Course not found." },
       { status: 404 }
     );
+  }
+
+  const maxStudents = course.max_students;
+  if (typeof maxStudents === "number" && maxStudents > 0) {
+    const currentEnrollmentCount = course.course_enrollments?.[0]?.count ?? 0;
+    if (currentEnrollmentCount >= maxStudents) {
+      return NextResponse.json(
+        { error: "Course is full." },
+        { status: 400 }
+      );
+    }
   }
 
   const now = Date.now();

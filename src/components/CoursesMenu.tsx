@@ -61,6 +61,8 @@ type Course = {
   completed_start_date?: string | null;
   completed_end_date?: string | null;
   completed_class_count?: number | null;
+  max_students?: number | null;
+  enrollment_count?: number;
   created_by_name?: string | null;
   created_by_email?: string | null;
   created_at: string;
@@ -273,12 +275,19 @@ export default function CoursesMenu() {
     [hasGrayClass, hasYellowClass]
   );
 
+  const isFullCourse = useCallback((course: Course) => {
+    if (typeof course.max_students === "number" && course.max_students > 0) {
+      return (course.enrollment_count ?? 0) >= course.max_students;
+    }
+    return false;
+  }, []);
+
   const availableCourses = useMemo(
     () =>
       courses
-        .filter((course) => isAvailableSectionCourse(course))
+        .filter((course) => isAvailableSectionCourse(course) && !isFullCourse(course))
         .sort(sortCoursesByLastClassDesc),
-    [courses, isAvailableSectionCourse]
+    [courses, isAvailableSectionCourse, isFullCourse]
   );
 
   const upcomingCourses = useMemo(
@@ -288,10 +297,19 @@ export default function CoursesMenu() {
           (course) =>
             !isAvailableSectionCourse(course) &&
             !course.is_completed &&
-            (!course.course_classes || course.course_classes.length === 0)
+            (!course.course_classes || course.course_classes.length === 0) &&
+            !isFullCourse(course)
         )
         .sort(sortCoursesByLastClassDesc),
-    [courses, isAvailableSectionCourse]
+    [courses, isAvailableSectionCourse, isFullCourse]
+  );
+
+  const fullCourses = useMemo(
+    () =>
+      courses
+        .filter((course) => isFullCourse(course))
+        .sort(sortCoursesByLastClassDesc),
+    [courses, isFullCourse]
   );
 
   const completedCourses = useMemo(
@@ -573,6 +591,69 @@ export default function CoursesMenu() {
                         Rejected
                       </span>
                     ) : null}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+
+      {fullCourses.length > 0 ? (
+        <div className="space-y-4">
+          <header>
+            <h2 className="text-xl font-bold tracking-tight text-[var(--foreground)]">
+              Full courses
+            </h2>
+            <p className="text-sm text-[var(--muted)]">
+              These courses have reached maximum capacity and are not accepting new enrollments.
+            </p>
+          </header>
+
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {fullCourses.map((course) => {
+              const summary =
+                course.is_completed &&
+                  course.completed_start_date &&
+                  course.completed_end_date &&
+                  course.completed_class_count
+                  ? {
+                    startLabel: formatCompletedDate(
+                      course.completed_start_date
+                    ),
+                    endLabel: formatCompletedDate(course.completed_end_date),
+                    classCount: course.completed_class_count,
+                  }
+                  : getCompletedCourseSummary(course);
+
+              return (
+                <div
+                  key={course.id}
+                  className="flex flex-col gap-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-sm"
+                >
+                  <div className="space-y-1">
+                    <h3 className="text-lg font-bold leading-tight text-[var(--foreground)]">
+                      {course.title}
+                    </h3>
+                    <p className="text-sm text-[var(--muted)]">
+                      Tutor:{" "}
+                      {course.created_by_name ||
+                        course.created_by_email ||
+                        "Unknown tutor"}
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <p className="text-xs text-[var(--muted)]">
+                      {summary.startLabel} to {summary.endLabel} ·{" "}
+                      {summary.classCount} classes
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="rounded-full border border-gray-300 bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700 opacity-80">
+                      Full
+                    </span>
                   </div>
                 </div>
               );

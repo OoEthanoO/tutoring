@@ -32,6 +32,7 @@ type Course = {
   completed_start_date?: string | null;
   completed_end_date?: string | null;
   completed_class_count?: number | null;
+  max_students?: number | null;
   created_by?: string | null;
   created_by_name?: string | null;
   created_by_email?: string | null;
@@ -160,6 +161,7 @@ export default function ManageMyCoursesMenu() {
   const [editCourseTitle, setEditCourseTitle] = useState("");
   const [editCourseShortName, setEditCourseShortName] = useState("");
   const [editCourseDescription, setEditCourseDescription] = useState("");
+  const [editCourseMaxStudents, setEditCourseMaxStudents] = useState<string>("");
   const [editCourseTutorId, setEditCourseTutorId] = useState<string>("");
   const [pendingCourseEditId, setPendingCourseEditId] = useState<string | null>(
     null
@@ -573,6 +575,7 @@ export default function ManageMyCoursesMenu() {
     setEditCourseTitle(course.title ?? "");
     setEditCourseShortName(course.short_name ?? "");
     setEditCourseDescription(course.description ?? "");
+    setEditCourseMaxStudents(course.max_students ? String(course.max_students) : "");
     setEditCourseTutorId(course.created_by ?? "");
   };
 
@@ -581,6 +584,7 @@ export default function ManageMyCoursesMenu() {
     setEditCourseTitle("");
     setEditCourseShortName("");
     setEditCourseDescription("");
+    setEditCourseMaxStudents("");
     setEditCourseTutorId("");
   };
 
@@ -608,6 +612,7 @@ export default function ManageMyCoursesMenu() {
         title: titleValue,
         shortName: role === "founder" ? editCourseShortName.trim() : undefined,
         description: editCourseDescription.trim(),
+        maxStudents: role === "founder" && editCourseMaxStudents ? Number(editCourseMaxStudents) : null,
         createdBy: role === "founder" ? editCourseTutorId : undefined,
       }),
     });
@@ -798,6 +803,19 @@ export default function ManageMyCoursesMenu() {
                       className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
                     />
                     {role === "founder" ? (
+                      <input
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={editCourseMaxStudents}
+                        onChange={(event) =>
+                          setEditCourseMaxStudents(event.target.value)
+                        }
+                        placeholder="Max Students (Leave blank for unlimited)"
+                        className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+                      />
+                    ) : null}
+                    {role === "founder" ? (
                       <>
                         <input
                           type="text"
@@ -846,6 +864,11 @@ export default function ManageMyCoursesMenu() {
                         {course.created_by_name ||
                           course.created_by_email ||
                           "Unknown tutor"}
+                      </p>
+                    ) : null}
+                    {role === "founder" && course.max_students ? (
+                      <p className="text-xs text-[var(--muted)]">
+                        Max Students: {course.max_students}
                       </p>
                     ) : null}
                   </div>
