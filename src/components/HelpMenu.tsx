@@ -99,7 +99,7 @@ export default function HelpMenu() {
 
                     <div className="space-y-3">
                         <p className="text-sm text-[var(--foreground)]">
-                            To facilitate communication between instructors and students, we have set up a dedicated Discord server for YanLearn. Students should go to log in to the YanLearn website, click your profile card on the upper right corner, select <span className="font-semibold">Connect Discord</span>, then follow through with the instructions to join the Discord server.
+                            To facilitate communication between instructors and students, we have set up a dedicated Discord server for YanLearn. Students should log in to the YanLearn website, click your profile card on the upper right corner, select <span className="font-semibold">Connect Discord</span>, then follow through with the instructions to join the Discord server.
                         </p>
                     </div>
                 </div>
