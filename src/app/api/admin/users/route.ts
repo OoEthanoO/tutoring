@@ -324,7 +324,7 @@ export async function PATCH(request: NextRequest) {
     await sendEmail(
       updated.email,
       "You've been promoted to Executive!",
-      `<p>Congratulations! You have been promoted to an executive.</p><p>If you are applying as a tutor role, please fill out the tutor application form here: <a href="${formUrl}">${formUrl}</a></p>`
+      `<p>Congratulations! You have been promoted to an executive.</p><p>If you are applying as a tutor role, please fill out both of the following tutor application forms: <br/>1. <a href="${formUrl}">${formUrl}</a><br/>2. <a href="https://forms.gle/gmiLF8fDffTXn5sT6">https://forms.gle/gmiLF8fDffTXn5sT6</a></p>`
     );
   }
 
