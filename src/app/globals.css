@@ -41,3 +41,21 @@ input[type="submit"],
 input[type="reset"] {
   cursor: pointer;
 }
+
+ul.list-disc {
+  list-style-type: disc;
+  list-style-position: outside;
+}
+
+ul.list-disc li {
+  display: list-item;
+}
+
+ol.list-decimal {
+  list-style-type: decimal;
+  list-style-position: outside;
+}
+
+ol.list-decimal li {
+  display: list-item;
+}

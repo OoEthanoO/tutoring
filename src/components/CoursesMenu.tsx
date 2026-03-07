@@ -627,7 +627,7 @@ export default function CoursesMenu() {
 
       {!isGuest && selectedCourse ? (
         <div className="fixed inset-0 z-30 grid place-items-center p-4 overflow-y-auto overscroll-contain bg-black/50">
-          <div className="w-full max-w-lg max-h-full flex flex-col rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-xl overflow-hidden overscroll-contain min-h-0">
+          <div className="w-full md:w-[50vw] max-h-full flex flex-col rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-xl overflow-hidden overscroll-contain min-h-0">
             <div ref={modalScrollRef} className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-6 space-y-4">
               <div className="space-y-1">
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
