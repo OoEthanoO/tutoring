@@ -285,9 +285,9 @@ export default function CoursesMenu() {
   const availableCourses = useMemo(
     () =>
       courses
-        .filter((course) => isAvailableSectionCourse(course) && !isFullCourse(course))
+        .filter((course) => isAvailableSectionCourse(course))
         .sort(sortCoursesByLastClassDesc),
-    [courses, isAvailableSectionCourse, isFullCourse]
+    [courses, isAvailableSectionCourse]
   );
 
   const upcomingCourses = useMemo(
@@ -297,20 +297,13 @@ export default function CoursesMenu() {
           (course) =>
             !isAvailableSectionCourse(course) &&
             !course.is_completed &&
-            (!course.course_classes || course.course_classes.length === 0) &&
-            !isFullCourse(course)
+            (!course.course_classes || course.course_classes.length === 0)
         )
         .sort(sortCoursesByLastClassDesc),
-    [courses, isAvailableSectionCourse, isFullCourse]
+    [courses, isAvailableSectionCourse]
   );
 
-  const fullCourses = useMemo(
-    () =>
-      courses
-        .filter((course) => isFullCourse(course))
-        .sort(sortCoursesByLastClassDesc),
-    [courses, isFullCourse]
-  );
+
 
   const completedCourses = useMemo(
     () =>
@@ -479,10 +472,14 @@ export default function CoursesMenu() {
                   ) : hasGrayClass(course) ? (
                     <button
                       type="button"
+                      disabled={isFullCourse(course)}
                       onClick={() => openEnrollmentModal(course)}
-                      className="rounded-full border border-[var(--foreground)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)]"
+                      className={`rounded-full border px-4 py-2 text-xs font-semibold transition ${isFullCourse(course)
+                        ? "border-[var(--border)] text-[var(--muted)] cursor-not-allowed opacity-50"
+                        : "border-[var(--foreground)] text-[var(--foreground)] hover:bg-[var(--foreground)] hover:text-[var(--surface)]"
+                        }`}
                     >
-                      Enroll
+                      {isFullCourse(course) ? "Course Full" : "Enroll"}
                     </button>
                   ) : null}
                 </div>
@@ -537,6 +534,18 @@ export default function CoursesMenu() {
                     <span className="rounded-full border border-red-300 px-3 py-1 text-xs font-semibold text-red-700">
                       Rejected
                     </span>
+                  ) : !isGuest ? (
+                    <button
+                      type="button"
+                      disabled={isFullCourse(course)}
+                      onClick={() => openEnrollmentModal(course)}
+                      className={`rounded-full border px-4 py-1.5 text-[0.6rem] font-semibold transition ${isFullCourse(course)
+                        ? "border-[var(--border)] text-[var(--muted)] cursor-not-allowed opacity-50"
+                        : "border-[var(--foreground)] text-[var(--foreground)] hover:bg-[var(--foreground)] hover:text-[var(--surface)]"
+                        }`}
+                    >
+                      {isFullCourse(course) ? "Course Full" : "Enroll"}
+                    </button>
                   ) : null}
                 </div>
               </div>
@@ -599,68 +608,7 @@ export default function CoursesMenu() {
         </div>
       ) : null}
 
-      {fullCourses.length > 0 ? (
-        <div className="space-y-4">
-          <header>
-            <h2 className="text-xl font-bold tracking-tight text-[var(--foreground)]">
-              Full courses
-            </h2>
-            <p className="text-sm text-[var(--muted)]">
-              These courses have reached maximum capacity and are not accepting new enrollments.
-            </p>
-          </header>
 
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {fullCourses.map((course) => {
-              const summary =
-                course.is_completed &&
-                  course.completed_start_date &&
-                  course.completed_end_date &&
-                  course.completed_class_count
-                  ? {
-                    startLabel: formatCompletedDate(
-                      course.completed_start_date
-                    ),
-                    endLabel: formatCompletedDate(course.completed_end_date),
-                    classCount: course.completed_class_count,
-                  }
-                  : getCompletedCourseSummary(course);
-
-              return (
-                <div
-                  key={course.id}
-                  className="flex flex-col gap-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-sm"
-                >
-                  <div className="space-y-1">
-                    <h3 className="text-lg font-bold leading-tight text-[var(--foreground)]">
-                      {course.title}
-                    </h3>
-                    <p className="text-sm text-[var(--muted)]">
-                      Tutor:{" "}
-                      {course.created_by_name ||
-                        course.created_by_email ||
-                        "Unknown tutor"}
-                    </p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <p className="text-xs text-[var(--muted)]">
-                      {summary.startLabel} to {summary.endLabel} ·{" "}
-                      {summary.classCount} classes
-                    </p>
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="rounded-full border border-gray-300 bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700 opacity-80">
-                      Full
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      ) : null}
 
       {!isGuest && selectedCourse ? (
         <div className="fixed inset-0 z-30 grid place-items-center p-4 overflow-y-auto overscroll-contain bg-black/50">
