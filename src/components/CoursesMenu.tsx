@@ -282,21 +282,21 @@ export default function CoursesMenu() {
       courses
         .filter((course) => isAvailableSectionCourse(course))
         .sort((a, b) => {
-          const getNextClassTime = (course: Course) => {
-            const futureClasses = (course.course_classes ?? [])
+          const getFirstClassTime = (course: Course) => {
+            const allClasses = (course.course_classes ?? [])
               .map((item) => new Date(item.starts_at).getTime())
-              .filter((value) => Number.isFinite(value) && value > nowMs);
-            if (futureClasses.length > 0) {
-              return Math.min(...futureClasses);
+              .filter((value) => Number.isFinite(value));
+            if (allClasses.length > 0) {
+              return Math.min(...allClasses);
             }
             return Number.NEGATIVE_INFINITY;
           };
 
-          const aNext = getNextClassTime(a);
-          const bNext = getNextClassTime(b);
+          const aFirst = getFirstClassTime(a);
+          const bFirst = getFirstClassTime(b);
 
-          if (aNext !== bNext) {
-            return bNext - aNext;
+          if (aFirst !== bFirst) {
+            return bFirst - aFirst;
           }
 
           return sortCoursesByCreationDateDesc(a, b);
