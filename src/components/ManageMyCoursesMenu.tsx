@@ -612,7 +612,7 @@ export default function ManageMyCoursesMenu() {
         title: titleValue,
         shortName: role === "founder" ? editCourseShortName.trim() : undefined,
         description: editCourseDescription.trim(),
-        maxStudents: role === "founder" && editCourseMaxStudents ? Number(editCourseMaxStudents) : null,
+        maxStudents: role === "founder" ? (editCourseMaxStudents ? Number(editCourseMaxStudents) : null) : undefined,
         createdBy: role === "founder" ? editCourseTutorId : undefined,
       }),
     });
