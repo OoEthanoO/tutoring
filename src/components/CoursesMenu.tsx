@@ -97,18 +97,13 @@ const getCourseLastClassTime = (course: Course) => {
 
   return Number.NEGATIVE_INFINITY;
 };
-
-const sortCoursesByLastClassDesc = (left: Course, right: Course) => {
-  const leftLast = getCourseLastClassTime(left);
-  const rightLast = getCourseLastClassTime(right);
-  if (leftLast !== rightLast) {
-    return rightLast - leftLast;
-  }
-
+const sortCoursesByCreationDateDesc = (left: Course, right: Course) => {
   const leftCreated = new Date(left.created_at).getTime();
   const rightCreated = new Date(right.created_at).getTime();
   if (Number.isFinite(leftCreated) && Number.isFinite(rightCreated)) {
-    return rightCreated - leftCreated;
+    if (leftCreated !== rightCreated) {
+      return rightCreated - leftCreated;
+    }
   }
 
   return left.title.localeCompare(right.title);
@@ -286,8 +281,27 @@ export default function CoursesMenu() {
     () =>
       courses
         .filter((course) => isAvailableSectionCourse(course))
-        .sort(sortCoursesByLastClassDesc),
-    [courses, isAvailableSectionCourse]
+        .sort((a, b) => {
+          const getNextClassTime = (course: Course) => {
+            const futureClasses = (course.course_classes ?? [])
+              .map((item) => new Date(item.starts_at).getTime())
+              .filter((value) => Number.isFinite(value) && value > nowMs);
+            if (futureClasses.length > 0) {
+              return Math.min(...futureClasses);
+            }
+            return Number.NEGATIVE_INFINITY;
+          };
+
+          const aNext = getNextClassTime(a);
+          const bNext = getNextClassTime(b);
+
+          if (aNext !== bNext) {
+            return bNext - aNext;
+          }
+
+          return sortCoursesByCreationDateDesc(a, b);
+        }),
+    [courses, isAvailableSectionCourse, nowMs]
   );
 
   const upcomingCourses = useMemo(
@@ -299,7 +313,7 @@ export default function CoursesMenu() {
             !course.is_completed &&
             (!course.course_classes || course.course_classes.length === 0)
         )
-        .sort(sortCoursesByLastClassDesc),
+        .sort(sortCoursesByCreationDateDesc),
     [courses, isAvailableSectionCourse]
   );
 
@@ -314,7 +328,7 @@ export default function CoursesMenu() {
             (course.is_completed ||
               (course.course_classes && course.course_classes.length > 0))
         )
-        .sort(sortCoursesByLastClassDesc),
+        .sort(sortCoursesByCreationDateDesc),
     [courses, isAvailableSectionCourse]
   );
 
