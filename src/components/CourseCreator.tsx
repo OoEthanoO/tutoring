@@ -324,6 +324,7 @@ export default function CourseCreator() {
               rows={4}
               className="mt-2 w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
             />
+            <p className="px-1 mt-1 text-xs text-[var(--muted)]">Markdown is supported for formatting</p>
           </div>
         ) : null}
         {userRole === "founder" ? (

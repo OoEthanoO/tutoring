@@ -1,7 +1,6 @@
-"use client";
-
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { getCurrentUser, onAuthChange } from "@/lib/authClient";
+import { MarkdownText } from "@/lib/parseMarkdown";
 
 type StatusState = {
   type: "idle" | "error";
@@ -144,14 +143,9 @@ export default function EnrolledCoursesMenu() {
                   "Unknown tutor"}
               </p>
               {course.description ? (
-                <p className="text-xs text-[var(--muted)]">
-                  {course.description.split("\n").map((line, index, arr) => (
-                    <span key={index}>
-                      {line}
-                      {index < arr.length - 1 && <br />}
-                    </span>
-                  ))}
-                </p>
+                <div className="text-xs text-[var(--muted)]">
+                  <MarkdownText text={course.description} />
+                </div>
               ) : null}
             </div>
 

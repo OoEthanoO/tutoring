@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { getCurrentUser, onAuthChange } from "@/lib/authClient";
 import { canManageCourses, resolveUserRole, type UserRole } from "@/lib/roles";
 import { setHasUnsavedData } from "@/lib/unsavedData";
+import { MarkdownText } from "@/lib/parseMarkdown";
 
 type EnrolledStudent = {
   id: string;
@@ -802,6 +803,7 @@ export default function ManageMyCoursesMenu() {
                       rows={3}
                       className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
                     />
+                    <p className="px-1 text-xs text-[var(--muted)]">Markdown is supported for formatting</p>
                     {role === "founder" ? (
                       <input
                         type="number"
@@ -854,14 +856,9 @@ export default function ManageMyCoursesMenu() {
                       </p>
                     ) : null}
                     {course.description ? (
-                      <p className="text-xs text-[var(--muted)]">
-                        {course.description.split("\n").map((line, index, arr) => (
-                          <span key={index}>
-                            {line}
-                            {index < arr.length - 1 && <br />}
-                          </span>
-                        ))}
-                      </p>
+                      <div className="text-xs text-[var(--muted)]">
+                        <MarkdownText text={course.description} />
+                      </div>
                     ) : null}
                     {role === "founder" ? (
                       <p className="text-xs text-[var(--muted)]">

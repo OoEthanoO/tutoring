@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getCurrentUser, onAuthChange } from "@/lib/authClient";
 import { setHasUnsavedData } from "@/lib/unsavedData";
+import { MarkdownText } from "@/lib/parseMarkdown";
 
 type StatusState = {
   type: "idle" | "error";
@@ -438,14 +439,9 @@ export default function CoursesMenu() {
                       "Unknown tutor"}
                   </p>
                   {course.description ? (
-                    <p className="text-xs text-[var(--muted)]">
-                      {course.description.split("\n").map((line, index, arr) => (
-                        <span key={index}>
-                          {line}
-                          {index < arr.length - 1 && <br />}
-                        </span>
-                      ))}
-                    </p>
+                    <div className="text-xs text-[var(--muted)]">
+                      <MarkdownText text={course.description} />
+                    </div>
                   ) : null}
                 </div>
 
@@ -530,14 +526,9 @@ export default function CoursesMenu() {
                       "Unknown tutor"}
                   </p>
                   {course.description ? (
-                    <p className="text-xs text-[var(--muted)]">
-                      {course.description.split("\n").map((line, index, arr) => (
-                        <span key={index}>
-                          {line}
-                          {index < arr.length - 1 && <br />}
-                        </span>
-                      ))}
-                    </p>
+                    <div className="text-xs text-[var(--muted)]">
+                      <MarkdownText text={course.description} />
+                    </div>
                   ) : null}
                 </div>
 
@@ -661,14 +652,9 @@ export default function CoursesMenu() {
               </div>
 
               {selectedCourse.description ? (
-                <p className="text-sm text-[var(--muted)]">
-                  {selectedCourse.description.split("\n").map((line, index, arr) => (
-                    <span key={index}>
-                      {line}
-                      {index < arr.length - 1 && <br />}
-                    </span>
-                  ))}
-                </p>
+                <div className="text-sm text-[var(--muted)]">
+                  <MarkdownText text={selectedCourse.description} />
+                </div>
               ) : null}
 
               <div className="space-y-2">
