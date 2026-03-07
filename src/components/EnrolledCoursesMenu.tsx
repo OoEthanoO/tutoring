@@ -145,7 +145,12 @@ export default function EnrolledCoursesMenu() {
               </p>
               {course.description ? (
                 <p className="text-xs text-[var(--muted)]">
-                  {course.description}
+                  {course.description.split("\n").map((line, index, arr) => (
+                    <span key={index}>
+                      {line}
+                      {index < arr.length - 1 && <br />}
+                    </span>
+                  ))}
                 </p>
               ) : null}
             </div>

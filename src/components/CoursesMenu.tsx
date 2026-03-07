@@ -439,7 +439,12 @@ export default function CoursesMenu() {
                   </p>
                   {course.description ? (
                     <p className="text-xs text-[var(--muted)]">
-                      {course.description}
+                      {course.description.split("\n").map((line, index, arr) => (
+                        <span key={index}>
+                          {line}
+                          {index < arr.length - 1 && <br />}
+                        </span>
+                      ))}
                     </p>
                   ) : null}
                 </div>
@@ -526,7 +531,12 @@ export default function CoursesMenu() {
                   </p>
                   {course.description ? (
                     <p className="text-xs text-[var(--muted)]">
-                      {course.description}
+                      {course.description.split("\n").map((line, index, arr) => (
+                        <span key={index}>
+                          {line}
+                          {index < arr.length - 1 && <br />}
+                        </span>
+                      ))}
                     </p>
                   ) : null}
                 </div>
@@ -652,7 +662,12 @@ export default function CoursesMenu() {
 
               {selectedCourse.description ? (
                 <p className="text-sm text-[var(--muted)]">
-                  {selectedCourse.description}
+                  {selectedCourse.description.split("\n").map((line, index, arr) => (
+                    <span key={index}>
+                      {line}
+                      {index < arr.length - 1 && <br />}
+                    </span>
+                  ))}
                 </p>
               ) : null}
 
