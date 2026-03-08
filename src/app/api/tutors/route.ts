@@ -36,6 +36,23 @@ export async function GET() {
     );
   }
 
+  const { data: coursesData, error: coursesError } = await adminClient
+    .from("courses")
+    .select("created_by");
+
+  if (coursesError || !coursesData) {
+    return NextResponse.json(
+      { error: coursesError?.message ?? "Failed to load courses." },
+      { status: 500 }
+    );
+  }
+
+  const activeCreatorIds = new Set(
+    coursesData
+      .map((c) => c.created_by)
+      .filter((id) => typeof id === "string")
+  );
+
   const tutors = data
     .map((user) => {
       const role = resolveUserRole(user.email, user.role ?? null);
@@ -48,7 +65,11 @@ export async function GET() {
         isJunior: user.is_junior,
       };
     })
-    .filter((user) => (user.role === "founder" || user.role === "executive") && !user.isJunior)
+    .filter(
+      (user) =>
+        (user.role === "founder" || user.role === "executive") &&
+        (!user.isJunior || activeCreatorIds.has(user.id))
+    )
     .sort((a, b) => {
       if (a.role === "founder" && b.role !== "founder") {
         return -1;

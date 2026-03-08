@@ -9,9 +9,13 @@
   --muted: #666666;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+:root {
+  --background: #ffffff;
+  --foreground: #111111;
+  --surface: #ffffff;
+  --surface-muted: #f7f7f7;
+  --border: #dddddd;
+  --muted: #666666;
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
