@@ -12,7 +12,6 @@ type AccountInfo = {
   discordUserId: string | null;
   discordUsername: string | null;
   isJunior: boolean;
-  isEligibleForDiscord: boolean;
 };
 
 export default function AccountCard({ onClick }: { onClick?: () => void }) {
@@ -43,7 +42,6 @@ export default function AccountCard({ onClick }: { onClick?: () => void }) {
         discordUserId,
         discordUsername,
         isJunior: user.is_junior,
-        isEligibleForDiscord: role !== "student" || user.has_course === true,
       });
     };
 
@@ -73,11 +71,9 @@ export default function AccountCard({ onClick }: { onClick?: () => void }) {
             {account.email}
           </span>
           <span style={{ gridArea: '1 / 1', opacity: isHovered ? 1 : 0, transition: 'opacity 0.2s', color: '#5865F2' }} className="truncate">
-            {account.isEligibleForDiscord ? (
-              account.discordUserId
-                ? account.discordUsername || "Discord connected"
-                : "Discord not connected"
-            ) : account.email}
+            {account.discordUserId
+              ? account.discordUsername || "Discord connected"
+              : "Discord not connected"}
           </span>
         </div>
       </div>
