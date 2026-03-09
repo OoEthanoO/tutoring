@@ -1087,9 +1087,31 @@ export const runDiscordSync = async ({
 
   const websiteUserByDiscordUserId = new Map<string, WebsiteUserRow>();
 
+  const studentIdsWithEnrollments = new Set(
+    websiteEnrollments.map((e) => e.student_id)
+  );
+
   for (const user of websiteUsers) {
     const discordUserId = String(user.discord_user_id ?? "").trim();
     if (!discordUserId) {
+      continue;
+    }
+
+    const role = resolveUserRole(user.email, user.role);
+    const isEligible = role !== "student" || studentIdsWithEnrollments.has(user.id);
+
+    if (!isEligible) {
+      if (user.discord_user_id) {
+        // Proactively clear the Discord fields in the database for this ineligible user.
+        await adminClient
+          .from("app_users")
+          .update({
+            discord_user_id: null,
+            discord_username: null,
+            discord_connected_at: null,
+          })
+          .eq("id", user.id);
+      }
       continue;
     }
 

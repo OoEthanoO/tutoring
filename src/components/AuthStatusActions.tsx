@@ -24,6 +24,7 @@ export default function AuthStatusActions() {
   const [isDisconnectingDiscord, setIsDisconnectingDiscord] = useState(false);
   const [isDisconnectConfirmOpen, setIsDisconnectConfirmOpen] = useState(false);
   const [isJoinGuidanceActive, setIsJoinGuidanceActive] = useState(false);
+  const [isEligibleForDiscord, setIsEligibleForDiscord] = useState(true);
   const [isEditNameOpen, setIsEditNameOpen] = useState(false);
   const [fullNameDraft, setFullNameDraft] = useState("");
   const [isSavingName, setIsSavingName] = useState(false);
@@ -63,6 +64,13 @@ export default function AuthStatusActions() {
         auth.actor?.role ?? null
       );
       setIsActorFounder(actorRole === "founder");
+
+      const userRole = resolveUserRole(
+        auth.user?.email ?? null,
+        auth.user?.role ?? null
+      );
+      const eligible = userRole !== "student" || auth.user?.has_course === true;
+      setIsEligibleForDiscord(eligible);
     };
 
     load();
@@ -261,58 +269,62 @@ export default function AuthStatusActions() {
             >
               Edit name
             </button>
-            {isDiscordLinked ? (
-              <button
-                type="button"
-                onClick={requestDisconnectDiscord}
-                disabled={isDisconnectingDiscord}
-                className="w-full rounded-lg px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-70"
+            {isEligibleForDiscord ? (
+              isDiscordLinked ? (
+                <button
+                  type="button"
+                  onClick={requestDisconnectDiscord}
+                  disabled={isDisconnectingDiscord}
+                  className="w-full rounded-lg px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  {isDisconnectingDiscord ? "Disconnecting..." : "Disconnect Discord"}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={onConnectDiscord}
+                  className={`w-full rounded-lg px-3 py-2 text-left text-sm transition ${isJoinGuidanceActive
+                    ? "text-red-600 animate-pulse"
+                    : "text-[var(--foreground)] hover:bg-[var(--border)]"
+                    }`}
+                >
+                  Connect Discord
+                </button>
+              )
+            ) : null}
+            {isEligibleForDiscord ? (
+              <div
+                className="relative"
+                onMouseEnter={() => {
+                  if (!isDiscordLinked) {
+                    setIsJoinGuidanceActive(true);
+                  }
+                }}
+                onMouseLeave={() => {
+                  if (!isDiscordLinked) {
+                    setIsJoinGuidanceActive(false);
+                  }
+                }}
+                onFocusCapture={() => {
+                  if (!isDiscordLinked) {
+                    setIsJoinGuidanceActive(true);
+                  }
+                }}
+                onBlurCapture={() => setIsJoinGuidanceActive(false)}
               >
-                {isDisconnectingDiscord ? "Disconnecting..." : "Disconnect Discord"}
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={onConnectDiscord}
-                className={`w-full rounded-lg px-3 py-2 text-left text-sm transition ${isJoinGuidanceActive
-                  ? "text-red-600 animate-pulse"
-                  : "text-[var(--foreground)] hover:bg-[var(--border)]"
-                  }`}
-              >
-                Connect Discord
-              </button>
-            )}
-            <div
-              className="relative"
-              onMouseEnter={() => {
-                if (!isDiscordLinked) {
-                  setIsJoinGuidanceActive(true);
-                }
-              }}
-              onMouseLeave={() => {
-                if (!isDiscordLinked) {
-                  setIsJoinGuidanceActive(false);
-                }
-              }}
-              onFocusCapture={() => {
-                if (!isDiscordLinked) {
-                  setIsJoinGuidanceActive(true);
-                }
-              }}
-              onBlurCapture={() => setIsJoinGuidanceActive(false)}
-            >
-              <button
-                type="button"
-                onClick={onJoinDiscordServer}
-                disabled={!isDiscordLinked}
-                className={`w-full rounded-lg px-3 py-2 text-left text-sm transition ${isDiscordLinked
-                  ? "text-[var(--foreground)] hover:bg-[var(--border)]"
-                  : "cursor-not-allowed text-[var(--muted)] opacity-50"
-                  }`}
-              >
-                Join Discord Server
-              </button>
-            </div>
+                <button
+                  type="button"
+                  onClick={onJoinDiscordServer}
+                  disabled={!isDiscordLinked}
+                  className={`w-full rounded-lg px-3 py-2 text-left text-sm transition ${isDiscordLinked
+                    ? "text-[var(--foreground)] hover:bg-[var(--border)]"
+                    : "cursor-not-allowed text-[var(--muted)] opacity-50"
+                    }`}
+                >
+                  Join Discord Server
+                </button>
+              </div>
+            ) : null}
             <button
               type="button"
               onClick={onSignOut}

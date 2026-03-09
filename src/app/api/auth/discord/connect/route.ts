@@ -29,6 +29,15 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 
+  const { resolveUserRole } = await import("@/lib/roles");
+  const role = resolveUserRole(actor.email, actor.role);
+  if (role === "student" && !actor.has_course) {
+    return NextResponse.json(
+      { error: "Only students with at least one course can connect Discord." },
+      { status: 403 }
+    );
+  }
+
   const discordClientId = String(process.env.DISCORD_CLIENT_ID ?? "").trim();
   if (!discordClientId) {
     return NextResponse.json(

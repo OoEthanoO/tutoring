@@ -15,6 +15,7 @@ export type SessionUser = {
   discord_username: string | null;
   discord_connected_at: string | null;
   is_junior: boolean;
+  has_course: boolean;
 };
 
 export const IMPERSONATE_COOKIE = "impersonate_user_id";
@@ -58,7 +59,15 @@ export const getSessionUser = async (token?: string | null) => {
     return null;
   }
 
-  return resolvedUser as SessionUser;
+  const { count } = await adminClient
+    .from("course_enrollments")
+    .select("*", { count: "exact", head: true })
+    .eq("student_id", resolvedUser.id);
+
+  return {
+    ...resolvedUser,
+    has_course: (count ?? 0) > 0,
+  } as SessionUser;
 };
 
 export const getRequestActor = async (
@@ -96,7 +105,15 @@ export const getRequestUser = async (
     return actor;
   }
 
-  return impersonatedUser as SessionUser;
+  const { count: impCount } = await adminClient
+    .from("course_enrollments")
+    .select("*", { count: "exact", head: true })
+    .eq("student_id", impersonatedUser.id);
+
+  return {
+    ...impersonatedUser,
+    has_course: (impCount ?? 0) > 0,
+  } as SessionUser;
 };
 
 export const getRequestAuthContext = async (
@@ -143,9 +160,17 @@ export const getRequestAuthContext = async (
     };
   }
 
+  const { count: impCount } = await adminClient
+    .from("course_enrollments")
+    .select("*", { count: "exact", head: true })
+    .eq("student_id", impersonatedUser.id);
+
   return {
     actor,
-    user: impersonatedUser as SessionUser,
+    user: {
+      ...impersonatedUser,
+      has_course: (impCount ?? 0) > 0,
+    } as SessionUser,
     isImpersonating: impersonatedUser.id !== actor.id,
     impersonatedUserId: impersonatedUser.id,
   };
