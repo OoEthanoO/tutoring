@@ -33,6 +33,7 @@ const sendMessagesPermission = 2048;
 const readMessageHistoryPermission = 65536;
 const connectPermission = 1048576;
 const manageChannelsPermission = 16;
+const archiveDelayMs = 7 * 24 * 60 * 60 * 1000;
 const fundraiserVoiceChannelNamePattern = /^\$\d[\d,]*\sraised$/i;
 
 type WebsiteUserRow = {
@@ -214,26 +215,31 @@ const buildUniqueCourseRoleName = (
   return `${normalizedBase.slice(0, roleNameLimit - 4)}-alt`;
 };
 
-const getCourseTopicMarker = (courseId: string) => `${courseTopicPrefix}${courseId}`;
+const getCourseTopicMarker = (courseId: string, flags: string = "") => {
+  const suffix = flags ? `|${flags}` : "";
+  return `${courseTopicPrefix}${courseId}${suffix}`;
+};
 
 const readCourseIdFromTopic = (topic?: string | null) => {
   const value = String(topic ?? "").trim();
   if (!value.startsWith(courseTopicPrefix)) {
-    return "";
+    return { id: "", flags: "" };
   }
-  return value.slice(courseTopicPrefix.length).trim();
+  const content = value.slice(courseTopicPrefix.length).trim();
+  const [id, flags] = content.split("|");
+  return { id: id ?? "", flags: flags ?? "" };
 };
 
-const isCourseCompleted = (course: CourseRow, nowMs: number) => {
+const getCourseEndedAtMs = (course: CourseRow) => {
   if (course.is_completed) {
-    return true;
+    return 0;
   }
 
   const classRows = Array.isArray(course.course_classes)
     ? course.course_classes
     : [];
   if (classRows.length === 0) {
-    return false;
+    return Number.POSITIVE_INFINITY;
   }
 
   let latestClassEndMs = Number.NEGATIVE_INFINITY;
@@ -256,10 +262,10 @@ const isCourseCompleted = (course: CourseRow, nowMs: number) => {
   }
 
   if (!Number.isFinite(latestClassEndMs)) {
-    return false;
+    return Number.POSITIVE_INFINITY;
   }
 
-  return latestClassEndMs <= nowMs;
+  return latestClassEndMs;
 };
 
 const buildCoursePermissionOverwrites = (
@@ -827,6 +833,14 @@ class DiscordApiClient {
     });
   }
 
+  createChannelMessage(channelId: string, content: string) {
+    return this.request<void>({
+      method: "POST",
+      path: `/channels/${channelId}/messages`,
+      body: { content },
+    });
+  }
+
   getCurrentBotUser() {
     return this.request<DiscordUser>({
       method: "GET",
@@ -930,13 +944,11 @@ const findCourseChannel = (
   expectedName: string,
   usedChannelIds: Set<string>
 ) => {
-  const marker = getCourseTopicMarker(courseId);
-
   const byTopic =
     channels.find(
       (channel) =>
         channel.type === discordTextChannelType &&
-        String(channel.topic ?? "") === marker &&
+        readCourseIdFromTopic(channel.topic).id === courseId &&
         !usedChannelIds.has(channel.id)
     ) ?? null;
   if (byTopic) {
@@ -1080,9 +1092,9 @@ export const runDiscordSync = async ({
   const websiteCourses = (courses ?? []) as CourseRow[];
   const websiteEnrollments = (enrollments ?? []) as CourseEnrollmentRow[];
   const nowMs = Date.now();
-  const shouldArchiveByCourseId = new Map<string, boolean>();
+  const endedAtMsByCourseId = new Map<string, number>();
   for (const course of websiteCourses) {
-    shouldArchiveByCourseId.set(course.id, isCourseCompleted(course, nowMs));
+    endedAtMsByCourseId.set(course.id, getCourseEndedAtMs(course));
   }
 
   const websiteUserByDiscordUserId = new Map<string, WebsiteUserRow>();
@@ -1410,6 +1422,11 @@ export const runDiscordSync = async ({
     enrollmentsByCourseId.set(courseId, current);
   }
 
+  const roleNamesToKeep = new Set(
+    websiteCourses.map((course) =>
+      normalizeRoleName(course.title, course.id)
+    )
+  );
   const createCourseRole = async (course: CourseRow) => {
     const baseName = normalizeRoleName(course.title, course.id);
     const uniqueName = buildUniqueCourseRoleName(baseName, course.id, mutableRoles);
@@ -1433,7 +1450,7 @@ export const runDiscordSync = async ({
       continue;
     }
 
-    const courseId = readCourseIdFromTopic(channel.topic);
+    const { id: courseId } = readCourseIdFromTopic(channel.topic);
     if (!courseId) {
       continue;
     }
@@ -1463,7 +1480,9 @@ export const runDiscordSync = async ({
   );
   const courseRoleIdByCourseId = new Map<string, string>();
   for (const course of websiteCourses) {
-    const shouldArchive = shouldArchiveByCourseId.get(course.id) === true;
+    const endedAtMs = endedAtMsByCourseId.get(course.id) ?? Number.POSITIVE_INFINITY;
+    const isPastArchiveDelay = nowMs >= endedAtMs + archiveDelayMs;
+    const shouldArchive = isPastArchiveDelay;
     const hasManagedChannel = courseIdsWithManagedChannels.has(course.id);
 
     // Completed courses without a managed channel should not create roles/channels.
@@ -1628,7 +1647,7 @@ export const runDiscordSync = async ({
       continue;
     }
 
-    const courseId = readCourseIdFromTopic(channel.topic);
+    const { id: courseId } = readCourseIdFromTopic(channel.topic);
     if (!courseId || activeCourseIdSet.has(courseId)) {
       continue;
     }
@@ -1682,7 +1701,7 @@ export const runDiscordSync = async ({
       if (channel.type !== discordTextChannelType) {
         return false;
       }
-      if (!readCourseIdFromTopic(channel.topic)) {
+      if (!readCourseIdFromTopic(channel.topic).id) {
         return false;
       }
       return getRoleIdsFromOverwrites(channel, discordGuildId).includes(roleId);
@@ -1722,21 +1741,55 @@ export const runDiscordSync = async ({
     }
 
     const expectedChannelName = normalizeChannelName(course.title, course.id);
-    const expectedTopic = getCourseTopicMarker(course.id);
-    const shouldArchive = shouldArchiveByCourseId.get(course.id) === true;
+    const existingChannel = findCourseChannel(
+      mutableChannels,
+      course.id,
+      expectedChannelName,
+      usedChannelIds
+    );
+
+    const endedAtMs = endedAtMsByCourseId.get(course.id) ?? Number.POSITIVE_INFINITY;
+    const { flags: currentFlags } = existingChannel ? readCourseIdFromTopic(existingChannel.topic) : { flags: "" };
+    let nextFlags = currentFlags;
+
+    const isPastEnd = nowMs >= endedAtMs;
+    const isPastArchiveDelay = nowMs >= endedAtMs + archiveDelayMs;
+
+    if (isPastEnd && !currentFlags.includes("w") && existingChannel) {
+      try {
+        await apiClient.createChannelMessage(
+          existingChannel.id,
+          `**The course has officially concluded!** <@&${courseRoleId}>\n\nThis channel will remain open for one more week to allow you to save any notes, resources, or final discussions.\n\n**Archive Date:** in 7 days\nAfter this time, the channel will be moved to the **Archived** section and become read-only. You will still be able to access all previous messages and materials.`
+        );
+        nextFlags += "w";
+      } catch (error) {
+        result.errors.push(`Failed to send week notice for course "${course.title}": ${toErrorMessage(error, "Unknown error")}`);
+      }
+    }
+
+    let shouldArchive = false;
+    if (isPastArchiveDelay) {
+      shouldArchive = true;
+      if (!currentFlags.includes("a") && existingChannel) {
+        try {
+          await apiClient.createChannelMessage(
+            existingChannel.id,
+            `**This channel has now been archived.**\n\nThe course is complete, and this channel is now read-only. You can still browse the history and access shared resources.`
+          );
+          nextFlags += "a";
+        } catch (error) {
+          result.errors.push(`Failed to send archive notice for course "${course.title}": ${toErrorMessage(error, "Unknown error")}`);
+        }
+      }
+    }
+
+    const expectedTopic = getCourseTopicMarker(course.id, nextFlags);
     const expectedParentId = shouldArchive ? archiveCategory.id : coursesCategory.id;
     const expectedOverwrites = buildCoursePermissionOverwrites(
       discordGuildId,
       courseRoleId,
       botUser.id,
       shouldArchive
-    );
-
-    const existingChannel = findCourseChannel(
-      mutableChannels,
-      course.id,
-      expectedChannelName,
-      usedChannelIds
     );
 
     if (!existingChannel && shouldArchive) {
