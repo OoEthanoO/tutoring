@@ -24,7 +24,6 @@ const defaultScienceTutorsVoiceChannelName = "Science Tutors";
 const defaultMathTutorsVoiceChannelName = "Math Tutors";
 const defaultNonprofitTeamChannelName = "nonprofit-team";
 const defaultNonprofitTeamVoiceChannelName = "Nonprofit Team";
-const defaultMathTutorsCategoryName = "Math Tutors";
 const discordTextChannelType = 0;
 const discordVoiceChannelType = 2;
 const discordCategoryChannelType = 4;
@@ -1050,7 +1049,6 @@ export const runDiscordSync = async ({
   const mathTutorsVoiceChannelName = String(process.env.DISCORD_MATH_TUTORS_VOICE_CHANNEL_NAME ?? "").trim() || defaultMathTutorsVoiceChannelName;
   const nonprofitTeamChannelName = String(process.env.DISCORD_NONPROFIT_TEAM_CHANNEL_NAME ?? "").trim() || defaultNonprofitTeamChannelName;
   const nonprofitTeamVoiceChannelName = String(process.env.DISCORD_NONPROFIT_TEAM_VOICE_CHANNEL_NAME ?? "").trim() || defaultNonprofitTeamVoiceChannelName;
-  const mathTutorsCategoryName = String(process.env.DISCORD_MATH_TUTORS_CATEGORY_NAME ?? "").trim() || defaultMathTutorsCategoryName;
 
   const protectedRoleNames = new Set(
     String(process.env.DISCORD_PROTECTED_ROLE_NAMES ?? "")
@@ -1740,7 +1738,6 @@ export const runDiscordSync = async ({
   const voiceCategory = await ensureCategory(voiceCategoryName);
   const coursesCategory = await ensureCategory(coursesCategoryName);
   const archiveCategory = await ensureCategory(archiveCategoryName);
-  const mathTutorsCategory = await ensureCategory(mathTutorsCategoryName);
   const usedChannelIds = new Set<string>();
 
   for (const course of websiteCourses) {
@@ -2152,7 +2149,7 @@ export const runDiscordSync = async ({
   const mathTutorsChannel = await ensureFixedChannel({
     name: mathTutorsChannelName,
     channelType: discordTextChannelType,
-    parentId: mathTutorsCategory.id,
+    parentId: textCategory.id,
     permissionOverwrites: buildRoleExclusiveTextPermissionOverwrites(
       discordGuildId,
       mathTutorsRole.id,
@@ -2164,7 +2161,7 @@ export const runDiscordSync = async ({
   const nonprofitTeamChannel = await ensureFixedChannel({
     name: nonprofitTeamChannelName,
     channelType: discordTextChannelType,
-    parentId: mathTutorsCategory.id,
+    parentId: textCategory.id,
     permissionOverwrites: buildRoleExclusiveTextPermissionOverwrites(
       discordGuildId,
       nonprofitTeamRole.id,
@@ -2226,7 +2223,7 @@ export const runDiscordSync = async ({
   const mathTutorsVoiceChannel = await ensureFixedChannel({
     name: mathTutorsVoiceChannelName,
     channelType: discordVoiceChannelType,
-    parentId: mathTutorsCategory.id,
+    parentId: voiceCategory.id,
     permissionOverwrites: buildRoleExclusiveVoicePermissionOverwrites(
       discordGuildId,
       mathTutorsRole.id,
@@ -2238,7 +2235,7 @@ export const runDiscordSync = async ({
   const nonprofitTeamVoiceChannel = await ensureFixedChannel({
     name: nonprofitTeamVoiceChannelName,
     channelType: discordVoiceChannelType,
-    parentId: mathTutorsCategory.id,
+    parentId: voiceCategory.id,
     permissionOverwrites: buildRoleExclusiveVoicePermissionOverwrites(
       discordGuildId,
       nonprofitTeamRole.id,
@@ -2258,7 +2255,7 @@ export const runDiscordSync = async ({
     }
 
     const payload: UpdateGuildChannelPayload = {};
-    if (String(existing.parent_id ?? "") !== textCategory.id && String(existing.parent_id ?? "") !== mathTutorsCategory.id) {
+    if (String(existing.parent_id ?? "") !== textCategory.id) {
       payload.parent_id = textCategory.id;
     }
     if (typeof existing.position !== "number" || existing.position !== position) {
@@ -2353,7 +2350,7 @@ export const runDiscordSync = async ({
     }
 
     const payload: UpdateGuildChannelPayload = {};
-    if (String(existing.parent_id ?? "") !== voiceCategory.id && String(existing.parent_id ?? "") !== mathTutorsCategory.id) {
+    if (String(existing.parent_id ?? "") !== voiceCategory.id) {
       payload.parent_id = voiceCategory.id;
     }
     if (typeof existing.position !== "number" || existing.position !== position) {
@@ -2504,12 +2501,6 @@ export const runDiscordSync = async ({
   );
   nextTopLevelPosition += 1;
   await enforceTopLevelPosition(
-    mathTutorsCategory.id,
-    mathTutorsCategoryName,
-    nextTopLevelPosition
-  );
-  nextTopLevelPosition += 1;
-  await enforceTopLevelPosition(
     coursesCategory.id,
     coursesCategoryName,
     nextTopLevelPosition
@@ -2561,7 +2552,6 @@ export const runDiscordSync = async ({
   const allowedCategoryIds = new Set<string>([
     textCategory.id,
     voiceCategory.id,
-    mathTutorsCategory.id,
     coursesCategory.id,
     archiveCategory.id,
   ]);
