@@ -22,6 +22,9 @@ const defaultExecutivesVoiceChannelName = "Executives";
 const defaultSocialMediaVoiceChannelName = "Social Media";
 const defaultScienceTutorsVoiceChannelName = "Science Tutors";
 const defaultMathTutorsVoiceChannelName = "Math Tutors";
+const defaultNonprofitTeamChannelName = "nonprofit-team";
+const defaultNonprofitTeamVoiceChannelName = "Nonprofit Team";
+const defaultMathTutorsCategoryName = "Math Tutors";
 const discordTextChannelType = 0;
 const discordVoiceChannelType = 2;
 const discordCategoryChannelType = 4;
@@ -1045,6 +1048,9 @@ export const runDiscordSync = async ({
   const socialMediaVoiceChannelName = String(process.env.DISCORD_SOCIAL_MEDIA_VOICE_CHANNEL_NAME ?? "").trim() || defaultSocialMediaVoiceChannelName;
   const scienceTutorsVoiceChannelName = String(process.env.DISCORD_SCIENCE_TUTORS_VOICE_CHANNEL_NAME ?? "").trim() || defaultScienceTutorsVoiceChannelName;
   const mathTutorsVoiceChannelName = String(process.env.DISCORD_MATH_TUTORS_VOICE_CHANNEL_NAME ?? "").trim() || defaultMathTutorsVoiceChannelName;
+  const nonprofitTeamChannelName = String(process.env.DISCORD_NONPROFIT_TEAM_CHANNEL_NAME ?? "").trim() || defaultNonprofitTeamChannelName;
+  const nonprofitTeamVoiceChannelName = String(process.env.DISCORD_NONPROFIT_TEAM_VOICE_CHANNEL_NAME ?? "").trim() || defaultNonprofitTeamVoiceChannelName;
+  const mathTutorsCategoryName = String(process.env.DISCORD_MATH_TUTORS_CATEGORY_NAME ?? "").trim() || defaultMathTutorsCategoryName;
 
   const protectedRoleNames = new Set(
     String(process.env.DISCORD_PROTECTED_ROLE_NAMES ?? "")
@@ -1163,6 +1169,7 @@ export const runDiscordSync = async ({
   const socialMediaRole = await ensureRole("Social Media", false);
   const scienceTutorsRole = await ensureRole("Science Tutor", false);
   const mathTutorsRole = await ensureRole("Math Tutor", false);
+  const nonprofitTeamRole = await ensureRole("Nonprofit Team", false);
   const founderRole = await ensureRole("Founder", false);
   const baseRoleIds = new Set([
     studentRole.id,
@@ -1172,6 +1179,7 @@ export const runDiscordSync = async ({
     socialMediaRole.id,
     scienceTutorsRole.id,
     mathTutorsRole.id,
+    nonprofitTeamRole.id,
   ]);
   const founderDiscordUserId =
     websiteUsers.find(
@@ -1732,6 +1740,7 @@ export const runDiscordSync = async ({
   const voiceCategory = await ensureCategory(voiceCategoryName);
   const coursesCategory = await ensureCategory(coursesCategoryName);
   const archiveCategory = await ensureCategory(archiveCategoryName);
+  const mathTutorsCategory = await ensureCategory(mathTutorsCategoryName);
   const usedChannelIds = new Set<string>();
 
   for (const course of websiteCourses) {
@@ -2143,10 +2152,22 @@ export const runDiscordSync = async ({
   const mathTutorsChannel = await ensureFixedChannel({
     name: mathTutorsChannelName,
     channelType: discordTextChannelType,
-    parentId: textCategory.id,
+    parentId: mathTutorsCategory.id,
     permissionOverwrites: buildRoleExclusiveTextPermissionOverwrites(
       discordGuildId,
       mathTutorsRole.id,
+      botUser.id,
+      [founderRole.id]
+    ),
+  });
+
+  const nonprofitTeamChannel = await ensureFixedChannel({
+    name: nonprofitTeamChannelName,
+    channelType: discordTextChannelType,
+    parentId: mathTutorsCategory.id,
+    permissionOverwrites: buildRoleExclusiveTextPermissionOverwrites(
+      discordGuildId,
+      nonprofitTeamRole.id,
       botUser.id,
       [founderRole.id]
     ),
@@ -2205,10 +2226,22 @@ export const runDiscordSync = async ({
   const mathTutorsVoiceChannel = await ensureFixedChannel({
     name: mathTutorsVoiceChannelName,
     channelType: discordVoiceChannelType,
-    parentId: voiceCategory.id,
+    parentId: mathTutorsCategory.id,
     permissionOverwrites: buildRoleExclusiveVoicePermissionOverwrites(
       discordGuildId,
       mathTutorsRole.id,
+      botUser.id,
+      [founderRole.id]
+    ),
+  });
+
+  const nonprofitTeamVoiceChannel = await ensureFixedChannel({
+    name: nonprofitTeamVoiceChannelName,
+    channelType: discordVoiceChannelType,
+    parentId: mathTutorsCategory.id,
+    permissionOverwrites: buildRoleExclusiveVoicePermissionOverwrites(
+      discordGuildId,
+      nonprofitTeamRole.id,
       botUser.id,
       [founderRole.id]
     ),
@@ -2225,7 +2258,7 @@ export const runDiscordSync = async ({
     }
 
     const payload: UpdateGuildChannelPayload = {};
-    if (String(existing.parent_id ?? "") !== textCategory.id) {
+    if (String(existing.parent_id ?? "") !== textCategory.id && String(existing.parent_id ?? "") !== mathTutorsCategory.id) {
       payload.parent_id = textCategory.id;
     }
     if (typeof existing.position !== "number" || existing.position !== position) {
@@ -2296,6 +2329,14 @@ export const runDiscordSync = async ({
     );
     nextTextPosition += 1;
   }
+  if (nonprofitTeamChannel) {
+    await enforceTextPosition(
+      nonprofitTeamChannel.id,
+      nonprofitTeamChannelName,
+      nextTextPosition
+    );
+    nextTextPosition += 1;
+  }
 
 
 
@@ -2312,7 +2353,7 @@ export const runDiscordSync = async ({
     }
 
     const payload: UpdateGuildChannelPayload = {};
-    if (String(existing.parent_id ?? "") !== voiceCategory.id) {
+    if (String(existing.parent_id ?? "") !== voiceCategory.id && String(existing.parent_id ?? "") !== mathTutorsCategory.id) {
       payload.parent_id = voiceCategory.id;
     }
     if (typeof existing.position !== "number" || existing.position !== position) {
@@ -2361,6 +2402,10 @@ export const runDiscordSync = async ({
   }
   if (mathTutorsVoiceChannel) {
     await enforceVoicePosition(mathTutorsVoiceChannel.id, mathTutorsVoiceChannelName, nextVoicePosition);
+    nextVoicePosition += 1;
+  }
+  if (nonprofitTeamVoiceChannel) {
+    await enforceVoicePosition(nonprofitTeamVoiceChannel.id, nonprofitTeamVoiceChannelName, nextVoicePosition);
     nextVoicePosition += 1;
   }
 
@@ -2459,6 +2504,12 @@ export const runDiscordSync = async ({
   );
   nextTopLevelPosition += 1;
   await enforceTopLevelPosition(
+    mathTutorsCategory.id,
+    mathTutorsCategoryName,
+    nextTopLevelPosition
+  );
+  nextTopLevelPosition += 1;
+  await enforceTopLevelPosition(
     coursesCategory.id,
     coursesCategoryName,
     nextTopLevelPosition
@@ -2491,6 +2542,7 @@ export const runDiscordSync = async ({
   if (socialMediaChannel) allowedTextChannelIds.add(socialMediaChannel.id);
   if (scienceTutorsChannel) allowedTextChannelIds.add(scienceTutorsChannel.id);
   if (mathTutorsChannel) allowedTextChannelIds.add(mathTutorsChannel.id);
+  if (nonprofitTeamChannel) allowedTextChannelIds.add(nonprofitTeamChannel.id);
 
   const allowedVoiceChannelIds = new Set<string>();
   if (websiteVoiceChannel) {
@@ -2504,9 +2556,12 @@ export const runDiscordSync = async ({
   if (socialMediaVoiceChannel) allowedVoiceChannelIds.add(socialMediaVoiceChannel.id);
   if (scienceTutorsVoiceChannel) allowedVoiceChannelIds.add(scienceTutorsVoiceChannel.id);
   if (mathTutorsVoiceChannel) allowedVoiceChannelIds.add(mathTutorsVoiceChannel.id);
+  if (nonprofitTeamVoiceChannel) allowedVoiceChannelIds.add(nonprofitTeamVoiceChannel.id);
 
   const allowedCategoryIds = new Set<string>([
     textCategory.id,
+    voiceCategory.id,
+    mathTutorsCategory.id,
     coursesCategory.id,
     archiveCategory.id,
   ]);
