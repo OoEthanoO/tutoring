@@ -255,10 +255,9 @@ export default function AdminUserManager() {
     fetchFeedback();
   }, [isFounder]);
 
-  const nonFounderUsers = useMemo(() => {
+  const filteredUsers = useMemo(() => {
     const normalizedSearch = searchQuery.trim().toLowerCase();
     return users
-      .filter((user) => user.role !== "founder")
       .filter((user) => {
         if (roleFilter === "all") {
           return true;
@@ -808,12 +807,12 @@ export default function AdminUserManager() {
         <p className="text-sm text-[var(--muted)]">Loading users...</p>
       ) : null}
 
-      {!isLoading && nonFounderUsers.length === 0 ? (
+      {!isLoading && filteredUsers.length === 0 ? (
         <p className="text-sm text-[var(--muted)]">No users found.</p>
       ) : null}
 
       <div className="space-y-3">
-        {nonFounderUsers.map((user) => {
+        {filteredUsers.map((user) => {
           const isPending = pendingId === user.id;
           return (
             <div
@@ -848,15 +847,17 @@ export default function AdminUserManager() {
                 ) : null}
               </div>
               <div className="flex flex-col gap-2">
-                <button
-                  type="button"
-                  disabled={isPending}
-                  onClick={() => startImpersonation(user)}
-                  className="rounded-full border border-[var(--foreground)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-70"
-                >
-                  {isPending ? "Working..." : "Impersonate"}
-                </button>
-                {user.role !== "executive" ? (
+                {user.role !== "founder" ? (
+                  <button
+                    type="button"
+                    disabled={isPending}
+                    onClick={() => startImpersonation(user)}
+                    className="rounded-full border border-[var(--foreground)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-70"
+                  >
+                    {isPending ? "Working..." : "Impersonate"}
+                  </button>
+                ) : null}
+                {user.role !== "executive" && user.role !== "founder" ? (
                   <button
                     type="button"
                     disabled={isPending}
@@ -867,34 +868,38 @@ export default function AdminUserManager() {
                   </button>
                 ) : (
                   <>
-                    <button
-                      type="button"
-                      disabled={isPending}
-                      onClick={() => updateRole(user.id, "student")}
-                      className="rounded-full border border-[var(--border)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:border-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-70"
-                    >
-                      {isPending ? "Updating..." : "Make student"}
-                    </button>
+                    {user.role !== "founder" ? (
+                      <button
+                        type="button"
+                        disabled={isPending}
+                        onClick={() => updateRole(user.id, "student")}
+                        className="rounded-full border border-[var(--border)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:border-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-70"
+                      >
+                        {isPending ? "Updating..." : "Make student"}
+                      </button>
+                    ) : null}
                     <div className="space-y-2 rounded-xl border border-[var(--border)]/70 bg-[var(--surface)] px-3 py-3">
                       <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
-                        Executive settings
+                        {user.role === "founder" ? "Founder settings" : "Executive settings"}
                       </p>
-                      <div className="flex items-center gap-2">
-                        <input
-                          id={`junior-toggle-${user.id}`}
-                          type="checkbox"
-                          checked={!!user.isJunior}
-                          disabled={isPending}
-                          onChange={(event) => toggleJuniorStatus(user.id, event.target.checked)}
-                          className="h-4 w-4 rounded border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)] transition focus:ring-0"
-                        />
-                        <label
-                          htmlFor={`junior-toggle-${user.id}`}
-                          className="text-xs font-medium text-[var(--foreground)]"
-                        >
-                          Junior Executive (Hidden from "Our Team" list)
-                        </label>
-                      </div>
+                      {user.role !== "founder" ? (
+                        <div className="flex items-center gap-2">
+                          <input
+                            id={`junior-toggle-${user.id}`}
+                            type="checkbox"
+                            checked={!!user.isJunior}
+                            disabled={isPending}
+                            onChange={(event) => toggleJuniorStatus(user.id, event.target.checked)}
+                            className="h-4 w-4 rounded border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)] transition focus:ring-0"
+                          />
+                          <label
+                            htmlFor={`junior-toggle-${user.id}`}
+                            className="text-xs font-medium text-[var(--foreground)]"
+                          >
+                            Junior Executive (Hidden from "Our Team" list)
+                          </label>
+                        </div>
+                      ) : null}
                       <div className="flex flex-wrap items-center gap-2">
                         <label className="text-xs text-[var(--muted)]">
                           Donation link
@@ -920,90 +925,96 @@ export default function AdminUserManager() {
                           {isPending ? "Saving..." : "Save link"}
                         </button>
                       </div>
+                      {user.role !== "founder" ? (
+                        <div className="flex flex-wrap items-center gap-2">
+                          <label className="text-xs text-[var(--muted)]">
+                            Promotion time
+                          </label>
+                          <input
+                            type="datetime-local"
+                            value={promotedDates[user.id] ?? ""}
+                            onChange={(event) =>
+                              setPromotedDates((current) => ({
+                                ...current,
+                                [user.id]: event.target.value,
+                              }))
+                            }
+                            className="w-56 rounded-full border border-[var(--border)] bg-[var(--surface)] px-4 py-2 text-xs text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+                          />
+                          <button
+                            type="button"
+                            disabled={isPending}
+                            onClick={() => updatePromotedDate(user.id)}
+                            className="rounded-full border border-[var(--foreground)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-70"
+                          >
+                            {isPending ? "Saving..." : "Save time"}
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
+                  </>
+                )}
+                {user.role !== "founder" ? (
+                  <>
+                    <div className="space-y-2 rounded-xl border border-[var(--border)]/70 bg-[var(--surface)] px-3 py-3">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+                        Student info
+                      </p>
                       <div className="flex flex-wrap items-center gap-2">
-                        <label className="text-xs text-[var(--muted)]">
-                          Promotion time
-                        </label>
+                        <label className="text-xs text-[var(--muted)]">Grade</label>
                         <input
-                          type="datetime-local"
-                          value={promotedDates[user.id] ?? ""}
+                          type="text"
+                          value={grades[user.id] ?? ""}
                           onChange={(event) =>
-                            setPromotedDates((current) => ({
+                            setGrades((current) => ({
                               ...current,
                               [user.id]: event.target.value,
                             }))
                           }
-                          className="w-56 rounded-full border border-[var(--border)] bg-[var(--surface)] px-4 py-2 text-xs text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+                          placeholder="e.g. 10"
+                          className="w-24 rounded-full border border-[var(--border)] bg-[var(--surface)] px-4 py-2 text-xs text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
                         />
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <label className="text-xs text-[var(--muted)]">School</label>
+                        <input
+                          type="text"
+                          list={`school-options-${user.id}`}
+                          value={schools[user.id] ?? ""}
+                          onChange={(event) =>
+                            setSchools((current) => ({
+                              ...current,
+                              [user.id]: event.target.value,
+                            }))
+                          }
+                          placeholder="School name"
+                          className="min-w-[12rem] flex-1 rounded-full border border-[var(--border)] bg-[var(--surface)] px-4 py-2 text-xs text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+                        />
+                        <datalist id={`school-options-${user.id}`}>
+                          {allSchools.map((name) => (
+                            <option key={name} value={name} />
+                          ))}
+                        </datalist>
                         <button
                           type="button"
                           disabled={isPending}
-                          onClick={() => updatePromotedDate(user.id)}
+                          onClick={() => updateGradeSchool(user.id)}
                           className="rounded-full border border-[var(--foreground)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-70"
                         >
-                          {isPending ? "Saving..." : "Save time"}
+                          {isPending ? "Saving..." : "Save info"}
                         </button>
                       </div>
                     </div>
-                  </>
-                )}
-                <div className="space-y-2 rounded-xl border border-[var(--border)]/70 bg-[var(--surface)] px-3 py-3">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
-                    Student info
-                  </p>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <label className="text-xs text-[var(--muted)]">Grade</label>
-                    <input
-                      type="text"
-                      value={grades[user.id] ?? ""}
-                      onChange={(event) =>
-                        setGrades((current) => ({
-                          ...current,
-                          [user.id]: event.target.value,
-                        }))
-                      }
-                      placeholder="e.g. 10"
-                      className="w-24 rounded-full border border-[var(--border)] bg-[var(--surface)] px-4 py-2 text-xs text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
-                    />
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <label className="text-xs text-[var(--muted)]">School</label>
-                    <input
-                      type="text"
-                      list={`school-options-${user.id}`}
-                      value={schools[user.id] ?? ""}
-                      onChange={(event) =>
-                        setSchools((current) => ({
-                          ...current,
-                          [user.id]: event.target.value,
-                        }))
-                      }
-                      placeholder="School name"
-                      className="min-w-[12rem] flex-1 rounded-full border border-[var(--border)] bg-[var(--surface)] px-4 py-2 text-xs text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
-                    />
-                    <datalist id={`school-options-${user.id}`}>
-                      {allSchools.map((name) => (
-                        <option key={name} value={name} />
-                      ))}
-                    </datalist>
                     <button
                       type="button"
                       disabled={isPending}
-                      onClick={() => updateGradeSchool(user.id)}
-                      className="rounded-full border border-[var(--foreground)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-70"
+                      onClick={() => deleteAccount(user)}
+                      className="rounded-full border border-red-200 px-4 py-2 text-xs font-semibold text-red-500 transition hover:border-red-400 disabled:cursor-not-allowed disabled:opacity-70"
                     >
-                      {isPending ? "Saving..." : "Save info"}
+                      {isPending ? "Working..." : "Delete account"}
                     </button>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  disabled={isPending}
-                  onClick={() => deleteAccount(user)}
-                  className="rounded-full border border-red-200 px-4 py-2 text-xs font-semibold text-red-500 transition hover:border-red-400 disabled:cursor-not-allowed disabled:opacity-70"
-                >
-                  {isPending ? "Working..." : "Delete account"}
-                </button>
+                  </>
+                ) : null}
               </div>
             </div>
           );
