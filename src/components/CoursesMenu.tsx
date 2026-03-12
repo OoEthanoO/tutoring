@@ -83,20 +83,39 @@ const formatCompletedDate = (value?: string | null) => {
   return parsed.toLocaleDateString();
 };
 
-const getCourseLastClassTime = (course: Course) => {
-  if (course.is_completed && course.completed_end_date) {
-    const completedAt = new Date(`${course.completed_end_date}T00:00:00`);
-    return completedAt.getTime();
+const sortCoursesByFirstClassDesc = (left: Course, right: Course) => {
+  const getFirstClassTime = (course: Course) => {
+    if (course.is_completed && course.completed_start_date) {
+      const completedAt = new Date(`${course.completed_start_date}T00:00:00`);
+      return completedAt.getTime();
+    }
+
+    const classStarts = (course.course_classes ?? [])
+      .map((item) => new Date(item.starts_at).getTime())
+      .filter((value) => Number.isFinite(value));
+    if (classStarts.length > 0) {
+      return Math.min(...classStarts);
+    }
+
+    return Number.NEGATIVE_INFINITY;
+  };
+
+  const leftFirst = getFirstClassTime(left);
+  const rightFirst = getFirstClassTime(right);
+
+  if (leftFirst !== rightFirst) {
+    return rightFirst - leftFirst; // Latest first
   }
 
-  const classStarts = (course.course_classes ?? [])
-    .map((item) => new Date(item.starts_at).getTime())
-    .filter((value) => Number.isFinite(value));
-  if (classStarts.length > 0) {
-    return Math.max(...classStarts);
+  const leftCreated = new Date(left.created_at).getTime();
+  const rightCreated = new Date(right.created_at).getTime();
+  if (Number.isFinite(leftCreated) && Number.isFinite(rightCreated)) {
+    if (leftCreated !== rightCreated) {
+      return rightCreated - leftCreated;
+    }
   }
 
-  return Number.NEGATIVE_INFINITY;
+  return left.title.localeCompare(right.title);
 };
 const sortCoursesByCreationDateDesc = (left: Course, right: Course) => {
   const leftCreated = new Date(left.created_at).getTime();
@@ -329,7 +348,7 @@ export default function CoursesMenu() {
             (course.is_completed ||
               (course.course_classes && course.course_classes.length > 0))
         )
-        .sort(sortCoursesByCreationDateDesc),
+        .sort(sortCoursesByFirstClassDesc),
     [courses, isAvailableSectionCourse]
   );
 

@@ -58,55 +58,48 @@ const getCourseLastClassTime = (course: Course) => {
   return Number.NEGATIVE_INFINITY;
 };
 
-const sortCoursesByLastClassDesc = (left: Course, right: Course) => {
-  const leftLast = getCourseLastClassTime(left);
-  const rightLast = getCourseLastClassTime(right);
-  if (leftLast !== rightLast) {
-    return rightLast - leftLast;
-  }
-
+const sortCoursesByCreationDateDesc = (left: Course, right: Course) => {
   const leftCreated = new Date(left.created_at).getTime();
   const rightCreated = new Date(right.created_at).getTime();
   if (Number.isFinite(leftCreated) && Number.isFinite(rightCreated)) {
-    return rightCreated - leftCreated;
+    if (leftCreated !== rightCreated) {
+      return rightCreated - leftCreated;
+    }
   }
 
   return left.title.localeCompare(right.title);
 };
 
-const hasGrayClass = (course: Course, nowMs: number) =>
-  (course.course_classes ?? []).some((item) => {
-    const startsAt = new Date(item.starts_at).getTime();
-    return Number.isFinite(startsAt) && startsAt > nowMs;
-  });
-
-const hasYellowClass = (course: Course, nowMs: number) =>
-  (course.course_classes ?? []).some((item) => {
-    const startsAt = new Date(item.starts_at).getTime();
-    if (!Number.isFinite(startsAt)) {
-      return false;
+const sortCoursesByFirstClassDesc = (left: Course, right: Course) => {
+  const getFirstClassTime = (course: Course) => {
+    if (course.is_completed && course.completed_start_date) {
+      const completedAt = new Date(`${course.completed_start_date}T00:00:00`);
+      return completedAt.getTime();
     }
-    const endsAt = startsAt + 60 * 60 * 1000;
-    return nowMs >= startsAt && nowMs <= endsAt;
-  });
 
-const getCourseSectionRank = (course: Course, nowMs: number) => {
-  const isAvailable =
-    !course.is_completed &&
-    (hasGrayClass(course, nowMs) || hasYellowClass(course, nowMs));
-  if (isAvailable) {
-    return 0;
+    const classStarts = (course.course_classes ?? [])
+      .map((item) => new Date(item.starts_at).getTime())
+      .filter((value) => Number.isFinite(value));
+    if (classStarts.length > 0) {
+      return Math.min(...classStarts);
+    }
+
+    return Number.NEGATIVE_INFINITY;
+  };
+
+  const leftFirst = getFirstClassTime(left);
+  const rightFirst = getFirstClassTime(right);
+
+  if (leftFirst !== rightFirst) {
+    return rightFirst - leftFirst; // Latest first
   }
 
-  const isUpcoming =
-    !course.is_completed &&
-    (!course.course_classes || course.course_classes.length === 0);
-  if (isUpcoming) {
-    return 1;
-  }
-
-  return 2;
+  return sortCoursesByCreationDateDesc(left, right);
 };
+
+
+
+
 
 type StatusState = {
   type: "idle" | "error" | "success";
@@ -175,7 +168,7 @@ export default function ManageMyCoursesMenu() {
   const [pendingEnrollmentDeleteId, setPendingEnrollmentDeleteId] = useState<
     string | null
   >(null);
-  const [nowMs, setNowMs] = useState<number>(() => Date.now());
+
   const [status, setStatus] = useState<StatusState>({
     type: "idle",
     message: "",
@@ -225,12 +218,7 @@ export default function ManageMyCoursesMenu() {
     return onAuthChange(load);
   }, []);
 
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      setNowMs(Date.now());
-    }, 30000);
-    return () => window.clearInterval(timer);
-  }, []);
+
 
   useEffect(() => {
     if (!role || !canManageCourses(role)) {
@@ -708,14 +696,21 @@ export default function ManageMyCoursesMenu() {
   const orderedCourses = useMemo(
     () =>
       [...courses].sort((left, right) => {
-        const leftRank = getCourseSectionRank(left, nowMs);
-        const rightRank = getCourseSectionRank(right, nowMs);
-        if (leftRank !== rightRank) {
-          return leftRank - rightRank;
+        const isLeftCompleted = Boolean(left.is_completed);
+        const isRightCompleted = Boolean(right.is_completed);
+
+        if (!isLeftCompleted && !isRightCompleted) {
+          return sortCoursesByCreationDateDesc(left, right);
         }
-        return sortCoursesByLastClassDesc(left, right);
+        if (isLeftCompleted && isRightCompleted) {
+          return sortCoursesByFirstClassDesc(left, right);
+        }
+        if (!isLeftCompleted && isRightCompleted) {
+          return -1;
+        }
+        return 1;
       }),
-    [courses, nowMs]
+    [courses]
   );
 
   const filteredCourses = useMemo(() => {
