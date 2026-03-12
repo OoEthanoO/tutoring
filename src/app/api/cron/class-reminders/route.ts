@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { runDiscordSync, type DiscordSyncResult } from "@/lib/discordSync";
+import { resolveRoleByEmail } from "@/lib/roles";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
@@ -718,15 +719,22 @@ export async function POST(request: NextRequest) {
     let html = "";
     let discordContent = "";
 
+    const isFounder = resolveRoleByEmail(tutorEmail) === "founder";
+
     if (reminderType === "class_follow_up") {
-      subject = `Class follow-up: Please submit the tutor form for ${course.title}`;
+      subject = isFounder 
+        ? `Class follow-up: Please submit manual activity for ${course.title}`
+        : `Class follow-up: Please submit the tutor form for ${course.title}`;
       const siteBase = (process.env.NEXT_PUBLIC_SITE_URL ?? "").replace(/\/+$/, "");
       const formUrl = siteBase ? `${siteBase}/redirect/tutor-log` : "https://docs.google.com/forms/d/e/1FAIpQLSfbp8hNm_hpGUfH-SvGbnF7LbsiemBbeXhjddVccSHS8di2nw/viewform";
       html = `
         <p>Hi ${tutorName},</p>
         <p>Your class <strong>${classTitle}</strong> for <strong>${courseTitle}</strong> recently ended.</p>
-        <p>Please remember to complete the tutor form:</p>
-        <p><a href="${formUrl}"><strong>${formUrl}</strong></a></p>
+        ${
+          isFounder
+            ? `<p>Please remember to submit a manual activity on the Schoolhouse platform.</p>`
+            : `<p>Please remember to complete the tutor form:</p>\n        <p><a href="${formUrl}"><strong>${formUrl}</strong></a></p>`
+        }
         <br/>
         <p><strong>Class details:</strong></p>
         <ul>
@@ -742,8 +750,9 @@ export async function POST(request: NextRequest) {
       if (tutorDiscordId) {
         discordContent = [
           `<@${tutorDiscordId}> Your class **${escapeDiscordText(classTitleRaw)}** for **${escapeDiscordText(courseTitleRaw)}** recently ended.`,
-          `Please remember to complete the tutor log form:`,
-          formUrl,
+          isFounder
+            ? `Please remember to submit a manual activity on the Schoolhouse platform.`
+            : `Please remember to complete the tutor log form:\n${formUrl}`,
           `**Course:** ${escapeDiscordText(courseTitleRaw)}`,
           `**Class:** ${escapeDiscordText(classTitleRaw)}`,
           `**Start time (${torontoTimeZone}):** ${escapeDiscordText(
@@ -759,22 +768,18 @@ export async function POST(request: NextRequest) {
         <p><strong>Class:</strong> ${classTitle}</p>
         <p><strong>Tutor:</strong> ${tutorName}</p>
         <p><strong>Start time (${torontoTimeZone}):</strong> ${startLabel}</p>
-        <p>Please attend the class 5 minutes before the start time:</p>
-        <p>Zoom ID: ${escapeHtml(defaultZoomId)}<br/>Password: ${escapeHtml(defaultZoomPassword)}<br/>${breakoutRoomName
-          ? `Breakout room: "${escapeHtml(breakoutRoomName)}"`
-          : `Please join the breakout room that starts with "${escapeHtml(
-            `${tutorFirstName}${tutorLastInitial ? ` ${tutorLastInitial}` : ""}`
-          )}" followed by the name of the course.`
-        }</p>
+        ${
+          isFounder
+            ? `<p>Please attend the class 5 minutes before the start time on the Schoolhouse platform.</p>`
+            : `<p>Please attend the class 5 minutes before the start time:</p>\n        <p>Zoom ID: ${escapeHtml(defaultZoomId)}<br/>Password: ${escapeHtml(defaultZoomPassword)}<br/>${breakoutRoomName
+                ? `Breakout room: "${escapeHtml(breakoutRoomName)}"`
+                : `Please join the breakout room that starts with "${escapeHtml(
+                  `${tutorFirstName}${tutorLastInitial ? ` ${tutorLastInitial}` : ""}`
+                )}" followed by the name of the course.`
+              }</p>`
+        }
       `;
-      discordContent = [
-        `Your class starts in **${escapeDiscordText(reminderLabel)}**.`,
-        `**Course:** ${escapeDiscordText(courseTitleRaw)}`,
-        `**Class:** ${escapeDiscordText(classTitleRaw)}`,
-        `**Tutor:** ${escapeDiscordText(tutorNameRaw)}`,
-        `**Start time (${torontoTimeZone}):** ${escapeDiscordText(
-          formatTorontoDateTime(classRow.starts_at)
-        )}`,
+      const nonFounderDiscordInstruction = [
         "Please attend the class 5 minutes before the start time:",
         `Zoom ID: ${escapeDiscordText(defaultZoomId)}`,
         `Password: ${escapeDiscordText(defaultZoomPassword)}`,
@@ -783,6 +788,19 @@ export async function POST(request: NextRequest) {
           : `Please join the breakout room that starts with "${escapeDiscordText(
             `${tutorFirstName}${tutorLastInitial ? ` ${tutorLastInitial}` : ""}`
           )}" followed by the name of the course.`,
+      ].join("\n");
+
+      discordContent = [
+        `Your class starts in **${escapeDiscordText(reminderLabel)}**.`,
+        `**Course:** ${escapeDiscordText(courseTitleRaw)}`,
+        `**Class:** ${escapeDiscordText(classTitleRaw)}`,
+        `**Tutor:** ${escapeDiscordText(tutorNameRaw)}`,
+        `**Start time (${torontoTimeZone}):** ${escapeDiscordText(
+          formatTorontoDateTime(classRow.starts_at)
+        )}`,
+        isFounder
+          ? "Please attend the class 5 minutes before the start time on the Schoolhouse platform."
+          : nonFounderDiscordInstruction,
       ].join("\n");
     }
 
