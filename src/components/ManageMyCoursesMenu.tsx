@@ -181,6 +181,7 @@ export default function ManageMyCoursesMenu() {
     message: "",
   });
   const [isLoading, setIsLoading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
     const hasUnsavedCourseEdit = editingCourseId !== null;
@@ -717,6 +718,57 @@ export default function ManageMyCoursesMenu() {
     [courses, nowMs]
   );
 
+  const filteredCourses = useMemo(() => {
+    if (!searchQuery.trim()) {
+      return orderedCourses;
+    }
+
+    const query = searchQuery.toLowerCase().replace(/[\u202F\u00A0]/g, " ");
+
+    return orderedCourses.filter((course) => {
+      if (course.title.toLowerCase().replace(/[\u202F\u00A0]/g, " ").includes(query)) return true;
+      if (course.description?.toLowerCase().includes(query)) return true;
+      if (
+        (course.created_by_name || "Unknown tutor").toLowerCase().includes(query)
+      )
+        return true;
+      if (course.created_by_email?.toLowerCase().includes(query)) return true;
+
+      if (course.course_classes && course.course_classes.length > 0) {
+        for (const courseClass of course.course_classes) {
+          try {
+            const classDate = new Date(courseClass.starts_at);
+            const formatTime = (d: Date) => 
+              d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }).toLowerCase().replace(/[\u202F\u00A0]/g, ' ');
+              
+            const dateString = classDate.toLocaleString().toLowerCase().replace(/[\u202F\u00A0]/g, ' ');
+            const dateString2 = classDate.toLocaleDateString().toLowerCase().replace(/[\u202F\u00A0]/g, ' ');
+            const timeString = formatTime(classDate);
+            
+            const durationHours = typeof courseClass.duration_hours === 'number' 
+              ? courseClass.duration_hours 
+              : Number.parseFloat(String(courseClass.duration_hours || "1"));
+            const endDate = new Date(classDate.getTime() + (Number.isNaN(durationHours) ? 1 : durationHours) * 60 * 60 * 1000);
+            const endTimeString = formatTime(endDate);
+
+            if (
+              dateString.includes(query) || 
+              dateString2.includes(query) || 
+              timeString.includes(query) ||
+              endTimeString.includes(query)
+            ) {
+               return true;
+            }
+          } catch (e) {
+            // ignore parsing errors
+          }
+        }
+      }
+
+      return false;
+    });
+  }, [orderedCourses, searchQuery]);
+
   if (!role || !canManageCourses(role)) {
     return null;
   }
@@ -777,8 +829,33 @@ export default function ManageMyCoursesMenu() {
         </p>
       ) : null}
 
+      {!isLoading && courses.length > 0 ? (
+        <div className="relative mb-6">
+          <input
+            type="text"
+            placeholder="Search courses by name, description, tutor, or dates..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 pl-10 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+          />
+          <svg
+            className="absolute left-3 top-3.5 h-4 w-4 text-[var(--muted)]"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+            />
+          </svg>
+        </div>
+      ) : null}
+
       <div className="space-y-3">
-        {orderedCourses.map((course) => (
+        {filteredCourses.map((course) => (
           <div
             key={course.id}
             className="space-y-4 rounded-xl border border-[var(--border)] px-4 py-4"
