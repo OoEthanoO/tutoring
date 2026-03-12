@@ -80,6 +80,7 @@ type DiscordGuildMember = {
 type DiscordRole = {
   id: string;
   name: string;
+  position?: number;
   managed?: boolean;
 };
 
@@ -268,6 +269,26 @@ const getCourseEndedAtMs = (course: CourseRow) => {
   }
 
   return latestClassEndMs;
+};
+
+const getCourseStartedAtMs = (course: CourseRow) => {
+  const classRows = Array.isArray(course.course_classes)
+    ? course.course_classes
+    : [];
+  if (classRows.length === 0) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  let earliestClassStartMs = Number.POSITIVE_INFINITY;
+  for (const classRow of classRows) {
+    const startsAtMs = new Date(String(classRow.starts_at)).getTime();
+    if (Number.isNaN(startsAtMs)) {
+      continue;
+    }
+    earliestClassStartMs = Math.min(earliestClassStartMs, startsAtMs);
+  }
+
+  return earliestClassStartMs;
 };
 
 const buildCoursePermissionOverwrites = (
@@ -794,6 +815,14 @@ class DiscordApiClient {
     return this.request<DiscordRole>({
       method: "PATCH",
       path: `/guilds/${guildId}/roles/${roleId}`,
+      body: payload,
+    });
+  }
+
+  updateGuildRolePositions(guildId: string, payload: { id: string; position?: number }[]) {
+    return this.request<DiscordRole[]>({
+      method: "PATCH",
+      path: `/guilds/${guildId}/roles`,
       body: payload,
     });
   }
@@ -2623,6 +2652,60 @@ export const runDiscordSync = async ({
         )}`
       );
     }
+  }
+
+  const courseStartMsMap = new Map<string, number>();
+  for (const course of websiteCourses) {
+    const roleId = courseRoleIdByCourseId.get(course.id);
+    if (roleId) {
+      courseStartMsMap.set(roleId, getCourseStartedAtMs(course));
+    }
+  }
+
+  const rolesToSort = mutableRoles.filter((r) => r.id !== discordGuildId);
+  const courseRoles: DiscordRole[] = [];
+  const otherRoles: DiscordRole[] = [];
+  
+  for (const role of rolesToSort) {
+    if (expectedCourseRoleIdSet.has(role.id)) {
+      courseRoles.push(role);
+    } else {
+      otherRoles.push(role);
+    }
+  }
+
+  courseRoles.sort((a, b) => {
+    const aStart = courseStartMsMap.get(a.id) ?? Number.POSITIVE_INFINITY;
+    const bStart = courseStartMsMap.get(b.id) ?? Number.POSITIVE_INFINITY;
+    if (aStart !== bStart) {
+      return aStart - bStart;
+    }
+    return a.name.localeCompare(b.name);
+  });
+
+  otherRoles.sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
+
+  const sortedRoles = [...courseRoles, ...otherRoles];
+  const rolePositionsPayload = sortedRoles.map((role, index) => ({
+    id: role.id,
+    position: index + 1,
+  }));
+
+  try {
+    const updatedRoles = await apiClient.updateGuildRolePositions(discordGuildId, rolePositionsPayload);
+    for (const updatedRole of updatedRoles) {
+      const roleIndex = mutableRoles.findIndex((item) => item.id === updatedRole.id);
+      if (roleIndex >= 0) {
+        mutableRoles[roleIndex] = updatedRole;
+      }
+    }
+  } catch (error) {
+    result.errors.push(
+      `Failed to update role positions: ${toErrorMessage(
+        error,
+        "Unknown update role positions error."
+      )}`
+    );
   }
 
   return result;
