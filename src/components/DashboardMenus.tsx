@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getCurrentUser, onAuthChange } from "@/lib/authClient";
 import { canManageCourses, resolveUserRole, type UserRole } from "@/lib/roles";
 import AdminUserManager from "@/components/AdminUserManager";
@@ -31,6 +31,30 @@ export default function DashboardMenus() {
   const [role, setRole] = useState<UserRole | null>(null);
   const [isAuthResolved, setIsAuthResolved] = useState(false);
   const [active, setActive] = useState<MenuKey>("home");
+  const navRef = useRef<HTMLElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+
+  const updateScrollIndicators = useCallback(() => {
+    const el = navRef.current;
+    if (!el) return;
+    setCanScrollLeft(el.scrollLeft > 2);
+    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 2);
+  }, []);
+
+  useEffect(() => {
+    const el = navRef.current;
+    if (!el) return;
+    // Wait for the DOM paint so scrollWidth is correct
+    const rafId = requestAnimationFrame(() => updateScrollIndicators());
+    el.addEventListener("scroll", updateScrollIndicators, { passive: true });
+    window.addEventListener("resize", updateScrollIndicators);
+    return () => {
+      cancelAnimationFrame(rafId);
+      el.removeEventListener("scroll", updateScrollIndicators);
+      window.removeEventListener("resize", updateScrollIndicators);
+    };
+  }, [updateScrollIndicators, role, isAuthResolved]);
 
   useEffect(() => {
     const load = async () => {
@@ -93,30 +117,51 @@ export default function DashboardMenus() {
 
   return (
     <div className="space-y-6">
-      <div className="sticky top-0 z-20 -mx-6 bg-[var(--background)]/90 px-6 py-3 backdrop-blur">
-        <nav className="flex flex-wrap gap-2">
-          {menus.map((menu) => (
-            <button
-              key={menu.key}
-              type="button"
-              onClick={() => {
-                setActive(menu.key);
-                if (menu.key === "home") {
-                  document.getElementById("home")?.scrollIntoView({
-                    behavior: "smooth",
-                  });
+      <div className="sticky top-0 z-20 -mx-6 border-b border-[var(--border)] bg-[var(--background)]/90 px-6 backdrop-blur">
+          <nav
+            ref={navRef}
+            className="scrollbar-hide flex overflow-x-auto"
+            style={{
+              maskImage:
+                canScrollLeft && canScrollRight
+                  ? "linear-gradient(to right, transparent, black 4rem, black calc(100% - 4rem), transparent)"
+                  : canScrollLeft
+                    ? "linear-gradient(to right, transparent, black 4rem)"
+                    : canScrollRight
+                      ? "linear-gradient(to right, black calc(100% - 4rem), transparent)"
+                      : undefined,
+              WebkitMaskImage:
+                canScrollLeft && canScrollRight
+                  ? "linear-gradient(to right, transparent, black 4rem, black calc(100% - 4rem), transparent)"
+                  : canScrollLeft
+                    ? "linear-gradient(to right, transparent, black 4rem)"
+                    : canScrollRight
+                      ? "linear-gradient(to right, black calc(100% - 4rem), transparent)"
+                      : undefined,
+            }}
+          >
+            {menus.map((menu) => (
+              <button
+                key={menu.key}
+                type="button"
+                onClick={() => {
+                  setActive(menu.key);
+                  if (menu.key === "home") {
+                    document.getElementById("home")?.scrollIntoView({
+                      behavior: "smooth",
+                    });
+                  }
+                }}
+                className={
+                  activeMenu === menu.key
+                    ? "whitespace-nowrap border-b-2 border-[var(--foreground)] px-4 py-3 text-xs font-bold text-[var(--foreground)] transition-colors"
+                    : "whitespace-nowrap border-b-2 border-transparent px-4 py-3 text-xs font-medium text-[var(--muted)] transition-colors hover:text-[var(--foreground)]"
                 }
-              }}
-              className={
-                activeMenu === menu.key
-                  ? "rounded-full border border-[var(--foreground)] bg-[var(--foreground)] px-4 py-2 text-xs font-semibold text-[var(--background)] transition"
-                  : "rounded-full border border-[var(--border)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:border-[var(--foreground)]"
-              }
-            >
-              {menu.label}
-            </button>
-          ))}
-        </nav>
+              >
+                {menu.label}
+              </button>
+            ))}
+          </nav>
       </div>
 
       {activeMenu === "home" ? <HomeMenu isSignedIn={Boolean(role)} /> : null}

@@ -63,3 +63,12 @@ ol.list-decimal {
 ol.list-decimal li {
   display: list-item;
 }
+
+/* Hide scrollbar while preserving scroll functionality */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
