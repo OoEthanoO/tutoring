@@ -56,16 +56,34 @@ export default function HomeMenu({ isSignedIn }: HomeMenuProps) {
           About the Program
         </h3>
         <p className="text-sm text-[var(--muted)]">
-          YanLearn is a free online tutoring platform. Originally launched in July
-          2023 as Ethan&apos;s Coding Classroom, it has expanded to include multiple
-          passionate tutors teaching a variety of subjects to students in grades
-          6-12.
+          YanLearn is a free online tutoring platform. Originally launched in
+          July 2023 as Ethan&apos;s Coding Classroom, it has expanded to include
+          multiple passionate tutors teaching a variety of subjects to students
+          in grades 6-12.
         </p>
         <p className="text-sm text-[var(--muted)]">
-          In addition, The &quot;Coding for SickKids&quot; fundraising campaign
-          initiated by Ethan is operated by the SickKids Fundraise platform
-          where any donations are paid directly to hospitals. Everyone is
-          welcomed to donate to help sick kids in need.
+          All YanLearn tutors are current IB/AP high school students with
+          excellent grades in their respective subjects. We run our classes by
+          hosting online Zoom meetings with a requirement of a $50 donation fee
+          to enjoy 10 lessons per term. As of March 2026, more than 290 classes
+          have been taught, and more than 260 students are participating in our
+          program.
+        </p>
+        <p className="text-sm text-[var(--muted)]">
+          In addition, the &quot;Coding for SickKids&quot; fundraising campaign
+          initiated by Ethan is operated by the SickKids Fundraising platform,
+          where any donations are paid directly to hospitals.
+        </p>
+        <p className="text-sm text-[var(--muted)]">
+          Our Fundraising Website:{" "}
+          <a
+            href="https://give.sickkidsfoundation.com/fundraisers/codingforsickkids"
+            target="_blank"
+            rel="noreferrer"
+            className="underline transition-colors hover:text-[var(--foreground)]"
+          >
+            give.sickkidsfoundation.com/fundraisers/codingforsickkids
+          </a>
         </p>
       </div>
 
@@ -74,11 +92,9 @@ export default function HomeMenu({ isSignedIn }: HomeMenuProps) {
           About the Founder
         </h3>
         <p className="text-sm text-[var(--muted)]">
-          Ethan Yan Xu, Toronto Highschooler, programming and computer science
-          enthusiast, 6 years of coding experience, fluent in Java, C++, and
-          Python. Exam score of 5 on AP Computer Science Applied and excellent
-          results in CCC. As of January 2026, more than 280 classes have been
-          taught and more than 230 people have participated in the program.
+          Ethan Yan Xu, IB program, G11, programming and computer science
+          enthusiast, 7 years of coding experience, fluent in Java, C++, and
+          Python. He has been a programming instructor for three years.
         </p>
       </div>
       {raised !== null ? (

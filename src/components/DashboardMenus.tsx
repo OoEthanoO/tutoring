@@ -11,6 +11,7 @@ import HomeMenu from "@/components/HomeMenu";
 import ManageEnrollmentsMenu from "@/components/ManageEnrollmentsMenu";
 import ManageMyCoursesMenu from "@/components/ManageMyCoursesMenu";
 import HelpMenu from "@/components/HelpMenu";
+import SponsorsMenu from "@/components/SponsorsMenu";
 
 type MenuKey =
   | "home"
@@ -20,7 +21,8 @@ type MenuKey =
   | "manage_courses"
   | "manage_enrollments"
   | "founder_tools"
-  | "help";
+  | "help"
+  | "sponsors";
 
 type MenuItem = {
   key: MenuKey;
@@ -103,6 +105,7 @@ export default function DashboardMenus() {
     }
 
     items.push({ key: "help", label: "Help" });
+    items.push({ key: "sponsors", label: "For Sponsors" });
 
     return items;
   }, [role]);
@@ -172,6 +175,7 @@ export default function DashboardMenus() {
       {activeMenu === "manage_enrollments" ? <ManageEnrollmentsMenu /> : null}
       {activeMenu === "founder_tools" ? <AdminUserManager /> : null}
       {activeMenu === "help" ? <HelpMenu /> : null}
+      {activeMenu === "sponsors" ? <SponsorsMenu /> : null}
     </div>
   );
 }
