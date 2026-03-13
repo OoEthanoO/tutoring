@@ -25,15 +25,13 @@ export async function GET(
   const adminClient = getAdminClient();
   const { data, error } = await adminClient
     .from("student_applications")
-    .select("*")
+    .select("*, course:courses(title)")
     .eq("student_id", studentId)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .order("created_at", { ascending: false });
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ application: data });
+  return NextResponse.json({ applications: data });
 }

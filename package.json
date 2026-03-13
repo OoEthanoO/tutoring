@@ -2,7 +2,7 @@
   "name": "tutoring",
   "version": "0.1.0",
   "private": true,
-  "iteration": "104",
+  "iteration": "105",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -18,7 +18,8 @@
     "dotenv": "^17.3.1",
     "next": "16.1.6",
     "react": "19.2.3",
-    "react-dom": "19.2.3"
+    "react-dom": "19.2.3",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.2.1",

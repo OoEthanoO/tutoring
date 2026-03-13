@@ -41,6 +41,8 @@ type FeedbackEntry = {
 
 type StudentApplication = {
   id: string;
+  course_id: string;
+  course?: { title: string };
   guardian_email: string;
   student_full_name: string;
   school_name: string;
@@ -86,7 +88,7 @@ export default function AdminUserManager() {
   const [pendingFeedbackId, setPendingFeedbackId] = useState<string | null>(
     null
   );
-  const [selectedApplication, setSelectedApplication] = useState<StudentApplication | null>(null);
+  const [selectedApplications, setSelectedApplications] = useState<StudentApplication[]>([]);
   const [isLoadingApplication, setIsLoadingApplication] = useState(false);
   const [applicationError, setApplicationError] = useState("");
 
@@ -627,23 +629,23 @@ export default function AdminUserManager() {
   const viewApplication = async (studentId: string) => {
     setIsLoadingApplication(true);
     setApplicationError("");
-    setSelectedApplication(null);
+    setSelectedApplications([]);
 
     const response = await fetch(`/api/admin/student-applications/${studentId}`);
     if (!response.ok) {
       const payload = (await response.json().catch(() => null)) as
         | { error?: string }
         | null;
-      setApplicationError(payload?.error ?? "Unable to load application.");
+      setApplicationError(payload?.error ?? "Unable to load applications.");
       setIsLoadingApplication(false);
       return;
     }
 
-    const data = (await response.json()) as { application: StudentApplication | null };
-    if (!data.application) {
-      setApplicationError("No application found for this user.");
+    const data = (await response.json()) as { applications: StudentApplication[] };
+    if (!data.applications || data.applications.length === 0) {
+      setApplicationError("No applications found for this user.");
     } else {
-      setSelectedApplication(data.application);
+      setSelectedApplications(data.applications);
     }
     setIsLoadingApplication(false);
   };
@@ -749,13 +751,25 @@ export default function AdminUserManager() {
 
   return (
     <section className="space-y-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6">
-      <header className="space-y-1">
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
-          Manage accounts
-        </p>
-        <h2 className="text-lg font-semibold text-[var(--foreground)]">
-          Manage student and executive accounts
-        </h2>
+      <header className="flex flex-wrap items-center justify-between gap-4">
+        <div className="space-y-1">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
+            Manage accounts
+          </p>
+          <h2 className="text-lg font-semibold text-[var(--foreground)]">
+            Manage student and executive accounts
+          </h2>
+        </div>
+        <a
+          href="/api/admin/student-applications/export"
+          download="student_applications.xlsx"
+          className="flex items-center gap-2 rounded-full border border-green-600 bg-green-50 px-4 py-2 text-xs font-bold text-green-700 transition hover:bg-green-600 hover:text-white active:scale-95"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+          Export to Excel (.xlsx)
+        </a>
       </header>
 
       <div className="space-y-3 rounded-xl border border-[var(--border)] px-4 py-3">
@@ -935,7 +949,7 @@ export default function AdminUserManager() {
                             htmlFor={`junior-toggle-${user.id}`}
                             className="text-xs font-medium text-[var(--foreground)]"
                           >
-                            Junior Executive (Hidden from "Our Team" list)
+                            Junior Executive (Hidden from &quot;Our Team&quot; list)
                           </label>
                         </div>
                       ) : null}
@@ -1054,7 +1068,7 @@ export default function AdminUserManager() {
                         }}
                         className="rounded-full border border-[var(--foreground)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-70"
                       >
-                        {isLoadingApplication && pendingId === user.id ? "Loading..." : "View Application"}
+                        {isLoadingApplication && pendingId === user.id ? "Loading..." : "View Applications"}
                       </button>
                     ) : null}
                     <button
@@ -1123,71 +1137,98 @@ export default function AdminUserManager() {
         ) : null}
       </div>
 
-      {selectedApplication ? (
-        <div className="fixed inset-0 z-50 grid place-items-center p-4 bg-black/50">
-          <div className="w-full max-w-2xl max-h-[90vh] flex flex-col rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-xl overflow-hidden">
-            <div className="p-6 border-b border-[var(--border)] flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-[var(--foreground)]">Student Application Details</h3>
-              <button
-                onClick={() => setSelectedApplication(null)}
-                className="text-[var(--muted)] hover:text-[var(--foreground)]"
-              >
-                ✕
-              </button>
-            </div>
-            <div className="flex-1 overflow-y-auto p-6 space-y-4">
-              <div className="grid gap-4 sm:grid-cols-2 text-sm">
+      {/* Student Application Modal */}
+      {(selectedApplications.length > 0 || applicationError) && (
+        <div className="fixed inset-0 z-50 grid place-items-center p-4 bg-black/50 overflow-y-auto overscroll-contain">
+          <div className="w-full max-w-2xl flex flex-col rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-xl overflow-hidden overscroll-contain">
+            <div className="p-6 space-y-4 overflow-y-auto overscroll-contain max-h-[90vh]">
+              <div className="flex items-start justify-between">
                 <div className="space-y-1">
-                  <p className="text-xs font-medium text-[var(--muted)]">Student Full Name</p>
-                  <p className="font-semibold">{selectedApplication.student_full_name}</p>
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
+                    Registration details
+                  </p>
+                  <h3 className="text-lg font-semibold text-[var(--foreground)]">
+                    Student Application History
+                  </h3>
                 </div>
-                <div className="space-y-1">
-                  <p className="text-xs font-medium text-[var(--muted)]">Guardian Email</p>
-                  <p className="font-semibold">{selectedApplication.guardian_email}</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs font-medium text-[var(--muted)]">School Name</p>
-                  <p className="font-semibold">{selectedApplication.school_name}</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs font-medium text-[var(--muted)]">Grade</p>
-                  <p className="font-semibold">{selectedApplication.grade}</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs font-medium text-[var(--muted)]">Parent/Guardian Name</p>
-                  <p className="font-semibold">{selectedApplication.parent_guardian_name}</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs font-medium text-[var(--muted)]">Parent/Guardian Phone</p>
-                  <p className="font-semibold">{selectedApplication.parent_guardian_phone}</p>
-                </div>
+                <button
+                  onClick={() => {
+                    setSelectedApplications([]);
+                    setApplicationError("");
+                  }}
+                  className="group flex items-center justify-center w-8 h-8 rounded-full border border-[var(--border)] bg-[var(--surface)] text-[var(--muted)] transition-all hover:border-[var(--foreground)] hover:text-[var(--foreground)] active:scale-95"
+                  aria-label="Close modal"
+                >
+                  <svg className="w-4 h-4 transition-transform group-hover:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
               </div>
-              <div className="space-y-1 text-sm pt-4 border-t border-[var(--border)]">
-                <p className="text-xs font-medium text-[var(--muted)]">Consent Signature (Guardian Name)</p>
-                <p className="font-semibold italic underline decorations-amber-500">{selectedApplication.consent_name}</p>
+
+              {applicationError ? (
+                <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                  {applicationError}
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {selectedApplications.map((app, index) => (
+                    <div key={app.id} className="space-y-3 rounded-xl border border-[var(--border)] p-4 bg-[var(--surface-muted)]">
+                      <div className="flex flex-wrap justify-between items-start gap-2 border-b border-[var(--border)] pb-2 mb-2">
+                        <div className="space-y-0.5">
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-amber-600">
+                             Application #{selectedApplications.length - index}
+                          </p>
+                          <p className="text-sm font-semibold text-[var(--foreground)]">
+                            Course: {app.course?.title || "Unknown Course"}
+                          </p>
+                        </div>
+                        <p className="text-[10px] text-[var(--muted)]">
+                          Submitted: {formatFeedbackDate(app.created_at)}
+                        </p>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                          <p className="text-[10px] uppercase tracking-wider text-[var(--muted)]">Guardian Email</p>
+                          <p className="text-sm text-[var(--foreground)] break-all">{app.guardian_email}</p>
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-[10px] uppercase tracking-wider text-[var(--muted)]">Student Name</p>
+                          <p className="text-sm text-[var(--foreground)]">{app.student_full_name}</p>
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-[10px] uppercase tracking-wider text-[var(--muted)]">School & Grade</p>
+                          <p className="text-sm text-[var(--foreground)]">{app.school_name} (Grade {app.grade})</p>
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-[10px] uppercase tracking-wider text-[var(--muted)]">Parent Contact</p>
+                          <p className="text-sm text-[var(--foreground)]">{app.parent_guardian_name} ({app.parent_guardian_phone})</p>
+                        </div>
+                      </div>
+                      <div className="space-y-1 pt-2 border-t border-[var(--border)]/50">
+                        <p className="text-[10px] uppercase tracking-wider text-[var(--muted)]">Consent Signature</p>
+                        <p className="text-xs italic text-[var(--foreground)] underline decoration-amber-500/30 underline-offset-4">{app.consent_name}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="flex justify-end pt-4">
+                <button
+                  onClick={() => {
+                    setSelectedApplications([]);
+                    setApplicationError("");
+                  }}
+                  className="rounded-full border border-[var(--foreground)] bg-[var(--surface)] px-8 py-2.5 text-xs font-bold text-[var(--foreground)] transition-all hover:bg-[var(--foreground)] hover:text-[var(--surface)] active:scale-[0.98]"
+                >
+                  Close
+                </button>
               </div>
-              <div className="text-[10px] text-[var(--muted)] mt-4 p-3 bg-[var(--border)]/10 rounded-lg">
-                Submitted on: {new Date(selectedApplication.created_at).toLocaleString()}
-              </div>
-            </div>
-            <div className="p-4 border-t border-[var(--border)] flex justify-end">
-              <button
-                onClick={() => setSelectedApplication(null)}
-                className="rounded-full bg-[var(--foreground)] px-6 py-2 text-xs font-semibold text-[var(--surface)] transition hover:opacity-90"
-              >
-                Close
-              </button>
             </div>
           </div>
         </div>
-      ) : null}
-
-      {applicationError ? (
-        <div className="fixed bottom-4 right-4 z-50 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700 shadow-lg flex items-center gap-3">
-          <span>{applicationError}</span>
-          <button onClick={() => setApplicationError("")} className="font-bold">✕</button>
-        </div>
-      ) : null}
+      )}
     </section >
   );
 }
