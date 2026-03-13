@@ -34,88 +34,98 @@ export default function HelpMenu() {
                 {/* Step 1 */}
                 <div className="space-y-3">
                     <p className="text-sm font-semibold text-[var(--foreground)]">
-                        Step 1
+                        Step 1: Create an Account
                     </p>
-                    <p className="text-sm text-[var(--foreground)]">
-                        Click <span className="font-semibold">&quot;Sign in&quot;</span> in the upper right corner to register a new account or use an existing one.
-                        Please note that if a parent is registering for two children, please register using two separate accounts for each child. One account per student.
+                    <p className="text-sm text-[var(--foreground)] leading-relaxed">
+                        Click <span className="font-semibold text-[var(--foreground)]">&quot;Sign in&quot;</span> in the upper right corner to register a new account or use an existing one. 
+                        <span className="block mt-2 text-xs text-[var(--muted)] italic">
+                            Note: If a parent is registering for multiple children, please use separate accounts for each child. Each student must have their own account.
+                        </span>
                     </p>
                 </div>
 
                 {/* Step 2 */}
                 <div className="space-y-3">
                     <p className="text-sm font-semibold text-[var(--foreground)]">
-                        Step 2
+                        Step 2: Choose and Enroll
                     </p>
-                    <p className="text-sm text-[var(--foreground)]">
-                        After entering the website, click <span className="font-semibold">&quot;All courses,&quot;</span> find the course you wish to enroll in, check the instructor and class time, and then click <span className="font-semibold">&quot;Enroll.&quot;</span> You will see two red links: one for the donation and the other for registration form. Please make a donation of $50 and fill out the registration form. After completing this, return to the enroll page. The two red links will have turned green, and "Confirm enrollment (locked)" will have changed to "Confirm enrollment." Please click it.
+                    <p className="text-sm text-[var(--foreground)] leading-relaxed">
+                        Navigate to <span className="font-semibold text-[var(--foreground)]">&quot;All courses&quot;</span> and select your desired course. Review the tutor and schedule carefully. Click <span className="font-semibold text-[var(--foreground)]">&quot;Enroll&quot;</span> to open the enrollment window. 
                     </p>
-
-                    <div className="grid gap-3 sm:grid-cols-2">
-                        <div className="overflow-hidden rounded-xl border border-[var(--border)]">
-                            <img
-                                src="/images/help/enroll-step-2.jpg"
-                                alt="Enrollment modal showing two red links"
-                                style={{ display: "block", width: "100%", height: "auto" }}
-                            />
-                        </div>
-                        <div className="overflow-hidden rounded-xl border border-[var(--border)]">
-                            <img
-                                src="/images/help/enroll-step-3.jpg"
-                                alt="Enrollment modal showing two green links and unlocked confirm button"
-                                style={{ display: "block", width: "100%", height: "auto" }}
-                            />
-                        </div>
-                    </div>
+                    <p className="text-sm text-[var(--foreground)] leading-relaxed">
+                        In the enrollment window, follow these steps:
+                    </p>
+                    <ul className="list-disc list-outside text-sm text-[var(--foreground)] space-y-2 pl-5">
+                        <li>
+                            Click <span className="font-semibold text-[var(--foreground)]">&quot;Open Donation Link&quot;</span> to make your course donation ($50).
+                        </li>
+                        <li>
+                            Fill out the <span className="font-semibold text-[var(--foreground)]">Student Application Form</span> embedded below the donation link.
+                        </li>
+                        <li>
+                            Once both steps are complete, click <span className="font-semibold text-[var(--foreground)]">&quot;Submit Enrollment Request&quot;</span>.
+                        </li>
+                    </ul>
                 </div>
 
                 {/* Step 3 */}
                 <div className="space-y-3">
                     <p className="text-sm font-semibold text-[var(--foreground)]">
-                        Step 3
+                        Step 3: Track Status
                     </p>
-                    <p className="text-sm text-[var(--foreground)]">
-                        After completing course registration, click <span className="font-semibold">&quot;Enrolled courses&quot;</span> in the main menu. You should then see the courses you just registered for. The status is <span className="font-semibold">&quot;Under Review&quot;</span>. If you don&apos;t see the &quot;Under Review&quot; status, the registration is incomplete.
+                    <p className="text-sm text-[var(--foreground)] leading-relaxed">
+                        After submitting, navigate to <span className="font-semibold text-[var(--foreground)]">&quot;Enrolled courses&quot;</span>. Your registration will show as <span className="font-semibold text-amber-600">&quot;Under Review&quot;</span> while our founder reviews your application. You will receive an email notification upon approval or rejection.
                     </p>
                 </div>
 
-                {/* Important notices */}
-                <div className="space-y-4 rounded-xl px-4 py-4" style={{ border: "1px solid rgba(239,68,68,0.35)", backgroundColor: "rgba(239,68,68,0.08)" }}>
-                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-red-600">
-                        Important
+                {/* Troubleshooting Section */}
+                <div className="space-y-4 rounded-xl px-5 py-5 border border-red-200/50 bg-red-50/50">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-red-600">
+                        Troubleshooting
                     </p>
 
                     <div className="space-y-3">
-                        <p className="text-sm text-[var(--foreground)]">
-                            If you made a donation and filled out the registration form, but forgot to click the <span className="font-semibold">&quot;Confirm enrollment&quot;</span> button, you need to register again. When you return to register, both links will still be red. Please click both links again. <span className="font-semibold text-red-600">DO NOT</span> make another donation or fill out the registration form again, just click both links. Then, return to the registration page, where the two links will turn green. Click <span className="font-semibold">&quot;Confirm enrollment&quot;</span> at the bottom.
+                        <p className="text-sm text-[var(--foreground)] leading-relaxed">
+                            If the <span className="font-semibold">&quot;Submit Enrollment Request&quot;</span> button remains disabled after you have donated:
+                        </p>
+                        <p className="text-sm text-[var(--foreground)] leading-relaxed">
+                            Simply click the <span className="font-semibold">&quot;Open Donation Link&quot;</span> again. You <span className="font-semibold text-red-600">DO NOT</span> need to make a second donation. This will refresh the enrollment status and enable the submit button.
                         </p>
                     </div>
                 </div>
 
-                <div className="space-y-4 rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-4">
-                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
-                        Important
-                    </p>
-
-                    <div className="space-y-3">
-                        <p className="text-sm text-[var(--foreground)]">
-                            To facilitate communication between instructors and students, we have set up a dedicated Discord server for YanLearn. Students should log in to the YanLearn website, click your profile card on the upper right corner, select <span className="font-semibold">Connect Discord</span>, then follow through with the instructions to join the Discord server.
+                {/* Discord Section */}
+                <div className="space-y-4 rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] px-5 py-5">
+                    <header className="space-y-1">
+                        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--muted)]">
+                            Community
                         </p>
-                    </div>
+                        <h3 className="text-base font-semibold text-[var(--foreground)]">
+                            Join our Discord
+                        </h3>
+                    </header>
+                    <p className="text-sm text-[var(--foreground)] leading-relaxed">
+                        We use Discord for essential communication between tutors and students. To join:
+                    </p>
+                    <ol className="list-decimal list-outside text-sm text-[var(--foreground)] space-y-1 pl-5">
+                        <li>Click your <span className="font-semibold">Profile Card</span> (upper right).</li>
+                        <li>Select <span className="font-semibold">Connect Discord</span>.</li>
+                        <li>Follow the prompts to authorize and join.</li>
+                    </ol>
                 </div>
 
-                <div className="space-y-3">
+                <div className="space-y-3 pt-4 border-t border-[var(--border)]">
                     <p className="text-sm font-semibold text-[var(--foreground)]">
-                        Contact us
+                        Still need help?
                     </p>
                     <p className="text-sm text-[var(--foreground)]">
-                        If you have any questions or need further assistance, please email us at{" "}
+                        Email us at{" "}
                         <a
                             href="mailto:ethans.coding.class@gmail.com"
-                            className="font-semibold underline"
+                            className="font-semibold text-[var(--foreground)] underline decoration-2 decoration-[var(--border)] underline-offset-4 hover:decoration-[var(--foreground)] transition-all"
                         >
                             ethans.coding.class@gmail.com
-                        </a>.
+                        </a>
                     </p>
                 </div>
             </div>
