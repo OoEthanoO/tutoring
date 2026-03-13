@@ -44,7 +44,7 @@ export default async function Home() {
     <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
       <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-6 px-6 py-10">
         {maintenanceEnabled && isFounder ? (
-          <div className="rounded-2xl border-2 border-amber-500 bg-amber-50 px-5 py-4 text-amber-900">
+          <div className="rounded-2xl border-2 border-amber-500 bg-amber-50 px-5 py-4 text-amber-900 dark:bg-amber-950/30 dark:text-amber-400">
             <p className="text-xs font-semibold uppercase tracking-[0.2em]">
               Maintenance Mode Active
             </p>

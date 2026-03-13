@@ -432,7 +432,7 @@ export default function CoursesMenu() {
       </header>
 
       {status.type === "error" ? (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700">
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-400">
           {status.message}
         </div>
       ) : null}
@@ -615,9 +615,9 @@ export default function CoursesMenu() {
                 </div>
 
               {!selectedCourse.is_completed && !isFullCourse(selectedCourse) && !isEnrolledInCourse(selectedCourse) && (
-                <div className="flex items-start gap-2 rounded-lg border border-amber-400 bg-amber-50 px-3 py-2">
+                <div className="flex items-start gap-2 rounded-lg border border-amber-400 bg-amber-50 px-3 py-2 dark:border-amber-700 dark:bg-amber-950/30">
                   <span className="mt-0.5 flex-shrink-0 text-amber-600 text-base leading-none" aria-hidden="true">⚠️</span>
-                  <p className="text-xs font-semibold text-amber-800">
+                  <p className="text-xs font-semibold text-amber-800 dark:text-amber-400">
                     Before registering, please carefully check the course instructor and course time you select. Each course has a different donation link, and if you select the wrong one, your donation cannot be refunded.
                   </p>
                 </div>

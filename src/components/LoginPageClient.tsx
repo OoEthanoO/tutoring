@@ -158,12 +158,12 @@ export default function LoginPageClient() {
             />
           </div>
           {error ? (
-            <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+            <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-400">
               {error}
             </div>
           ) : null}
           {status ? (
-            <div className="rounded border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+            <div className="rounded border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-400">
               {status}
             </div>
           ) : null}

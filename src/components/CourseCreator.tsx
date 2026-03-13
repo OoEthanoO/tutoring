@@ -289,8 +289,8 @@ export default function CourseCreator() {
         <div
           className={
             status.type === "error"
-              ? "rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700"
-              : "rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-800"
+              ? "rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-400"
+              : "rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-400"
           }
         >
           {status.message}

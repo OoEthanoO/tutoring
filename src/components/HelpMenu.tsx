@@ -81,7 +81,7 @@ export default function HelpMenu() {
                 </div>
 
                 {/* Troubleshooting Section */}
-                <div className="space-y-4 rounded-xl px-5 py-5 border border-red-200/50 bg-red-50/50">
+                <div className="space-y-4 rounded-xl px-5 py-5 border border-red-200/50 bg-red-50/50 dark:border-red-900/50 dark:bg-red-950/30">
                     <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-red-600">
                         Troubleshooting
                     </p>

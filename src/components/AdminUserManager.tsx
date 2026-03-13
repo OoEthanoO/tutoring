@@ -763,7 +763,7 @@ export default function AdminUserManager() {
         <a
           href="/api/admin/student-applications/export"
           download="student_applications.xlsx"
-          className="flex items-center gap-2 rounded-full border border-green-600 bg-green-50 px-4 py-2 text-xs font-bold text-green-700 transition hover:bg-green-600 hover:text-white active:scale-95"
+          className="flex items-center gap-2 rounded-full border border-green-600 bg-green-50 px-4 py-2 text-xs font-bold text-green-700 transition hover:bg-green-600 hover:text-white active:scale-95 dark:bg-green-950/30 dark:text-green-400 dark:hover:bg-green-600 dark:hover:text-white"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -848,8 +848,8 @@ export default function AdminUserManager() {
         <div
           className={
             status.type === "error"
-              ? "rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700"
-              : "rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-800"
+              ? "rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-400"
+              : "rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-400"
           }
         >
           {status.message}
@@ -1166,7 +1166,7 @@ export default function AdminUserManager() {
               </div>
 
               {applicationError ? (
-                <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-400">
                   {applicationError}
                 </div>
               ) : (

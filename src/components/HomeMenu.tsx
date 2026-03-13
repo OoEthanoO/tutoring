@@ -65,7 +65,7 @@ export default function HomeMenu({ isSignedIn }: HomeMenuProps) {
           All YanLearn tutors are current IB/AP high school students with
           excellent grades in their respective subjects. We run our classes by
           hosting online Zoom meetings with a requirement of a $50 donation fee
-          to enjoy 10 lessons per term. As of March 2026, more than 290 classes
+          to enjoy 10 lessons per term. As of February 2026, more than 290 classes
           have been taught, and more than 260 students are participating in our
           program.
         </p>
@@ -73,17 +73,6 @@ export default function HomeMenu({ isSignedIn }: HomeMenuProps) {
           In addition, the &quot;Coding for SickKids&quot; fundraising campaign
           initiated by Ethan is operated by the SickKids Fundraising platform,
           where any donations are paid directly to hospitals.
-        </p>
-        <p className="text-sm text-[var(--muted)]">
-          Our Fundraising Website:{" "}
-          <a
-            href="https://give.sickkidsfoundation.com/fundraisers/codingforsickkids"
-            target="_blank"
-            rel="noreferrer"
-            className="underline transition-colors hover:text-[var(--foreground)]"
-          >
-            give.sickkidsfoundation.com/fundraisers/codingforsickkids
-          </a>
         </p>
       </div>
 

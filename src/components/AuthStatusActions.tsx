@@ -361,7 +361,7 @@ export default function AuthStatusActions() {
                   disabled={isDisconnectingDiscord}
                   className={`rounded-full border px-4 py-2 text-xs font-semibold transition ${isDisconnectingDiscord
                     ? "cursor-not-allowed border-[var(--border)] text-[var(--muted)] opacity-70"
-                    : "border-red-500 text-red-600 hover:bg-red-50"
+                    : "border-red-500 text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
                     }`}
                 >
                   {isDisconnectingDiscord ? "Disconnecting..." : "Disconnect"}
