@@ -197,6 +197,9 @@ export default function ManageEnrollmentsMenu() {
                   {request.course?.title ?? "Course"}
                 </p>
                 <div className="flex flex-wrap gap-x-4 gap-y-1">
+                  <p className="text-xs font-semibold text-[var(--foreground)]">
+                    Student: {request.student_name || "Unknown"} ({request.student_email || "No email"})
+                  </p>
                   <p className="text-xs text-[var(--muted)]">
                     Tutor: {request.course?.created_by_name || request.course?.created_by_email || "Unknown"}
                   </p>

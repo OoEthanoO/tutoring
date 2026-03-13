@@ -475,7 +475,7 @@ export default function CoursesMenu() {
 
                   <div className="mt-auto flex items-end justify-between gap-2 pt-2">
                     <p className="text-[10px] font-medium text-[var(--muted)] truncate">
-                      Tutor: {course.created_by_name || "Unknown"}
+                      {course.created_by_name || "Unknown"}
                     </p>
                     <p className="shrink-0 text-[10px] font-medium text-[var(--muted)]">
                       {course.enrollment_count ?? 0}
@@ -519,7 +519,7 @@ export default function CoursesMenu() {
 
                   <div className="mt-auto flex items-end justify-between gap-2 pt-2">
                     <p className="text-[10px] font-medium text-[var(--muted)] truncate">
-                      Tutor: {course.created_by_name || "Unknown"}
+                      {course.created_by_name || "Unknown"}
                     </p>
                     <p className="shrink-0 text-[10px] font-medium text-[var(--muted)]">
                       {course.enrollment_count ?? 0}
@@ -539,35 +539,38 @@ export default function CoursesMenu() {
             Completed courses
           </h3>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {completedCourses.map((course) => (
-              <div
-                key={course.id}
-                className="flex h-[140px] flex-col rounded-xl border border-[var(--border)] p-4"
-              >
-                <div className="flex-1 min-h-0 space-y-1">
-                  <p className="text-sm font-semibold text-[var(--foreground)] truncate">
-                    {course.title}
-                  </p>
-                  {course.description ? (
-                    <div className="line-clamp-4 overflow-hidden text-xs text-[var(--muted)]">
-                      <MarkdownText text={course.description} />
-                    </div>
-                  ) : (
-                    <p className="text-xs italic text-[var(--muted)]">No description provided.</p>
-                  )}
-                </div>
+            {completedCourses.map((course) => {
+              const { startLabel, endLabel } = getCompletedCourseSummary(course);
+              return (
+                <div
+                  key={course.id}
+                  onClick={() => openEnrollmentModal(course)}
+                  className="group flex h-[140px] flex-col rounded-xl border border-[var(--border)] p-4 transition-all hover:border-[var(--foreground)] cursor-pointer"
+                >
+                  <div className="flex-1 min-h-0 space-y-1">
+                    <p className="text-sm font-semibold text-[var(--foreground)] truncate">
+                      {course.title}
+                    </p>
+                    {course.description ? (
+                      <div className="line-clamp-3 overflow-hidden text-xs text-[var(--muted)]">
+                        <MarkdownText text={course.description} />
+                      </div>
+                    ) : (
+                      <p className="text-xs italic text-[var(--muted)]">No description provided.</p>
+                    )}
+                  </div>
 
-                <div className="mt-auto flex items-end justify-between gap-2 pt-2">
-                  <p className="text-[10px] font-medium text-[var(--muted)] truncate">
-                    Tutor: {course.created_by_name || "Unknown"}
-                  </p>
-                  <p className="shrink-0 text-[10px] font-medium text-[var(--muted)]">
-                    {course.enrollment_count ?? 0}
-                    {course.max_students ? `/${course.max_students}` : ""} students
-                  </p>
+                  <div className="mt-auto flex items-end justify-between gap-2 pt-2">
+                    <p className="text-[10px] font-medium text-[var(--muted)] truncate">
+                      {course.created_by_name || "Unknown"}
+                    </p>
+                    <p className="shrink-0 text-[10px] font-medium text-[var(--muted)]">
+                      {startLabel} - {endLabel} • {getCompletedCourseSummary(course).classCount} classes
+                    </p>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       ) : null}
@@ -585,22 +588,33 @@ export default function CoursesMenu() {
             className="w-full md:w-[50vw] max-h-full flex flex-col rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-xl overflow-hidden overscroll-contain min-h-0"
           >
             <div ref={modalScrollRef} className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-6 space-y-4">
-              <div className="space-y-1">
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
-                  Course information
-                </p>
-                <h3 className="text-lg font-semibold text-[var(--foreground)]">
-                  {selectedCourse.title}
-                </h3>
-                <p className="text-xs text-[var(--muted)]">
-                  Tutor:{" "}
-                  {selectedCourse.created_by_name ||
-                    selectedCourse.created_by_email ||
-                    "Unknown tutor"}
-                </p>
-              </div>
+                <div className="flex items-start justify-between">
+                  <div className="space-y-1">
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
+                      Course information
+                    </p>
+                    <h3 className="text-lg font-semibold text-[var(--foreground)]">
+                      {selectedCourse.title}
+                    </h3>
+                    <p className="text-xs text-[var(--muted)]">
+                      Tutor:{" "}
+                      {selectedCourse.created_by_name ||
+                        selectedCourse.created_by_email ||
+                        "Unknown tutor"}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setSelectedCourse(null)}
+                    className="p-1 rounded-full hover:bg-[var(--border)] transition text-[var(--muted)] hover:text-[var(--foreground)]"
+                    aria-label="Close modal"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
 
-              {!isFullCourse(selectedCourse) && !isEnrolledInCourse(selectedCourse) && (
+              {!selectedCourse.is_completed && !isFullCourse(selectedCourse) && !isEnrolledInCourse(selectedCourse) && (
                 <div className="flex items-start gap-2 rounded-lg border border-amber-400 bg-amber-50 px-3 py-2">
                   <span className="mt-0.5 flex-shrink-0 text-amber-600 text-base leading-none" aria-hidden="true">⚠️</span>
                   <p className="text-xs font-semibold text-amber-800">
@@ -644,13 +658,13 @@ export default function CoursesMenu() {
                 )}
               </div>
 
-              {!isFullCourse(selectedCourse) && !isEnrolledInCourse(selectedCourse) && (
+              {!selectedCourse.is_completed && !isFullCourse(selectedCourse) && !isEnrolledInCourse(selectedCourse) && (
                 <p className="text-xs text-[var(--muted)]">
                   When you enroll, the founder will review your request. You will
                   receive an email when it is approved or rejected.
                 </p>
               )}
-              {!isFullCourse(selectedCourse) && !isEnrolledInCourse(selectedCourse) && (
+              {!selectedCourse.is_completed && !isFullCourse(selectedCourse) && !isEnrolledInCourse(selectedCourse) && (
                 requiresDonationLink ? (
                   <div className="space-y-3 rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] p-4 shadow-sm">
                     <div className="flex flex-col gap-1">
@@ -686,58 +700,60 @@ export default function CoursesMenu() {
                 )
               )}
 
-              <StudentApplicationForm
-                initialGrade={user?.grade}
-                initialSchool={user?.school}
-                initialStudentName={user?.full_name}
-                isSubmitting={isEnrolling}
-                isConfirmDisabled={(requiresDonationLink && !hasOpenedDonationLink) || isFullCourse(selectedCourse) || isEnrolledInCourse(selectedCourse)}
-                isFull={isFullCourse(selectedCourse)}
-                isEnrolled={isEnrolledInCourse(selectedCourse)}
-                enrollmentStatus={selectedCourse.enrollment_status}
-                onCancel={() => {
-                  setSelectedCourse(null);
-                  setHasOpenedDonationLink(false);
-                  setHasOpenedApplicationLink(false);
-                }}
-                onSubmit={async (formData) => {
-                  setIsEnrolling(true);
-                  setStatus({ type: "idle", message: "" });
-                  const response = await fetch(
-                    `/api/courses/${selectedCourse!.id}/enroll`,
-                    {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify(formData),
+              {!selectedCourse.is_completed && (
+                <StudentApplicationForm
+                  initialGrade={user?.grade}
+                  initialSchool={user?.school}
+                  initialStudentName={user?.full_name}
+                  isSubmitting={isEnrolling}
+                  isConfirmDisabled={(requiresDonationLink && !hasOpenedDonationLink) || isFullCourse(selectedCourse) || isEnrolledInCourse(selectedCourse)}
+                  isFull={isFullCourse(selectedCourse)}
+                  isEnrolled={isEnrolledInCourse(selectedCourse)}
+                  enrollmentStatus={selectedCourse.enrollment_status}
+                  onCancel={() => {
+                    setSelectedCourse(null);
+                    setHasOpenedDonationLink(false);
+                    setHasOpenedApplicationLink(false);
+                  }}
+                  onSubmit={async (formData) => {
+                    setIsEnrolling(true);
+                    setStatus({ type: "idle", message: "" });
+                    const response = await fetch(
+                      `/api/courses/${selectedCourse!.id}/enroll`,
+                      {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(formData),
+                      }
+                    );
+
+                    if (!response.ok) {
+                      const payload = (await response.json().catch(() => null)) as
+                        | { error?: string }
+                        | null;
+                      setStatus({
+                        type: "error",
+                        message:
+                          payload?.error ?? "Unable to submit enrollment request.",
+                      });
+                      setIsEnrolling(false);
+                      return;
                     }
-                  );
 
-                  if (!response.ok) {
-                    const payload = (await response.json().catch(() => null)) as
-                      | { error?: string }
-                      | null;
-                    setStatus({
-                      type: "error",
-                      message:
-                        payload?.error ?? "Unable to submit enrollment request.",
-                    });
+                    setCourses((current) =>
+                      current.map((course) =>
+                        course.id === selectedCourse!.id
+                          ? { ...course, enrollment_status: "pending" }
+                          : course
+                      )
+                    );
+                    setSelectedCourse(null);
+                    setHasOpenedDonationLink(false);
+                    setHasOpenedApplicationLink(false);
                     setIsEnrolling(false);
-                    return;
-                  }
-
-                  setCourses((current) =>
-                    current.map((course) =>
-                      course.id === selectedCourse!.id
-                        ? { ...course, enrollment_status: "pending" }
-                        : course
-                    )
-                  );
-                  setSelectedCourse(null);
-                  setHasOpenedDonationLink(false);
-                  setHasOpenedApplicationLink(false);
-                  setIsEnrolling(false);
-                }}
-              />
+                  }}
+                />
+              )}
 
             </div>
           </div>
