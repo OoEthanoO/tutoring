@@ -552,7 +552,7 @@ export default function CoursesMenu() {
                       {course.title}
                     </p>
                     {course.description ? (
-                      <div className="line-clamp-3 overflow-hidden text-xs text-[var(--muted)]">
+                      <div className="line-clamp-4 overflow-hidden text-xs text-[var(--muted)]">
                         <MarkdownText text={course.description} />
                       </div>
                     ) : (
