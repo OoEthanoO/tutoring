@@ -12,6 +12,7 @@ export default function HelpMenu() {
                 </h2>
             </header>
 
+{/* 
             <div className="space-y-3">
                 <p className="text-sm font-semibold text-[var(--foreground)]">
                     Video Walkthrough
@@ -29,6 +30,7 @@ export default function HelpMenu() {
                     </video>
                 </div>
             </div>
+            */}
 
             <div className="space-y-8">
                 {/* Step 1 */}
