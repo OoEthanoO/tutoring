@@ -8,6 +8,7 @@ import { setHasUnsavedData, hasAnyUnsavedData } from "@/lib/unsavedData";
 export default function Footer() {
   const [isCreditHovered, setIsCreditHovered] = useState(false);
   const [isFeedbackHovered, setIsFeedbackHovered] = useState(false);
+  const [isInstagramHovered, setIsInstagramHovered] = useState(false);
   const [isSignedIn, setIsSignedIn] = useState(false);
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
   const [message, setMessage] = useState("");
@@ -146,6 +147,22 @@ export default function Footer() {
             </button>
           </>
         ) : null}
+        {" "}
+        |{" "}
+        <a
+          href="https://www.instagram.com/yanlearn/"
+          target="_blank"
+          rel="noreferrer"
+          className="transition-colors"
+          onMouseEnter={() => setIsInstagramHovered(true)}
+          onMouseLeave={() => setIsInstagramHovered(false)}
+          onFocus={() => setIsInstagramHovered(true)}
+          onBlur={() => setIsInstagramHovered(false)}
+        >
+          <span style={{ color: isInstagramHovered ? "#3b82f6" : "var(--muted)" }}>
+            Instagram
+          </span>
+        </a>
       </p>
       {isFeedbackOpen ? (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 px-4">
