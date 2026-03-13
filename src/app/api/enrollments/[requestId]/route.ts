@@ -11,7 +11,7 @@ const resendFrom = process.env.RESEND_FROM ?? "";
 const defaultZoomId = "822 9677 5321";
 const defaultZoomPassword = "youth";
 
-type Action = "approve" | "reject";
+type Action = "approve" | "reject" | "soft_reject";
 
 const sendEmail = async (to: string, subject: string, html: string) => {
   if (!resendApiKey || !resendFrom) {
@@ -75,7 +75,7 @@ export async function PATCH(
     | null;
 
   const action = body?.action;
-  if (action !== "approve" && action !== "reject") {
+  if (action !== "approve" && action !== "reject" && action !== "soft_reject") {
     return NextResponse.json({ error: "Invalid action." }, { status: 400 });
   }
 
@@ -86,7 +86,7 @@ export async function PATCH(
   const { data: requestData, error: requestError } = await adminClient
     .from("course_enrollment_requests")
     .select(
-      "id, course_id, student_id, student_name, student_email, status, course:courses(id, title, short_name, created_by_name)"
+      "id, course_id, student_id, student_name, student_email, status, course:courses(id, title, short_name, created_by_name, created_by, max_students, course_enrollments(count))"
     )
     .eq("id", requestId)
     .single();
@@ -108,6 +108,17 @@ export async function PATCH(
   const now = new Date().toISOString();
 
   if (action === "approve") {
+    const course = Array.isArray(requestData.course) ? requestData.course[0] : requestData.course;
+    const maxStudents = (course as any)?.max_students;
+    const enrollmentCount = (course as any)?.course_enrollments?.[0]?.count ?? 0;
+
+    if (maxStudents && enrollmentCount >= maxStudents) {
+      return NextResponse.json(
+        { error: "Course is already full." },
+        { status: 400 }
+      );
+    }
+
     await adminClient
       .from("course_enrollments")
       .upsert(
@@ -119,6 +130,29 @@ export async function PATCH(
         },
         { onConflict: "course_id,student_id" }
       );
+  }
+
+  if (action === "soft_reject") {
+    // Delete application first due to FK constraints if any (though here it's course_id/student_id)
+    await adminClient
+      .from("student_applications")
+      .delete()
+      .eq("course_id", requestData.course_id)
+      .eq("student_id", requestData.student_id);
+
+    const { error: deleteError } = await adminClient
+      .from("course_enrollment_requests")
+      .delete()
+      .eq("id", requestId);
+
+    if (deleteError) {
+      return NextResponse.json(
+        { error: deleteError.message ?? "Failed to delete request." },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({ success: true });
   }
 
   const { data: updatedRequest, error: updateError } = await adminClient
@@ -164,6 +198,14 @@ export async function PATCH(
       ? `${tutorFirstName}${tutorLastInitial ? ` ${tutorLastInitial}` : ""}: ${courseShortName.trim()}`
       : "";
 
+  const { data: tutorProfile } = await adminClient
+    .from("tutor_profiles")
+    .select("donation_link")
+    .eq("user_id", (requestData as any).course.created_by)
+    .maybeSingle();
+
+  const donationLink = tutorProfile?.donation_link ?? "";
+
   if (studentEmail) {
     const subject =
       action === "approve"
@@ -172,6 +214,7 @@ export async function PATCH(
     const html =
       action === "approve"
         ? `<p>Your enrollment request for <strong>${courseTitle}</strong> has been approved.</p>
+           ${donationLink ? `<p>To finish enrollment, please make a donation via this link: <a href="${donationLink}">${donationLink}</a></p>` : ""}
            <p>Please attend the class 5 minutes before the start time:</p>
            <p>Zoom ID: ${defaultZoomId}<br/>Password: ${defaultZoomPassword}<br/>${
              breakoutRoomName

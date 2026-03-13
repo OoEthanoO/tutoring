@@ -152,6 +152,69 @@ export async function POST(
     }
   }
 
+  const body = (await request.json().catch(() => null)) as {
+    guardianEmail?: string;
+    studentFullName?: string;
+    schoolName?: string;
+    grade?: string;
+    parentGuardianName?: string;
+    parentGuardianPhone?: string;
+    consentName?: string;
+  } | null;
+
+  if (
+    !body?.guardianEmail ||
+    !body?.studentFullName ||
+    !body?.schoolName ||
+    !body?.grade ||
+    !body?.parentGuardianName ||
+    !body?.parentGuardianPhone ||
+    !body?.consentName
+  ) {
+    return NextResponse.json(
+      { error: "Missing application details." },
+      { status: 400 }
+    );
+  }
+
+  // Update user profile (grade and school)
+  const { error: userUpdateError } = await adminClient
+    .from("app_users")
+    .update({
+      grade: body.grade,
+      school: body.schoolName,
+    })
+    .eq("id", user.id);
+
+  if (userUpdateError) {
+    return NextResponse.json(
+      { error: "Failed to update user profile." },
+      { status: 500 }
+    );
+  }
+
+  // Save specific application details
+  const { error: applicationError } = await adminClient
+    .from("student_applications")
+    .insert({
+      course_id: courseId,
+      student_id: user.id,
+      guardian_email: body.guardianEmail,
+      student_full_name: body.studentFullName,
+      school_name: body.schoolName,
+      grade: body.grade,
+      parent_guardian_name: body.parentGuardianName,
+      parent_guardian_phone: body.parentGuardianPhone,
+      consent_name: body.consentName,
+    });
+
+  if (applicationError) {
+    return NextResponse.json(
+      { error: "Failed to save application details." },
+      { status: 500 }
+    );
+  }
+
   const studentName =
     String(user.full_name ?? "").trim() || user.email || "Unnamed student";
 

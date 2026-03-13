@@ -15,6 +15,8 @@ export type SessionUser = {
   discord_username: string | null;
   discord_connected_at: string | null;
   is_junior: boolean;
+  grade: string | null;
+  school: string | null;
 };
 
 export const IMPERSONATE_COOKIE = "impersonate_user_id";
@@ -44,7 +46,7 @@ export const getSessionUser = async (token?: string | null) => {
   const { data } = await adminClient
     .from("app_sessions")
     .select(
-      "user:app_users(id, email, full_name, role, email_verified_at, discord_user_id, discord_username, discord_connected_at, is_junior), expires_at"
+      "user:app_users(id, email, full_name, role, email_verified_at, discord_user_id, discord_username, discord_connected_at, is_junior, grade, school), expires_at"
     )
     .eq("token_hash", tokenHash)
     .gt("expires_at", now)

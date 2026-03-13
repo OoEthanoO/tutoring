@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { getCurrentUser, onAuthChange } from "@/lib/authClient";
+import { ClientUser, getCurrentUser, onAuthChange } from "@/lib/authClient";
 import { setHasUnsavedData } from "@/lib/unsavedData";
 import { MarkdownText } from "@/lib/parseMarkdown";
+import StudentApplicationForm from "./StudentApplicationForm";
 
 type StatusState = {
   type: "idle" | "error";
@@ -167,7 +168,8 @@ const getCompletedCourseSummary = (course: Course) => {
 };
 
 export default function CoursesMenu() {
-  const [userId, setUserId] = useState<string | null>(null);
+  const [user, setUser] = useState<ClientUser | null>(null);
+  const userId = user?.id ?? null;
   const [courses, setCourses] = useState<Course[]>([]);
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
   const [isEnrolling, setIsEnrolling] = useState(false);
@@ -223,7 +225,7 @@ export default function CoursesMenu() {
   useEffect(() => {
     const load = async () => {
       const user = await getCurrentUser();
-      setUserId(user?.id ?? null);
+      setUser(user);
     };
 
     load();
@@ -295,6 +297,15 @@ export default function CoursesMenu() {
       return (course.enrollment_count ?? 0) >= course.max_students;
     }
     return false;
+  }, []);
+
+  const isEnrolledInCourse = useCallback((course: Course) => {
+    return (
+      course.enrollment_status === "enrolled" ||
+      course.enrollment_status === "pending" ||
+      course.enrollment_status === "approved" ||
+      course.enrollment_status === "rejected"
+    );
   }, []);
 
   const availableCourses = useMemo(
@@ -398,15 +409,13 @@ export default function CoursesMenu() {
       ? hasClickedBothLinks
       : hasOpenedApplicationLink
     : false;
-  const isConfirmEnrollmentDisabled = isEnrolling || !canConfirmEnrollment;
+  const isGuest = !userId;
 
   const openEnrollmentModal = (course: Course) => {
     setHasOpenedDonationLink(false);
     setHasOpenedApplicationLink(false);
     setSelectedCourse(course);
   };
-
-  const isGuest = !userId;
 
   return (
     <section className="space-y-6 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6">
@@ -442,83 +451,40 @@ export default function CoursesMenu() {
             Available courses
           </h3>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {availableCourses.map((course) => (
-              <div
-                key={course.id}
-                className="space-y-4 rounded-xl border border-[var(--border)] px-4 py-4"
-              >
-                <div>
-                  <p className="text-sm font-semibold text-[var(--foreground)]">
-                    {course.title}
-                  </p>
-                  <p className="text-xs text-[var(--muted)]">
-                    Tutor:{" "}
-                    {course.created_by_name ||
-                      course.created_by_email ||
-                      "Unknown tutor"}
-                  </p>
-                  {course.description ? (
-                    <div className="text-xs text-[var(--muted)]">
-                      <MarkdownText text={course.description} />
-                    </div>
-                  ) : null}
-                </div>
-
-                <div className="space-y-2">
-                  {course.is_completed ? (
-                    <p className="text-xs text-[var(--muted)]">
-                      {formatCompletedDate(course.completed_start_date)} to{" "}
-                      {formatCompletedDate(course.completed_end_date)} ·{" "}
-                      {course.completed_class_count ?? 0} classes
+            {availableCourses.map((course) => {
+              const full = isFullCourse(course);
+              return (
+                <div
+                  key={course.id}
+                  onClick={() => openEnrollmentModal(course)}
+                  className={`group flex h-[140px] flex-col rounded-xl border border-[var(--border)] p-4 transition-all focus-within:ring-2 focus-within:ring-[var(--foreground)] ${full ? "cursor-pointer hover:border-amber-400" : "cursor-pointer hover:border-[var(--foreground)]"
+                    }`}
+                >
+                  <div className="flex-1 min-h-0 space-y-1">
+                    <p className="text-sm font-semibold text-[var(--foreground)] truncate">
+                      {course.title}
                     </p>
-                  ) : course.course_classes?.length ? (
-                    <ul className="space-y-1 text-xs text-[var(--muted)]">
-                      {sortClassesByStart(course.course_classes).map((courseClass) => {
-                        const { start, end } = getClassTimes(
-                          courseClass.starts_at
-                        );
-                        const tone = getClassTimeStyle(start, end);
-                        return (
-                          <li key={courseClass.id} className={tone}>
-                            {courseClass.title} · {formatClassSchedule(start, end)}
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  ) : (
-                    <p className="text-xs text-[var(--muted)]">No classes yet.</p>
-                  )}
-                </div>
+                    {course.description ? (
+                      <div className="line-clamp-4 overflow-hidden text-xs text-[var(--muted)]">
+                        <MarkdownText text={course.description} />
+                      </div>
+                    ) : (
+                      <p className="text-xs italic text-[var(--muted)]">No description provided.</p>
+                    )}
+                  </div>
 
-                <div className="flex flex-wrap items-center gap-2">
-                  {isGuest ? null : course.enrollment_status === "enrolled" ? (
-                    <span className="rounded-full border border-emerald-300 px-3 py-1 text-xs font-semibold text-emerald-700">
-                      Enrolled
-                    </span>
-                  ) : course.enrollment_status === "rejected" ? (
-                    <span className="rounded-full border border-red-300 px-3 py-1 text-xs font-semibold text-red-700">
-                      Rejected
-                    </span>
-                  ) : course.enrollment_status === "pending" ? (
-                    <span className="rounded-full border border-amber-300 px-3 py-1 text-xs font-semibold text-amber-700">
-                      Under Review
-                    </span>
-                  ) : hasGrayClass(course) ? (
-                    <button
-                      type="button"
-                      disabled={isFullCourse(course)}
-                      onClick={() => openEnrollmentModal(course)}
-                      className={`rounded-full border px-4 py-2 text-xs font-semibold transition ${isFullCourse(course)
-                        ? "border-[var(--border)] text-[var(--muted)] cursor-not-allowed opacity-50"
-                        : "border-[var(--foreground)] text-[var(--foreground)] hover:bg-[var(--foreground)] hover:text-[var(--surface)]"
-                        }`}
-                    >
-                      {isFullCourse(course) ? "Course Full" : "Enroll"}
-                    </button>
-                  ) : null}
+                  <div className="mt-auto flex items-end justify-between gap-2 pt-2">
+                    <p className="text-[10px] font-medium text-[var(--muted)] truncate">
+                      Tutor: {course.created_by_name || "Unknown"}
+                    </p>
+                    <p className="shrink-0 text-[10px] font-medium text-[var(--muted)]">
+                      {course.enrollment_count ?? 0}
+                      {course.max_students ? `/${course.max_students}` : ""} students
+                    </p>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       ) : null}
@@ -529,61 +495,40 @@ export default function CoursesMenu() {
             Upcoming courses
           </h3>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {upcomingCourses.map((course) => (
-              <div
-                key={course.id}
-                className="space-y-4 rounded-xl border border-[var(--border)] px-4 py-4"
-              >
-                <div>
-                  <p className="text-sm font-semibold text-[var(--foreground)]">
-                    {course.title}
-                  </p>
-                  <p className="text-xs text-[var(--muted)]">
-                    Tutor:{" "}
-                    {course.created_by_name ||
-                      course.created_by_email ||
-                      "Unknown tutor"}
-                  </p>
-                  {course.description ? (
-                    <div className="text-xs text-[var(--muted)]">
-                      <MarkdownText text={course.description} />
-                    </div>
-                  ) : null}
-                </div>
+            {upcomingCourses.map((course) => {
+              const full = isFullCourse(course);
+              return (
+                <div
+                  key={course.id}
+                  onClick={() => openEnrollmentModal(course)}
+                  className={`group flex h-[140px] flex-col rounded-xl border border-[var(--border)] p-4 transition-all focus-within:ring-2 focus-within:ring-[var(--foreground)] ${full ? "cursor-pointer hover:border-amber-400" : "cursor-pointer hover:border-[var(--foreground)]"
+                    }`}
+                >
+                  <div className="flex-1 min-h-0 space-y-1">
+                    <p className="text-sm font-semibold text-[var(--foreground)] truncate">
+                      {course.title}
+                    </p>
+                    {course.description ? (
+                      <div className="line-clamp-4 overflow-hidden text-xs text-[var(--muted)]">
+                        <MarkdownText text={course.description} />
+                      </div>
+                    ) : (
+                      <p className="text-xs italic text-[var(--muted)]">No description provided.</p>
+                    )}
+                  </div>
 
-                <div className="space-y-2">
-                  <p className="text-xs text-[var(--muted)]">No classes yet.</p>
+                  <div className="mt-auto flex items-end justify-between gap-2 pt-2">
+                    <p className="text-[10px] font-medium text-[var(--muted)] truncate">
+                      Tutor: {course.created_by_name || "Unknown"}
+                    </p>
+                    <p className="shrink-0 text-[10px] font-medium text-[var(--muted)]">
+                      {course.enrollment_count ?? 0}
+                      {course.max_students ? `/${course.max_students}` : ""} students
+                    </p>
+                  </div>
                 </div>
-
-                <div className="flex flex-wrap items-center gap-2">
-                  {course.enrollment_status === "enrolled" ? (
-                    <span className="rounded-full border border-emerald-300 px-3 py-1 text-xs font-semibold text-emerald-700">
-                      Enrolled
-                    </span>
-                  ) : course.enrollment_status === "pending" ? (
-                    <span className="rounded-full border border-amber-300 px-3 py-1 text-xs font-semibold text-amber-700">
-                      Pending approval
-                    </span>
-                  ) : course.enrollment_status === "rejected" ? (
-                    <span className="rounded-full border border-red-300 px-3 py-1 text-xs font-semibold text-red-700">
-                      Rejected
-                    </span>
-                  ) : !isGuest ? (
-                    <button
-                      type="button"
-                      disabled={isFullCourse(course)}
-                      onClick={() => openEnrollmentModal(course)}
-                      className={`rounded-full border px-4 py-1.5 text-[0.6rem] font-semibold transition ${isFullCourse(course)
-                        ? "border-[var(--border)] text-[var(--muted)] cursor-not-allowed opacity-50"
-                        : "border-[var(--foreground)] text-[var(--foreground)] hover:bg-[var(--foreground)] hover:text-[var(--surface)]"
-                        }`}
-                    >
-                      {isFullCourse(course) ? "Course Full" : "Enroll"}
-                    </button>
-                  ) : null}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       ) : null}
@@ -594,50 +539,35 @@ export default function CoursesMenu() {
             Completed courses
           </h3>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {completedCourses.map((course) => {
-              const summary = getCompletedCourseSummary(course);
-              return (
-                <div
-                  key={course.id}
-                  className="space-y-4 rounded-xl border border-[var(--border)] px-4 py-4"
-                >
-                  <div>
-                    <p className="text-sm font-semibold text-[var(--foreground)]">
-                      {course.title}
-                    </p>
-                    <p className="text-xs text-[var(--muted)]">
-                      Tutor:{" "}
-                      {course.created_by_name ||
-                        course.created_by_email ||
-                        "Unknown tutor"}
-                    </p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <p className="text-xs text-[var(--muted)]">
-                      {summary.startLabel} to {summary.endLabel} ·{" "}
-                      {summary.classCount} classes
-                    </p>
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-2">
-                    {course.enrollment_status === "enrolled" ? (
-                      <span className="rounded-full border border-emerald-300 px-3 py-1 text-xs font-semibold text-emerald-700">
-                        Enrolled
-                      </span>
-                    ) : course.enrollment_status === "pending" ? (
-                      <span className="rounded-full border border-amber-300 px-3 py-1 text-xs font-semibold text-amber-700">
-                        Under Review
-                      </span>
-                    ) : course.enrollment_status === "rejected" ? (
-                      <span className="rounded-full border border-red-300 px-3 py-1 text-xs font-semibold text-red-700">
-                        Rejected
-                      </span>
-                    ) : null}
-                  </div>
+            {completedCourses.map((course) => (
+              <div
+                key={course.id}
+                className="flex h-[140px] flex-col rounded-xl border border-[var(--border)] p-4"
+              >
+                <div className="flex-1 min-h-0 space-y-1">
+                  <p className="text-sm font-semibold text-[var(--foreground)] truncate">
+                    {course.title}
+                  </p>
+                  {course.description ? (
+                    <div className="line-clamp-4 overflow-hidden text-xs text-[var(--muted)]">
+                      <MarkdownText text={course.description} />
+                    </div>
+                  ) : (
+                    <p className="text-xs italic text-[var(--muted)]">No description provided.</p>
+                  )}
                 </div>
-              );
-            })}
+
+                <div className="mt-auto flex items-end justify-between gap-2 pt-2">
+                  <p className="text-[10px] font-medium text-[var(--muted)] truncate">
+                    Tutor: {course.created_by_name || "Unknown"}
+                  </p>
+                  <p className="shrink-0 text-[10px] font-medium text-[var(--muted)]">
+                    {course.enrollment_count ?? 0}
+                    {course.max_students ? `/${course.max_students}` : ""} students
+                  </p>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       ) : null}
@@ -645,12 +575,19 @@ export default function CoursesMenu() {
 
 
       {!isGuest && selectedCourse ? (
-        <div className="fixed inset-0 z-30 grid place-items-center p-4 overflow-y-auto overscroll-contain bg-black/50">
-          <div className="w-full md:w-[50vw] max-h-full flex flex-col rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-xl overflow-hidden overscroll-contain min-h-0">
+        <div
+          key={selectedCourse.id}
+          style={{ transform: "translateZ(0)", backfaceVisibility: "hidden" }}
+          className="fixed inset-0 z-30 grid place-items-center p-4 overflow-y-auto overscroll-contain bg-black/50"
+        >
+          <div
+            style={{ transform: "translateZ(0)", backfaceVisibility: "hidden" }}
+            className="w-full md:w-[50vw] max-h-full flex flex-col rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-xl overflow-hidden overscroll-contain min-h-0"
+          >
             <div ref={modalScrollRef} className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-6 space-y-4">
               <div className="space-y-1">
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
-                  Confirm enrollment
+                  Course information
                 </p>
                 <h3 className="text-lg font-semibold text-[var(--foreground)]">
                   {selectedCourse.title}
@@ -663,12 +600,14 @@ export default function CoursesMenu() {
                 </p>
               </div>
 
-              <div className="flex items-start gap-2 rounded-lg border border-amber-400 bg-amber-50 px-3 py-2">
-                <span className="mt-0.5 flex-shrink-0 text-amber-600 text-base leading-none" aria-hidden="true">⚠️</span>
-                <p className="text-xs font-semibold text-amber-800">
-                  Before registering, please carefully check the course instructor and course time you select. Each course has a different donation link, and if you select the wrong one, your donation cannot be refunded.
-                </p>
-              </div>
+              {!isFullCourse(selectedCourse) && !isEnrolledInCourse(selectedCourse) && (
+                <div className="flex items-start gap-2 rounded-lg border border-amber-400 bg-amber-50 px-3 py-2">
+                  <span className="mt-0.5 flex-shrink-0 text-amber-600 text-base leading-none" aria-hidden="true">⚠️</span>
+                  <p className="text-xs font-semibold text-amber-800">
+                    Before registering, please carefully check the course instructor and course time you select. Each course has a different donation link, and if you select the wrong one, your donation cannot be refunded.
+                  </p>
+                </div>
+              )}
 
               {selectedCourse.description ? (
                 <div className="text-sm text-[var(--muted)]">
@@ -705,143 +644,101 @@ export default function CoursesMenu() {
                 )}
               </div>
 
-              <p className="text-xs text-[var(--muted)]">
-                When you enroll, the founder will review your request. You will
-                receive an email when it is approved or rejected.
-              </p>
-              {selectedCourse.donation_link ? (
+              {!isFullCourse(selectedCourse) && !isEnrolledInCourse(selectedCourse) && (
                 <p className="text-xs text-[var(--muted)]">
-                  You MUST donate via{" "}
-                  <a
-                    href={selectedCourse.donation_link}
-                    target="_blank"
-                    rel="noreferrer"
-                    onClick={() => setHasOpenedDonationLink(true)}
-                    className={`font-semibold underline ${hasOpenedDonationLink ? "text-emerald-500" : "text-red-500"
-                      }`}
-                  >
-                    this link
-                  </a>{" "}
-                  and complete{" "}
-                  <a
-                    href="https://forms.gle/tfxiH8zHfCifpBSa9"
-                    target="_blank"
-                    rel="noreferrer"
-                    onClick={() => setHasOpenedApplicationLink(true)}
-                    className={`font-semibold underline ${hasOpenedApplicationLink ? "text-emerald-500" : "text-red-500"
-                      }`}
-                  >
-                    this form
-                  </a>{" "}
-                  in order for your enrollment to be accepted.
-                </p>
-              ) : (
-                <p className="text-xs text-[var(--muted)]">
-                  You MUST complete{" "}
-                  <a
-                    href="https://forms.gle/tfxiH8zHfCifpBSa9"
-                    target="_blank"
-                    rel="noreferrer"
-                    onClick={() => setHasOpenedApplicationLink(true)}
-                    className={`font-semibold underline ${hasOpenedApplicationLink ? "text-emerald-500" : "text-red-500"
-                      }`}
-                  >
-                    this form
-                  </a>{" "}
-                  in order for your enrollment to be accepted.
+                  When you enroll, the founder will review your request. You will
+                  receive an email when it is approved or rejected.
                 </p>
               )}
-              {requiresDonationLink ? (
-                <>
+              {!isFullCourse(selectedCourse) && !isEnrolledInCourse(selectedCourse) && (
+                requiresDonationLink ? (
+                  <div className="space-y-3 rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] p-4 shadow-sm">
+                    <div className="flex flex-col gap-1">
+                      <p className="text-xs font-semibold text-[var(--foreground)]">
+                        Donation Required
+                      </p>
+                      <p className="text-[10px] text-[var(--muted)] leading-relaxed">
+                        To finish the enrollment, you must make donation using the provided link and fill out the student application form below.
+                      </p>
+                    </div>
+                    <a
+                      href={selectedCourse.donation_link!}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={() => setHasOpenedDonationLink(true)}
+                      className={`block w-full rounded-full py-2 text-center text-xs font-bold transition active:scale-[0.98] ${hasOpenedDonationLink
+                          ? "border border-[var(--foreground)] text-[var(--foreground)] bg-transparent hover:bg-[var(--surface-muted)]"
+                          : "bg-[var(--foreground)] text-[var(--surface)] hover:opacity-90"
+                        }`}
+                    >
+                      {hasOpenedDonationLink ? "Donation Link Opened ✓" : "Open Donation Link"}
+                    </a>
+                    <p className="text-[10px] text-[var(--muted)] leading-relaxed italic">
+                      If you have already donated but didn&apos;t click &quot;Submit Enrollment Request&quot;, simply click on
+                      the donation link above but do not make a donation again, and then fill out the form below.
+                    </p>
+
+                  </div>
+                ) : (
                   <p className="text-xs font-semibold text-[var(--muted)]">
-                    To finish enrollment, you must click on both links above.
+                    To finish enrollment, please fill out the application form below.
                   </p>
-                  <p className="text-xs text-[var(--muted)]">
-                    If you have already clicked on the required link above but
-                    didn&apos;t click &quot;Confirm enrollment&quot;, simply click on
-                    both links above but do not submit the form nor make a donation
-                    again.
-                  </p>
-                </>
-              ) : (
-                <>
-                  <p className="text-xs font-semibold text-[var(--muted)]">
-                    To finish enrollment, you must click on the required link above.
-                  </p>
-                  <p className="text-xs text-[var(--muted)]">
-                    If you have already clicked on the required link above but
-                    didn&apos;t click &quot;Confirm enrollment&quot;, simply click on
-                    the link above but do not submit the form again.
-                  </p>
-                </>
+                )
               )}
 
-              <div className="flex flex-wrap justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedCourse(null);
-                    setHasOpenedDonationLink(false);
-                    setHasOpenedApplicationLink(false);
-                  }}
-                  className="rounded-full border border-[var(--border)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:border-[var(--foreground)]"
-                  disabled={isEnrolling}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    setIsEnrolling(true);
-                    setStatus({ type: "idle", message: "" });
-                    const response = await fetch(
-                      `/api/courses/${selectedCourse.id}/enroll`,
-                      { method: "POST" }
-                    );
-
-                    if (!response.ok) {
-                      const payload = (await response.json().catch(() => null)) as
-                        | { error?: string }
-                        | null;
-                      setStatus({
-                        type: "error",
-                        message:
-                          payload?.error ?? "Unable to submit enrollment request.",
-                      });
-                      setIsEnrolling(false);
-                      return;
+              <StudentApplicationForm
+                initialGrade={user?.grade}
+                initialSchool={user?.school}
+                initialStudentName={user?.full_name}
+                isSubmitting={isEnrolling}
+                isConfirmDisabled={(requiresDonationLink && !hasOpenedDonationLink) || isFullCourse(selectedCourse) || isEnrolledInCourse(selectedCourse)}
+                isFull={isFullCourse(selectedCourse)}
+                isEnrolled={isEnrolledInCourse(selectedCourse)}
+                enrollmentStatus={selectedCourse.enrollment_status}
+                onCancel={() => {
+                  setSelectedCourse(null);
+                  setHasOpenedDonationLink(false);
+                  setHasOpenedApplicationLink(false);
+                }}
+                onSubmit={async (formData) => {
+                  setIsEnrolling(true);
+                  setStatus({ type: "idle", message: "" });
+                  const response = await fetch(
+                    `/api/courses/${selectedCourse!.id}/enroll`,
+                    {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify(formData),
                     }
+                  );
 
-                    setCourses((current) =>
-                      current.map((course) =>
-                        course.id === selectedCourse.id
-                          ? { ...course, enrollment_status: "pending" }
-                          : course
-                      )
-                    );
-                    setSelectedCourse(null);
-                    setHasOpenedDonationLink(false);
-                    setHasOpenedApplicationLink(false);
+                  if (!response.ok) {
+                    const payload = (await response.json().catch(() => null)) as
+                      | { error?: string }
+                      | null;
+                    setStatus({
+                      type: "error",
+                      message:
+                        payload?.error ?? "Unable to submit enrollment request.",
+                    });
                     setIsEnrolling(false);
-                  }}
-                  disabled={isConfirmEnrollmentDisabled}
-                  title={
-                    isConfirmEnrollmentDisabled
-                      ? "Click all required links above to enable enrollment."
-                      : undefined
+                    return;
                   }
-                  className={`rounded-full border px-4 py-2 text-xs font-semibold transition ${isConfirmEnrollmentDisabled
-                    ? "cursor-not-allowed border-amber-300 bg-amber-100 text-amber-800 shadow-inner"
-                    : "border-[var(--foreground)] bg-[var(--foreground)] text-[var(--background)] hover:opacity-90"
-                    }`}
-                >
-                  {isEnrolling
-                    ? "Submitting..."
-                    : isConfirmEnrollmentDisabled
-                      ? "Confirm enrollment (locked)"
-                      : "Confirm enrollment"}
-                </button>
-              </div>
+
+                  setCourses((current) =>
+                    current.map((course) =>
+                      course.id === selectedCourse!.id
+                        ? { ...course, enrollment_status: "pending" }
+                        : course
+                    )
+                  );
+                  setSelectedCourse(null);
+                  setHasOpenedDonationLink(false);
+                  setHasOpenedApplicationLink(false);
+                  setIsEnrolling(false);
+                }}
+              />
+
             </div>
           </div>
         </div>

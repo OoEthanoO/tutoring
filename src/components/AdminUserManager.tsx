@@ -39,6 +39,18 @@ type FeedbackEntry = {
   createdAt: string;
 };
 
+type StudentApplication = {
+  id: string;
+  guardian_email: string;
+  student_full_name: string;
+  school_name: string;
+  grade: string;
+  parent_guardian_name: string;
+  parent_guardian_phone: string;
+  consent_name: string;
+  created_at: string;
+};
+
 export default function AdminUserManager() {
   const router = useRouter();
   const [isFounder, setIsFounder] = useState(false);
@@ -74,6 +86,9 @@ export default function AdminUserManager() {
   const [pendingFeedbackId, setPendingFeedbackId] = useState<string | null>(
     null
   );
+  const [selectedApplication, setSelectedApplication] = useState<StudentApplication | null>(null);
+  const [isLoadingApplication, setIsLoadingApplication] = useState(false);
+  const [applicationError, setApplicationError] = useState("");
 
   const toLocalDateTimeInput = (value: string) => {
     const parsed = new Date(value);
@@ -609,6 +624,30 @@ export default function AdminUserManager() {
     setPendingId(null);
   };
 
+  const viewApplication = async (studentId: string) => {
+    setIsLoadingApplication(true);
+    setApplicationError("");
+    setSelectedApplication(null);
+
+    const response = await fetch(`/api/admin/student-applications/${studentId}`);
+    if (!response.ok) {
+      const payload = (await response.json().catch(() => null)) as
+        | { error?: string }
+        | null;
+      setApplicationError(payload?.error ?? "Unable to load application.");
+      setIsLoadingApplication(false);
+      return;
+    }
+
+    const data = (await response.json()) as { application: StudentApplication | null };
+    if (!data.application) {
+      setApplicationError("No application found for this user.");
+    } else {
+      setSelectedApplication(data.application);
+    }
+    setIsLoadingApplication(false);
+  };
+
   const toggleMaintenanceMode = async () => {
     setIsSavingMaintenance(true);
     setStatus({ type: "idle", message: "" });
@@ -1005,6 +1044,19 @@ export default function AdminUserManager() {
                         </button>
                       </div>
                     </div>
+                    {user.role === "student" ? (
+                      <button
+                        type="button"
+                        disabled={isLoadingApplication && pendingId === user.id}
+                        onClick={() => {
+                          setPendingId(user.id);
+                          viewApplication(user.id).finally(() => setPendingId(null));
+                        }}
+                        className="rounded-full border border-[var(--foreground)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-70"
+                      >
+                        {isLoadingApplication && pendingId === user.id ? "Loading..." : "View Application"}
+                      </button>
+                    ) : null}
                     <button
                       type="button"
                       disabled={isPending}
@@ -1070,6 +1122,72 @@ export default function AdminUserManager() {
           </div>
         ) : null}
       </div>
+
+      {selectedApplication ? (
+        <div className="fixed inset-0 z-50 grid place-items-center p-4 bg-black/50">
+          <div className="w-full max-w-2xl max-h-[90vh] flex flex-col rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-xl overflow-hidden">
+            <div className="p-6 border-b border-[var(--border)] flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-[var(--foreground)]">Student Application Details</h3>
+              <button
+                onClick={() => setSelectedApplication(null)}
+                className="text-[var(--muted)] hover:text-[var(--foreground)]"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+              <div className="grid gap-4 sm:grid-cols-2 text-sm">
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-[var(--muted)]">Student Full Name</p>
+                  <p className="font-semibold">{selectedApplication.student_full_name}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-[var(--muted)]">Guardian Email</p>
+                  <p className="font-semibold">{selectedApplication.guardian_email}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-[var(--muted)]">School Name</p>
+                  <p className="font-semibold">{selectedApplication.school_name}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-[var(--muted)]">Grade</p>
+                  <p className="font-semibold">{selectedApplication.grade}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-[var(--muted)]">Parent/Guardian Name</p>
+                  <p className="font-semibold">{selectedApplication.parent_guardian_name}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-[var(--muted)]">Parent/Guardian Phone</p>
+                  <p className="font-semibold">{selectedApplication.parent_guardian_phone}</p>
+                </div>
+              </div>
+              <div className="space-y-1 text-sm pt-4 border-t border-[var(--border)]">
+                <p className="text-xs font-medium text-[var(--muted)]">Consent Signature (Guardian Name)</p>
+                <p className="font-semibold italic underline decorations-amber-500">{selectedApplication.consent_name}</p>
+              </div>
+              <div className="text-[10px] text-[var(--muted)] mt-4 p-3 bg-[var(--border)]/10 rounded-lg">
+                Submitted on: {new Date(selectedApplication.created_at).toLocaleString()}
+              </div>
+            </div>
+            <div className="p-4 border-t border-[var(--border)] flex justify-end">
+              <button
+                onClick={() => setSelectedApplication(null)}
+                className="rounded-full bg-[var(--foreground)] px-6 py-2 text-xs font-semibold text-[var(--surface)] transition hover:opacity-90"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {applicationError ? (
+        <div className="fixed bottom-4 right-4 z-50 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700 shadow-lg flex items-center gap-3">
+          <span>{applicationError}</span>
+          <button onClick={() => setApplicationError("")} className="font-bold">✕</button>
+        </div>
+      ) : null}
     </section >
   );
 }

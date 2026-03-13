@@ -10,6 +10,20 @@ type RequestCourse = {
   created_by?: string | null;
   created_by_name?: string | null;
   created_by_email?: string | null;
+  max_students?: number | null;
+  course_enrollments?: { count: number }[];
+};
+
+type StudentApplication = {
+  id: string;
+  guardian_email: string;
+  student_full_name: string;
+  school_name: string;
+  grade: string;
+  parent_guardian_name: string;
+  parent_guardian_phone: string;
+  consent_name: string;
+  created_at: string;
 };
 
 type EnrollmentRequest = {
@@ -19,6 +33,7 @@ type EnrollmentRequest = {
   student_name?: string | null;
   student_email?: string | null;
   course?: RequestCourse | null;
+  student_application?: StudentApplication | null;
 };
 
 type StatusState = {
@@ -81,15 +96,19 @@ export default function ManageEnrollmentsMenu() {
 
   const updateRequest = async (
     requestId: string,
-    action: "approve" | "reject"
+    action: "approve" | "reject" | "soft_reject"
   ) => {
     const target = requests.find((request) => request.id === requestId);
     const student = target?.student_name || target?.student_email || "student";
     const course = target?.course?.title || "this course";
-    const prompt =
-      action === "approve"
-        ? `Approve enrollment for ${student} in ${course}?`
-        : `Reject enrollment for ${student} in ${course}?`;
+    let prompt = "";
+    if (action === "approve") {
+      prompt = `Approve enrollment for ${student} in ${course}?`;
+    } else if (action === "reject") {
+      prompt = `Reject enrollment for ${student} in ${course}?`;
+    } else if (action === "soft_reject") {
+      prompt = `Confirm SOFT REJECT for ${student} in ${course}?\n\nThis will remove the request without notifying the student or marking them as rejected. They will be able to apply again if space opens up.`;
+    }
 
     if (!window.confirm(prompt)) {
       return;
@@ -121,7 +140,7 @@ export default function ManageEnrollmentsMenu() {
     );
     setStatus({
       type: "success",
-      message: action === "approve" ? "Enrollment approved." : "Enrollment rejected.",
+      message: action === "soft_reject" ? "Request removed (Soft Reject)." : action === "approve" ? "Enrollment approved." : "Enrollment rejected.",
     });
     setPendingId(null);
   };
@@ -166,34 +185,88 @@ export default function ManageEnrollmentsMenu() {
       <div className="space-y-3">
         {requests.map((request) => {
           const isPending = pendingId === request.id;
+          const app = request.student_application;
+
           return (
             <div
               key={request.id}
-              className="space-y-3 rounded-xl border border-[var(--border)] px-4 py-4"
+              className="space-y-4 rounded-xl border border-[var(--border)] px-4 py-4"
             >
-              <div>
+              <div className="flex flex-col gap-1">
                 <p className="text-sm font-semibold text-[var(--foreground)]">
                   {request.course?.title ?? "Course"}
                 </p>
-                <p className="text-xs text-[var(--muted)]">
-                  Tutor: {request.course?.created_by_name || request.course?.created_by_email || "Unknown"}
-                </p>
-                <p className="text-xs text-[var(--muted)]">
-                  Student: {request.student_name || request.student_email || "Unknown"}
-                </p>
-                <p className="text-xs text-[var(--muted)]">
-                  Requested: {new Date(request.created_at).toLocaleString()}
-                </p>
+                <div className="flex flex-wrap gap-x-4 gap-y-1">
+                  <p className="text-xs text-[var(--muted)]">
+                    Tutor: {request.course?.created_by_name || request.course?.created_by_email || "Unknown"}
+                  </p>
+                  <p className="text-xs text-[var(--muted)]">
+                    Requested: {new Date(request.created_at).toLocaleString()}
+                  </p>
+                  {request.course?.max_students ? (
+                    <p className="text-xs font-medium text-[var(--muted)]">
+                      Enrollment: {request.course.course_enrollments?.[0]?.count ?? 0}/{request.course.max_students}
+                    </p>
+                  ) : null}
+                </div>
               </div>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  disabled={isPending}
-                  onClick={() => updateRequest(request.id, "approve")}
-                  className="rounded-full border border-emerald-300 px-4 py-2 text-xs font-semibold text-emerald-500 transition hover:bg-emerald-600/10 hover:text-emerald-200 disabled:cursor-not-allowed disabled:opacity-70"
-                >
-                  {isPending ? "Updating..." : "Approve"}
-                </button>
+
+              {app ? (
+                <div className="rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] p-3">
+                  <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">
+                    Student Application Form
+                  </p>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div className="space-y-1">
+                      <p className="text-[10px] text-[var(--muted)]">Student Full Name</p>
+                      <p className="text-xs font-medium text-[var(--foreground)]">{app.student_full_name}</p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-[10px] text-[var(--muted)]">Grade & School</p>
+                      <p className="text-xs font-medium text-[var(--foreground)]">{app.grade} · {app.school_name}</p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-[10px] text-[var(--muted)]">Parent/Guardian Name</p>
+                      <p className="text-xs font-medium text-[var(--foreground)]">{app.parent_guardian_name}</p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-[10px] text-[var(--muted)]">Parent/Guardian Contact</p>
+                      <p className="text-xs font-medium text-[var(--foreground)]">{app.guardian_email} · {app.parent_guardian_phone}</p>
+                    </div>
+                    <div className="sm:col-span-2 space-y-1">
+                      <p className="text-[10px] text-[var(--muted)]">Consent Signature</p>
+                      <p className="text-xs font-medium text-[var(--foreground)] italic">{app.consent_name}</p>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-lg border border-amber-100 bg-amber-50/50 p-3">
+                  <p className="text-[10px] text-amber-700 font-medium">
+                    No application form found for this student.
+                  </p>
+                </div>
+              )}
+
+              <div className="flex flex-wrap gap-2 pt-1">
+                {(request.course?.max_students && (request.course.course_enrollments?.[0]?.count ?? 0) >= request.course.max_students) ? (
+                  <button
+                    type="button"
+                    disabled={isPending}
+                    onClick={() => updateRequest(request.id, "soft_reject")}
+                    className="rounded-full border border-amber-300 px-4 py-2 text-xs font-semibold text-amber-600 transition hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-70"
+                  >
+                    {isPending ? "Updating..." : "Soft Reject"}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={isPending}
+                    onClick={() => updateRequest(request.id, "approve")}
+                    className="rounded-full border border-emerald-300 px-4 py-2 text-xs font-semibold text-emerald-600 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-70"
+                  >
+                    {isPending ? "Updating..." : "Approve"}
+                  </button>
+                )}
                 <button
                   type="button"
                   disabled={isPending}
