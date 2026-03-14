@@ -587,7 +587,7 @@ export default function CoursesMenu() {
 
 
 
-      {!isGuest && selectedCourse ? (
+      {selectedCourse ? (
         <div
           key={selectedCourse.id}
           style={{ transform: "translateZ(0)", backfaceVisibility: "hidden" }}
@@ -626,7 +626,7 @@ export default function CoursesMenu() {
                 </button>
               </div>
 
-              {!selectedCourse.is_completed && !isFullCourse(selectedCourse) && !isEnrolledInCourse(selectedCourse) && (
+              {!isGuest && !selectedCourse.is_completed && !isFullCourse(selectedCourse) && !isEnrolledInCourse(selectedCourse) && (
                 <div className="flex items-start gap-2 rounded-lg border border-amber-400 bg-amber-50 px-3 py-2 dark:border-amber-700 dark:bg-amber-950/30">
                   <span className="mt-0.5 flex-shrink-0 text-amber-600 text-base leading-none" aria-hidden="true">⚠️</span>
                   <p className="text-xs font-semibold text-amber-800 dark:text-amber-400">
@@ -670,13 +670,13 @@ export default function CoursesMenu() {
                 )}
               </div>
 
-              {!selectedCourse.is_completed && !isFullCourse(selectedCourse) && !isEnrolledInCourse(selectedCourse) && (
+              {!isGuest && !selectedCourse.is_completed && !isFullCourse(selectedCourse) && !isEnrolledInCourse(selectedCourse) && (
                 <p className="text-xs text-[var(--muted)]">
                   When you enroll, the founder will review your request. You will
                   receive an email when it is approved or rejected.
                 </p>
               )}
-              {!selectedCourse.is_completed && !isFullCourse(selectedCourse) && !isEnrolledInCourse(selectedCourse) && (
+              {!isGuest && !selectedCourse.is_completed && !isFullCourse(selectedCourse) && !isEnrolledInCourse(selectedCourse) && (
                 requiresDonationLink ? (
                   <div className="space-y-3 rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] p-4 shadow-sm">
                     <div className="flex flex-col gap-1">
@@ -721,6 +721,7 @@ export default function CoursesMenu() {
                   isConfirmDisabled={(requiresDonationLink && !hasOpenedDonationLink) || isFullCourse(selectedCourse) || isEnrolledInCourse(selectedCourse)}
                   isFull={isFullCourse(selectedCourse)}
                   isEnrolled={isEnrolledInCourse(selectedCourse)}
+                  isGuest={isGuest}
                   enrollmentStatus={selectedCourse.enrollment_status}
                   onCancel={() => {
                     setSelectedCourse(null);

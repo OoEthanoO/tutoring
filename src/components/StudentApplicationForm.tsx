@@ -22,6 +22,7 @@ type Props = {
   isSubmitting: boolean;
   isFull?: boolean;
   isEnrolled?: boolean;
+  isGuest?: boolean;
   enrollmentStatus?: string | null;
 };
 
@@ -35,6 +36,7 @@ export default function StudentApplicationForm({
   isSubmitting,
   isFull,
   isEnrolled,
+  isGuest,
   enrollmentStatus,
 }: Props) {
   const sanitizedInitialGrade = initialGrade?.replace(/^G/i, "") || "5";
@@ -63,7 +65,7 @@ export default function StudentApplicationForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      {!isFull && !isEnrolled && (
+      {!isFull && !isEnrolled && !isGuest && (
         <div className="space-y-4 rounded-xl border border-[var(--border)] p-4 bg-[var(--surface-raised)]">
           <h4 className="text-sm font-semibold text-[var(--foreground)]">YanLearn Student Application Form</h4>
           
@@ -199,14 +201,16 @@ export default function StudentApplicationForm({
         <button
           key="submit-button"
           type="submit"
-          disabled={isSubmitting || isConfirmDisabled}
+          disabled={isSubmitting || isConfirmDisabled || isGuest}
           style={{ transform: "translateZ(0)", backfaceVisibility: "hidden" }}
           className="rounded-full bg-[var(--foreground)] px-6 py-2 text-xs font-semibold text-[var(--surface)] hover:opacity-90 disabled:opacity-50 min-w-[140px]"
         >
           <span key={isSubmitting ? "submitting" : "idle"}>
             {isSubmitting 
               ? "Enrolling..." 
-              : enrollmentStatus === "pending"
+              : isGuest
+                ? "Not Signed In"
+                : enrollmentStatus === "pending"
                 ? "Under Review"
                 : enrollmentStatus === "rejected"
                   ? "Rejected"
