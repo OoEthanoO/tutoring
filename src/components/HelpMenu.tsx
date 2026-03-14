@@ -23,6 +23,7 @@ export default function HelpMenu() {
                         preload="metadata"
                         style={{ display: "block", width: "100%", height: "auto" }}
                     >
+                        <source src="/images/help/enroll-walkthrough.mp4" type="video/mp4" />
                         <source src="/images/help/enroll-walkthrough.mov" type="video/quicktime" />
                         Your browser does not support the video tag.
                     </video>
