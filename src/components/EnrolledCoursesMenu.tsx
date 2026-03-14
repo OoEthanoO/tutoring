@@ -33,6 +33,7 @@ type Course = {
   created_by_email?: string | null;
   created_at: string;
   course_classes: CourseClass[];
+  enrollment_status?: string | null;
 };
 
 const formatCompletedDate = (value?: string | null) => {
@@ -142,6 +143,19 @@ export default function EnrolledCoursesMenu() {
                   course.created_by_email ||
                   "Unknown tutor"}
               </p>
+              {course.enrollment_status === "pending" ? (
+                <span className="inline-block mt-1 rounded-full border border-amber-400 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-400">
+                  Under Review
+                </span>
+              ) : course.enrollment_status === "rejected" ? (
+                <span className="inline-block mt-1 rounded-full border border-red-300 bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-600 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-400">
+                  Rejected
+                </span>
+              ) : (
+                <span className="inline-block mt-1 rounded-full border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-400">
+                  Enrolled
+                </span>
+              )}
               {course.description ? (
                 <div className="text-xs text-[var(--muted)]">
                   <MarkdownText text={course.description} />

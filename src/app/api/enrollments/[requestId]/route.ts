@@ -11,7 +11,7 @@ const resendFrom = process.env.RESEND_FROM ?? "";
 const defaultZoomId = "822 9677 5321";
 const defaultZoomPassword = "youth";
 
-type Action = "approve" | "reject" | "soft_reject";
+type Action = "approve" | "reject" | "expand_and_approve";
 
 const sendEmail = async (to: string, subject: string, html: string) => {
   if (!resendApiKey || !resendFrom) {
@@ -75,7 +75,7 @@ export async function PATCH(
     | null;
 
   const action = body?.action;
-  if (action !== "approve" && action !== "reject" && action !== "soft_reject") {
+  if (action !== "approve" && action !== "reject" && action !== "expand_and_approve") {
     return NextResponse.json({ error: "Invalid action." }, { status: 400 });
   }
 
@@ -107,16 +107,24 @@ export async function PATCH(
 
   const now = new Date().toISOString();
 
-  if (action === "approve") {
+  if (action === "approve" || action === "expand_and_approve") {
     const course = Array.isArray(requestData.course) ? requestData.course[0] : requestData.course;
     const maxStudents = (course as any)?.max_students;
     const enrollmentCount = (course as any)?.course_enrollments?.[0]?.count ?? 0;
+    const courseId = (course as any)?.id;
 
-    if (maxStudents && enrollmentCount >= maxStudents) {
+    if (action === "approve" && maxStudents && enrollmentCount >= maxStudents) {
       return NextResponse.json(
         { error: "Course is already full." },
         { status: 400 }
       );
+    }
+
+    if (action === "expand_and_approve" && maxStudents && courseId) {
+      await adminClient
+        .from("courses")
+        .update({ max_students: maxStudents + 1 })
+        .eq("id", courseId);
     }
 
     await adminClient
@@ -132,33 +140,11 @@ export async function PATCH(
       );
   }
 
-  if (action === "soft_reject") {
-    // Delete application first due to FK constraints if any (though here it's course_id/student_id)
-    await adminClient
-      .from("student_applications")
-      .delete()
-      .eq("course_id", requestData.course_id)
-      .eq("student_id", requestData.student_id);
-
-    const { error: deleteError } = await adminClient
-      .from("course_enrollment_requests")
-      .delete()
-      .eq("id", requestId);
-
-    if (deleteError) {
-      return NextResponse.json(
-        { error: deleteError.message ?? "Failed to delete request." },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json({ success: true });
-  }
 
   const { data: updatedRequest, error: updateError } = await adminClient
     .from("course_enrollment_requests")
     .update({
-      status: action === "approve" ? "approved" : "rejected",
+      status: (action === "approve" || action === "expand_and_approve") ? "approved" : "rejected",
       decided_at: now,
     })
     .eq("id", requestId)
@@ -207,12 +193,11 @@ export async function PATCH(
   const donationLink = tutorProfile?.donation_link ?? "";
 
   if (studentEmail) {
-    const subject =
-      action === "approve"
+    const isApproval = action === "approve" || action === "expand_and_approve";
+    const subject = isApproval
         ? `Enrollment approved: ${courseTitle}`
         : `Enrollment update: ${courseTitle}`;
-    const html =
-      action === "approve"
+    const html = isApproval
         ? `<p>Your enrollment request for <strong>${courseTitle}</strong> has been approved.</p>
            ${donationLink ? `<p>To finish enrollment, please make a donation via this link: <a href="${donationLink}">${donationLink}</a></p>` : ""}
            <p>Please attend the class 5 minutes before the start time:</p>

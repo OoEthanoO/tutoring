@@ -45,9 +45,39 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const courses = data
+  const enrolledCourseIds = new Set(
+    data.map((item) => {
+      const c = item.course as unknown as { id: string } | null;
+      return c?.id;
+    }).filter(Boolean)
+  );
+
+  const enrolledCourses = data
     .map((item) => item.course)
-    .filter(Boolean);
+    .filter(Boolean)
+    .map((course) => ({ ...course, enrollment_status: "enrolled" }));
+
+  // Also fetch pending/rejected enrollment requests
+  const { data: requestData } = await adminClient
+    .from("course_enrollment_requests")
+    .select(
+      "status, course:courses(id, title, description, is_completed, completed_start_date, completed_end_date, completed_class_count, created_by_name, created_by_email, created_at, course_classes(id, title, starts_at, duration_hours, created_at))"
+    )
+    .eq("student_id", user.id)
+    .in("status", ["pending", "rejected"])
+    .order("created_at", { ascending: false });
+
+  const requestCourses = (requestData ?? [])
+    .filter((item) => {
+      const c = item.course as unknown as { id: string } | null;
+      return c && !enrolledCourseIds.has(c.id);
+    })
+    .map((item) => ({
+      ...(item.course as object),
+      enrollment_status: item.status === "pending" ? "pending" : "rejected",
+    }));
+
+  const courses = [...enrolledCourses, ...requestCourses];
 
   return NextResponse.json({ courses });
 }

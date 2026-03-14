@@ -104,7 +104,7 @@ export default function Footer() {
 
   return (
     <footer className="mt-auto border-t border-[var(--border)] pt-6 text-center text-xs text-[var(--muted)]">
-      <p>
+      <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 px-4">
         <a
           href="https://ethanyanxu.com"
           target="_blank"
@@ -118,36 +118,33 @@ export default function Footer() {
           <span style={{ color: isCreditHovered ? "#3b82f6" : "var(--muted)" }}>
             Made with ❤️ by Ethan Yan Xu
           </span>
-        </a>{" "}
-        | Iteration {iteration}
+        </a>
+
+        <span>Iteration {iteration}</span>
+
         {isSignedIn ? (
-          <>
-            {" "}
-            |{" "}
-            <button
-              type="button"
-              className="transition-colors"
-              onMouseEnter={() => setIsFeedbackHovered(true)}
-              onMouseLeave={() => setIsFeedbackHovered(false)}
-              onFocus={() => setIsFeedbackHovered(true)}
-              onBlur={() => setIsFeedbackHovered(false)}
-              onClick={() => {
-                setFeedbackStatus({ type: "idle", message: "" });
-                setIsFeedbackOpen(true);
+          <button
+            type="button"
+            className="transition-colors"
+            onMouseEnter={() => setIsFeedbackHovered(true)}
+            onMouseLeave={() => setIsFeedbackHovered(false)}
+            onFocus={() => setIsFeedbackHovered(true)}
+            onBlur={() => setIsFeedbackHovered(false)}
+            onClick={() => {
+              setFeedbackStatus({ type: "idle", message: "" });
+              setIsFeedbackOpen(true);
+            }}
+          >
+            <span
+              style={{
+                color: isFeedbackHovered ? "#3b82f6" : "var(--muted)",
               }}
             >
-              <span
-                style={{
-                  color: isFeedbackHovered ? "#3b82f6" : "var(--muted)",
-                }}
-              >
-                Send Feedback
-              </span>
-            </button>
-          </>
+              Send Feedback
+            </span>
+          </button>
         ) : null}
-        {" "}
-        |{" "}
+
         <a
           href="https://www.instagram.com/yanlearn/"
           target="_blank"
@@ -166,7 +163,7 @@ export default function Footer() {
             Instagram
           </span>
         </a>
-      </p>
+      </div>
       {isFeedbackOpen ? (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 px-4" onClick={() => setIsFeedbackOpen(false)}>
           <div className="w-full max-w-lg space-y-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 text-left" onClick={(e) => e.stopPropagation()}>

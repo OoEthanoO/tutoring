@@ -52,20 +52,20 @@ export default function HelpMenu() {
                         Step 2: Choose and Enroll
                     </p>
                     <p className="text-sm text-[var(--foreground)] leading-relaxed">
-                        Navigate to <span className="font-semibold text-[var(--foreground)]">&quot;All courses&quot;</span> and select your desired course. Review the tutor and schedule carefully. Click <span className="font-semibold text-[var(--foreground)]">&quot;Enroll&quot;</span> to open the enrollment window. 
+                        Navigate to <span className="font-semibold text-[var(--foreground)]">&quot;All courses&quot;</span> and click on the course card you are interested in. This will open the course details page where you can review the tutor, schedule, and course details.
                     </p>
                     <p className="text-sm text-[var(--foreground)] leading-relaxed">
-                        In the enrollment window, follow these steps:
+                        Inside the course details page, follow these steps:
                     </p>
                     <ul className="list-disc list-outside text-sm text-[var(--foreground)] space-y-2 pl-5">
                         <li>
-                            Click <span className="font-semibold text-[var(--foreground)]">&quot;Open Donation Link&quot;</span> to make your course donation ($50).
+                            If the course requires a donation, click <span className="font-semibold text-[var(--foreground)]">&quot;Open Donation Link&quot;</span> to make your course donation ($50).
                         </li>
                         <li>
-                            Fill out the <span className="font-semibold text-[var(--foreground)]">Student Application Form</span> embedded below the donation link.
+                            Fill out the <span className="font-semibold text-[var(--foreground)]">Student Application Form</span> embedded below.
                         </li>
                         <li>
-                            Once both steps are complete, click <span className="font-semibold text-[var(--foreground)]">&quot;Submit Enrollment Request&quot;</span>.
+                            Once all steps are complete, click <span className="font-semibold text-[var(--foreground)]">&quot;Submit Enrollment Request&quot;</span>.
                         </li>
                     </ul>
                 </div>

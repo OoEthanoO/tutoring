@@ -96,22 +96,29 @@ export default function ManageEnrollmentsMenu() {
 
   const updateRequest = async (
     requestId: string,
-    action: "approve" | "reject" | "soft_reject"
+    action: "approve" | "reject" | "expand_and_approve"
   ) => {
     const target = requests.find((request) => request.id === requestId);
     const student = target?.student_name || target?.student_email || "student";
     const course = target?.course?.title || "this course";
-    let prompt = "";
-    if (action === "approve") {
-      prompt = `Approve enrollment for ${student} in ${course}?`;
-    } else if (action === "reject") {
-      prompt = `Reject enrollment for ${student} in ${course}?`;
-    } else if (action === "soft_reject") {
-      prompt = `Confirm SOFT REJECT for ${student} in ${course}?\n\nThis will remove the request without notifying the student or marking them as rejected. They will be able to apply again if space opens up.`;
-    }
 
-    if (!window.confirm(prompt)) {
-      return;
+    let finalAction = action;
+
+    if (action === "approve" && target?.course?.max_students) {
+      const enrolled = target.course.course_enrollments?.[0]?.count ?? 0;
+      if (enrolled >= target.course.max_students) {
+        const confirmed = window.confirm(
+          `"${course}" is currently full (${enrolled}/${target.course.max_students}).\n\nApproving this student will increase the max student count from ${target.course.max_students} to ${target.course.max_students + 1} to accommodate them.\n\nDo you want to continue?`
+        );
+        if (!confirmed) return;
+        finalAction = "expand_and_approve";
+      } else {
+        if (!window.confirm(`Approve enrollment for ${student} in ${course}?`)) return;
+      }
+    } else if (action === "approve") {
+      if (!window.confirm(`Approve enrollment for ${student} in ${course}?`)) return;
+    } else {
+      if (!window.confirm(`Reject enrollment for ${student} in ${course}?`)) return;
     }
 
     setPendingId(requestId);
@@ -120,7 +127,7 @@ export default function ManageEnrollmentsMenu() {
     const response = await fetch(`/api/enrollments/${requestId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action }),
+      body: JSON.stringify({ action: finalAction }),
     });
 
     if (!response.ok) {
@@ -140,7 +147,11 @@ export default function ManageEnrollmentsMenu() {
     );
     setStatus({
       type: "success",
-      message: action === "soft_reject" ? "Request removed (Soft Reject)." : action === "approve" ? "Enrollment approved." : "Enrollment rejected.",
+      message: finalAction === "expand_and_approve"
+        ? "Enrollment approved (max students expanded)."
+        : finalAction === "approve"
+          ? "Enrollment approved."
+          : "Enrollment rejected.",
     });
     setPendingId(null);
   };
@@ -251,25 +262,14 @@ export default function ManageEnrollmentsMenu() {
               )}
 
               <div className="flex flex-wrap gap-2 pt-1">
-                {(request.course?.max_students && (request.course.course_enrollments?.[0]?.count ?? 0) >= request.course.max_students) ? (
-                  <button
-                    type="button"
-                    disabled={isPending}
-                    onClick={() => updateRequest(request.id, "soft_reject")}
-                    className="rounded-full border border-amber-300 px-4 py-2 text-xs font-semibold text-amber-600 transition hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-70 dark:border-amber-700 dark:text-amber-400 dark:hover:bg-amber-950/30"
-                  >
-                    {isPending ? "Updating..." : "Soft Reject"}
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    disabled={isPending}
-                    onClick={() => updateRequest(request.id, "approve")}
-                    className="rounded-full border border-emerald-300 px-4 py-2 text-xs font-semibold text-emerald-600 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-70 dark:border-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
-                  >
-                    {isPending ? "Updating..." : "Approve"}
-                  </button>
-                )}
+                <button
+                  type="button"
+                  disabled={isPending}
+                  onClick={() => updateRequest(request.id, "approve")}
+                  className="rounded-full border border-emerald-300 px-4 py-2 text-xs font-semibold text-emerald-600 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-70 dark:border-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
+                >
+                  {isPending ? "Updating..." : "Approve"}
+                </button>
                 <button
                   type="button"
                   disabled={isPending}
