@@ -120,30 +120,37 @@ export default function Footer() {
           </span>
         </a>
 
+        <span className="hidden md:inline text-[var(--border)]">|</span>
+
         <span>Iteration {iteration}</span>
 
         {isSignedIn ? (
-          <button
-            type="button"
-            className="transition-colors"
-            onMouseEnter={() => setIsFeedbackHovered(true)}
-            onMouseLeave={() => setIsFeedbackHovered(false)}
-            onFocus={() => setIsFeedbackHovered(true)}
-            onBlur={() => setIsFeedbackHovered(false)}
-            onClick={() => {
-              setFeedbackStatus({ type: "idle", message: "" });
-              setIsFeedbackOpen(true);
-            }}
-          >
-            <span
-              style={{
-                color: isFeedbackHovered ? "#3b82f6" : "var(--muted)",
+          <>
+            <span className="hidden md:inline text-[var(--border)]">|</span>
+            <button
+              type="button"
+              className="transition-colors"
+              onMouseEnter={() => setIsFeedbackHovered(true)}
+              onMouseLeave={() => setIsFeedbackHovered(false)}
+              onFocus={() => setIsFeedbackHovered(true)}
+              onBlur={() => setIsFeedbackHovered(false)}
+              onClick={() => {
+                setFeedbackStatus({ type: "idle", message: "" });
+                setIsFeedbackOpen(true);
               }}
             >
-              Send Feedback
-            </span>
-          </button>
+              <span
+                style={{
+                  color: isFeedbackHovered ? "#3b82f6" : "var(--muted)",
+                }}
+              >
+                Send Feedback
+              </span>
+            </button>
+          </>
         ) : null}
+
+        <span className="hidden md:inline text-[var(--border)]">|</span>
 
         <a
           href="https://www.instagram.com/yanlearn/"
