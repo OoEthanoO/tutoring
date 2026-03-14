@@ -20,6 +20,8 @@ export const metadata: Metadata = {
     "Education for all",
 };
 
+import { NotificationProvider } from "@/components/Notification";
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -30,10 +32,12 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <Suspense fallback={null}>
-          <MigrationBanner />
-        </Suspense>
-        {children}
+        <NotificationProvider>
+          <Suspense fallback={null}>
+            <MigrationBanner />
+          </Suspense>
+          {children}
+        </NotificationProvider>
       </body>
     </html>
   );

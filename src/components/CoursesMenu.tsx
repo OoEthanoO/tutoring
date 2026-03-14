@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ClientUser, getCurrentUser, onAuthChange } from "@/lib/authClient";
 import { setHasUnsavedData } from "@/lib/unsavedData";
 import { MarkdownText } from "@/lib/parseMarkdown";
+import { useNotification } from "./Notification";
 import StudentApplicationForm from "./StudentApplicationForm";
 
 type StatusState = {
@@ -180,6 +181,7 @@ export default function CoursesMenu() {
     type: "idle",
     message: "",
   });
+  const { showNotification } = useNotification();
   const [isLoadingCourses, setIsLoadingCourses] = useState(false);
 
   const modalScrollRef = useRef<HTMLDivElement>(null);
@@ -741,14 +743,17 @@ export default function CoursesMenu() {
                       const payload = (await response.json().catch(() => null)) as
                         | { error?: string }
                         | null;
+                      const msg = payload?.error ?? "Unable to submit enrollment request.";
                       setStatus({
                         type: "error",
-                        message:
-                          payload?.error ?? "Unable to submit enrollment request.",
+                        message: msg,
                       });
+                      showNotification(msg, "error");
                       setIsEnrolling(false);
                       return;
                     }
+
+                    showNotification("Enrollment request submitted successfully!", "success");
 
                     setCourses((current) =>
                       current.map((course) =>

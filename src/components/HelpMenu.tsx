@@ -12,7 +12,6 @@ export default function HelpMenu() {
                 </h2>
             </header>
 
-{/* 
             <div className="space-y-3">
                 <p className="text-sm font-semibold text-[var(--foreground)]">
                     Video Walkthrough
@@ -24,13 +23,11 @@ export default function HelpMenu() {
                         preload="metadata"
                         style={{ display: "block", width: "100%", height: "auto" }}
                     >
-                        <source src="/images/help/enroll-walkthrough.mp4" type="video/mp4" />
                         <source src="/images/help/enroll-walkthrough.mov" type="video/quicktime" />
                         Your browser does not support the video tag.
                     </video>
                 </div>
             </div>
-            */}
 
             <div className="space-y-8">
                 {/* Step 1 */}
