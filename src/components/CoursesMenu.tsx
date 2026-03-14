@@ -479,7 +479,11 @@ export default function CoursesMenu() {
                     </p>
                     <p className="shrink-0 text-[10px] font-medium text-[var(--muted)]">
                       {course.enrollment_count ?? 0}
-                      {course.max_students ? `/${course.max_students}` : ""} students
+                      {course.max_students ? `/${course.max_students}` : ""} {
+                        (course.max_students ? course.max_students === 1 : (course.enrollment_count ?? 0) === 1)
+                          ? "student"
+                          : "students"
+                      }
                     </p>
                   </div>
                 </div>
@@ -523,7 +527,11 @@ export default function CoursesMenu() {
                     </p>
                     <p className="shrink-0 text-[10px] font-medium text-[var(--muted)]">
                       {course.enrollment_count ?? 0}
-                      {course.max_students ? `/${course.max_students}` : ""} students
+                      {course.max_students ? `/${course.max_students}` : ""} {
+                        (course.max_students ? course.max_students === 1 : (course.enrollment_count ?? 0) === 1)
+                          ? "student"
+                          : "students"
+                      }
                     </p>
                   </div>
                 </div>
