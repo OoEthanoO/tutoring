@@ -582,43 +582,45 @@ export default function CoursesMenu() {
           key={selectedCourse.id}
           style={{ transform: "translateZ(0)", backfaceVisibility: "hidden" }}
           className="fixed inset-0 z-30 grid place-items-center p-4 overflow-y-auto overscroll-contain bg-black/50"
+          onClick={() => setSelectedCourse(null)}
         >
           <div
             style={{ transform: "translateZ(0)", backfaceVisibility: "hidden" }}
             className="w-full md:w-[50vw] max-h-full flex flex-col rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-xl overflow-hidden overscroll-contain min-h-0"
+            onClick={(e) => e.stopPropagation()}
           >
             <div ref={modalScrollRef} className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-6 space-y-4">
-                <div className="flex items-start justify-between">
-                  <div className="space-y-1">
-                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
-                      Course information
-                    </p>
-                    <h3 className="text-lg font-semibold text-[var(--foreground)]">
-                      {selectedCourse.title}
-                    </h3>
-                    <p className="text-xs text-[var(--muted)]">
-                      Tutor:{" "}
-                      {selectedCourse.created_by_name ||
-                        selectedCourse.created_by_email ||
-                        "Unknown tutor"}
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => setSelectedCourse(null)}
-                    className="p-1 rounded-full hover:bg-[var(--border)] transition text-[var(--muted)] hover:text-[var(--foreground)]"
-                    aria-label="Close modal"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
+              <div className="flex items-start justify-between">
+                <div className="space-y-1">
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
+                    Course information
+                  </p>
+                  <h3 className="text-lg font-semibold text-[var(--foreground)]">
+                    {selectedCourse.title}
+                  </h3>
+                  <p className="text-xs text-[var(--muted)]">
+                    Tutor:{" "}
+                    {selectedCourse.created_by_name ||
+                      selectedCourse.created_by_email ||
+                      "Unknown tutor"}
+                  </p>
                 </div>
+                <button
+                  onClick={() => setSelectedCourse(null)}
+                  className="p-1 rounded-full hover:bg-[var(--border)] transition text-[var(--muted)] hover:text-[var(--foreground)]"
+                  aria-label="Close modal"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
 
               {!selectedCourse.is_completed && !isFullCourse(selectedCourse) && !isEnrolledInCourse(selectedCourse) && (
                 <div className="flex items-start gap-2 rounded-lg border border-amber-400 bg-amber-50 px-3 py-2 dark:border-amber-700 dark:bg-amber-950/30">
                   <span className="mt-0.5 flex-shrink-0 text-amber-600 text-base leading-none" aria-hidden="true">⚠️</span>
                   <p className="text-xs font-semibold text-amber-800 dark:text-amber-400">
-                    Before registering, please carefully check the course instructor and course time you select. Each course has a different donation link, and if you select the wrong one, your donation cannot be refunded.
+                    Before registering, please carefully check the course tutor and course time you select. Each course has a different donation link, and if you select the wrong one, your donation cannot be refunded.
                   </p>
                 </div>
               )}
@@ -681,8 +683,8 @@ export default function CoursesMenu() {
                       rel="noopener noreferrer"
                       onClick={() => setHasOpenedDonationLink(true)}
                       className={`block w-full rounded-full py-2 text-center text-xs font-bold transition active:scale-[0.98] ${hasOpenedDonationLink
-                          ? "border border-[var(--foreground)] text-[var(--foreground)] bg-transparent hover:bg-[var(--surface-muted)]"
-                          : "bg-[var(--foreground)] text-[var(--surface)] hover:opacity-90"
+                        ? "border border-[var(--foreground)] text-[var(--foreground)] bg-transparent hover:bg-[var(--surface-muted)]"
+                        : "bg-[var(--foreground)] text-[var(--surface)] hover:opacity-90"
                         }`}
                     >
                       {hasOpenedDonationLink ? "Donation Link Opened ✓" : "Open Donation Link"}

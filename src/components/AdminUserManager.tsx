@@ -1139,8 +1139,8 @@ export default function AdminUserManager() {
 
       {/* Student Application Modal */}
       {(selectedApplications.length > 0 || applicationError) && (
-        <div className="fixed inset-0 z-50 grid place-items-center p-4 bg-black/50 overflow-y-auto overscroll-contain">
-          <div className="w-full max-w-2xl flex flex-col rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-xl overflow-hidden overscroll-contain">
+        <div className="fixed inset-0 z-50 grid place-items-center p-4 bg-black/50 overflow-y-auto overscroll-contain" onClick={() => { setSelectedApplications([]); setApplicationError(""); }}>
+          <div className="w-full max-w-2xl flex flex-col rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-xl overflow-hidden overscroll-contain" onClick={(e) => e.stopPropagation()}>
             <div className="p-6 space-y-4 overflow-y-auto overscroll-contain max-h-[90vh]">
               <div className="flex items-start justify-between">
                 <div className="space-y-1">

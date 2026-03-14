@@ -332,8 +332,8 @@ export default function AuthStatusActions() {
           </p>
         ) : null}
         {isDisconnectConfirmOpen ? (
-          <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 px-4">
-            <div className="w-full max-w-sm space-y-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-xl">
+          <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 px-4" onClick={() => setIsDisconnectConfirmOpen(false)}>
+            <div className="w-full max-w-sm space-y-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
               <div className="space-y-1">
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
                   Confirm
@@ -371,8 +371,8 @@ export default function AuthStatusActions() {
           </div>
         ) : null}
         {isEditNameOpen ? (
-          <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 px-4">
-            <div className="w-full max-w-sm space-y-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-xl">
+          <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 px-4" onClick={closeNameEditor}>
+            <div className="w-full max-w-sm space-y-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
               <div className="space-y-1">
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
                   Account

@@ -168,8 +168,8 @@ export default function Footer() {
         </a>
       </p>
       {isFeedbackOpen ? (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 px-4">
-          <div className="w-full max-w-lg space-y-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 text-left">
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 px-4" onClick={() => setIsFeedbackOpen(false)}>
+          <div className="w-full max-w-lg space-y-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 text-left" onClick={(e) => e.stopPropagation()}>
             <div className="space-y-1">
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
                 Feedback
