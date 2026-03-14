@@ -191,7 +191,7 @@ export default function CoursesMenu() {
 
   useEffect(() => {
     if (selectedCourse && modalScrollRef.current) {
-      modalScrollRef.current.scrollTop = modalScrollRef.current.scrollHeight;
+      modalScrollRef.current.scrollTop = 0;
     }
   }, [selectedCourse]);
 
