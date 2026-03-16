@@ -116,6 +116,11 @@ export default function EventsMenu() {
       return;
     }
 
+    const payloadDates = validDates.map(d => ({
+      starts_at: d.is_time_specified ? new Date(d.starts_at).toISOString() : d.starts_at,
+      is_time_specified: d.is_time_specified
+    }));
+
     setIsCreating(true);
     try {
       const res = await fetch("/api/events", {
@@ -125,7 +130,7 @@ export default function EventsMenu() {
           id: editingEventId,
           title,
           description,
-          dates: validDates,
+          dates: payloadDates,
           location,
           is_junior_excluded: isJuniorExcluded,
         }),
@@ -187,10 +192,26 @@ export default function EventsMenu() {
     setLocation(event.location);
     setIsJuniorExcluded(event.is_junior_excluded);
     setDates(event.event_dates.map(d => ({
-      starts_at: d.starts_at.includes('T') ? d.starts_at.substring(0, 16) : d.starts_at,
+      starts_at: d.is_time_specified 
+        ? (d.starts_at.includes('T') ? d.starts_at.substring(0, 16) : d.starts_at)
+        : (d.starts_at.includes('T') ? d.starts_at.substring(0, 10) : d.starts_at),
       is_time_specified: d.is_time_specified
     })));
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleDeleteEvent = async (eventId: string) => {
+    if (!confirm("Are you sure you want to delete this event?")) return;
+    try {
+      const res = await fetch(`/api/events/${eventId}`, { method: "DELETE" });
+      if (res.ok) {
+        fetchEvents();
+      } else {
+        alert("Failed to delete event.");
+      }
+    } catch (e) {
+      alert("An unexpected error occurred.");
+    }
   };
 
   if (isLoading) {
@@ -380,6 +401,12 @@ export default function EventsMenu() {
                               Edit
                             </button>
                             <button
+                              onClick={() => handleDeleteEvent(event.id)}
+                              className="whitespace-nowrap text-[10px] font-bold uppercase tracking-widest text-red-500 hover:text-red-600 transition-colors underline underline-offset-4"
+                            >
+                              Delete
+                            </button>
+                            <button
                               onClick={() => copyEventLink(event.id)}
                               className="whitespace-nowrap text-[10px] font-bold uppercase tracking-widest text-[var(--muted)] hover:text-[var(--foreground)] transition-colors underline underline-offset-4"
                             >
@@ -427,7 +454,7 @@ export default function EventsMenu() {
                         const dateStr = new Date(dateObj.starts_at).toLocaleDateString("en-US", {
                           weekday: "short",
                           month: "short", day: "numeric",
-                          ...(dateObj.is_time_specified ? { hour: "numeric", minute: "2-digit" } : {}),
+                          ...(dateObj.is_time_specified ? { hour: "numeric", minute: "2-digit" } : { timeZone: "UTC" }),
                         });
                          const myResponse = dateObj.event_responses.find(r => r.user_id === userId);
                          const isPastDeadline = new Date() > new Date(event.deadline);
