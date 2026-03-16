@@ -83,7 +83,7 @@ export default function HomeMenu({ isSignedIn }: HomeMenuProps) {
         <p className="text-sm text-[var(--muted)]">
           Ethan Yan Xu, IB program, G11, programming and computer science
           enthusiast, 7 years of coding experience, fluent in Java, C++, and
-          Python. He has been a programming instructor for three years.
+          Python. He has been a programming tutor for three years.
         </p>
       </div>
       {raised !== null ? (
