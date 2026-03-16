@@ -202,6 +202,7 @@ export default function EventsMenu() {
 
   const handleDeleteEvent = async (eventId: string) => {
     if (!confirm("Are you sure you want to delete this event?")) return;
+    if (!confirm("This action cannot be undone. Are you absolutely sure?")) return;
     try {
       const res = await fetch(`/api/events/${eventId}`, { method: "DELETE" });
       if (res.ok) {
