@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { broadcastAuthChange } from "@/lib/authClient";
 import { setHasUnsavedData } from "@/lib/unsavedData";
 
-type Mode = "signin" | "signup";
+type Mode = "signin" | "signup" | "forgot";
 
 export default function LoginPageClient() {
   const [mode, setMode] = useState<Mode>("signin");
@@ -31,7 +31,24 @@ export default function LoginPageClient() {
     setIsSubmitting(true);
 
     try {
-      if (mode === "signup") {
+      if (mode === "forgot") {
+        const response = await fetch("/api/auth/forgot-password", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email }),
+        });
+
+        if (!response.ok) {
+          const payload = (await response.json().catch(() => null)) as
+            | { error?: string }
+            | null;
+          throw new Error(payload?.error ?? "Unable to send reset link.");
+        }
+
+        setStatus(
+          "If an account with that email exists, a password reset link has been sent. Please check your inbox."
+        );
+      } else if (mode === "signup") {
         if (!fullName.trim()) {
           throw new Error("Full name is required for sign up.");
         }
@@ -145,18 +162,33 @@ export default function LoginPageClient() {
               />
             </div>
           ) : null}
-          <div>
-            <label className="text-xs text-[var(--muted)]">Password</label>
-            <input
-              type="password"
-              placeholder="••••••••"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              className="mt-2 w-full rounded border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm outline-none focus:border-[var(--foreground)]"
-              required
-              minLength={8}
-            />
-          </div>
+          {mode !== "forgot" ? (
+            <div>
+              <label className="text-xs text-[var(--muted)]">Password</label>
+              <input
+                type="password"
+                placeholder="••••••••"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                className="mt-2 w-full rounded border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm outline-none focus:border-[var(--foreground)]"
+                required
+                minLength={8}
+              />
+              {mode === "signin" ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode("forgot");
+                    setError("");
+                    setStatus("");
+                  }}
+                  className="mt-1 text-xs text-[var(--muted)] underline transition hover:text-[var(--foreground)]"
+                >
+                  Forgot password?
+                </button>
+              ) : null}
+            </div>
+          ) : null}
           {error ? (
             <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-400">
               {error}
@@ -174,10 +206,25 @@ export default function LoginPageClient() {
           >
             {isSubmitting
               ? "Working..."
-              : mode === "signup"
-                ? "Create account"
-                : "Sign in"}
+              : mode === "forgot"
+                ? "Send reset link"
+                : mode === "signup"
+                  ? "Create account"
+                  : "Sign in"}
           </button>
+          {mode === "forgot" ? (
+            <button
+              type="button"
+              onClick={() => {
+                setMode("signin");
+                setError("");
+                setStatus("");
+              }}
+              className="w-full text-xs text-[var(--muted)] underline transition hover:text-[var(--foreground)]"
+            >
+              Back to sign in
+            </button>
+          ) : null}
         </form>
       </div>
     </div>
