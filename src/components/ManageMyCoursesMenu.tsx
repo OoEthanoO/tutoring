@@ -106,11 +106,7 @@ type StatusState = {
   message: string;
 };
 
-type TutorOption = {
-  id: string;
-  name: string;
-  email: string;
-};
+
 
 const snapDateTimeLocalToFiveMinutes = (value: string) => {
   if (!value) {
@@ -148,7 +144,7 @@ export default function ManageMyCoursesMenu() {
   const [courses, setCourses] = useState<Course[]>([]);
   const [donationLink, setDonationLink] = useState<string>("");
   const [donationRaised, setDonationRaised] = useState<number | null>(null);
-  const [tutorOptions, setTutorOptions] = useState<TutorOption[]>([]);
+
   const [classStartsAt, setClassStartsAt] = useState<Record<string, string>>({});
   const [pendingCourseId, setPendingCourseId] = useState<string | null>(null);
   const [editingCourseId, setEditingCourseId] = useState<string | null>(null);
@@ -156,7 +152,7 @@ export default function ManageMyCoursesMenu() {
   const [editCourseShortName, setEditCourseShortName] = useState("");
   const [editCourseDescription, setEditCourseDescription] = useState("");
   const [editCourseMaxStudents, setEditCourseMaxStudents] = useState<string>("");
-  const [editCourseTutorId, setEditCourseTutorId] = useState<string>("");
+
   const [pendingCourseEditId, setPendingCourseEditId] = useState<string | null>(
     null
   );
@@ -278,33 +274,7 @@ export default function ManageMyCoursesMenu() {
     loadDonationLink();
   }, [role]);
 
-  useEffect(() => {
-    if (role !== "founder") {
-      return;
-    }
 
-    const loadTutors = async () => {
-      const response = await fetch("/api/admin/users");
-      if (!response.ok) {
-        return;
-      }
-
-      const data = (await response.json()) as {
-        users?: { id: string; fullName?: string; email?: string | null; role?: string }[];
-      };
-      const options =
-        data.users
-          ?.filter((user) => user.role === "tutor" || user.role === "founder")
-          .map((user) => ({
-            id: user.id,
-            name: user.fullName || user.email || "Unknown",
-            email: user.email ?? "",
-          })) ?? [];
-      setTutorOptions(options);
-    };
-
-    loadTutors();
-  }, [role]);
 
   const toLocalDateTimeInputValue = (value: Date) => {
     const year = value.getFullYear();
@@ -566,7 +536,7 @@ export default function ManageMyCoursesMenu() {
     setEditCourseShortName(course.short_name ?? "");
     setEditCourseDescription(course.description ?? "");
     setEditCourseMaxStudents(course.max_students ? String(course.max_students) : "");
-    setEditCourseTutorId(course.created_by ?? "");
+
   };
 
   const cancelEditCourse = () => {
@@ -575,7 +545,7 @@ export default function ManageMyCoursesMenu() {
     setEditCourseShortName("");
     setEditCourseDescription("");
     setEditCourseMaxStudents("");
-    setEditCourseTutorId("");
+
   };
 
   const saveCourseEdit = async (courseId: string) => {
@@ -586,10 +556,6 @@ export default function ManageMyCoursesMenu() {
       return;
     }
 
-    if (role === "founder" && !editCourseTutorId) {
-      setStatus({ type: "error", message: "Please select a tutor." });
-      return;
-    }
 
     setPendingCourseEditId(courseId);
     setStatus({ type: "idle", message: "" });
@@ -603,7 +569,7 @@ export default function ManageMyCoursesMenu() {
         shortName: role === "founder" ? editCourseShortName.trim() : undefined,
         description: editCourseDescription.trim(),
         maxStudents: role === "founder" ? (editCourseMaxStudents ? Number(editCourseMaxStudents) : null) : undefined,
-        createdBy: role === "founder" ? editCourseTutorId : undefined,
+
       }),
     });
 
@@ -890,31 +856,15 @@ export default function ManageMyCoursesMenu() {
                       />
                     ) : null}
                     {role === "founder" ? (
-                      <>
-                        <input
-                          type="text"
-                          value={editCourseShortName}
-                          onChange={(event) =>
-                            setEditCourseShortName(event.target.value)
-                          }
-                          placeholder="Short name (optional)"
-                          className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
-                        />
-                        <select
-                          value={editCourseTutorId}
-                          onChange={(event) =>
-                            setEditCourseTutorId(event.target.value)
-                          }
-                          className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
-                        >
-                          <option value="">Select tutor</option>
-                          {tutorOptions.map((option) => (
-                            <option key={option.id} value={option.id}>
-                              {option.name} {option.email ? `(${option.email})` : ""}
-                            </option>
-                          ))}
-                        </select>
-                      </>
+                      <input
+                        type="text"
+                        value={editCourseShortName}
+                        onChange={(event) =>
+                          setEditCourseShortName(event.target.value)
+                        }
+                        placeholder="Short name (optional)"
+                        className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+                      />
                     ) : null}
                   </div>
                 ) : (
