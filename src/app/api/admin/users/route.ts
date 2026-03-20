@@ -25,7 +25,7 @@ const sleep = (ms: number) =>
     setTimeout(resolve, ms);
   });
 
-const sendEmail = async (to: string, subject: string, html: string) => {
+const sendEmail = async (to: string, subject: string, html: string, attachments?: any[]) => {
   if (!resendApiKey || !resendFrom || !to) {
     return { ok: false, error: "Missing email configuration." };
   }
@@ -44,6 +44,7 @@ const sendEmail = async (to: string, subject: string, html: string) => {
         to,
         subject,
         html,
+        ...(attachments && attachments.length > 0 ? { attachments } : {}),
       }),
     });
 
@@ -319,12 +320,30 @@ export async function PATCH(request: NextRequest) {
   }
 
   if (isPromotingToTutor && updated.email) {
+    let attachments: any[] = [];
+    try {
+      const fs = require("fs");
+      const path = require("path");
+      const imagePath = path.join(process.cwd(), "public", "Waterloo Tutor Application Form.png");
+      if (fs.existsSync(imagePath)) {
+        const content = fs.readFileSync(imagePath).toString("base64");
+        attachments.push({
+          filename: "Waterloo Tutor Application Form.png",
+          content,
+        });
+      }
+    } catch (e) {
+      console.error("Failed to read tutor application form image", e);
+    }
+
     const siteBase = (process.env.NEXT_PUBLIC_SITE_URL ?? "").replace(/\/+$/, "");
-    const formUrl = siteBase ? `${siteBase}/redirect/tutor-form` : "https://docs.google.com/forms/d/e/1FAIpQLSeuaZhER3fUbkl1ijHy0k-COLAcpOy8QvYM5sgtcWGEqtHmNw/viewform";
+    const formUrl = siteBase ? `${siteBase}/redirect/tutor-form` : "https://forms.gle/gmiLF8fDffTXn5sT6";
+
     await sendEmail(
       updated.email,
       "You've been promoted to Executive!",
-      `<p>Congratulations! You have been promoted to an executive.</p><p>If you are applying as a tutor role, please fill out both of the following tutor application forms: <br/>1. <a href="${formUrl}">${formUrl}</a><br/>2. <a href="https://forms.gle/gmiLF8fDffTXn5sT6">https://forms.gle/gmiLF8fDffTXn5sT6</a></p>`
+      `<p>Congratulations! You have been promoted to an executive.</p><p>If you are applying as a tutor role, please fill out the following tutor application form: <br/><a href="${formUrl}">${formUrl}</a></p><p>Please see the attached image as a guide for how to fill out the form.</p>`,
+      attachments.length > 0 ? attachments : undefined
     );
   }
 

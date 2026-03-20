@@ -199,7 +199,6 @@ export async function PATCH(
         : `Enrollment update: ${courseTitle}`;
     const html = isApproval
         ? `<p>Your enrollment request for <strong>${courseTitle}</strong> has been approved.</p>
-           ${donationLink ? `<p>To finish enrollment, please make a donation via this link: <a href="${donationLink}">${donationLink}</a></p>` : ""}
            <p>Please attend the class 5 minutes before the start time:</p>
            <p>Zoom ID: ${defaultZoomId}<br/>Password: ${defaultZoomPassword}<br/>${
              breakoutRoomName
