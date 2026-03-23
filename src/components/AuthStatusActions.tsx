@@ -18,6 +18,7 @@ export default function AuthStatusActions() {
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isActorFounder, setIsActorFounder] = useState(false);
+  const [isUserExecutive, setIsUserExecutive] = useState(false);
   const [isImpersonating, setIsImpersonating] = useState(false);
   const [isStoppingImpersonation, setIsStoppingImpersonation] = useState(false);
   const [isDiscordLinked, setIsDiscordLinked] = useState(false);
@@ -28,6 +29,13 @@ export default function AuthStatusActions() {
   const [fullNameDraft, setFullNameDraft] = useState("");
   const [isSavingName, setIsSavingName] = useState(false);
   const [nameStatus, setNameStatus] = useState<{
+    type: "idle" | "error" | "success";
+    message: string;
+  }>({ type: "idle", message: "" });
+  const [isEditLegalNameOpen, setIsEditLegalNameOpen] = useState(false);
+  const [legalNameDraft, setLegalNameDraft] = useState("");
+  const [isSavingLegalName, setIsSavingLegalName] = useState(false);
+  const [legalNameStatus, setLegalNameStatus] = useState<{
     type: "idle" | "error" | "success";
     message: string;
   }>({ type: "idle", message: "" });
@@ -63,6 +71,12 @@ export default function AuthStatusActions() {
         auth.actor?.role ?? null
       );
       setIsActorFounder(actorRole === "founder");
+
+      const userRole = resolveUserRole(
+        auth.user?.email ?? null,
+        auth.user?.role ?? null
+      );
+      setIsUserExecutive(userRole === "executive" || userRole === "founder");
     };
 
     load();
@@ -190,6 +204,50 @@ export default function AuthStatusActions() {
       }, 500);
     };
 
+    const openLegalNameEditor = async () => {
+      setLegalNameStatus({ type: "idle", message: "" });
+      const user = await getCurrentUser();
+      const legalName = String(user?.legal_name ?? "").trim();
+      setLegalNameDraft(legalName);
+      setIsMenuOpen(false);
+      setIsEditLegalNameOpen(true);
+    };
+
+    const closeLegalNameEditor = () => {
+      setLegalNameStatus({ type: "idle", message: "" });
+      setIsEditLegalNameOpen(false);
+    };
+
+    const saveLegalName = async () => {
+      const nextName = legalNameDraft.trim();
+
+      setIsSavingLegalName(true);
+      setLegalNameStatus({ type: "idle", message: "" });
+
+      const response = await fetch("/api/auth/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ legalName: nextName }),
+      });
+
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+        setLegalNameStatus({
+          type: "error",
+          message: payload?.error ?? "Unable to update legal name.",
+        });
+        setIsSavingLegalName(false);
+        return;
+      }
+
+      setLegalNameStatus({ type: "success", message: "Legal name updated." });
+      setTimeout(() => {
+        setIsEditLegalNameOpen(false);
+        setIsSavingLegalName(false);
+        broadcastAuthChange();
+      }, 500);
+    };
+
     const onConnectDiscord = () => {
       setDiscordStatus({ type: "idle", message: "" });
       setIsJoinGuidanceActive(false);
@@ -261,6 +319,15 @@ export default function AuthStatusActions() {
             >
               Edit name
             </button>
+            {isUserExecutive ? (
+              <button
+                type="button"
+                onClick={openLegalNameEditor}
+                className="w-full rounded-lg px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--border)]"
+              >
+                Edit legal name
+              </button>
+            ) : null}
             {isDiscordLinked ? (
               <button
                 type="button"
@@ -416,6 +483,58 @@ export default function AuthStatusActions() {
                     }`}
                 >
                   {isSavingName ? "Saving..." : "Save"}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+        {isEditLegalNameOpen ? (
+          <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 px-4" onClick={closeLegalNameEditor}>
+            <div className="w-full max-w-sm space-y-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+              <div className="space-y-1">
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
+                  Account
+                </p>
+                <h3 className="text-lg font-semibold text-[var(--foreground)]">
+                  Update your legal name
+                </h3>
+              </div>
+              <input
+                type="text"
+                value={legalNameDraft}
+                onChange={(event) => setLegalNameDraft(event.target.value)}
+                placeholder="Optional"
+                className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+              />
+              {legalNameStatus.type !== "idle" ? (
+                <p
+                  className={
+                    legalNameStatus.type === "error"
+                      ? "text-xs text-red-500"
+                      : "text-xs text-emerald-500"
+                  }
+                >
+                  {legalNameStatus.message}
+                </p>
+              ) : null}
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={closeLegalNameEditor}
+                  className="rounded-full border border-[var(--border)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:border-[var(--foreground)]"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={saveLegalName}
+                  disabled={isSavingLegalName}
+                  className={`rounded-full border border-[var(--foreground)] px-4 py-2 text-xs font-semibold transition ${isSavingLegalName
+                    ? "opacity-70 text-[var(--muted)] border-[var(--border)] cursor-not-allowed"
+                    : "text-[var(--foreground)] hover:bg-[var(--border)]"
+                    }`}
+                >
+                  {isSavingLegalName ? "Saving..." : "Save"}
                 </button>
               </div>
             </div>

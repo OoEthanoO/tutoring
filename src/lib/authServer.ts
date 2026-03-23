@@ -9,6 +9,7 @@ export type SessionUser = {
   id: string;
   email: string;
   full_name: string | null;
+  legal_name: string | null;
   role: string;
   email_verified_at: string | null;
   discord_user_id: string | null;
@@ -46,7 +47,7 @@ export const getSessionUser = async (token?: string | null) => {
   const { data } = await adminClient
     .from("app_sessions")
     .select(
-      "user:app_users(id, email, full_name, role, email_verified_at, discord_user_id, discord_username, discord_connected_at, is_junior, grade, school), expires_at"
+      "user:app_users(id, email, full_name, legal_name, role, email_verified_at, discord_user_id, discord_username, discord_connected_at, is_junior, grade, school), expires_at"
     )
     .eq("token_hash", tokenHash)
     .gt("expires_at", now)
@@ -89,7 +90,7 @@ export const getRequestUser = async (
   const { data: impersonatedUser } = await adminClient
     .from("app_users")
     .select(
-      "id, email, full_name, role, email_verified_at, discord_user_id, discord_username, discord_connected_at, is_junior"
+      "id, email, full_name, legal_name, role, email_verified_at, discord_user_id, discord_username, discord_connected_at, is_junior"
     )
     .eq("id", impersonatedUserId)
     .maybeSingle();
@@ -131,7 +132,7 @@ export const getRequestAuthContext = async (
   const { data: impersonatedUser } = await adminClient
     .from("app_users")
     .select(
-      "id, email, full_name, role, email_verified_at, discord_user_id, discord_username, discord_connected_at, is_junior"
+      "id, email, full_name, legal_name, role, email_verified_at, discord_user_id, discord_username, discord_connected_at, is_junior"
     )
     .eq("id", impersonatedUserId)
     .maybeSingle();

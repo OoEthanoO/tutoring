@@ -137,7 +137,7 @@ export async function GET(request: NextRequest) {
   const { data, error: listError } = await adminClient
     .from("app_users")
     .select(
-      "id, email, full_name, role, created_at, tutor_promoted_at, discord_user_id, discord_username, discord_connected_at, is_junior, grade, school"
+      "id, email, full_name, legal_name, role, created_at, tutor_promoted_at, discord_user_id, discord_username, discord_connected_at, is_junior, grade, school, strike_count"
     )
     .not("email_verified_at", "is", null)
     .ilike("email", search ? `%${search}%` : "%")
@@ -165,6 +165,8 @@ export async function GET(request: NextRequest) {
     isJunior: item.is_junior,
     grade: item.grade ?? "",
     school: item.school ?? "",
+    strikeCount: item.strike_count || 0,
+    legalName: item.legal_name ?? null,
   }));
 
   const userIds = users.map((user) => user.id);
@@ -219,6 +221,7 @@ export async function PATCH(request: NextRequest) {
       isJunior?: boolean;
       grade?: string;
       school?: string;
+      strikeCount?: number;
     }
     | null;
 
@@ -229,7 +232,8 @@ export async function PATCH(request: NextRequest) {
       body.tutorPromotedAt === undefined &&
       body.isJunior === undefined &&
       body.grade === undefined &&
-      body.school === undefined)
+      body.school === undefined &&
+      body.strikeCount === undefined)
   ) {
     return NextResponse.json(
       { error: "Missing userId or update data." },
@@ -245,10 +249,10 @@ export async function PATCH(request: NextRequest) {
     auth: { persistSession: false },
   });
 
-  const existingUser = body.role !== undefined || body.tutorPromotedAt !== undefined || body.isJunior !== undefined
+  const existingUser = body.role !== undefined || body.tutorPromotedAt !== undefined || body.isJunior !== undefined || body.strikeCount !== undefined
     ? await adminClient
       .from("app_users")
-      .select("id, email, role, is_junior")
+      .select("id, email, role, is_junior, strike_count")
       .eq("id", body.userId)
       .single()
     : null;
@@ -269,7 +273,7 @@ export async function PATCH(request: NextRequest) {
     body.tutorPromotedAt === null ? null : body.tutorPromotedAt;
 
   const updatePayload =
-    body.role || shouldUpdatePromotedAt || body.isJunior !== undefined || body.grade !== undefined || body.school !== undefined
+    body.role || shouldUpdatePromotedAt || body.isJunior !== undefined || body.grade !== undefined || body.school !== undefined || body.strikeCount !== undefined
       ? {
         role: body.role === "executive" ? "tutor" : (body.role ?? existingRole ?? "student"),
         tutor_promoted_at: isPromotingToTutor
@@ -280,6 +284,8 @@ export async function PATCH(request: NextRequest) {
         is_junior: body.isJunior !== undefined ? body.isJunior : undefined,
         grade: body.grade !== undefined ? body.grade : undefined,
         school: body.school !== undefined ? body.school : undefined,
+        strike_count: body.strikeCount !== undefined ? body.strikeCount : undefined,
+        last_strike_at: body.strikeCount === 0 ? null : (body.strikeCount !== undefined && body.strikeCount > (existingUser?.data?.strike_count || 0) ? new Date().toISOString() : undefined),
       }
       : null;
   const updateResult = updatePayload
@@ -288,13 +294,13 @@ export async function PATCH(request: NextRequest) {
       .update(updatePayload)
       .eq("id", body.userId)
       .select(
-        "id, email, full_name, role, created_at, tutor_promoted_at, discord_user_id, discord_username, discord_connected_at, is_junior, grade, school"
+        "id, email, full_name, legal_name, role, created_at, tutor_promoted_at, discord_user_id, discord_username, discord_connected_at, is_junior, grade, school, strike_count"
       )
       .single()
     : await adminClient
       .from("app_users")
       .select(
-        "id, email, full_name, role, created_at, tutor_promoted_at, discord_user_id, discord_username, discord_connected_at, is_junior, grade, school"
+        "id, email, full_name, legal_name, role, created_at, tutor_promoted_at, discord_user_id, discord_username, discord_connected_at, is_junior, grade, school, strike_count"
       )
       .eq("id", body.userId)
       .single();
@@ -366,6 +372,8 @@ export async function PATCH(request: NextRequest) {
     isJunior: updatedUser.is_junior ?? false,
     grade: updatedUser.grade ?? "",
     school: updatedUser.school ?? "",
+    strikeCount: updatedUser.strike_count || 0,
+    legalName: updatedUser.legal_name ?? null,
   };
 
   return NextResponse.json({ user: responseUser });

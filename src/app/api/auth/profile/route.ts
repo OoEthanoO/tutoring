@@ -11,12 +11,12 @@ export async function PATCH(request: NextRequest) {
   }
 
   const body = (await request.json().catch(() => null)) as
-    | { fullName?: string; discordUsername?: string }
+    | { fullName?: string; discordUsername?: string; legalName?: string }
     | null;
 
-  if (body?.fullName === undefined && body?.discordUsername === undefined) {
+  if (body?.fullName === undefined && body?.discordUsername === undefined && body?.legalName === undefined) {
     return NextResponse.json(
-      { error: "Full name must be provided." },
+      { error: "No profile fields provided to update." },
       { status: 400 }
     );
   }
@@ -31,13 +31,19 @@ export async function PATCH(request: NextRequest) {
     );
   }
 
-  const fullName = body?.fullName?.trim() ?? "";
-  if (!fullName) {
-    return NextResponse.json({ error: "Name cannot be empty." }, { status: 400 });
+  const updates: Record<string, string | null> = {};
+
+  if (body?.fullName !== undefined) {
+    const fullName = body.fullName.trim();
+    if (!fullName) {
+      return NextResponse.json({ error: "Name cannot be empty." }, { status: 400 });
+    }
+    updates.full_name = fullName;
   }
 
-  const updates: Record<string, string | null> = {};
-  if (fullName) updates.full_name = fullName;
+  if (body?.legalName !== undefined) {
+    updates.legal_name = body.legalName.trim() || null;
+  }
 
   const adminClient = getAdminClient();
   const { error } = await adminClient

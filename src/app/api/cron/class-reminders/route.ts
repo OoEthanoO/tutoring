@@ -17,7 +17,12 @@ const defaultExecutivesChannelName = "executives";
 const torontoTimeZone = "America/Toronto";
 const defaultZoomId = "822 9677 5321";
 const defaultZoomPassword = "youth";
-type ReminderType = "one_hour" | "twenty_four_hours" | "class_follow_up";
+type ReminderType =
+  | "seven_days"
+  | "twenty_four_hours"
+  | "one_hour"
+  | "five_minutes"
+  | "class_follow_up";
 
 type ReminderTarget = {
   type: ReminderType;
@@ -28,15 +33,27 @@ type ReminderTarget = {
 
 const reminderTargets: ReminderTarget[] = [
   {
+    type: "seven_days",
+    minutesBeforeStart: 7 * 24 * 60,
+    label: "7 days",
+    lowerBoundDriftMinutes: 0,
+  },
+  {
     type: "twenty_four_hours",
     minutesBeforeStart: 24 * 60,
     label: "24 hours",
-    lowerBoundDriftMinutes: 5,
+    lowerBoundDriftMinutes: 0,
   },
   {
     type: "one_hour",
     minutesBeforeStart: 60,
     label: "1 hour",
+    lowerBoundDriftMinutes: 0,
+  },
+  {
+    type: "five_minutes",
+    minutesBeforeStart: 5,
+    label: "5 minutes",
     lowerBoundDriftMinutes: 0,
   },
 ];
@@ -509,6 +526,7 @@ export async function POST(request: NextRequest) {
       sentClassCount: 0,
       sentEmailCount: 0,
       sentDiscordReminderCount: 0,
+      sentDiscordFollowUpCount: 0,
       failedClasses: [],
       timezone: torontoTimeZone,
       reminderSkippedReason,
@@ -613,7 +631,6 @@ export async function POST(request: NextRequest) {
   const allTutorIds = Array.from(
     new Set(
       candidates
-        .filter((item) => item.reminderType === "class_follow_up")
         .map((item) => readCourse(item.classRow.course))
         .filter(Boolean)
         .filter((course) => course?.created_by)
@@ -650,36 +667,30 @@ export async function POST(request: NextRequest) {
       continue;
     }
 
-    const shouldSendDiscordReminder =
-      reminderType !== "class_follow_up" && discordReminderDeliveryEnabled;
-    const shouldSendAnyEmail = emailRemindersEnabled;
-    if (!shouldSendDiscordReminder && !shouldSendAnyEmail) {
-      continue;
-    }
+    const isStandardReminder =
+      reminderType === "twenty_four_hours" || reminderType === "one_hour";
+    const isFollowUpReminder = reminderType === "class_follow_up";
 
-    const { error: logError } = await adminClient
-      .from("class_reminder_logs")
-      .insert({
-        class_id: classRow.id,
-        reminder_type: reminderType,
-      })
-      .select("id")
-      .single();
+    const shouldSendCourseDiscordReminder =
+      isStandardReminder && discordReminderDeliveryEnabled;
+    const shouldSendAnyEmail =
+      (isStandardReminder || isFollowUpReminder) && emailRemindersEnabled;
+    const shouldSendExecutiveTutorReminder =
+      !isFollowUpReminder &&
+      discordReminderDeliveryEnabled &&
+      executivesChannelId !== null;
 
-    if (logError) {
-      if (logError.code === "23505") {
-        continue;
-      }
-      failedClasses.push({
-        classId: classRow.id,
-        reason: logError.message ?? "Failed to register reminder log.",
-      });
+    if (
+      !shouldSendCourseDiscordReminder &&
+      !shouldSendAnyEmail &&
+      !shouldSendExecutiveTutorReminder
+    ) {
       continue;
     }
 
     const recipients = new Set<string>();
 
-    if (reminderType !== "class_follow_up") {
+    if (isStandardReminder) {
       for (const email of enrollmentsByCourseId.get(classRow.course_id) ?? []) {
         recipients.add(email.toLowerCase());
       }
@@ -688,11 +699,15 @@ export async function POST(request: NextRequest) {
     const tutorEmail =
       String(course.created_by_email ?? "").trim() ||
       (course.created_by ? tutorEmailById.get(course.created_by) ?? "" : "");
-    if (tutorEmail) {
+    if (tutorEmail && (isStandardReminder || isFollowUpReminder)) {
       recipients.add(tutorEmail.toLowerCase());
     }
 
-    if (!shouldSendDiscordReminder && recipients.size === 0) {
+    if (
+      !shouldSendCourseDiscordReminder &&
+      !shouldSendExecutiveTutorReminder &&
+      recipients.size === 0
+    ) {
       continue;
     }
 
@@ -718,6 +733,7 @@ export async function POST(request: NextRequest) {
     let subject = "";
     let html = "";
     let discordContent = "";
+    let executiveTutorContent = "";
 
     const isFounder = resolveRoleByEmail(tutorEmail) === "founder";
 
@@ -748,7 +764,7 @@ export async function POST(request: NextRequest) {
         ? tutorDiscordIdById.get(course.created_by) ?? ""
         : "";
       if (tutorDiscordId) {
-        discordContent = [
+        executiveTutorContent = [
           `<@${tutorDiscordId}> Your class **${escapeDiscordText(classTitleRaw)}** for **${escapeDiscordText(courseTitleRaw)}** recently ended.`,
           isFounder
             ? `Please remember to submit a manual activity on the Schoolhouse platform.`
@@ -761,8 +777,9 @@ export async function POST(request: NextRequest) {
         ].join("\n");
       }
     } else {
-      subject = `Class reminder: starts in ${reminderLabel} (${course.title})`;
-      html = `
+      if (isStandardReminder) {
+        subject = `Class reminder: starts in ${reminderLabel} (${course.title})`;
+        html = `
         <p>Your class starts in <strong>${escapeHtml(reminderLabel)}</strong>.</p>
         <p><strong>Course:</strong> ${courseTitle}</p>
         <p><strong>Class:</strong> ${classTitle}</p>
@@ -779,29 +796,51 @@ export async function POST(request: NextRequest) {
               }</p>`
         }
       `;
-      const nonFounderDiscordInstruction = [
-        "Please attend the class 5 minutes before the start time:",
-        `Zoom ID: ${escapeDiscordText(defaultZoomId)}`,
-        `Password: ${escapeDiscordText(defaultZoomPassword)}`,
-        breakoutRoomName
-          ? `Breakout room: "${escapeDiscordText(breakoutRoomName)}"`
-          : `Please join the breakout room that starts with "${escapeDiscordText(
-            `${tutorFirstName}${tutorLastInitial ? ` ${tutorLastInitial}` : ""}`
-          )}" followed by the name of the course.`,
-      ].join("\n");
+        const nonFounderDiscordInstruction = [
+          "Please attend the class 5 minutes before the start time:",
+          `Zoom ID: ${escapeDiscordText(defaultZoomId)}`,
+          `Password: ${escapeDiscordText(defaultZoomPassword)}`,
+          breakoutRoomName
+            ? `Breakout room: "${escapeDiscordText(breakoutRoomName)}"`
+            : `Please join the breakout room that starts with "${escapeDiscordText(
+              `${tutorFirstName}${tutorLastInitial ? ` ${tutorLastInitial}` : ""}`
+            )}" followed by the name of the course.`,
+        ].join("\n");
 
-      discordContent = [
-        `Your class starts in **${escapeDiscordText(reminderLabel)}**.`,
-        `**Course:** ${escapeDiscordText(courseTitleRaw)}`,
-        `**Class:** ${escapeDiscordText(classTitleRaw)}`,
-        `**Tutor:** ${escapeDiscordText(tutorNameRaw)}`,
-        `**Start time (${torontoTimeZone}):** ${escapeDiscordText(
-          formatTorontoDateTime(classRow.starts_at)
-        )}`,
-        isFounder
-          ? "Please attend the class 5 minutes before the start time on the Schoolhouse platform."
-          : nonFounderDiscordInstruction,
-      ].join("\n");
+        discordContent = [
+          `Your class starts in **${escapeDiscordText(reminderLabel)}**.`,
+          `**Course:** ${escapeDiscordText(courseTitleRaw)}`,
+          `**Class:** ${escapeDiscordText(classTitleRaw)}`,
+          `**Tutor:** ${escapeDiscordText(tutorNameRaw)}`,
+          `**Start time (${torontoTimeZone}):** ${escapeDiscordText(
+            formatTorontoDateTime(classRow.starts_at)
+          )}`,
+          isFounder
+            ? "Please attend the class 5 minutes before the start time on the Schoolhouse platform."
+            : nonFounderDiscordInstruction,
+        ].join("\n");
+      }
+
+      const tutorDiscordId = course.created_by
+        ? tutorDiscordIdById.get(course.created_by) ?? ""
+        : "";
+      if (tutorDiscordId) {
+        let contactInstruction = "";
+        if (reminderType === "seven_days") {
+          contactInstruction =
+            "If you are unable to make it to the class, you have to contact <@811949122725609492> 24 hours before the class starts.";
+        } else if (reminderType === "twenty_four_hours") {
+          contactInstruction =
+            "If you are unable to make it to the class, you have to contact <@811949122725609492> as soon as possible.";
+        } else if (reminderType === "one_hour") {
+          contactInstruction =
+            "If you are unable to make it to the class, contact <@811949122725609492> immediately.";
+        } else if (reminderType === "five_minutes") {
+          contactInstruction = "Please join the meeting.";
+        }
+
+        executiveTutorContent = `<@${tutorDiscordId}> Your class **${escapeDiscordText(classTitleRaw)}** for **${escapeDiscordText(courseTitleRaw)}** is starting in ${escapeDiscordText(reminderLabel)}. ${contactInstruction}`;
+      }
     }
 
     const recipientList = Array.from(recipients).sort();
@@ -839,7 +878,7 @@ export async function POST(request: NextRequest) {
       sentEmailCount += successfulSends;
     }
 
-    if (shouldSendDiscordReminder) {
+    if (shouldSendCourseDiscordReminder) {
       const discordTarget = discordCourseTargetByCourseId.get(classRow.course_id);
       if (!discordTarget) {
         failedClasses.push({
@@ -868,35 +907,35 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Send follow-up to the executives channel with a tutor user mention.
+    // Send follow-up or executive reminder to the executives channel with a tutor user mention.
     if (
-      reminderType === "class_follow_up" &&
+      (shouldSendExecutiveTutorReminder || isFollowUpReminder) &&
       discordReminderDeliveryEnabled &&
       executivesChannelId &&
-      discordContent
+      executiveTutorContent
     ) {
       const tutorDiscordId = course.created_by
-        ? tutorDiscordIdById.get(course.created_by) ?? ""
-        : "";
-      if (tutorDiscordId) {
-        try {
-          await sendDiscordUserMentionMessage(
-            executivesChannelId,
-            tutorDiscordId,
-            discordContent
-          );
-          sentDiscordFollowUpCount += 1;
-          await sleep(150);
-        } catch (error) {
-          failedClasses.push({
-            classId: classRow.id,
-            reason: `Failed Discord follow-up send: ${error instanceof Error
-              ? error.message
-              : "Unknown Discord follow-up send failure."
-              }`,
-          });
+          ? tutorDiscordIdById.get(course.created_by) ?? ""
+          : "";
+        if (tutorDiscordId) {
+          try {
+            await sendDiscordUserMentionMessage(
+              executivesChannelId,
+              tutorDiscordId,
+              executiveTutorContent
+            );
+            sentDiscordFollowUpCount += 1;
+            await sleep(150);
+          } catch (error) {
+            failedClasses.push({
+              classId: classRow.id,
+              reason: `Failed Discord executive reminder send: ${error instanceof Error
+                ? error.message
+                : "Unknown Discord executive reminder send failure."
+                }`,
+            });
+          }
         }
-      }
     }
   }
 

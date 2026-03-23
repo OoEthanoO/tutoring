@@ -32,6 +32,7 @@ const roleNameLimit = 100;
 
 const viewChannelPermission = 1024;
 const sendMessagesPermission = 2048;
+const addReactionsPermission = 64;
 const readMessageHistoryPermission = 65536;
 const connectPermission = 1048576;
 const manageChannelsPermission = 16;
@@ -45,6 +46,7 @@ type WebsiteUserRow = {
   role: string | null;
   discord_user_id: string | null;
   is_junior: boolean | null;
+  strike_count?: number | null;
 };
 
 type CourseRow = {
@@ -1096,11 +1098,42 @@ export const runDiscordSync = async ({
   const result = buildZeroResult(true, null);
   const apiClient = new DiscordApiClient(discordBotToken);
 
+  try {
+    const threeMonthsAgo = new Date();
+    threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+
+    const { data: decayingUsers } = await adminClient
+      .from("app_users")
+      .select("id, strike_count, last_strike_at")
+      .gt("strike_count", 0)
+      .lte("last_strike_at", threeMonthsAgo.toISOString());
+
+    if (decayingUsers && decayingUsers.length > 0) {
+      for (const targetUser of decayingUsers) {
+        const newStrikeCount = Math.max(0, targetUser.strike_count - 1);
+        const oldLastStrike = new Date(targetUser.last_strike_at);
+        const newLastStrike = new Date(oldLastStrike);
+        newLastStrike.setMonth(newLastStrike.getMonth() + 3);
+
+        await adminClient
+          .from("app_users")
+          .update({
+            strike_count: newStrikeCount,
+            last_strike_at: newStrikeCount > 0 ? newLastStrike.toISOString() : null,
+          })
+          .eq("id", targetUser.id);
+      }
+    }
+  } catch (error) {
+    result.errors.push(`Failed to decay strikes: ${toErrorMessage(error, "Unknown auto-decay error.")}`);
+  }
+
   const [{ data: users, error: usersError }, { data: courses, error: coursesError }, { data: enrollments, error: enrollmentsError }] =
     await Promise.all([
       adminClient
         .from("app_users")
-        .select("id, email, full_name, role, discord_user_id, is_junior"),
+        .select("id, email, full_name, role, discord_user_id, is_junior, strike_count")
+        .not("email_verified_at", "is", null),
       adminClient
         .from("courses")
         .select("id, title, is_completed, created_by, course_classes(starts_at, duration_hours)"),
@@ -1198,6 +1231,9 @@ export const runDiscordSync = async ({
   const mathTutorsRole = await ensureRole("Math Tutor", false);
   const nonprofitTeamRole = await ensureRole("Nonprofit Team", false);
   const founderRole = await ensureRole("Founder", false);
+  const firstStrikeRole = await ensureRole("First Strike", false);
+  const secondStrikeRole = await ensureRole("Second Strike", false);
+
   const baseRoleIds = new Set([
     studentRole.id,
     executiveRole.id,
@@ -1207,6 +1243,8 @@ export const runDiscordSync = async ({
     scienceTutorsRole.id,
     mathTutorsRole.id,
     nonprofitTeamRole.id,
+    firstStrikeRole.id,
+    secondStrikeRole.id,
   ]);
   const founderDiscordUserId =
     websiteUsers.find(
@@ -1400,6 +1438,24 @@ export const runDiscordSync = async ({
           true
         );
       }
+
+      const strikeCount = websiteUser.strike_count || 0;
+      if (strikeCount === 1) {
+        if (!roleSet.has(firstStrikeRole.id)) {
+          await addRoleToMember(memberId, firstStrikeRole.id, roleSet, "baseRoleAddedCount");
+        }
+      } else if (roleSet.has(firstStrikeRole.id)) {
+        await addRoleToMember(memberId, firstStrikeRole.id, roleSet, "baseRoleRemovedCount", true);
+      }
+
+      if (strikeCount >= 2) {
+        if (!roleSet.has(secondStrikeRole.id)) {
+          await addRoleToMember(memberId, secondStrikeRole.id, roleSet, "baseRoleAddedCount");
+        }
+      } else if (roleSet.has(secondStrikeRole.id)) {
+        await addRoleToMember(memberId, secondStrikeRole.id, roleSet, "baseRoleRemovedCount", true);
+      }
+
       continue;
     }
 
@@ -1411,6 +1467,14 @@ export const runDiscordSync = async ({
         "baseRoleRemovedCount",
         true
       );
+    }
+
+    if (roleSet.has(firstStrikeRole.id)) {
+      await addRoleToMember(memberId, firstStrikeRole.id, roleSet, "baseRoleRemovedCount", true);
+    }
+
+    if (roleSet.has(secondStrikeRole.id)) {
+      await addRoleToMember(memberId, secondStrikeRole.id, roleSet, "baseRoleRemovedCount", true);
     }
 
     if (!roleSet.has(studentRole.id)) {
@@ -1441,8 +1505,6 @@ export const runDiscordSync = async ({
         true
       );
     }
-
-
   }
 
   const enrollmentsByCourseId = new Map<string, Set<string>>();

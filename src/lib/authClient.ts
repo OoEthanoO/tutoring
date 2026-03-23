@@ -2,6 +2,7 @@ export type ClientUser = {
   id: string;
   email: string;
   full_name: string | null;
+  legal_name: string | null;
   role: string;
   email_verified_at: string | null;
   discord_user_id: string | null;
