@@ -25,6 +25,7 @@ const formatTimeRange = (startsAt: string, durationHours: number) => {
   const end = new Date(start.getTime() + durationHours * 60 * 60 * 1000);
   
   const dateStr = start.toLocaleDateString(undefined, {
+    weekday: "short",
     month: "short",
     day: "numeric",
     year: "numeric"
@@ -98,13 +99,20 @@ export default function MyClassesMenu() {
 
   return (
     <section className="space-y-6 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6">
-      <header className="space-y-1">
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
-          Classes
-        </p>
-        <h2 className="text-lg font-semibold text-[var(--foreground)]">
-          My classes
-        </h2>
+      <header className="flex items-start justify-between">
+        <div className="space-y-1">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
+            Classes
+          </p>
+          <h2 className="text-lg font-semibold text-[var(--foreground)]">
+            My classes
+          </h2>
+        </div>
+        {!isLoading && classes.length > 0 ? (
+          <div className="flex items-center justify-center rounded-full bg-[var(--foreground)]/5 px-3 py-1 text-xs font-medium text-[var(--foreground)]">
+            {classes.length} {classes.length === 1 ? "class" : "classes"} left
+          </div>
+        ) : null}
       </header>
 
       {status.type === "error" ? (
@@ -135,14 +143,14 @@ export default function MyClassesMenu() {
                   {cls.course_title}
                 </p>
                 <p className="text-xs text-[var(--muted)]">
-                  {cls.class_title}
+                  {cls.class_title} <span className="mx-1">•</span> Tutor: {cls.tutor_name || "Unknown"}
                 </p>
               </div>
-              <div className="text-left sm:text-right">
-                <p className="text-xs font-medium text-[var(--foreground)]">
+              <div className="flex w-full flex-col sm:w-auto sm:items-end text-left sm:text-right">
+                <p className="text-xs font-medium text-[var(--foreground)] self-start sm:self-auto">
                   {formatTimeRange(cls.starts_at, cls.duration_hours)}
                 </p>
-                <div className="mt-1 text-xs text-[var(--muted)]">
+                <div className="mt-1 text-xs text-[var(--muted)] w-full text-right sm:w-auto">
                   {cls.role_in_course === "student"
                     ? "Student"
                     : cls.role_in_course === "tutor"
