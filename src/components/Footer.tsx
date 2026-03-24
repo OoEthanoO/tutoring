@@ -2,7 +2,6 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 import { getCurrentUser, onAuthChange } from "@/lib/authClient";
-import { iteration } from "@/lib/iteration";
 import { setHasUnsavedData, hasAnyUnsavedData } from "@/lib/unsavedData";
 
 export default function Footer() {
@@ -17,31 +16,37 @@ export default function Footer() {
     message: string;
   }>({ type: "idle", message: "" });
 
+  const [totalCommits, setTotalCommits] = useState<number | null>(null);
+  const [isCommitHovered, setIsCommitHovered] = useState(false);
+
   useEffect(() => {
-    const checkIteration = async () => {
+    const checkCommits = async () => {
       try {
         const response = await fetch(
-          `/api/iteration?ts=${Date.now()}`,
+          `/api/commits?ts=${Date.now()}`,
           { cache: "no-store" }
         );
         if (!response.ok) {
           return;
         }
 
-        const data = (await response.json()) as { iteration?: string };
-        const serverIteration = data.iteration ?? iteration;
-        if (serverIteration !== iteration) {
-          if (!hasAnyUnsavedData()) {
-            window.location.reload();
+        const data = (await response.json()) as { total: number };
+        
+        setTotalCommits((prev) => {
+          if (prev !== null && data.total !== prev) {
+            if (!hasAnyUnsavedData()) {
+              window.location.reload();
+            }
           }
-        }
+          return data.total;
+        });
       } catch {
-        // Ignore iteration check errors.
+        // Ignore errors.
       }
     };
 
-    checkIteration();
-    const interval = window.setInterval(checkIteration, 15000);
+    checkCommits();
+    const interval = window.setInterval(checkCommits, 15000);
     return () => window.clearInterval(interval);
   }, []);
 
@@ -120,7 +125,22 @@ export default function Footer() {
           </span>
         </a>
 
-        <span>Iteration {iteration}</span>
+        {totalCommits !== null ? (
+          <a
+            href="/commits"
+            className="transition-colors"
+            onMouseEnter={() => setIsCommitHovered(true)}
+            onMouseLeave={() => setIsCommitHovered(false)}
+            onFocus={() => setIsCommitHovered(true)}
+            onBlur={() => setIsCommitHovered(false)}
+          >
+            <span style={{ color: isCommitHovered ? "#3b82f6" : "var(--muted)" }}>
+              Commit {totalCommits}
+            </span>
+          </a>
+        ) : (
+          <span>Loading...</span>
+        )}
 
         {isSignedIn ? (
           <button
