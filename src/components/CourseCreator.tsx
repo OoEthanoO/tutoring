@@ -278,7 +278,7 @@ export default function CourseCreator() {
     <section className="space-y-8 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6">
       <header className="space-y-1">
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
-          Create
+          Create courses
         </p>
         <h2 className="text-lg font-semibold text-[var(--foreground)]">
           Create a new course

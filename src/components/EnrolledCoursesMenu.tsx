@@ -107,7 +107,7 @@ export default function EnrolledCoursesMenu() {
           Courses
         </p>
         <h2 className="text-lg font-semibold text-[var(--foreground)]">
-          Enrolled courses
+          My courses
         </h2>
       </header>
 

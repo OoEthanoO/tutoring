@@ -195,12 +195,12 @@ export default function DashboardMenus() {
     ];
 
     if (role) {
-      items.push({ key: "enrolled_courses", label: "Enrolled courses" });
+      items.push({ key: "enrolled_courses", label: "My courses" });
       items.push({ key: "my_classes", label: "My classes" });
     }
 
     if (role && canManageCourses(role)) {
-      items.push({ key: "create", label: "Create" });
+      items.push({ key: "create", label: "Create courses" });
       items.push({ key: "manage_courses", label: "Manage my courses" });
     }
 
