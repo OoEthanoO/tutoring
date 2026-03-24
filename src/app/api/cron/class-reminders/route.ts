@@ -18,7 +18,7 @@ const torontoTimeZone = "America/Toronto";
 const defaultZoomId = "822 9677 5321";
 const defaultZoomPassword = "youth";
 type ReminderType =
-  | "seven_days"
+  | "three_days"
   | "twenty_four_hours"
   | "one_hour"
   | "five_minutes"
@@ -33,9 +33,9 @@ type ReminderTarget = {
 
 const reminderTargets: ReminderTarget[] = [
   {
-    type: "seven_days",
-    minutesBeforeStart: 7 * 24 * 60,
-    label: "7 days",
+    type: "three_days",
+    minutesBeforeStart: 3 * 24 * 60,
+    label: "3 days",
     lowerBoundDriftMinutes: 0,
   },
   {
@@ -826,7 +826,7 @@ export async function POST(request: NextRequest) {
         : "";
       if (tutorDiscordId) {
         let contactInstruction = "";
-        if (reminderType === "seven_days") {
+        if (reminderType === "three_days") {
           contactInstruction =
             "If you are unable to make it to the class, you have to contact <@811949122725609492> 24 hours before the class starts.";
         } else if (reminderType === "twenty_four_hours") {
