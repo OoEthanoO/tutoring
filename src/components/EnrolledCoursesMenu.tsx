@@ -107,7 +107,7 @@ export default function EnrolledCoursesMenu() {
           Courses
         </p>
         <h2 className="text-lg font-semibold text-[var(--foreground)]">
-          My courses
+          My enrollments
         </h2>
       </header>
 
@@ -134,30 +134,34 @@ export default function EnrolledCoursesMenu() {
             className="space-y-4 rounded-xl border border-[var(--border)] px-4 py-4"
           >
             <div>
-              <p className="text-sm font-semibold text-[var(--foreground)]">
-                {course.title}
-              </p>
-              <p className="text-xs text-[var(--muted)]">
-                Tutor:{" "}
-                {course.created_by_name ||
-                  course.created_by_email ||
-                  "Unknown tutor"}
-              </p>
-              {course.enrollment_status === "pending" ? (
-                <span className="inline-block mt-1 rounded-full border border-amber-400 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-400">
-                  Under Review
-                </span>
-              ) : course.enrollment_status === "rejected" ? (
-                <span className="inline-block mt-1 rounded-full border border-red-300 bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-600 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-400">
-                  Rejected
-                </span>
-              ) : (
-                <span className="inline-block mt-1 rounded-full border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-400">
-                  Enrolled
-                </span>
-              )}
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-sm font-semibold text-[var(--foreground)]">
+                    {course.title}
+                  </p>
+                  <p className="text-xs text-[var(--muted)]">
+                    Tutor:{" "}
+                    {course.created_by_name ||
+                      course.created_by_email ||
+                      "Unknown tutor"}
+                  </p>
+                </div>
+                {course.enrollment_status === "pending" ? (
+                  <span className="shrink-0 inline-block rounded-full border border-amber-400 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-400">
+                    Under Review
+                  </span>
+                ) : course.enrollment_status === "rejected" ? (
+                  <span className="shrink-0 inline-block rounded-full border border-red-300 bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-600 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-400">
+                    Rejected
+                  </span>
+                ) : (
+                  <span className="shrink-0 inline-block rounded-full border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-400">
+                    Enrolled
+                  </span>
+                )}
+              </div>
               {course.description ? (
-                <div className="text-xs text-[var(--muted)]">
+                <div className="mt-3 text-xs text-[var(--muted)]">
                   <MarkdownText text={course.description} />
                 </div>
               ) : null}

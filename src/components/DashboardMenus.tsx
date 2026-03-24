@@ -195,7 +195,7 @@ export default function DashboardMenus() {
     ];
 
     if (role) {
-      items.push({ key: "enrolled_courses", label: "My courses" });
+      items.push({ key: "enrolled_courses", label: "My enrollments" });
       items.push({ key: "my_classes", label: "My classes" });
     }
 
