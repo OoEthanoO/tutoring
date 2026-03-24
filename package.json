@@ -4,6 +4,8 @@
   "private": true,
   "iteration": "136",
   "scripts": {
+    "predev": "node scripts/generate-commits.js",
+    "prebuild": "node scripts/generate-commits.js",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",

@@ -54,3 +54,4 @@ next-env.d.ts
 *_backup.sql
 supabase_backup.sql
 production_backup.sql
+src/generated/
