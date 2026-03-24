@@ -44,9 +44,16 @@ const formatTimeRange = (startsAt: string, durationHours: number) => {
   return `${dateStr} • ${startTimeStr} - ${endTimeStr}`;
 };
 
+const isOngoingClass = (startsAt: string, durationHours: number, nowMs: number) => {
+  const start = new Date(startsAt).getTime();
+  const end = start + durationHours * 60 * 60 * 1000;
+  return nowMs >= start && nowMs <= end;
+};
+
 export default function MyClassesMenu() {
   const [userId, setUserId] = useState<string | null>(null);
   const [classes, setClasses] = useState<UpcomingClass[]>([]);
+  const [nowMs, setNowMs] = useState<number>(() => Date.now());
   const [status, setStatus] = useState<StatusState>({
     type: "idle",
     message: "",
@@ -62,6 +69,13 @@ export default function MyClassesMenu() {
     load();
 
     return onAuthChange(load);
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setNowMs(Date.now());
+    }, 30000);
+    return () => window.clearInterval(timer);
   }, []);
 
   useEffect(() => {
@@ -132,11 +146,15 @@ export default function MyClassesMenu() {
       ) : null}
 
       <div className="space-y-3">
-        {classes.map((cls) => (
-          <div
-            key={`${cls.course_id}-${cls.id}`}
-            className="flex flex-col gap-2 rounded-xl border border-[var(--border)] px-5 py-4 transition-colors hover:border-[var(--foreground)]/20"
-          >
+        {classes.map((cls) => {
+          const ongoing = isOngoingClass(cls.starts_at, cls.duration_hours, nowMs);
+          return (
+            <div
+              key={`${cls.course_id}-${cls.id}`}
+              className={`flex flex-col gap-2 rounded-xl border px-5 py-4 transition-colors hover:border-[var(--foreground)]/20 ${
+                ongoing ? "border-amber-400 animate-pulse" : "border-[var(--border)]"
+              }`}
+            >
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <p className="text-sm font-semibold text-[var(--foreground)]">
@@ -158,9 +176,10 @@ export default function MyClassesMenu() {
                       : "Founder"}
                 </div>
               </div>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </section>
   );
