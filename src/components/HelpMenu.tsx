@@ -37,7 +37,7 @@ export default function HelpMenu() {
                         Step 1: Create an Account
                     </p>
                     <p className="text-sm text-[var(--foreground)] leading-relaxed">
-                        Click <span className="font-semibold text-[var(--foreground)]">&quot;Sign in&quot;</span> in the upper right corner to register a new account or use an existing one. 
+                        Click <span className="font-semibold text-[var(--foreground)]">&quot;Sign in&quot;</span> in the upper right corner to register a new account or use an existing one.
                         <span className="block mt-2 text-xs text-[var(--muted)] italic">
                             Note: If a parent is registering for multiple children, please use separate accounts for each child. Each student must have their own account.
                         </span>
@@ -74,7 +74,7 @@ export default function HelpMenu() {
                         Step 3: Track Status
                     </p>
                     <p className="text-sm text-[var(--foreground)] leading-relaxed">
-                        After submitting, navigate to <span className="font-semibold text-[var(--foreground)]">&quot;Enrolled courses&quot;</span>. Your registration will show as <span className="font-semibold text-amber-600">&quot;Under Review&quot;</span> while our founder reviews your application. You will receive an email notification upon approval or rejection.
+                        After submitting, navigate to <span className="font-semibold text-[var(--foreground)]">&quot;My enrollments&quot;</span>. Your registration will show as <span className="font-semibold text-amber-600">&quot;Under Review&quot;</span> while our founder reviews your application. You will receive an email notification upon approval or rejection.
                     </p>
                 </div>
 
