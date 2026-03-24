@@ -10,6 +10,7 @@ import EnrolledCoursesMenu from "@/components/EnrolledCoursesMenu";
 import HomeMenu from "@/components/HomeMenu";
 import ManageEnrollmentsMenu from "@/components/ManageEnrollmentsMenu";
 import ManageMyCoursesMenu from "@/components/ManageMyCoursesMenu";
+import MyClassesMenu from "@/components/MyClassesMenu";
 import HelpMenu from "@/components/HelpMenu";
 import SponsorsMenu from "@/components/SponsorsMenu";
 import EventsMenu from "@/components/EventsMenu";
@@ -20,6 +21,7 @@ type MenuKey =
   | "home"
   | "all_courses"
   | "enrolled_courses"
+  | "my_classes"
   | "create"
   | "manage_courses"
   | "manage_enrollments"
@@ -194,6 +196,7 @@ export default function DashboardMenus() {
 
     if (role) {
       items.push({ key: "enrolled_courses", label: "Enrolled courses" });
+      items.push({ key: "my_classes", label: "My classes" });
     }
 
     if (role && canManageCourses(role)) {
@@ -282,6 +285,7 @@ export default function DashboardMenus() {
       {activeMenu === "home" ? <HomeMenu isSignedIn={Boolean(role)} /> : null}
       {activeMenu === "all_courses" ? <CoursesMenu /> : null}
       {activeMenu === "enrolled_courses" ? <EnrolledCoursesMenu /> : null}
+      {activeMenu === "my_classes" ? <MyClassesMenu /> : null}
       {activeMenu === "create" ? <CourseCreator /> : null}
       {activeMenu === "manage_courses" ? <ManageMyCoursesMenu /> : null}
       {activeMenu === "manage_enrollments" ? <ManageEnrollmentsMenu /> : null}

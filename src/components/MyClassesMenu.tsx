@@ -1,0 +1,159 @@
+"use client";
+
+import React, { useEffect, useState } from "react";
+import { getCurrentUser, onAuthChange } from "@/lib/authClient";
+
+type StatusState = {
+  type: "idle" | "error";
+  message: string;
+};
+
+type UpcomingClass = {
+  id: string;
+  course_id: string;
+  course_title: string;
+  class_title: string;
+  starts_at: string;
+  duration_hours: number;
+  role_in_course: "student" | "tutor" | "founder";
+  tutor_name?: string | null;
+  students?: Array<{ name: string | null; email: string | null }>;
+};
+
+const formatTimeRange = (startsAt: string, durationHours: number) => {
+  const start = new Date(startsAt);
+  const end = new Date(start.getTime() + durationHours * 60 * 60 * 1000);
+  
+  const dateStr = start.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric"
+  });
+  
+  const startTimeStr = start.toLocaleTimeString(undefined, {
+    hour: "numeric",
+    minute: "2-digit"
+  });
+  
+  const endTimeStr = end.toLocaleTimeString(undefined, {
+    hour: "numeric",
+    minute: "2-digit"
+  });
+
+  return `${dateStr} • ${startTimeStr} - ${endTimeStr}`;
+};
+
+export default function MyClassesMenu() {
+  const [userId, setUserId] = useState<string | null>(null);
+  const [classes, setClasses] = useState<UpcomingClass[]>([]);
+  const [status, setStatus] = useState<StatusState>({
+    type: "idle",
+    message: "",
+  });
+  const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    const load = async () => {
+      const user = await getCurrentUser();
+      setUserId(user?.id ?? null);
+    };
+
+    load();
+
+    return onAuthChange(load);
+  }, []);
+
+  useEffect(() => {
+    if (!userId) {
+      setClasses([]);
+      return;
+    }
+
+    const loadClasses = async () => {
+      setIsLoading(true);
+      const response = await fetch("/api/my-classes");
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as
+          | { error?: string }
+          | null;
+        setStatus({
+          type: "error",
+          message: payload?.error ?? "Unable to load upcoming classes.",
+        });
+        setIsLoading(false);
+        return;
+      }
+
+      const data = (await response.json()) as { classes: UpcomingClass[] };
+      setClasses(data.classes ?? []);
+      setIsLoading(false);
+    };
+
+    loadClasses();
+  }, [userId]);
+
+  if (!userId) {
+    return null;
+  }
+
+  return (
+    <section className="space-y-6 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6">
+      <header className="space-y-1">
+        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
+          Classes
+        </p>
+        <h2 className="text-lg font-semibold text-[var(--foreground)]">
+          My classes
+        </h2>
+      </header>
+
+      {status.type === "error" ? (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-400">
+          {status.message}
+        </div>
+      ) : null}
+
+      {isLoading ? (
+        <p className="text-sm text-[var(--muted)]">Loading classes...</p>
+      ) : null}
+
+      {!isLoading && classes.length === 0 ? (
+        <p className="text-sm text-[var(--muted)]">
+          You have no upcoming classes.
+        </p>
+      ) : null}
+
+      <div className="space-y-3">
+        {classes.map((cls) => (
+          <div
+            key={`${cls.course_id}-${cls.id}`}
+            className="flex flex-col gap-2 rounded-xl border border-[var(--border)] px-5 py-4 transition-colors hover:border-[var(--foreground)]/20"
+          >
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <p className="text-sm font-semibold text-[var(--foreground)]">
+                  {cls.course_title}
+                </p>
+                <p className="text-xs text-[var(--muted)]">
+                  {cls.class_title}
+                </p>
+              </div>
+              <div className="text-left sm:text-right">
+                <p className="text-xs font-medium text-[var(--foreground)]">
+                  {formatTimeRange(cls.starts_at, cls.duration_hours)}
+                </p>
+                <div className="mt-1 text-xs text-[var(--muted)]">
+                  {cls.role_in_course === "student"
+                    ? "Student"
+                    : cls.role_in_course === "tutor"
+                      ? "Tutor"
+                      : "Founder"}
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
