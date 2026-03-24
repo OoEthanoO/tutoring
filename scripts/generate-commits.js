@@ -2,6 +2,10 @@ const { execSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 
+// Load environment variables for local development
+require("dotenv").config({ path: ".env.local" });
+require("dotenv").config();
+
 function getGitInfoLocal() {
   try {
     const remoteUrl = execSync("git remote get-url origin").toString().trim();
@@ -36,7 +40,7 @@ async function fetchCommitsGraphQL(token, owner, repo, branch) {
                   totalCount
                   nodes {
                     oid
-                    messageHeadline
+                    message
                     committedDate
                     additions
                     deletions
@@ -86,7 +90,7 @@ async function fetchCommitsGraphQL(token, owner, repo, branch) {
       commits.push({
         hash: node.oid,
         date: node.committedDate,
-        message: node.messageHeadline,
+        message: node.message,
         added: node.additions,
         removed: node.deletions
       });
@@ -104,7 +108,7 @@ function getLocalCommits() {
   const totalCount = parseInt(rawCount, 10) || 0;
 
   const rawLog = execSync(
-    `git log --numstat --format="COMMIT|%H|%cI|%s"`
+    `git log --numstat --format="COMMIT|%H|%cI|%B"`
   ).toString();
 
   const commits = [];
@@ -114,6 +118,8 @@ function getLocalCommits() {
   for (const line of lines) {
     if (line.startsWith("COMMIT|")) {
       if (currentCommit) {
+        // Trim any trailing newlines from the collected message
+        currentCommit.message = currentCommit.message.trim();
         commits.push(currentCommit);
       }
       const parts = line.split("|");
@@ -124,16 +130,22 @@ function getLocalCommits() {
       currentCommit = { hash, date, message, added: 0, removed: 0 };
     } else if (line.trim().length > 0 && currentCommit) {
       const statParts = line.split("\t");
-      if (statParts.length >= 2) {
+      // Numstat lines look like "10\t5\tfilename.js" or "-\t-\tfilename.js"
+      if (statParts.length >= 2 && (statParts[0] === "-" || !isNaN(parseInt(statParts[0], 10)))) {
         const addedStr = statParts[0].trim();
         const removedStr = statParts[1].trim();
         if (addedStr !== "-") currentCommit.added += parseInt(addedStr, 10) || 0;
         if (removedStr !== "-") currentCommit.removed += parseInt(removedStr, 10) || 0;
+      } else {
+        currentCommit.message += "\n" + line;
       }
+    } else if (line.trim().length === 0 && currentCommit) {
+       currentCommit.message += "\n";
     }
   }
 
   if (currentCommit) {
+    currentCommit.message = currentCommit.message.trim();
     commits.push(currentCommit);
   }
   

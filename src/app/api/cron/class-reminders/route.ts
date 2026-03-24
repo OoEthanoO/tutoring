@@ -826,20 +826,23 @@ export async function POST(request: NextRequest) {
         : "";
       if (tutorDiscordId) {
         let contactInstruction = "";
-        if (reminderType === "three_days") {
-          contactInstruction =
-            "If you are unable to make it to the class, you have to contact <@811949122725609492> 24 hours before the class starts.";
-        } else if (reminderType === "twenty_four_hours") {
-          contactInstruction =
-            "If you are unable to make it to the class, you have to contact <@811949122725609492> as soon as possible.";
-        } else if (reminderType === "one_hour") {
-          contactInstruction =
-            "If you are unable to make it to the class, contact <@811949122725609492> immediately.";
-        } else if (reminderType === "five_minutes") {
+        if (tutorDiscordId !== "811949122725609492") {
+          if (reminderType === "three_days") {
+            contactInstruction =
+              "If you are unable to make it to the class, you have to contact <@811949122725609492> 24 hours before the class starts.";
+          } else if (reminderType === "twenty_four_hours") {
+            contactInstruction =
+              "If you are unable to make it to the class, you have to contact <@811949122725609492> as soon as possible.";
+          } else if (reminderType === "one_hour") {
+            contactInstruction =
+              "If you are unable to make it to the class, contact <@811949122725609492> immediately.";
+          }
+        }
+        if (reminderType === "five_minutes") {
           contactInstruction = "Please join the meeting.";
         }
 
-        executiveTutorContent = `<@${tutorDiscordId}> Your class **${escapeDiscordText(classTitleRaw)}** for **${escapeDiscordText(courseTitleRaw)}** is starting in ${escapeDiscordText(reminderLabel)}. ${contactInstruction}`;
+        executiveTutorContent = `<@${tutorDiscordId}> Your class **${escapeDiscordText(classTitleRaw)}** for **${escapeDiscordText(courseTitleRaw)}** is starting in ${escapeDiscordText(reminderLabel)}.${contactInstruction ? ` ${contactInstruction}` : ""}`;
       }
     }
 
