@@ -278,6 +278,17 @@ export async function GET(request: NextRequest) {
     (donationData ?? []).map((row) => [row.user_id, row.donation_link ?? null])
   );
 
+  const { data: creatorUsers } = creatorIds.length
+    ? await adminClient
+      .from("app_users")
+      .select("id, strike_count")
+      .in("id", creatorIds)
+    : { data: [] };
+
+  const strikesMap = new Map(
+    (creatorUsers ?? []).map((row) => [row.id, row.strike_count ?? 0])
+  );
+
   const userRole = user
     ? resolveUserRole(user.email, user.role ?? null)
     : null;
@@ -298,6 +309,7 @@ export async function GET(request: NextRequest) {
       ...course,
       enrollment_count: course.course_enrollments?.[0]?.count ?? 0,
       donation_link: donationMap.get(course.created_by ?? "") ?? null,
+      created_by_strike_count: strikesMap.get(course.created_by ?? "") ?? 0,
       enrollment_status: enrollmentStatus,
       enrollment_request_id: request?.id ?? null,
     };

@@ -68,6 +68,7 @@ type Course = {
   enrollment_count?: number;
   created_by_name?: string | null;
   created_by_email?: string | null;
+  created_by_strike_count?: number;
   created_at: string;
   course_classes: CourseClass[];
   enrollment_status?: "pending" | "approved" | "rejected" | "enrolled" | null;
@@ -678,6 +679,11 @@ export default function CoursesMenu() {
                 <p className="text-xs text-[var(--muted)]">
                   When you enroll, the founder will review your request. You will
                   receive an email when it is approved or rejected.
+                </p>
+              )}
+              {((selectedCourse.created_by_strike_count ?? 0) === 1 || (selectedCourse.created_by_strike_count ?? 0) === 2) && (
+                <p className="text-[10px] text-red-500 font-semibold italic">
+                  Warning: In the past 3 months the tutor has arbitrarily cancelled a class near class time, so you should beware of taking this particular tutor&apos;s courses.
                 </p>
               )}
               {!isGuest && !selectedCourse.is_completed && !isFullCourse(selectedCourse) && !isEnrolledInCourse(selectedCourse) && (
