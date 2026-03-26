@@ -112,6 +112,18 @@ const escapeHtml = (value: string) =>
 
 const escapeDiscordText = (value: string) => value.replaceAll("@", "@\u200b");
 
+const formatOrdinalClass = (title: string) => {
+  const match = title.match(/^Class\s+(\d+)$/i);
+  if (!match) return title;
+  const num = parseInt(match[1], 10);
+  const j = num % 10;
+  const k = num % 100;
+  if (j === 1 && k !== 11) return `${num}st class`;
+  if (j === 2 && k !== 12) return `${num}nd class`;
+  if (j === 3 && k !== 13) return `${num}rd class`;
+  return `${num}th class`;
+};
+
 const readCourse = (value: ClassRow["course"]): CourseRow | null => {
   if (Array.isArray(value)) {
     return value[0] ?? null;
@@ -712,8 +724,10 @@ export async function POST(request: NextRequest) {
     }
 
     const classTitleRaw = String(classRow.title ?? "").trim() || "Class";
+    const classTitleOrdinalRaw = formatOrdinalClass(classTitleRaw);
     const courseTitleRaw = String(course.title ?? "").trim() || "Course";
     const classTitle = escapeHtml(classTitleRaw);
+    const classTitleOrdinal = escapeHtml(classTitleOrdinalRaw);
     const courseTitle = escapeHtml(courseTitleRaw);
     const tutorNameRaw =
       String(course.created_by_name ?? "").trim() || "your tutor";
@@ -745,7 +759,7 @@ export async function POST(request: NextRequest) {
       const formUrl = siteBase ? `${siteBase}/redirect/tutor-log` : "https://docs.google.com/forms/d/e/1FAIpQLSfbp8hNm_hpGUfH-SvGbnF7LbsiemBbeXhjddVccSHS8di2nw/viewform";
       html = `
         <p>Hi ${tutorName},</p>
-        <p>Your class <strong>${classTitle}</strong> for <strong>${courseTitle}</strong> recently ended.</p>
+        <p>Your <strong>${classTitleOrdinal}</strong> for <strong>${courseTitle}</strong> recently ended.</p>
         ${
           isFounder
             ? `<p>Please remember to submit a manual activity on the Schoolhouse platform.</p>`
@@ -765,7 +779,7 @@ export async function POST(request: NextRequest) {
         : "";
       if (tutorDiscordId) {
         executiveTutorContent = [
-          `<@${tutorDiscordId}> Your class **${escapeDiscordText(classTitleRaw)}** for **${escapeDiscordText(courseTitleRaw)}** recently ended.`,
+          `<@${tutorDiscordId}> Your **${escapeDiscordText(classTitleOrdinalRaw)}** for **${escapeDiscordText(courseTitleRaw)}** recently ended.`,
           isFounder
             ? `Please remember to submit a manual activity on the Schoolhouse platform.`
             : `Please remember to complete the tutor log form:\n${formUrl}`,
@@ -842,7 +856,7 @@ export async function POST(request: NextRequest) {
           contactInstruction = "Please join the meeting.";
         }
 
-        executiveTutorContent = `<@${tutorDiscordId}> Your class **${escapeDiscordText(classTitleRaw)}** for **${escapeDiscordText(courseTitleRaw)}** is starting in ${escapeDiscordText(reminderLabel)}.${contactInstruction ? ` ${contactInstruction}` : ""}`;
+        executiveTutorContent = `<@${tutorDiscordId}> Your **${escapeDiscordText(classTitleOrdinalRaw)}** for **${escapeDiscordText(courseTitleRaw)}** is starting in ${escapeDiscordText(reminderLabel)}.${contactInstruction ? ` ${contactInstruction}` : ""}`;
       }
     }
 
