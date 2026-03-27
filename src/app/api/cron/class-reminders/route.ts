@@ -739,6 +739,7 @@ export async function POST(request: NextRequest) {
       tutorNameParts.length > 1
         ? `${tutorNameParts[tutorNameParts.length - 1][0]}`
         : "";
+    const isStandardClassTitle = /^class\s+\d+/i.test(classTitleRaw);
     const breakoutRoomName =
       courseShortName.length > 0
         ? `${tutorFirstName}${tutorLastInitial ? ` ${tutorLastInitial}` : ""}: ${courseShortName}`
@@ -769,7 +770,7 @@ export async function POST(request: NextRequest) {
         <p><strong>Class details:</strong></p>
         <ul>
           <li><strong>Course:</strong> ${courseTitle}</li>
-          <li><strong>Class:</strong> ${classTitle}</li>
+          <li><strong>${isStandardClassTitle ? classTitle : `Class: ${classTitle}`}</strong></li>
           <li><strong>Start time (${torontoTimeZone}):</strong> ${startLabel}</li>
         </ul>
         <p>Thank you!</p>
@@ -784,7 +785,7 @@ export async function POST(request: NextRequest) {
             ? `Please remember to submit a manual activity on the Schoolhouse platform.`
             : `Please remember to complete the tutor log form:\n${formUrl}`,
           `**Course:** ${escapeDiscordText(courseTitleRaw)}`,
-          `**Class:** ${escapeDiscordText(classTitleRaw)}`,
+          isStandardClassTitle ? `**${escapeDiscordText(classTitleRaw)}**` : `**Class:** ${escapeDiscordText(classTitleRaw)}`,
           `**Start time (${torontoTimeZone}):** ${escapeDiscordText(
             formatTorontoDateTime(classRow.starts_at)
           )}`,
@@ -796,7 +797,7 @@ export async function POST(request: NextRequest) {
         html = `
         <p>Your class starts in <strong>${escapeHtml(reminderLabel)}</strong>.</p>
         <p><strong>Course:</strong> ${courseTitle}</p>
-        <p><strong>Class:</strong> ${classTitle}</p>
+        <p><strong>${isStandardClassTitle ? classTitle : `Class: ${classTitle}`}</strong></p>
         <p><strong>Tutor:</strong> ${tutorName}</p>
         <p><strong>Start time (${torontoTimeZone}):</strong> ${startLabel}</p>
         ${
@@ -807,7 +808,7 @@ export async function POST(request: NextRequest) {
                 : `Please join the breakout room that starts with "${escapeHtml(
                   `${tutorFirstName}${tutorLastInitial ? ` ${tutorLastInitial}` : ""}`
                 )}" followed by the name of the course.`
-              }</p>`
+              }</p>\n        <p><strong>Please join the breakout room immediately after joining the meeting. Do not stay in the main meeting room.</strong></p>`
         }
       `;
         const nonFounderDiscordInstruction = [
@@ -819,12 +820,13 @@ export async function POST(request: NextRequest) {
             : `Please join the breakout room that starts with "${escapeDiscordText(
               `${tutorFirstName}${tutorLastInitial ? ` ${tutorLastInitial}` : ""}`
             )}" followed by the name of the course.`,
+          "**Please join the breakout room immediately after joining the meeting. Do not stay in the main meeting room.**",
         ].join("\n");
 
         discordContent = [
           `Your class starts in **${escapeDiscordText(reminderLabel)}**.`,
           `**Course:** ${escapeDiscordText(courseTitleRaw)}`,
-          `**Class:** ${escapeDiscordText(classTitleRaw)}`,
+          isStandardClassTitle ? `**${escapeDiscordText(classTitleRaw)}**` : `**Class:** ${escapeDiscordText(classTitleRaw)}`,
           `**Tutor:** ${escapeDiscordText(tutorNameRaw)}`,
           `**Start time (${torontoTimeZone}):** ${escapeDiscordText(
             formatTorontoDateTime(classRow.starts_at)
@@ -856,7 +858,10 @@ export async function POST(request: NextRequest) {
           contactInstruction = "Please join the meeting.";
         }
 
-        executiveTutorContent = `<@${tutorDiscordId}> Your **${escapeDiscordText(classTitleOrdinalRaw)}** for **${escapeDiscordText(courseTitleRaw)}** is starting in ${escapeDiscordText(reminderLabel)}.${contactInstruction ? ` ${contactInstruction}` : ""}`;
+        executiveTutorContent = [
+          `<@${tutorDiscordId}> Your **${escapeDiscordText(classTitleOrdinalRaw)}** for **${escapeDiscordText(courseTitleRaw)}** is starting in ${escapeDiscordText(reminderLabel)}.${contactInstruction ? ` ${contactInstruction}` : ""}`,
+          !isFounder ? "Please join the breakout room immediately after joining the meeting. Do not stay in the main meeting room." : "",
+        ].filter(Boolean).join("\n");
       }
     }
 
