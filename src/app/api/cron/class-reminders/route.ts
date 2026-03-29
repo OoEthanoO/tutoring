@@ -20,6 +20,7 @@ const defaultZoomPassword = "youth";
 type ReminderType =
   | "three_days"
   | "twenty_four_hours"
+  | "six_hours"
   | "one_hour"
   | "five_minutes"
   | "class_follow_up";
@@ -42,6 +43,12 @@ const reminderTargets: ReminderTarget[] = [
     type: "twenty_four_hours",
     minutesBeforeStart: 24 * 60,
     label: "24 hours",
+    lowerBoundDriftMinutes: 0,
+  },
+  {
+    type: "six_hours",
+    minutesBeforeStart: 6 * 60,
+    label: "6 hours",
     lowerBoundDriftMinutes: 0,
   },
   {
@@ -650,15 +657,20 @@ export async function POST(request: NextRequest) {
     )
   );
   const tutorDiscordIdById = new Map<string, string>();
+  const tutorStrikeCountById = new Map<string, number>();
   if (allTutorIds.length > 0) {
     const { data: tutorDiscordRows } = await adminClient
       .from("app_users")
-      .select("id, discord_user_id")
+      .select("id, discord_user_id, strike_count")
       .in("id", allTutorIds);
     for (const tutor of tutorDiscordRows ?? []) {
       const discordId = String(tutor.discord_user_id ?? "").trim();
       if (discordId) {
         tutorDiscordIdById.set(tutor.id as string, discordId);
+      }
+      const strikeCount = Number(tutor.strike_count) || 0;
+      if (strikeCount > 0) {
+        tutorStrikeCountById.set(tutor.id as string, strikeCount);
       }
     }
   }
@@ -676,6 +688,14 @@ export async function POST(request: NextRequest) {
     const { classRow, reminderType, reminderLabel } = candidate;
     const course = readCourse(classRow.course);
     if (!course) {
+      continue;
+    }
+
+    const tutorStrikeCount = course.created_by
+      ? tutorStrikeCountById.get(course.created_by) ?? 0
+      : 0;
+
+    if (reminderType === "six_hours" && tutorStrikeCount === 0) {
       continue;
     }
 
@@ -846,7 +866,7 @@ export async function POST(request: NextRequest) {
           if (reminderType === "three_days") {
             contactInstruction =
               "If you are unable to make it to the class, you have to contact <@811949122725609492> 24 hours before the class starts.";
-          } else if (reminderType === "twenty_four_hours") {
+          } else if (reminderType === "twenty_four_hours" || reminderType === "six_hours") {
             contactInstruction =
               "If you are unable to make it to the class, you have to contact <@811949122725609492> as soon as possible.";
           } else if (reminderType === "one_hour") {
