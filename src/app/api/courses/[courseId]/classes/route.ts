@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { canManageCourses, resolveUserRole } from "@/lib/roles";
 import { getRequestUser } from "@/lib/authServer";
+import { relabelClassesForCourse } from "@/lib/classTools";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
@@ -134,5 +135,14 @@ export async function POST(
     );
   }
 
-  return NextResponse.json({ class: data });
+  await relabelClassesForCourse(courseId, adminClient);
+
+  // Re-fetch the newly created class in case its title was changed by the relabel step
+  const { data: updatedClass, error: refetchError } = await adminClient
+    .from("course_classes")
+    .select("id, title, starts_at, duration_hours, created_at")
+    .eq("id", data.id)
+    .single();
+
+  return NextResponse.json({ class: updatedClass || data });
 }

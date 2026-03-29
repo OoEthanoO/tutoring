@@ -72,6 +72,7 @@ export default function AdminUserManager() {
   const [isSavingMaintenance, setIsSavingMaintenance] = useState(false);
   const [isSendingDiscordReminder, setIsSendingDiscordReminder] =
     useState(false);
+  const [isFixingClasses, setIsFixingClasses] = useState(false);
   const [discordReminderSkipList, setDiscordReminderSkipList] = useState("");
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [impersonatedUserId, setImpersonatedUserId] = useState<string | null>(
@@ -776,6 +777,41 @@ export default function AdminUserManager() {
     setIsSendingDiscordReminder(false);
   };
 
+  const fixClassNumbering = async () => {
+    const confirmed = window.confirm(
+      "Re-number all classes sequentially across all courses?"
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setIsFixingClasses(true);
+    setStatus({ type: "idle", message: "" });
+
+    const response = await fetch("/api/admin/fix-classes", {
+      method: "POST",
+    });
+
+    if (!response.ok) {
+      const payload = (await response.json().catch(() => null)) as
+        | { error?: string }
+        | null;
+      setStatus({
+        type: "error",
+        message: payload?.error ?? "Could not re-label classes.",
+      });
+      setIsFixingClasses(false);
+      return;
+    }
+
+    const data = (await response.json()) as { count: number };
+    setStatus({
+      type: "success",
+      message: `Successfully verified and fixed class numbering for ${data.count} courses.`,
+    });
+    setIsFixingClasses(false);
+  };
+
   if (!isFounder) {
     return null;
   }
@@ -832,6 +868,14 @@ export default function AdminUserManager() {
             {isSendingDiscordReminder
               ? "Sending emails..."
               : "Notify users to connect Discord"}
+          </button>
+          <button
+            type="button"
+            onClick={fixClassNumbering}
+            disabled={isFixingClasses}
+            className="rounded-full border border-[var(--foreground)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            {isFixingClasses ? "Fixing classes..." : "Fix class numbering"}
           </button>
         </div>
         <div className="space-y-1">
