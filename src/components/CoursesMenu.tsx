@@ -460,12 +460,24 @@ export default function CoursesMenu() {
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {availableCourses.map((course) => {
               const full = isFullCourse(course);
+              const ongoing = (course.course_classes ?? []).some((cls) => {
+                const start = new Date(cls.starts_at).getTime();
+                if (Number.isNaN(start)) return false;
+                const end = start + (cls.duration_hours || 1) * 60 * 60 * 1000;
+                return nowMs >= start && nowMs <= end;
+              });
+
               return (
                 <div
                   key={course.id}
                   onClick={() => openEnrollmentModal(course)}
-                  className={`group flex h-[140px] flex-col rounded-xl border border-[var(--border)] p-4 transition-all focus-within:ring-2 focus-within:ring-[var(--foreground)] ${full ? "cursor-pointer hover:border-amber-400" : "cursor-pointer hover:border-[var(--foreground)]"
-                    }`}
+                  className={`group flex h-[140px] flex-col rounded-xl border p-4 transition-all focus-within:ring-2 focus-within:ring-[var(--foreground)] ${
+                    ongoing
+                      ? "border-amber-400 animate-pulse cursor-pointer hover:border-amber-500"
+                      : full
+                      ? "border-[var(--border)] cursor-pointer hover:border-amber-400"
+                      : "border-[var(--border)] cursor-pointer hover:border-[var(--foreground)]"
+                  }`}
                 >
                   <div className="flex-1 min-h-0 space-y-1">
                     <p className="text-sm font-semibold text-[var(--foreground)] truncate">
@@ -508,12 +520,24 @@ export default function CoursesMenu() {
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {upcomingCourses.map((course) => {
               const full = isFullCourse(course);
+              const ongoing = (course.course_classes ?? []).some((cls) => {
+                const start = new Date(cls.starts_at).getTime();
+                if (Number.isNaN(start)) return false;
+                const end = start + (cls.duration_hours || 1) * 60 * 60 * 1000;
+                return nowMs >= start && nowMs <= end;
+              });
+
               return (
                 <div
                   key={course.id}
                   onClick={() => openEnrollmentModal(course)}
-                  className={`group flex h-[140px] flex-col rounded-xl border border-[var(--border)] p-4 transition-all focus-within:ring-2 focus-within:ring-[var(--foreground)] ${full ? "cursor-pointer hover:border-amber-400" : "cursor-pointer hover:border-[var(--foreground)]"
-                    }`}
+                  className={`group flex h-[140px] flex-col rounded-xl border p-4 transition-all focus-within:ring-2 focus-within:ring-[var(--foreground)] ${
+                    ongoing
+                      ? "border-amber-400 animate-pulse cursor-pointer hover:border-amber-500"
+                      : full
+                      ? "border-[var(--border)] cursor-pointer hover:border-amber-400"
+                      : "border-[var(--border)] cursor-pointer hover:border-[var(--foreground)]"
+                  }`}
                 >
                   <div className="flex-1 min-h-0 space-y-1">
                     <p className="text-sm font-semibold text-[var(--foreground)] truncate">
