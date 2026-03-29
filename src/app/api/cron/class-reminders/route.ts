@@ -875,7 +875,7 @@ export async function POST(request: NextRequest) {
           }
         }
         if (reminderType === "five_minutes") {
-          contactInstruction = "Please join the meeting.";
+          contactInstruction = "Please join the meeting. You can start immediately at the start time and you do not have to wait for your students.";
         }
 
         executiveTutorContent = [
