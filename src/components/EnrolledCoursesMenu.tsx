@@ -50,6 +50,7 @@ const formatCompletedDate = (value?: string | null) => {
 export default function EnrolledCoursesMenu() {
   const [userId, setUserId] = useState<string | null>(null);
   const [courses, setCourses] = useState<Course[]>([]);
+  const [nowMs, setNowMs] = useState<number>(() => Date.now());
   const [status, setStatus] = useState<StatusState>({
     type: "idle",
     message: "",
@@ -65,6 +66,13 @@ export default function EnrolledCoursesMenu() {
     load();
 
     return onAuthChange(load);
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setNowMs(Date.now());
+    }, 30000);
+    return () => window.clearInterval(timer);
   }, []);
 
   useEffect(() => {
@@ -128,11 +136,21 @@ export default function EnrolledCoursesMenu() {
       ) : null}
 
       <div className="space-y-3">
-        {courses.map((course) => (
-          <div
-            key={course.id}
-            className="space-y-4 rounded-xl border border-[var(--border)] px-4 py-4"
-          >
+        {courses.map((course) => {
+          const ongoing = (course.course_classes ?? []).some((cls) => {
+            const start = new Date(cls.starts_at).getTime();
+            if (Number.isNaN(start)) return false;
+            const end = start + (cls.duration_hours || 1) * 60 * 60 * 1000;
+            return nowMs >= start && nowMs <= end;
+          });
+          
+          return (
+            <div
+              key={course.id}
+              className={`space-y-4 rounded-xl border px-4 py-4 ${
+                ongoing ? "border-amber-400 animate-pulse" : "border-[var(--border)]"
+              }`}
+            >
             <div>
               <div className="flex items-start justify-between gap-4">
                 <div>
@@ -189,7 +207,7 @@ export default function EnrolledCoursesMenu() {
               )}
             </div>
           </div>
-        ))}
+        )})}
       </div>
     </section>
   );

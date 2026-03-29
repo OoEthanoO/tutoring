@@ -1,14 +1,13 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getRequestUser } from "@/lib/authServer";
-import { resolveUserRole } from "@/lib/roles";
+import { resolveUserRole, founderEmails } from "@/lib/roles";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 const resendApiKey = process.env.RESEND_API_KEY ?? "";
 const resendFrom = process.env.RESEND_FROM ?? "";
-const founderEmail = process.env.NEXT_PUBLIC_FOUNDER_EMAIL ?? "";
 
 const sendEmail = async (to: string, subject: string, html: string) => {
   if (!resendApiKey || !resendFrom || !to) {
@@ -237,7 +236,7 @@ export async function POST(
     );
   }
 
-  if (founderEmail) {
+  if (founderEmails.length > 0) {
     const { data: courseData } = await adminClient
       .from("courses")
       .select("title")
@@ -247,7 +246,10 @@ export async function POST(
     const courseTitle = courseData?.title ?? "a course";
     const subject = "New enrollment request submitted";
     const html = `<p>${studentName} requested enrollment in <strong>${courseTitle}</strong>.</p>`;
-    await sendEmail(founderEmail, subject, html);
+    
+    await Promise.all(
+      founderEmails.map((email) => sendEmail(email, subject, html))
+    );
   }
 
   return NextResponse.json({ request: requestData });

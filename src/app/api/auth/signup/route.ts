@@ -4,11 +4,12 @@ import crypto from "crypto";
 import { getAdminClient, hashToken } from "@/lib/authServer";
 import { getMaintenanceMode } from "@/lib/siteSettings";
 
+import { founderEmails } from "@/lib/roles";
+
 const resendApiKey = process.env.RESEND_API_KEY ?? "";
 const resendFrom = process.env.RESEND_FROM ?? "";
 const siteUrl =
   process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/+$/, "") ?? "";
-  const founderEmail = process.env.NEXT_PUBLIC_FOUNDER_EMAIL ?? "";
 
 const sendEmail = async (to: string, subject: string, html: string) => {
   if (!resendApiKey || !resendFrom || !to) {
@@ -47,7 +48,9 @@ export async function POST(request: NextRequest) {
   }
 
   const maintenanceEnabled = await getMaintenanceMode();
-  const isFounderSignup = email === founderEmail.toLowerCase();
+  const isFounderSignup = founderEmails.some(
+    (f) => f.toLowerCase() === email
+  );
   if (maintenanceEnabled && !isFounderSignup) {
     return NextResponse.json(
       { error: "The website is currently under maintenance." },

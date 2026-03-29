@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { founderEmail, resolveUserRole } from "@/lib/roles";
+import { founderEmails, resolveUserRole } from "@/lib/roles";
 import { fetchFundraisingRaisedAmount } from "@/lib/fundraising";
 
 const discordApiBase = "https://discord.com/api/v10";
@@ -14,6 +14,8 @@ const defaultTasksChannelName = "tasks";
 const defaultWebsiteVoiceChannelName = "learn.ethanyanxu.com";
 const defaultEveryoneChatChannelName = "everyone";
 const defaultExecutivesOnlyChannelName = "executives";
+const defaultFoundersOnlyChannelName = "founders";
+const defaultCommitsChannelName = "commits";
 const defaultSocialMediaChannelName = "social-media";
 const defaultScienceTutorsChannelName = "science-tutors";
 const defaultMathTutorsChannelName = "math-tutors";
@@ -135,6 +137,7 @@ export type DiscordSyncResult = {
   archivedChannelCount: number;
   deletedChannelCount: number;
   deletedCourseRoleCount: number;
+  updatedMemberNickCount: number;
   errors: string[];
 };
 
@@ -558,6 +561,82 @@ const buildEveryoneVoicePermissionOverwrites = (
   ];
 };
 
+const buildCommitsPermissionOverwrites = (
+  guildId: string,
+  executiveRoleId: string,
+  juniorExecutiveRoleId: string,
+  founderRoleId: string,
+  botUserId: string
+): DiscordPermissionOverwrite[] => {
+  const activeAllow = String(
+    viewChannelPermission | readMessageHistoryPermission
+  );
+
+  return [
+    {
+      id: guildId,
+      type: 0,
+      allow: "0",
+      deny: String(viewChannelPermission),
+    },
+    {
+      id: executiveRoleId,
+      type: 0,
+      allow: activeAllow,
+      deny: "0",
+    },
+    {
+      id: juniorExecutiveRoleId,
+      type: 0,
+      allow: activeAllow,
+      deny: "0",
+    },
+    {
+      id: founderRoleId,
+      type: 0,
+      allow: activeAllow,
+      deny: "0",
+    },
+    {
+      id: botUserId,
+      type: 1,
+      allow: String(viewChannelPermission | sendMessagesPermission),
+      deny: "0",
+    },
+  ];
+};
+
+const buildFoundersPermissionOverwrites = (
+  guildId: string,
+  founderRoleId: string,
+  botUserId: string
+): DiscordPermissionOverwrite[] => {
+  const activeAllow = String(
+    viewChannelPermission | readMessageHistoryPermission
+  );
+
+  return [
+    {
+      id: guildId,
+      type: 0,
+      allow: "0",
+      deny: String(viewChannelPermission),
+    },
+    {
+      id: founderRoleId,
+      type: 0,
+      allow: activeAllow,
+      deny: "0",
+    },
+    {
+      id: botUserId,
+      type: 1,
+      allow: String(viewChannelPermission | sendMessagesPermission),
+      deny: "0",
+    },
+  ];
+};
+
 const buildExecutivesOnlyPermissionOverwrites = (
   guildId: string,
   executiveRoleId: string,
@@ -857,6 +936,14 @@ class DiscordApiClient {
     });
   }
 
+  updateGuildMember(guildId: string, memberId: string, payload: { nick: string | null }) {
+    return this.request<DiscordGuildMember>({
+      method: "PATCH",
+      path: `/guilds/${guildId}/members/${memberId}`,
+      body: payload,
+    });
+  }
+
 
 
   listGuildChannels(guildId: string) {
@@ -1030,6 +1117,7 @@ const buildZeroResult = (
   archivedChannelCount: 0,
   deletedChannelCount: 0,
   deletedCourseRoleCount: 0,
+  updatedMemberNickCount: 0,
 
   errors: [],
 });
@@ -1057,6 +1145,9 @@ export const runDiscordSync = async ({
   const tasksChannelName =
     String(process.env.DISCORD_TASKS_CHANNEL_NAME ?? "").trim() ||
     defaultTasksChannelName;
+  const commitsChannelName =
+    String(process.env.DISCORD_COMMITS_CHANNEL_NAME ?? "").trim() ||
+    defaultCommitsChannelName;
   const noticeChannelName =
     String(process.env.DISCORD_NOTICE_CHANNEL_NAME ?? "").trim() ||
     defaultNoticeChannelName;
@@ -1067,6 +1158,9 @@ export const runDiscordSync = async ({
   const everyoneChatChannelName =
     String(process.env.DISCORD_EVERYONE_CHANNEL_NAME ?? "").trim() ||
     defaultEveryoneChatChannelName;
+  const foundersOnlyChannelName =
+    String(process.env.DISCORD_FOUNDERS_ONLY_CHANNEL_NAME ?? "").trim() ||
+    defaultFoundersOnlyChannelName;
   const executivesOnlyChannelName =
     String(process.env.DISCORD_EXECUTIVES_ONLY_CHANNEL_NAME ?? "").trim() ||
     defaultExecutivesOnlyChannelName;
@@ -1246,12 +1340,15 @@ export const runDiscordSync = async ({
     firstStrikeRole.id,
     secondStrikeRole.id,
   ]);
-  const founderDiscordUserId =
-    websiteUsers.find(
-      (user) =>
-        String(user.email ?? "").trim().toLowerCase() ===
-        founderEmail.toLowerCase()
-    )?.discord_user_id ?? null;
+  const founderDiscordUserIds = new Set(
+    websiteUsers
+      .filter((user) => {
+        const email = String(user.email ?? "").trim().toLowerCase();
+        return founderEmails.some(f => f.toLowerCase() === email);
+      })
+      .map((user) => user.discord_user_id)
+      .filter((id): id is string => Boolean(id))
+  );
 
   const humanMembers = guildMembers.filter(isHumanMember);
   const memberRoleSetByDiscordUserId = new Map<string, Set<string>>();
@@ -1331,8 +1428,7 @@ export const runDiscordSync = async ({
     }
 
     const websiteRole = resolveUserRole(websiteUser.email, websiteUser.role);
-    const shouldBeFounder =
-      Boolean(founderDiscordUserId) && memberId === founderDiscordUserId;
+    const shouldBeFounder = founderDiscordUserIds.has(memberId);
     const shouldBeExecutive = websiteRole === "executive";
 
     if (shouldBeFounder) {
@@ -1504,6 +1600,21 @@ export const runDiscordSync = async ({
         "baseRoleRemovedCount",
         true
       );
+    }
+
+    const expectedNick = shouldBeExecutive || shouldBeFounder ? null : (websiteUser.full_name || null);
+    if (expectedNick !== (member.nick ?? null)) {
+      try {
+        await apiClient.updateGuildMember(discordGuildId, memberId, { nick: expectedNick });
+        result.updatedMemberNickCount += 1;
+      } catch (error) {
+        result.errors.push(
+          `Failed to update nickname for member ${memberId}: ${toErrorMessage(
+            error,
+            "Unknown update member error."
+          )}`
+        );
+      }
     }
   }
 
@@ -2084,6 +2195,19 @@ export const runDiscordSync = async ({
     ),
   });
 
+  const commitsChannel = await ensureFixedChannel({
+    name: commitsChannelName,
+    channelType: discordTextChannelType,
+    parentId: null,
+    permissionOverwrites: buildCommitsPermissionOverwrites(
+      discordGuildId,
+      executiveRole.id,
+      juniorExecutiveRole.id,
+      founderRole.id,
+      botUser.id
+    ),
+  });
+
   const websiteVoiceChannel = await ensureFixedChannel({
     name: websiteVoiceChannelName,
     channelType: discordVoiceChannelType,
@@ -2198,6 +2322,17 @@ export const runDiscordSync = async ({
 
 
 
+
+  const foundersOnlyChannel = await ensureFixedChannel({
+    name: foundersOnlyChannelName,
+    channelType: discordTextChannelType,
+    parentId: textCategory.id,
+    permissionOverwrites: buildFoundersPermissionOverwrites(
+      discordGuildId,
+      founderRole.id,
+      botUser.id
+    ),
+  });
 
   const executivesOnlyChannel = await ensureFixedChannel({
     name: executivesOnlyChannelName,
@@ -2385,6 +2520,14 @@ export const runDiscordSync = async ({
     );
     nextTextPosition += 1;
   }
+  if (foundersOnlyChannel) {
+    await enforceTextPosition(
+      foundersOnlyChannel.id,
+      foundersOnlyChannelName,
+      nextTextPosition
+    );
+    nextTextPosition += 1;
+  }
   if (executivesOnlyChannel) {
     await enforceTextPosition(
       executivesOnlyChannel.id,
@@ -2563,6 +2706,14 @@ export const runDiscordSync = async ({
     );
     nextTopLevelPosition += 1;
   }
+  if (commitsChannel) {
+    await enforceTopLevelPosition(
+      commitsChannel.id,
+      commitsChannelName,
+      nextTopLevelPosition
+    );
+    nextTopLevelPosition += 1;
+  }
   if (websiteVoiceChannel) {
     await enforceTopLevelPosition(
       websiteVoiceChannel.id,
@@ -2613,6 +2764,9 @@ export const runDiscordSync = async ({
   if (tasksChannel) {
     allowedTextChannelIds.add(tasksChannel.id);
   }
+  if (commitsChannel) {
+    allowedTextChannelIds.add(commitsChannel.id);
+  }
   if (everyoneChatChannel) {
     allowedTextChannelIds.add(everyoneChatChannel.id);
   }
@@ -2620,6 +2774,7 @@ export const runDiscordSync = async ({
 
 
 
+  if (foundersOnlyChannel) allowedTextChannelIds.add(foundersOnlyChannel.id);
   if (executivesOnlyChannel) allowedTextChannelIds.add(executivesOnlyChannel.id);
   if (socialMediaChannel) allowedTextChannelIds.add(socialMediaChannel.id);
   if (scienceTutorsChannel) allowedTextChannelIds.add(scienceTutorsChannel.id);

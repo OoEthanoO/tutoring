@@ -22,6 +22,7 @@ type ReminderType =
   | "twenty_four_hours"
   | "six_hours"
   | "one_hour"
+  | "ten_minutes"
   | "five_minutes"
   | "class_follow_up";
 
@@ -55,6 +56,12 @@ const reminderTargets: ReminderTarget[] = [
     type: "one_hour",
     minutesBeforeStart: 60,
     label: "1 hour",
+    lowerBoundDriftMinutes: 0,
+  },
+  {
+    type: "ten_minutes",
+    minutesBeforeStart: 10,
+    label: "10 minutes",
     lowerBoundDriftMinutes: 0,
   },
   {
@@ -284,6 +291,12 @@ const listDiscordGuildChannels = async (guildId: string) =>
     path: `/guilds/${guildId}/channels`,
   });
 
+const listDiscordGuildRoles = async (guildId: string) =>
+  requestDiscord<{ id: string; name: string }[]>({
+    method: "GET",
+    path: `/guilds/${guildId}/roles`,
+  });
+
 const sendDiscordCourseReminderMessage = async (
   channelId: string,
   roleId: string,
@@ -411,6 +424,7 @@ export async function POST(request: NextRequest) {
       archivedChannelCount: 0,
       deletedChannelCount: 0,
       deletedCourseRoleCount: 0,
+      updatedMemberNickCount: 0,
       errors: [
         error instanceof Error
           ? error.message
@@ -431,7 +445,10 @@ export async function POST(request: NextRequest) {
   const executivesChannelName =
     String(process.env.DISCORD_EXECUTIVES_ONLY_CHANNEL_NAME ?? "").trim() ||
     defaultExecutivesChannelName;
+  const foundersChannelName = "founders";
   let executivesChannelId: string | null = null;
+  let foundersChannelId: string | null = null;
+  let founderRoleId: string | null = null;
 
   if (!discordRemindersEnabled) {
     discordReminderSkippedReason =
@@ -439,6 +456,7 @@ export async function POST(request: NextRequest) {
   } else {
     try {
       const guildChannels = await listDiscordGuildChannels(discordGuildId);
+      const guildRoles = await listDiscordGuildRoles(discordGuildId);
       discordCourseTargetByCourseId = buildDiscordCourseTargetMap(
         guildChannels,
         discordGuildId
@@ -447,6 +465,12 @@ export async function POST(request: NextRequest) {
         (ch) => ch.type === discordTextChannelType && ch.name === executivesChannelName
       );
       executivesChannelId = execChannel?.id ?? null;
+      const foundersChannel = guildChannels.find(
+        (ch) => ch.type === discordTextChannelType && ch.name === foundersChannelName
+      );
+      foundersChannelId = foundersChannel?.id ?? null;
+      const founderRole = guildRoles.find((r) => r.name === "Founder");
+      founderRoleId = founderRole?.id ?? null;
     } catch (error) {
       discordReminderSkippedReason =
         error instanceof Error
@@ -709,13 +733,20 @@ export async function POST(request: NextRequest) {
       (isStandardReminder || isFollowUpReminder) && emailRemindersEnabled;
     const shouldSendExecutiveTutorReminder =
       !isFollowUpReminder &&
+      reminderType !== "ten_minutes" &&
       discordReminderDeliveryEnabled &&
       executivesChannelId !== null;
+    const shouldSendFounderZoomReminder =
+      reminderType === "ten_minutes" &&
+      discordReminderDeliveryEnabled &&
+      foundersChannelId !== null &&
+      founderRoleId !== null;
 
     if (
       !shouldSendCourseDiscordReminder &&
       !shouldSendAnyEmail &&
-      !shouldSendExecutiveTutorReminder
+      !shouldSendExecutiveTutorReminder &&
+      !shouldSendFounderZoomReminder
     ) {
       continue;
     }
@@ -862,16 +893,16 @@ export async function POST(request: NextRequest) {
         : "";
       if (tutorDiscordId) {
         let contactInstruction = "";
-        if (tutorDiscordId !== "811949122725609492") {
+        if (!isFounder && founderRoleId) {
           if (reminderType === "three_days") {
             contactInstruction =
-              "If you are unable to make it to the class, you have to contact <@811949122725609492> 24 hours before the class starts.";
+              `If you are unable to make it to the class, you have to contact a <@&${founderRoleId}> 24 hours before the class starts.`;
           } else if (reminderType === "twenty_four_hours" || reminderType === "six_hours") {
             contactInstruction =
-              "If you are unable to make it to the class, you have to contact <@811949122725609492> as soon as possible.";
+              `If you are unable to make it to the class, you have to contact a <@&${founderRoleId}> as soon as possible.`;
           } else if (reminderType === "one_hour") {
             contactInstruction =
-              "If you are unable to make it to the class, contact <@811949122725609492> immediately.";
+              `If you are unable to make it to the class, contact a <@&${founderRoleId}> immediately.`;
           }
         }
         if (reminderType === "five_minutes") {
@@ -978,6 +1009,38 @@ export async function POST(request: NextRequest) {
             });
           }
         }
+    }
+
+    if (
+      shouldSendFounderZoomReminder &&
+      foundersChannelId &&
+      founderRoleId &&
+      !isFounder
+    ) {
+      const founderZoomContent = [
+        `<@&${founderRoleId}> **Please open the Zoom meeting!**`,
+        `**${escapeDiscordText(tutorNameRaw)}**'s class is starting in 10 minutes.`,
+        `**Course:** ${escapeDiscordText(courseTitleRaw)}`,
+        isStandardClassTitle ? `**${escapeDiscordText(classTitleRaw)}**` : `**Class:** ${escapeDiscordText(classTitleRaw)}`,
+      ].join("\n");
+
+      try {
+        await sendDiscordCourseReminderMessage(
+          foundersChannelId,
+          founderRoleId,
+          founderZoomContent
+        );
+        sentDiscordFollowUpCount += 1;
+        await sleep(150);
+      } catch (error) {
+        failedClasses.push({
+          classId: classRow.id,
+          reason: `Failed Discord founder Zoom reminder send: ${error instanceof Error
+            ? error.message
+            : "Unknown Discord founder Zoom reminder send failure."
+            }`,
+        });
+      }
     }
   }
 

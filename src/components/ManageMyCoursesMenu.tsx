@@ -142,6 +142,7 @@ const isFiveMinuteLocal = (value: string) => {
 export default function ManageMyCoursesMenu() {
   const [role, setRole] = useState<UserRole | null>(null);
   const [courses, setCourses] = useState<Course[]>([]);
+  const [nowMs, setNowMs] = useState<number>(() => Date.now());
   const [donationLink, setDonationLink] = useState<string>("");
   const [donationRaised, setDonationRaised] = useState<number | null>(null);
 
@@ -183,6 +184,13 @@ export default function ManageMyCoursesMenu() {
     setHasUnsavedData("manage-courses", hasUnsavedData);
     return () => setHasUnsavedData("manage-courses", false);
   }, [editingCourseId, editingClassId, classStartsAt]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setNowMs(Date.now());
+    }, 30000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const formatCompletedDate = (value?: string | null) => {
     if (!value) {
@@ -816,11 +824,21 @@ export default function ManageMyCoursesMenu() {
       ) : null}
 
       <div className="space-y-3">
-        {filteredCourses.map((course) => (
-          <div
-            key={course.id}
-            className="space-y-4 rounded-xl border border-[var(--border)] px-4 py-4"
-          >
+        {filteredCourses.map((course) => {
+          const ongoing = (course.course_classes ?? []).some((cls) => {
+            const start = new Date(cls.starts_at).getTime();
+            if (Number.isNaN(start)) return false;
+            const end = start + (cls.duration_hours || 1) * 60 * 60 * 1000;
+            return nowMs >= start && nowMs <= end;
+          });
+          
+          return (
+            <div
+              key={course.id}
+              className={`space-y-4 rounded-xl border px-4 py-4 ${
+                ongoing ? "border-amber-400 animate-pulse" : "border-[var(--border)]"
+              }`}
+            >
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="flex-1">
                 {editingCourseId === course.id ? (
@@ -1140,7 +1158,7 @@ export default function ManageMyCoursesMenu() {
               )}
             </div>
           </div>
-        ))}
+        )})}
       </div>
     </section>
   );

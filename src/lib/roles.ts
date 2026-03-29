@@ -1,16 +1,24 @@
 export type UserRole = "founder" | "executive" | "student";
 
-const fallbackFounderEmail = "ethans.coding.class@gmail.com";
+const fallbackFounderEmails = [
+  "ethans.coding.class@gmail.com",
+  "jingqu2018@gmail.com",
+];
 
-export const founderEmail =
-  process.env.NEXT_PUBLIC_FOUNDER_EMAIL ?? fallbackFounderEmail;
+export const founderEmails = process.env.NEXT_PUBLIC_FOUNDER_EMAIL
+  ? process.env.NEXT_PUBLIC_FOUNDER_EMAIL.split(",").map((email) =>
+      email.trim()
+    )
+  : fallbackFounderEmails;
 
 export const resolveRoleByEmail = (email?: string | null): UserRole => {
   if (!email) {
     return "student";
   }
 
-  return email.toLowerCase() === founderEmail.toLowerCase()
+  return founderEmails.some(
+    (founder) => email.toLowerCase() === founder.toLowerCase()
+  )
     ? "founder"
     : "student";
 };

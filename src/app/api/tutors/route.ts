@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { resolveUserRole, founderEmail } from "@/lib/roles";
+import { resolveUserRole, founderEmails } from "@/lib/roles";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
@@ -86,7 +86,7 @@ export async function GET() {
     })
     .map((user) => user.name);
 
-  if (tutors.length === 0 && founderEmail) {
+  if (tutors.length === 0 && founderEmails.length > 0) {
     return NextResponse.json({ tutors: ["Founder"] });
   }
 
