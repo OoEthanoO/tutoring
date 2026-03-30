@@ -19,7 +19,6 @@ const torontoTimeZone = "America/Toronto";
 const defaultZoomId = "822 9677 5321";
 const defaultZoomPassword = "youth";
 type ReminderType =
-  | "three_days"
   | "twenty_four_hours"
   | "six_hours"
   | "one_hour"
@@ -36,12 +35,6 @@ type ReminderTarget = {
 };
 
 const reminderTargets: ReminderTarget[] = [
-  {
-    type: "three_days",
-    minutesBeforeStart: 3 * 24 * 60,
-    label: "3 days",
-    lowerBoundDriftMinutes: 0,
-  },
   {
     type: "twenty_four_hours",
     minutesBeforeStart: 24 * 60,
@@ -789,7 +782,7 @@ export async function POST(request: NextRequest) {
     const isStandardReminder =
       reminderType === "twenty_four_hours" || reminderType === "one_hour";
     const isFollowUpReminder = reminderType === "class_follow_up";
-    const isCourseChannelReminder = reminderType === "one_hour";
+    const isCourseChannelReminder = reminderType === "one_hour" || reminderType === "five_minutes";
 
     const tutorEmail =
       String(course.created_by_email ?? "").trim() ||
@@ -956,16 +949,16 @@ export async function POST(request: NextRequest) {
         ].join("\n");
       }
 
-      if (reminderType === "ten_minutes" && !isStandardReminder) {
-        const tenMinBreakoutInstruction = breakoutRoomName
+      if (reminderType === "five_minutes" && !isStandardReminder) {
+        const fiveMinBreakoutInstruction = breakoutRoomName
           ? `\nBreakout room: "${escapeDiscordText(breakoutRoomName)}"`
           : `\nPlease join the breakout room that starts with "${escapeDiscordText(
               `${tutorFirstName}${tutorLastInitial ? ` ${tutorLastInitial}` : ""}`
             )}" followed by the name of the course.`;
-        const nonFounderTenMinInstruction = [
-          `Please attend the class on time:`,
+        const nonFounderFiveMinInstruction = [
+          `Please join the meeting immediately:`,
           `Zoom ID: ${escapeDiscordText(defaultZoomId)}`,
-          `Password: ${escapeDiscordText(defaultZoomPassword)}${tenMinBreakoutInstruction}`,
+          `Password: ${escapeDiscordText(defaultZoomPassword)}${fiveMinBreakoutInstruction}`,
           `**Please join the breakout room immediately after joining the meeting. Do not stay in the main meeting room.**`,
         ].join("\n");
 
@@ -978,8 +971,8 @@ export async function POST(request: NextRequest) {
             formatTorontoDateTime(classRow.starts_at)
           )}`,
           isFounder
-            ? "Please attend the class 5 minutes before the start time on the Schoolhouse platform."
-            : nonFounderTenMinInstruction,
+            ? "Please join the meeting on the Schoolhouse platform immediately!"
+            : nonFounderFiveMinInstruction,
         ].join("\n");
       }
 
@@ -989,10 +982,7 @@ export async function POST(request: NextRequest) {
       if (tutorDiscordId) {
         let contactInstruction = "";
         if (!isFounder && founderRoleId) {
-          if (reminderType === "three_days") {
-            contactInstruction =
-              `If you are unable to make it to the class, you have to contact a <@&${founderRoleId}> 24 hours before the class starts.`;
-          } else if (reminderType === "twenty_four_hours" || reminderType === "six_hours") {
+          if (reminderType === "twenty_four_hours" || reminderType === "six_hours") {
             contactInstruction =
               `If you are unable to make it to the class, you have to contact a <@&${founderRoleId}> as soon as possible.`;
           } else if (reminderType === "one_hour") {
