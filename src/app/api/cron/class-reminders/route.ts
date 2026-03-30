@@ -789,8 +789,7 @@ export async function POST(request: NextRequest) {
     const isStandardReminder =
       reminderType === "twenty_four_hours" || reminderType === "one_hour";
     const isFollowUpReminder = reminderType === "class_follow_up";
-    const isCourseChannelReminder =
-      reminderType === "one_hour" || reminderType === "ten_minutes";
+    const isCourseChannelReminder = reminderType === "one_hour";
 
     const tutorEmail =
       String(course.created_by_email ?? "").trim() ||
