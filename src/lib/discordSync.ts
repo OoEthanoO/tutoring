@@ -38,7 +38,7 @@ const addReactionsPermission = 64;
 const readMessageHistoryPermission = 65536;
 const connectPermission = 1048576;
 const manageChannelsPermission = 16;
-const manageMessagesPermission = 8192;
+const pinMessagesPermission = BigInt(1) << BigInt(51);
 const archiveDelayMs = 7 * 24 * 60 * 60 * 1000;
 const fundraiserVoiceChannelNamePattern = /^\$\d[\d,]*\sraised$/i;
 
@@ -310,9 +310,9 @@ const buildCoursePermissionOverwrites = (
   const activeAllow = String(
     viewChannelPermission | sendMessagesPermission | readMessageHistoryPermission
   );
-  const pinAllow = String(
-    viewChannelPermission | readMessageHistoryPermission | manageMessagesPermission
-  );
+  const pinAllow = (
+    BigInt(viewChannelPermission) | BigInt(readMessageHistoryPermission) | pinMessagesPermission
+  ).toString();
 
   return [
     {
