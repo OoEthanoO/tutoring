@@ -566,6 +566,23 @@ export async function POST(request: NextRequest) {
   }
 
   if (candidates.length === 0) {
+    let githubSync: GithubSyncResult | null = null;
+    try {
+      githubSync = await runGithubSync();
+    } catch (error) {
+      console.error("Failed to run Github sync from cron:", error);
+      githubSync = {
+        success: false,
+        processed: 0,
+        skippedReason: null,
+        errors: [
+          error instanceof Error
+            ? error.message
+            : "Unknown runtime exception in Github sync",
+        ],
+      };
+    }
+
     return NextResponse.json({
       sentClassCount: 0,
       sentEmailCount: 0,
@@ -576,6 +593,7 @@ export async function POST(request: NextRequest) {
       reminderSkippedReason,
       discordReminderSkippedReason,
       discordSync,
+      githubSync,
     });
   }
 
