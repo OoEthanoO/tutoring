@@ -1965,6 +1965,37 @@ export const runDiscordSync = async ({
   const voiceCategory = await ensureCategory(voiceCategoryName);
   const coursesCategory = await ensureCategory(coursesCategoryName);
   const archiveCategory = await ensureCategory(archiveCategoryName);
+
+  // Ensure Courses and Archived categories deny @everyone viewChannel so
+  // students cannot see other people's course channels in the sidebar.
+  const privateCategoryOverwrites: DiscordPermissionOverwrite[] = [
+    {
+      id: discordGuildId,
+      type: 0,
+      allow: "0",
+      deny: String(viewChannelPermission),
+    },
+  ];
+
+  for (const cat of [coursesCategory, archiveCategory]) {
+    if (!areOverwritesEqual(cat.permission_overwrites, privateCategoryOverwrites)) {
+      try {
+        const updated = await apiClient.updateGuildChannel(cat.id, {
+          permission_overwrites: privateCategoryOverwrites,
+        });
+        const idx = mutableChannels.findIndex((c) => c.id === cat.id);
+        if (idx !== -1) {
+          mutableChannels[idx] = updated;
+        }
+        result.updatedChannelCount += 1;
+      } catch (error) {
+        result.errors.push(
+          `Failed to update category "${cat.name}" permissions: ${toErrorMessage(error, "Unknown error")}`
+        );
+      }
+    }
+  }
+
   const usedChannelIds = new Set<string>();
 
   for (const course of websiteCourses) {
