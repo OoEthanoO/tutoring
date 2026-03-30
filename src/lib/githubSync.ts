@@ -13,6 +13,7 @@ interface GithubCommitNode {
     message: string;
     author: {
       name: string;
+      date?: string;
     };
   };
   author: {
@@ -79,7 +80,7 @@ const sendDiscordMessage = async (channelId: string, content: string) => {
           Authorization: `Bot ${discordBotToken}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ content }),
+        body: JSON.stringify({ content, flags: 4096 }),
       }
     );
     if (!response.ok) {
@@ -230,12 +231,25 @@ export const runGithubSync = async (): Promise<GithubSyncResult> => {
     const title = messageLines[0] ?? commit.commit.message;
     const authorName = commit.commit.author.name || commit.author?.login || "Unknown";
 
-    let text = `📝 **New Commit:** \`${shortId}\` by ${authorName}\n> ${title}`;
-    
+    const commitDate = commit.commit.author.date
+      ? new Date(commit.commit.author.date).toLocaleString("en-US", {
+          timeZone: "America/Toronto",
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+          hour: "numeric",
+          minute: "2-digit",
+        })
+      : null;
+
+    let text = `**New Commit:** \`${shortId}\` by ${authorName}\n> ${title}`;
+    if (commitDate) {
+      text += `\n${commitDate}`;
+    }
     if (stats) {
       const added = stats.additions ?? 0;
       const removed = stats.deletions ?? 0;
-      text += `\n📊 Lines: **+${added}** / **-${removed}**`;
+      text += `\nLines: **+${added}** / **-${removed}**`;
     }
 
     try {
