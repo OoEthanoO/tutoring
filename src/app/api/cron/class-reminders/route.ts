@@ -178,21 +178,49 @@ const readCourseIdFromTopic = (topic?: string | null) => {
   if (!value.startsWith(courseTopicPrefix)) {
     return "";
   }
-  return value.slice(courseTopicPrefix.length).trim();
+  const content = value.slice(courseTopicPrefix.length).trim();
+  const [id] = content.split("|");
+  return id ?? "";
 };
+
+const baseRoleNames = new Set([
+  "Student",
+  "Executive",
+  "Junior Executive",
+  "Social Media",
+  "Science Tutor",
+  "Math Tutor",
+  "Nonprofit Team",
+  "Founder",
+  "First Strike",
+  "Second Strike",
+]);
 
 const getCourseRoleIdsFromOverwrites = (
   channel: DiscordGuildChannel,
-  guildId: string
-) =>
-  (channel.permission_overwrites ?? [])
-    .filter((overwrite) => overwrite.type === 0 && overwrite.id !== guildId)
+  guildId: string,
+  guildRoles: { id: string; name: string }[]
+) => {
+  const roleById = new Map(guildRoles.map((r) => [r.id, r]));
+  return (channel.permission_overwrites ?? [])
+    .filter((overwrite) => {
+      if (overwrite.type !== 0 || overwrite.id === guildId) {
+        return false;
+      }
+      const role = roleById.get(overwrite.id);
+      if (!role) {
+        return false;
+      }
+      return !baseRoleNames.has(role.name);
+    })
     .map((overwrite) => overwrite.id)
     .sort((left, right) => left.localeCompare(right));
+};
 
 const buildDiscordCourseTargetMap = (
   channels: DiscordGuildChannel[],
-  guildId: string
+  guildId: string,
+  guildRoles: { id: string; name: string }[]
 ) => {
   const map = new Map<string, DiscordCourseReminderTarget>();
 
@@ -206,7 +234,7 @@ const buildDiscordCourseTargetMap = (
       continue;
     }
 
-    const roleId = getCourseRoleIdsFromOverwrites(channel, guildId)[0];
+    const roleId = getCourseRoleIdsFromOverwrites(channel, guildId, guildRoles)[0];
     if (!roleId) {
       continue;
     }
@@ -460,7 +488,8 @@ export async function POST(request: NextRequest) {
       const guildRoles = await listDiscordGuildRoles(discordGuildId);
       discordCourseTargetByCourseId = buildDiscordCourseTargetMap(
         guildChannels,
-        discordGuildId
+        discordGuildId,
+        guildRoles
       );
       const execChannel = guildChannels.find(
         (ch) => ch.type === discordTextChannelType && ch.name === executivesChannelName
@@ -745,9 +774,11 @@ export async function POST(request: NextRequest) {
     const isStandardReminder =
       reminderType === "twenty_four_hours" || reminderType === "one_hour";
     const isFollowUpReminder = reminderType === "class_follow_up";
+    const isCourseChannelReminder =
+      reminderType === "one_hour" || reminderType === "ten_minutes";
 
     const shouldSendCourseDiscordReminder =
-      isStandardReminder && discordReminderDeliveryEnabled;
+      isCourseChannelReminder && discordReminderDeliveryEnabled;
     const shouldSendAnyEmail =
       (isStandardReminder || isFollowUpReminder) && emailRemindersEnabled;
     const shouldSendExecutiveTutorReminder =
@@ -755,8 +786,8 @@ export async function POST(request: NextRequest) {
       reminderType !== "ten_minutes" &&
       discordReminderDeliveryEnabled &&
       executivesChannelId !== null;
-    const shouldSendFounderZoomReminder =
-      reminderType === "ten_minutes" &&
+    const shouldSendFounderChannelReminder =
+      (reminderType === "one_hour" || reminderType === "ten_minutes") &&
       discordReminderDeliveryEnabled &&
       foundersChannelId !== null &&
       founderRoleId !== null;
@@ -765,7 +796,7 @@ export async function POST(request: NextRequest) {
       !shouldSendCourseDiscordReminder &&
       !shouldSendAnyEmail &&
       !shouldSendExecutiveTutorReminder &&
-      !shouldSendFounderZoomReminder
+      !shouldSendFounderChannelReminder
     ) {
       continue;
     }
@@ -788,6 +819,7 @@ export async function POST(request: NextRequest) {
     if (
       !shouldSendCourseDiscordReminder &&
       !shouldSendExecutiveTutorReminder &&
+      !shouldSendFounderChannelReminder &&
       recipients.size === 0
     ) {
       continue;
@@ -904,6 +936,33 @@ export async function POST(request: NextRequest) {
           isFounder
             ? "Please attend the class 5 minutes before the start time on the Schoolhouse platform."
             : nonFounderDiscordInstruction,
+        ].join("\n");
+      }
+
+      if (reminderType === "ten_minutes" && !isStandardReminder) {
+        const tenMinBreakoutInstruction = breakoutRoomName
+          ? `\nBreakout room: "${escapeDiscordText(breakoutRoomName)}"`
+          : `\nPlease join the breakout room that starts with "${escapeDiscordText(
+              `${tutorFirstName}${tutorLastInitial ? ` ${tutorLastInitial}` : ""}`
+            )}" followed by the name of the course.`;
+        const nonFounderTenMinInstruction = [
+          `Please attend the class on time:`,
+          `Zoom ID: ${escapeDiscordText(defaultZoomId)}`,
+          `Password: ${escapeDiscordText(defaultZoomPassword)}${tenMinBreakoutInstruction}`,
+          `**Please join the breakout room immediately after joining the meeting. Do not stay in the main meeting room.**`,
+        ].join("\n");
+
+        discordContent = [
+          `Your class starts in **${escapeDiscordText(reminderLabel)}**.`,
+          `**Course:** ${escapeDiscordText(courseTitleRaw)}`,
+          isStandardClassTitle ? `**${escapeDiscordText(classTitleRaw)}**` : `**Class:** ${escapeDiscordText(classTitleRaw)}`,
+          `**Tutor:** ${escapeDiscordText(tutorNameRaw)}`,
+          `**Start time (${torontoTimeZone}):** ${escapeDiscordText(
+            formatTorontoDateTime(classRow.starts_at)
+          )}`,
+          isFounder
+            ? "Please attend the class 5 minutes before the start time on the Schoolhouse platform."
+            : nonFounderTenMinInstruction,
         ].join("\n");
       }
 
@@ -1031,32 +1090,44 @@ export async function POST(request: NextRequest) {
     }
 
     if (
-      shouldSendFounderZoomReminder &&
+      shouldSendFounderChannelReminder &&
       foundersChannelId &&
-      founderRoleId &&
-      !isFounder
+      founderRoleId
     ) {
-      const founderZoomContent = [
-        `<@&${founderRoleId}> **Please open the Zoom meeting!**`,
-        `**${escapeDiscordText(tutorNameRaw)}**'s class is starting in 10 minutes.`,
-        `**Course:** ${escapeDiscordText(courseTitleRaw)}`,
-        isStandardClassTitle ? `**${escapeDiscordText(classTitleRaw)}**` : `**Class:** ${escapeDiscordText(classTitleRaw)}`,
-      ].join("\n");
+      const founderContent = reminderType === "ten_minutes"
+        ? [
+            `<@&${founderRoleId}> A class is starting in **10 minutes**.${!isFounder ? " **Please open the Zoom meeting!**" : ""}`,
+            `**Course:** ${escapeDiscordText(courseTitleRaw)}`,
+            isStandardClassTitle ? `**${escapeDiscordText(classTitleRaw)}**` : `**Class:** ${escapeDiscordText(classTitleRaw)}`,
+            `**Tutor:** ${escapeDiscordText(tutorNameRaw)}`,
+            `**Start time (${torontoTimeZone}):** ${escapeDiscordText(
+              formatTorontoDateTime(classRow.starts_at)
+            )}`,
+          ].join("\n")
+        : [
+            `<@&${founderRoleId}> A class is starting in **1 hour**.`,
+            `**Course:** ${escapeDiscordText(courseTitleRaw)}`,
+            isStandardClassTitle ? `**${escapeDiscordText(classTitleRaw)}**` : `**Class:** ${escapeDiscordText(classTitleRaw)}`,
+            `**Tutor:** ${escapeDiscordText(tutorNameRaw)}`,
+            `**Start time (${torontoTimeZone}):** ${escapeDiscordText(
+              formatTorontoDateTime(classRow.starts_at)
+            )}`,
+          ].join("\n");
 
       try {
         await sendDiscordCourseReminderMessage(
           foundersChannelId,
           founderRoleId,
-          founderZoomContent
+          founderContent
         );
         sentDiscordFollowUpCount += 1;
         await sleep(150);
       } catch (error) {
         failedClasses.push({
           classId: classRow.id,
-          reason: `Failed Discord founder Zoom reminder send: ${error instanceof Error
+          reason: `Failed Discord founder channel reminder send: ${error instanceof Error
             ? error.message
-            : "Unknown Discord founder Zoom reminder send failure."
+            : "Unknown Discord founder channel reminder send failure."
             }`,
         });
       }
