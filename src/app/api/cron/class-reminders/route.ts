@@ -795,14 +795,14 @@ export async function POST(request: NextRequest) {
       (isStandardReminder || isFollowUpReminder) && emailRemindersEnabled;
     const shouldSendExecutiveTutorReminder =
       !isFollowUpReminder &&
-      reminderType !== "ten_minutes" &&
-      reminderType !== "fifteen_minutes" &&
+      (isFounder 
+        ? reminderType !== "ten_minutes" 
+        : reminderType !== "ten_minutes" && reminderType !== "fifteen_minutes") &&
       discordReminderDeliveryEnabled &&
       executivesChannelId !== null;
     const shouldSendFounderChannelReminder =
-      (reminderType === "one_hour" ||
-        (reminderType === "fifteen_minutes" && isFounder) ||
-        (reminderType === "ten_minutes" && !isFounder)) &&
+      !isFounder &&
+      (reminderType === "one_hour" || reminderType === "ten_minutes") &&
       discordReminderDeliveryEnabled &&
       foundersChannelId !== null &&
       founderRoleId !== null;
@@ -981,7 +981,13 @@ export async function POST(request: NextRequest) {
         : "";
       if (tutorDiscordId) {
         let contactInstruction = "";
-        if (!isFounder && founderRoleId) {
+        if (isFounder) {
+          if (reminderType === "one_hour") {
+            contactInstruction = "Please remember to mark the students' homework!";
+          } else if (reminderType === "fifteen_minutes") {
+            contactInstruction = "Please join the meeting via Schoolhouse!";
+          }
+        } else if (founderRoleId) {
           if (reminderType === "twenty_four_hours" || reminderType === "six_hours") {
             contactInstruction =
               `If you are unable to make it to the class, you have to contact a <@&${founderRoleId}> as soon as possible.`;
@@ -1102,64 +1108,31 @@ export async function POST(request: NextRequest) {
       founderRoleId
     ) {
       let founderContent = "";
-      let useUserMention = false;
-      const tutorDiscordId = course.created_by
-        ? tutorDiscordIdById.get(course.created_by) ?? ""
-        : "";
 
-      if (isFounder) {
-        useUserMention = Boolean(tutorDiscordId);
-        const mentionText = tutorDiscordId ? `<@${tutorDiscordId}>` : `**${escapeDiscordText(tutorNameRaw)}**`;
-        
-        if (reminderType === "fifteen_minutes") {
-          founderContent = [
-            `${mentionText} A class is starting in **15 minutes**. **Please join the meeting via Schoolhouse!**`,
-            `**Course:** ${escapeDiscordText(courseTitleRaw)}`,
-            isStandardClassTitle ? `**${escapeDiscordText(classTitleRaw)}**` : `**Class:** ${escapeDiscordText(classTitleRaw)}`,
-            `**Start time (${torontoTimeZone}):** ${escapeDiscordText(formatTorontoDateTime(classRow.starts_at))}`,
-          ].join("\n");
-        } else {
-          founderContent = [
-            `${mentionText} A class is starting in **1 hour**. **Please remember to mark the students' homework!**`,
-            `**Course:** ${escapeDiscordText(courseTitleRaw)}`,
-            isStandardClassTitle ? `**${escapeDiscordText(classTitleRaw)}**` : `**Class:** ${escapeDiscordText(classTitleRaw)}`,
-            `**Start time (${torontoTimeZone}):** ${escapeDiscordText(formatTorontoDateTime(classRow.starts_at))}`,
-          ].join("\n");
-        }
+      if (reminderType === "ten_minutes") {
+        founderContent = [
+          `<@&${founderRoleId}> A class is starting in **10 minutes**. **Please open the Zoom meeting!**`,
+          `**Course:** ${escapeDiscordText(courseTitleRaw)}`,
+          isStandardClassTitle ? `**${escapeDiscordText(classTitleRaw)}**` : `**Class:** ${escapeDiscordText(classTitleRaw)}`,
+          `**Tutor:** ${escapeDiscordText(tutorNameRaw)}`,
+          `**Start time (${torontoTimeZone}):** ${escapeDiscordText(formatTorontoDateTime(classRow.starts_at))}`,
+        ].join("\n");
       } else {
-        if (reminderType === "ten_minutes") {
-          founderContent = [
-            `<@&${founderRoleId}> A class is starting in **10 minutes**. **Please open the Zoom meeting!**`,
-            `**Course:** ${escapeDiscordText(courseTitleRaw)}`,
-            isStandardClassTitle ? `**${escapeDiscordText(classTitleRaw)}**` : `**Class:** ${escapeDiscordText(classTitleRaw)}`,
-            `**Tutor:** ${escapeDiscordText(tutorNameRaw)}`,
-            `**Start time (${torontoTimeZone}):** ${escapeDiscordText(formatTorontoDateTime(classRow.starts_at))}`,
-          ].join("\n");
-        } else {
-          founderContent = [
-            `<@&${founderRoleId}> A class is starting in **1 hour**.`,
-            `**Course:** ${escapeDiscordText(courseTitleRaw)}`,
-            isStandardClassTitle ? `**${escapeDiscordText(classTitleRaw)}**` : `**Class:** ${escapeDiscordText(classTitleRaw)}`,
-            `**Tutor:** ${escapeDiscordText(tutorNameRaw)}`,
-            `**Start time (${torontoTimeZone}):** ${escapeDiscordText(formatTorontoDateTime(classRow.starts_at))}`,
-          ].join("\n");
-        }
+        founderContent = [
+          `<@&${founderRoleId}> A class is starting in **1 hour**.`,
+          `**Course:** ${escapeDiscordText(courseTitleRaw)}`,
+          isStandardClassTitle ? `**${escapeDiscordText(classTitleRaw)}**` : `**Class:** ${escapeDiscordText(classTitleRaw)}`,
+          `**Tutor:** ${escapeDiscordText(tutorNameRaw)}`,
+          `**Start time (${torontoTimeZone}):** ${escapeDiscordText(formatTorontoDateTime(classRow.starts_at))}`,
+        ].join("\n");
       }
 
       try {
-        if (useUserMention) {
-          await sendDiscordUserMentionMessage(
-            foundersChannelId,
-            tutorDiscordId,
-            founderContent
-          );
-        } else {
-          await sendDiscordCourseReminderMessage(
-            foundersChannelId,
-            founderRoleId,
-            founderContent
-          );
-        }
+        await sendDiscordCourseReminderMessage(
+          foundersChannelId,
+          founderRoleId,
+          founderContent
+        );
         sentDiscordFollowUpCount += 1;
         await sleep(150);
       } catch (error) {
