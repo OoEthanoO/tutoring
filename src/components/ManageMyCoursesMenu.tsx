@@ -443,11 +443,65 @@ export default function ManageMyCoursesMenu() {
       return;
     }
 
+    let bulkClassUpdates: { classId: string; startsAt: string }[] | undefined;
+
+    let targetCourse: Course | undefined;
+    let targetClass: CourseClass | undefined;
+    for (const c of courses) {
+      const cls = c.course_classes?.find((cc) => cc.id === editingClassId);
+      if (cls) {
+        targetCourse = c;
+        targetClass = cls;
+        break;
+      }
+    }
+
+    if (
+      targetCourse &&
+      !targetCourse.is_completed &&
+      targetClass &&
+      editStartsAt
+    ) {
+      const oldTime = new Date(targetClass.starts_at);
+      const newTime = new Date(editStartsAt);
+
+      const oldDateStr = oldTime.toLocaleDateString();
+      const newDateStr = newTime.toLocaleDateString();
+
+      const timeDiffMs = newTime.getTime() - oldTime.getTime();
+
+      if (oldDateStr === newDateStr && timeDiffMs !== 0) {
+        const subsequentClasses = (targetCourse.course_classes ?? []).filter(
+          (c) => new Date(c.starts_at).getTime() > oldTime.getTime()
+        );
+
+        if (subsequentClasses.length > 0) {
+          const confirmShift = window.confirm(
+            `You changed the time of this class. Do you want to apply this same time change to all ${subsequentClasses.length} subsequent classes in this course?`
+          );
+          if (confirmShift) {
+            const [, newTimePart] = editStartsAt.split("T");
+            
+            bulkClassUpdates = subsequentClasses.map((subClass) => {
+              const localStr = toLocalDateTimeInputValue(new Date(subClass.starts_at));
+              const [localDatePart] = localStr.split("T");
+              const newLocalStr = `${localDatePart}T${newTimePart}`;
+              return {
+                classId: subClass.id,
+                startsAt: new Date(newLocalStr).toISOString(),
+              };
+            });
+          }
+        }
+      }
+    }
+
     const response = await fetch(`/api/classes/${editingClassId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         startsAt: editStartsAt ? new Date(editStartsAt).toISOString() : undefined,
+        bulkClassUpdates,
       }),
     });
 
@@ -463,14 +517,26 @@ export default function ManageMyCoursesMenu() {
       return;
     }
 
-    const payload = (await response.json()) as { class: CourseClass };
+    const payload = (await response.json()) as { 
+      class: CourseClass;
+      updatedClasses?: CourseClass[];
+    };
+    
     setCourses((current) =>
-      current.map((courseItem) => ({
-        ...courseItem,
-        course_classes: (courseItem.course_classes ?? []).map((courseClass) =>
-          courseClass.id === payload.class.id ? payload.class : courseClass
-        ),
-      }))
+      current.map((courseItem) => {
+        if (!courseItem.course_classes?.some((c) => c.id === payload.class.id)) {
+          return courseItem;
+        }
+
+        const updatedMap = new Map((payload.updatedClasses || [payload.class]).map(c => [c.id, c]));
+
+        return {
+          ...courseItem,
+          course_classes: (courseItem.course_classes ?? []).map((courseClass) =>
+            updatedMap.get(courseClass.id) || courseClass
+          ),
+        };
+      })
     );
     setStatus({ type: "success", message: "Class updated." });
     setPendingClassId(null);

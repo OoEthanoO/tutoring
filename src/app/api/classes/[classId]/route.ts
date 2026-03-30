@@ -55,7 +55,12 @@ export async function PATCH(
   }
 
   const body = (await request.json().catch(() => null)) as
-    | { title?: string; startsAt?: string; durationHours?: number }
+    | {
+        title?: string;
+        startsAt?: string;
+        durationHours?: number;
+        bulkClassUpdates?: { classId: string; startsAt: string }[];
+      }
     | null;
 
   const nextTitle = body?.title?.trim();
@@ -136,14 +141,41 @@ export async function PATCH(
 
   await relabelClassesForCourse(classRow.course_id, adminClient);
 
-  // Re-fetch the newly created class in case its title was changed by the relabel step
   const { data: latestClass, error: refetchError } = await adminClient
     .from("course_classes")
     .select("id, title, starts_at, duration_hours, created_at")
     .eq("id", classId)
     .single();
 
-  return NextResponse.json({ class: latestClass || updated });
+  const primaryUpdatedClass = latestClass || updated;
+  const allUpdatedClasses = [primaryUpdatedClass];
+
+  const updatesList = body?.bulkClassUpdates;
+  if (Array.isArray(updatesList) && updatesList.length > 0) {
+    for (const update of updatesList) {
+      if (!update.classId || !update.startsAt) {
+        continue;
+      }
+
+      // To ensure security, check the subclass belongs to the same course_id
+      const { data: shiftedClass } = await adminClient
+        .from("course_classes")
+        .update({ starts_at: new Date(update.startsAt).toISOString() })
+        .eq("id", update.classId)
+        .eq("course_id", classRow.course_id)
+        .select("id, title, starts_at, duration_hours, created_at")
+        .single();
+        
+      if (shiftedClass) {
+        allUpdatedClasses.push(shiftedClass);
+      }
+    }
+  }
+
+  return NextResponse.json({
+    class: primaryUpdatedClass,
+    updatedClasses: allUpdatedClasses,
+  });
 }
 
 export async function DELETE(

@@ -23,6 +23,7 @@ type ReminderType =
   | "twenty_four_hours"
   | "six_hours"
   | "one_hour"
+  | "fifteen_minutes"
   | "ten_minutes"
   | "five_minutes"
   | "class_follow_up";
@@ -57,6 +58,12 @@ const reminderTargets: ReminderTarget[] = [
     type: "one_hour",
     minutesBeforeStart: 60,
     label: "1 hour",
+    lowerBoundDriftMinutes: 0,
+  },
+  {
+    type: "fifteen_minutes",
+    minutesBeforeStart: 15,
+    label: "15 minutes",
     lowerBoundDriftMinutes: 0,
   },
   {
@@ -785,6 +792,11 @@ export async function POST(request: NextRequest) {
     const isCourseChannelReminder =
       reminderType === "one_hour" || reminderType === "ten_minutes";
 
+    const tutorEmail =
+      String(course.created_by_email ?? "").trim() ||
+      (course.created_by ? tutorEmailById.get(course.created_by) ?? "" : "");
+    const isFounder = resolveRoleByEmail(tutorEmail) === "founder";
+
     const shouldSendCourseDiscordReminder =
       isCourseChannelReminder && discordReminderDeliveryEnabled;
     const shouldSendAnyEmail =
@@ -792,10 +804,13 @@ export async function POST(request: NextRequest) {
     const shouldSendExecutiveTutorReminder =
       !isFollowUpReminder &&
       reminderType !== "ten_minutes" &&
+      reminderType !== "fifteen_minutes" &&
       discordReminderDeliveryEnabled &&
       executivesChannelId !== null;
     const shouldSendFounderChannelReminder =
-      (reminderType === "one_hour" || reminderType === "ten_minutes") &&
+      (reminderType === "one_hour" ||
+        (reminderType === "fifteen_minutes" && isFounder) ||
+        (reminderType === "ten_minutes" && !isFounder)) &&
       discordReminderDeliveryEnabled &&
       foundersChannelId !== null &&
       founderRoleId !== null;
@@ -817,9 +832,6 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const tutorEmail =
-      String(course.created_by_email ?? "").trim() ||
-      (course.created_by ? tutorEmailById.get(course.created_by) ?? "" : "");
     if (tutorEmail && (isStandardReminder || isFollowUpReminder)) {
       recipients.add(tutorEmail.toLowerCase());
     }
@@ -859,8 +871,6 @@ export async function POST(request: NextRequest) {
     let html = "";
     let discordContent = "";
     let executiveTutorContent = "";
-
-    const isFounder = resolveRoleByEmail(tutorEmail) === "founder";
 
     if (reminderType === "class_follow_up") {
       subject = isFounder 
@@ -1102,32 +1112,65 @@ export async function POST(request: NextRequest) {
       foundersChannelId &&
       founderRoleId
     ) {
-      const founderContent = reminderType === "ten_minutes"
-        ? [
-            `<@&${founderRoleId}> A class is starting in **10 minutes**.${!isFounder ? " **Please open the Zoom meeting!**" : ""}`,
+      let founderContent = "";
+      let useUserMention = false;
+      const tutorDiscordId = course.created_by
+        ? tutorDiscordIdById.get(course.created_by) ?? ""
+        : "";
+
+      if (isFounder) {
+        useUserMention = Boolean(tutorDiscordId);
+        const mentionText = tutorDiscordId ? `<@${tutorDiscordId}>` : `**${escapeDiscordText(tutorNameRaw)}**`;
+        
+        if (reminderType === "fifteen_minutes") {
+          founderContent = [
+            `${mentionText} A class is starting in **15 minutes**. **Please join the meeting via Schoolhouse!**`,
+            `**Course:** ${escapeDiscordText(courseTitleRaw)}`,
+            isStandardClassTitle ? `**${escapeDiscordText(classTitleRaw)}**` : `**Class:** ${escapeDiscordText(classTitleRaw)}`,
+            `**Start time (${torontoTimeZone}):** ${escapeDiscordText(formatTorontoDateTime(classRow.starts_at))}`,
+          ].join("\n");
+        } else {
+          founderContent = [
+            `${mentionText} A class is starting in **1 hour**. **Please remember to mark the students' homework!**`,
+            `**Course:** ${escapeDiscordText(courseTitleRaw)}`,
+            isStandardClassTitle ? `**${escapeDiscordText(classTitleRaw)}**` : `**Class:** ${escapeDiscordText(classTitleRaw)}`,
+            `**Start time (${torontoTimeZone}):** ${escapeDiscordText(formatTorontoDateTime(classRow.starts_at))}`,
+          ].join("\n");
+        }
+      } else {
+        if (reminderType === "ten_minutes") {
+          founderContent = [
+            `<@&${founderRoleId}> A class is starting in **10 minutes**. **Please open the Zoom meeting!**`,
             `**Course:** ${escapeDiscordText(courseTitleRaw)}`,
             isStandardClassTitle ? `**${escapeDiscordText(classTitleRaw)}**` : `**Class:** ${escapeDiscordText(classTitleRaw)}`,
             `**Tutor:** ${escapeDiscordText(tutorNameRaw)}`,
-            `**Start time (${torontoTimeZone}):** ${escapeDiscordText(
-              formatTorontoDateTime(classRow.starts_at)
-            )}`,
-          ].join("\n")
-        : [
+            `**Start time (${torontoTimeZone}):** ${escapeDiscordText(formatTorontoDateTime(classRow.starts_at))}`,
+          ].join("\n");
+        } else {
+          founderContent = [
             `<@&${founderRoleId}> A class is starting in **1 hour**.`,
             `**Course:** ${escapeDiscordText(courseTitleRaw)}`,
             isStandardClassTitle ? `**${escapeDiscordText(classTitleRaw)}**` : `**Class:** ${escapeDiscordText(classTitleRaw)}`,
             `**Tutor:** ${escapeDiscordText(tutorNameRaw)}`,
-            `**Start time (${torontoTimeZone}):** ${escapeDiscordText(
-              formatTorontoDateTime(classRow.starts_at)
-            )}`,
+            `**Start time (${torontoTimeZone}):** ${escapeDiscordText(formatTorontoDateTime(classRow.starts_at))}`,
           ].join("\n");
+        }
+      }
 
       try {
-        await sendDiscordCourseReminderMessage(
-          foundersChannelId,
-          founderRoleId,
-          founderContent
-        );
+        if (useUserMention) {
+          await sendDiscordUserMentionMessage(
+            foundersChannelId,
+            tutorDiscordId,
+            founderContent
+          );
+        } else {
+          await sendDiscordCourseReminderMessage(
+            foundersChannelId,
+            founderRoleId,
+            founderContent
+          );
+        }
         sentDiscordFollowUpCount += 1;
         await sleep(150);
       } catch (error) {
