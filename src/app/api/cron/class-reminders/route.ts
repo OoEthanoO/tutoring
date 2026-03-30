@@ -541,6 +541,10 @@ export async function POST(request: NextRequest) {
     }
 
     for (const classRow of (classes ?? []) as ClassRow[]) {
+      const course = readCourse(classRow.course);
+      if (course && !course.created_by_name && !course.created_by_email) {
+        continue;
+      }
       candidates.push({
         reminderType: target.type,
         reminderLabel: target.label,
@@ -573,6 +577,11 @@ export async function POST(request: NextRequest) {
   }
 
   for (const classRow of (pastClasses ?? []) as ClassRow[]) {
+    const course = readCourse(classRow.course);
+    if (course && !course.created_by_name && !course.created_by_email) {
+      continue;
+    }
+
     const startsAt = new Date(classRow.starts_at);
     const durationHours = typeof classRow.duration_hours === 'number'
       ? classRow.duration_hours
