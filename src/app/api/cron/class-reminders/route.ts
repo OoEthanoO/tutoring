@@ -192,8 +192,7 @@ const baseRoleNames = new Set([
   "Math Tutor",
   "Nonprofit Team",
   "Founder",
-  "First Strike",
-  "Second Strike",
+  "Strike",
 ]);
 
 const getCourseRoleIdsFromOverwrites = (

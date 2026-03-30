@@ -410,7 +410,7 @@ export async function PATCH(request: NextRequest) {
       title?: string;
       shortName?: string | null;
       description?: string | null;
-      createdBy?: string;
+      createdBy?: string | null;
       maxStudents?: number | null;
     }
     | null;
@@ -430,9 +430,11 @@ export async function PATCH(request: NextRequest) {
         ? body.shortName.trim()
         : undefined;
   const createdBy =
-    typeof body.createdBy === "string" && body.createdBy.trim()
-      ? body.createdBy.trim()
-      : undefined;
+    body.createdBy === null
+      ? null
+      : typeof body.createdBy === "string" && body.createdBy.trim()
+        ? body.createdBy.trim()
+        : undefined;
   const maxStudents =
     body.maxStudents === null
       ? null
@@ -466,7 +468,7 @@ export async function PATCH(request: NextRequest) {
     short_name?: string | null;
     description?: string | null;
     max_students?: number | null;
-    created_by?: string;
+    created_by?: string | null;
     created_by_name?: string | null;
     created_by_email?: string | null;
   } = {};
@@ -495,7 +497,14 @@ export async function PATCH(request: NextRequest) {
     updatePayload.max_students = maxStudents;
   }
 
-  if (createdBy !== undefined) {
+  if (createdBy === null) {
+    if (role !== "founder") {
+      return NextResponse.json({ error: "Forbidden." }, { status: 403 });
+    }
+    updatePayload.created_by = null;
+    updatePayload.created_by_name = null;
+    updatePayload.created_by_email = null;
+  } else if (createdBy !== undefined) {
     if (role !== "founder") {
       return NextResponse.json({ error: "Forbidden." }, { status: 403 });
     }

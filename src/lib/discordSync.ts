@@ -1227,16 +1227,11 @@ export const runDiscordSync = async ({
 
     if (decayingUsers && decayingUsers.length > 0) {
       for (const targetUser of decayingUsers) {
-        const newStrikeCount = Math.max(0, targetUser.strike_count - 1);
-        const oldLastStrike = new Date(targetUser.last_strike_at);
-        const newLastStrike = new Date(oldLastStrike);
-        newLastStrike.setMonth(newLastStrike.getMonth() + 3);
-
         await adminClient
           .from("app_users")
           .update({
-            strike_count: newStrikeCount,
-            last_strike_at: newStrikeCount > 0 ? newLastStrike.toISOString() : null,
+            strike_count: 0,
+            last_strike_at: null,
           })
           .eq("id", targetUser.id);
       }
@@ -1348,8 +1343,7 @@ export const runDiscordSync = async ({
   const mathTutorsRole = await ensureRole("Math Tutor", false);
   const nonprofitTeamRole = await ensureRole("Nonprofit Team", false);
   const founderRole = await ensureRole("Founder", false);
-  const firstStrikeRole = await ensureRole("First Strike", false);
-  const secondStrikeRole = await ensureRole("Second Strike", false);
+  const strikeRole = await ensureRole("Strike", false);
 
   const baseRoleIds = new Set([
     studentRole.id,
@@ -1360,8 +1354,7 @@ export const runDiscordSync = async ({
     scienceTutorsRole.id,
     mathTutorsRole.id,
     nonprofitTeamRole.id,
-    firstStrikeRole.id,
-    secondStrikeRole.id,
+    strikeRole.id,
   ]);
   const founderDiscordUserIds = new Set(
     websiteUsers
@@ -1559,20 +1552,12 @@ export const runDiscordSync = async ({
       }
 
       const strikeCount = websiteUser.strike_count || 0;
-      if (strikeCount === 1) {
-        if (!roleSet.has(firstStrikeRole.id)) {
-          await addRoleToMember(memberId, firstStrikeRole.id, roleSet, "baseRoleAddedCount");
+      if (strikeCount > 0) {
+        if (!roleSet.has(strikeRole.id)) {
+          await addRoleToMember(memberId, strikeRole.id, roleSet, "baseRoleAddedCount");
         }
-      } else if (roleSet.has(firstStrikeRole.id)) {
-        await addRoleToMember(memberId, firstStrikeRole.id, roleSet, "baseRoleRemovedCount", true);
-      }
-
-      if (strikeCount >= 2) {
-        if (!roleSet.has(secondStrikeRole.id)) {
-          await addRoleToMember(memberId, secondStrikeRole.id, roleSet, "baseRoleAddedCount");
-        }
-      } else if (roleSet.has(secondStrikeRole.id)) {
-        await addRoleToMember(memberId, secondStrikeRole.id, roleSet, "baseRoleRemovedCount", true);
+      } else if (roleSet.has(strikeRole.id)) {
+        await addRoleToMember(memberId, strikeRole.id, roleSet, "baseRoleRemovedCount", true);
       }
 
       continue;
@@ -1588,12 +1573,8 @@ export const runDiscordSync = async ({
       );
     }
 
-    if (roleSet.has(firstStrikeRole.id)) {
-      await addRoleToMember(memberId, firstStrikeRole.id, roleSet, "baseRoleRemovedCount", true);
-    }
-
-    if (roleSet.has(secondStrikeRole.id)) {
-      await addRoleToMember(memberId, secondStrikeRole.id, roleSet, "baseRoleRemovedCount", true);
+    if (roleSet.has(strikeRole.id)) {
+      await addRoleToMember(memberId, strikeRole.id, roleSet, "baseRoleRemovedCount", true);
     }
 
     if (!roleSet.has(studentRole.id)) {

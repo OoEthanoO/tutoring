@@ -285,7 +285,7 @@ export async function PATCH(request: NextRequest) {
         grade: body.grade !== undefined ? body.grade : undefined,
         school: body.school !== undefined ? body.school : undefined,
         strike_count: body.strikeCount !== undefined ? body.strikeCount : undefined,
-        last_strike_at: body.strikeCount === 0 ? null : (body.strikeCount !== undefined && body.strikeCount > (existingUser?.data?.strike_count || 0) ? new Date().toISOString() : undefined),
+        last_strike_at: body.strikeCount === 0 ? null : (body.strikeCount !== undefined && body.strikeCount > 0 ? new Date().toISOString() : undefined),
       }
       : null;
   const updateResult = updatePayload

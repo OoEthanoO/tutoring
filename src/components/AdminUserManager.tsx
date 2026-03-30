@@ -85,7 +85,7 @@ export default function AdminUserManager() {
   const [grades, setGrades] = useState<Record<string, string>>({});
   const [schools, setSchools] = useState<Record<string, string>>({});
   const [allSchools, setAllSchools] = useState<string[]>([]);
-  const [strikes, setStrikes] = useState<Record<string, number>>({});
+
   const [feedback, setFeedback] = useState<FeedbackEntry[]>([]);
   const [isLoadingFeedback, setIsLoadingFeedback] = useState(false);
   const [feedbackError, setFeedbackError] = useState("");
@@ -210,11 +210,7 @@ export default function AdminUserManager() {
           (data.users ?? []).map((user) => [user.id, user.school ?? ""])
         )
       );
-      setStrikes(
-        Object.fromEntries(
-          (data.users ?? []).map((user) => [user.id, user.strikeCount ?? 0])
-        )
-      );
+
       setIsLoading(false);
     };
 
@@ -535,26 +531,26 @@ export default function AdminUserManager() {
     setPendingId(null);
   };
 
-  const updateStrikeCount = async (userId: string) => {
+  const updateStrikeCount = async (userId: string, hasStrike: boolean) => {
     setPendingId(userId);
     setStatus({ type: "idle", message: "" });
 
     const response = await fetch("/api/admin/users", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId, strikeCount: strikes[userId] ?? 0 }),
+      body: JSON.stringify({ userId, strikeCount: hasStrike ? 1 : 0 }),
     });
 
     if (!response.ok) {
       const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-      setStatus({ type: "error", message: payload?.error ?? "Could not update strikes." });
+      setStatus({ type: "error", message: payload?.error ?? "Could not update strike." });
       setPendingId(null);
       return;
     }
 
     const data = (await response.json()) as { user: AdminUser };
     setUsers((current) => current.map((user) => (user.id === data.user.id ? data.user : user)));
-    setStatus({ type: "success", message: `Updated strikes for ${data.user.fullName || data.user.email || "user"}.` });
+    setStatus({ type: "success", message: `Updated strike for ${data.user.fullName || data.user.email || "user"}.` });
     setPendingId(null);
   };
 
@@ -1036,31 +1032,21 @@ export default function AdminUserManager() {
                         </div>
                       ) : null}
                       {user.role !== "founder" ? (
-                        <div className="flex flex-wrap items-center gap-2">
-                          <label className="text-xs text-[var(--muted)]">Strikes</label>
-                          <select
+                        <div className="flex items-center gap-2">
+                          <input
+                            id={`strike-toggle-${user.id}`}
+                            type="checkbox"
+                            checked={(user.strikeCount ?? 0) > 0}
                             disabled={isPending}
-                            value={strikes[user.id] ?? 0}
-                            onChange={(event) =>
-                              setStrikes((current) => ({
-                                ...current,
-                                [user.id]: parseInt(event.target.value, 10),
-                              }))
-                            }
-                            className="w-24 rounded-full border border-[var(--border)] bg-[var(--surface)] px-4 py-2 text-xs text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+                            onChange={(event) => updateStrikeCount(user.id, event.target.checked)}
+                            className="h-4 w-4 rounded border-[var(--border)] bg-[var(--surface)] text-red-500 transition focus:ring-0"
+                          />
+                          <label
+                            htmlFor={`strike-toggle-${user.id}`}
+                            className="text-xs font-medium text-red-500"
                           >
-                            <option value={0}>0 strikes</option>
-                            <option value={1}>1 strike</option>
-                            <option value={2}>2 strikes</option>
-                          </select>
-                          <button
-                            type="button"
-                            disabled={isPending}
-                            onClick={() => updateStrikeCount(user.id)}
-                            className="rounded-full border border-[var(--foreground)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-70"
-                          >
-                            {isPending ? "Saving..." : "Save strikes"}
-                          </button>
+                            Strike
+                          </label>
                         </div>
                       ) : null}
                       <div className="flex flex-wrap items-center gap-2">

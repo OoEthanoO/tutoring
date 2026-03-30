@@ -42,6 +42,12 @@ type Course = {
   course_enrollments: EnrolledStudent[];
 };
 
+type AvailableTutor = {
+  id: string;
+  fullName: string;
+  email: string;
+};
+
 const getCourseLastClassTime = (course: Course) => {
   if (course.is_completed && course.completed_end_date) {
     const completedAt = new Date(`${course.completed_end_date}T00:00:00`);
@@ -172,6 +178,8 @@ export default function ManageMyCoursesMenu() {
   });
   const [isLoading, setIsLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [availableTutors, setAvailableTutors] = useState<AvailableTutor[]>([]);
+  const [pendingTutorCourseId, setPendingTutorCourseId] = useState<string | null>(null);
 
   useEffect(() => {
     const hasUnsavedCourseEdit = editingCourseId !== null;
@@ -280,6 +288,29 @@ export default function ManageMyCoursesMenu() {
     };
 
     loadDonationLink();
+  }, [role]);
+
+  useEffect(() => {
+    if (role !== "founder") {
+      return;
+    }
+
+    const loadTutors = async () => {
+      const response = await fetch("/api/admin/users");
+      if (!response.ok) {
+        return;
+      }
+
+      const data = (await response.json()) as {
+        users: { id: string; fullName: string; email: string; role: string }[];
+      };
+      const tutors = (data.users ?? [])
+        .filter((u) => u.role === "executive" || u.role === "founder")
+        .map((u) => ({ id: u.id, fullName: u.fullName, email: u.email }));
+      setAvailableTutors(tutors);
+    };
+
+    loadTutors();
   }, [role]);
 
 
@@ -667,6 +698,81 @@ export default function ManageMyCoursesMenu() {
     setPendingEnrollmentDeleteId(null);
   };
 
+  const changeTutor = async (courseId: string, tutorId: string) => {
+    setPendingTutorCourseId(courseId);
+    setStatus({ type: "idle", message: "" });
+
+    const response = await fetch("/api/courses", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ courseId, createdBy: tutorId }),
+    });
+
+    if (!response.ok) {
+      const payload = (await response.json().catch(() => null)) as
+        | { error?: string }
+        | null;
+      setStatus({
+        type: "error",
+        message: payload?.error ?? "Unable to change tutor.",
+      });
+      setPendingTutorCourseId(null);
+      return;
+    }
+
+    const payload = (await response.json()) as { course: Course };
+    setCourses((current) =>
+      current.map((courseItem) =>
+        courseItem.id === payload.course.id
+          ? { ...courseItem, ...payload.course }
+          : courseItem
+      )
+    );
+    setStatus({ type: "success", message: "Tutor updated." });
+    setPendingTutorCourseId(null);
+  };
+
+  const removeTutor = async (courseId: string) => {
+    const confirmed = window.confirm(
+      "Remove the tutor from this course? The course will become a limbo course."
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setPendingTutorCourseId(courseId);
+    setStatus({ type: "idle", message: "" });
+
+    const response = await fetch("/api/courses", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ courseId, createdBy: null }),
+    });
+
+    if (!response.ok) {
+      const payload = (await response.json().catch(() => null)) as
+        | { error?: string }
+        | null;
+      setStatus({
+        type: "error",
+        message: payload?.error ?? "Unable to remove tutor.",
+      });
+      setPendingTutorCourseId(null);
+      return;
+    }
+
+    const payload = (await response.json()) as { course: Course };
+    setCourses((current) =>
+      current.map((courseItem) =>
+        courseItem.id === payload.course.id
+          ? { ...courseItem, ...payload.course }
+          : courseItem
+      )
+    );
+    setStatus({ type: "success", message: "Tutor removed. Course is now in limbo." });
+    setPendingTutorCourseId(null);
+  };
+
   const orderedCourses = useMemo(
     () =>
       [...courses].sort((left, right) => {
@@ -901,12 +1007,43 @@ export default function ManageMyCoursesMenu() {
                       </div>
                     ) : null}
                     {role === "founder" ? (
-                      <p className="text-xs text-[var(--muted)]">
-                        Tutor:{" "}
-                        {course.created_by_name ||
-                          course.created_by_email ||
-                          "Unknown tutor"}
-                      </p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-xs text-[var(--muted)]">
+                          Tutor:{" "}
+                          <span className={course.created_by_name || course.created_by_email ? "" : "font-semibold text-amber-500"}>
+                            {course.created_by_name ||
+                              course.created_by_email ||
+                              "Not Determined"}
+                          </span>
+                        </p>
+                        {course.created_by ? (
+                          <button
+                            type="button"
+                            disabled={pendingTutorCourseId === course.id}
+                            onClick={() => removeTutor(course.id)}
+                            className="rounded-full border border-red-200 px-3 py-1 text-[0.6rem] font-semibold text-red-500 transition hover:border-red-400 disabled:cursor-not-allowed disabled:opacity-70"
+                          >
+                            {pendingTutorCourseId === course.id ? "Removing..." : "Remove Tutor"}
+                          </button>
+                        ) : null}
+                        <select
+                          disabled={pendingTutorCourseId === course.id}
+                          value={course.created_by ?? ""}
+                          onChange={(event) => {
+                            if (event.target.value) {
+                              changeTutor(course.id, event.target.value);
+                            }
+                          }}
+                          className="rounded-full border border-[var(--border)] bg-[var(--surface)] px-3 py-1 text-[0.6rem] text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-70"
+                        >
+                          <option value="">Set tutor...</option>
+                          {availableTutors.map((tutor) => (
+                            <option key={tutor.id} value={tutor.id}>
+                              {tutor.fullName || tutor.email}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
                     ) : null}
                     {role === "founder" && course.max_students ? (
                       <p className="text-xs text-[var(--muted)]">

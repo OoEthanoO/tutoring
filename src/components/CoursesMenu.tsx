@@ -293,10 +293,15 @@ export default function CoursesMenu() {
     [nowMs]
   );
 
+  const isLimboCourse = useCallback(
+    (course: Course) => !course.created_by_name && !course.created_by_email,
+    []
+  );
+
   const isAvailableSectionCourse = useCallback(
     (course: Course) =>
-      !course.is_completed && (hasGrayClass(course) || hasYellowClass(course)),
-    [hasGrayClass, hasYellowClass]
+      !course.is_completed && !isLimboCourse(course) && (hasGrayClass(course) || hasYellowClass(course)),
+    [hasGrayClass, hasYellowClass, isLimboCourse]
   );
 
   const isFullCourse = useCallback((course: Course) => {
@@ -349,10 +354,10 @@ export default function CoursesMenu() {
           (course) =>
             !isAvailableSectionCourse(course) &&
             !course.is_completed &&
-            (!course.course_classes || course.course_classes.length === 0)
+            (isLimboCourse(course) || !course.course_classes || course.course_classes.length === 0)
         )
         .sort(sortCoursesByCreationDateDesc),
-    [courses, isAvailableSectionCourse]
+    [courses, isAvailableSectionCourse, isLimboCourse]
   );
 
 
@@ -363,11 +368,12 @@ export default function CoursesMenu() {
         .filter(
           (course) =>
             !isAvailableSectionCourse(course) &&
+            !isLimboCourse(course) &&
             (course.is_completed ||
               (course.course_classes && course.course_classes.length > 0))
         )
         .sort(sortCoursesByFirstClassDesc),
-    [courses, isAvailableSectionCourse]
+    [courses, isAvailableSectionCourse, isLimboCourse]
   );
 
   const totalClassTimeMinutes = useMemo(() => {
@@ -494,7 +500,7 @@ export default function CoursesMenu() {
 
                   <div className="mt-auto flex items-end justify-between gap-2 pt-2">
                     <p className="text-[10px] font-medium text-[var(--muted)] truncate">
-                      {course.created_by_name || "Unknown"}
+                      {course.created_by_name || course.created_by_email || "Not Determined"}
                     </p>
                     <p className="shrink-0 text-[10px] font-medium text-[var(--muted)]">
                       {course.enrollment_count ?? 0}
@@ -554,7 +560,7 @@ export default function CoursesMenu() {
 
                   <div className="mt-auto flex items-end justify-between gap-2 pt-2">
                     <p className="text-[10px] font-medium text-[var(--muted)] truncate">
-                      {course.created_by_name || "Unknown"}
+                      {course.created_by_name || course.created_by_email || "Not Determined"}
                     </p>
                     <p className="shrink-0 text-[10px] font-medium text-[var(--muted)]">
                       {course.enrollment_count ?? 0}
@@ -601,7 +607,7 @@ export default function CoursesMenu() {
 
                   <div className="mt-auto flex items-end justify-between gap-2 pt-2">
                     <p className="text-[10px] font-medium text-[var(--muted)] truncate">
-                      {course.created_by_name || "Unknown"}
+                      {course.created_by_name || course.created_by_email || "Not Determined"}
                     </p>
                     <p className="shrink-0 text-[10px] font-medium text-[var(--muted)]">
                       {startLabel} - {endLabel} • {getCompletedCourseSummary(course).classCount} classes
@@ -641,7 +647,7 @@ export default function CoursesMenu() {
                     Tutor:{" "}
                     {selectedCourse.created_by_name ||
                       selectedCourse.created_by_email ||
-                      "Unknown tutor"}
+                      "Not Determined"}
                   </p>
                 </div>
                 <button
@@ -705,7 +711,7 @@ export default function CoursesMenu() {
                   receive an email when it is approved or rejected.
                 </p>
               )}
-              {((selectedCourse.created_by_strike_count ?? 0) === 1 || (selectedCourse.created_by_strike_count ?? 0) === 2) && (
+              {(selectedCourse.created_by_strike_count ?? 0) > 0 && (
                 <p className="text-[10px] text-red-500 font-semibold italic">
                   Warning: In the past 3 months the tutor has arbitrarily cancelled a class near class time, so you should beware of taking this particular tutor&apos;s courses.
                 </p>
