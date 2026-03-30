@@ -228,7 +228,7 @@ export const runGithubSync = async (): Promise<GithubSyncResult> => {
     const shortId = commit.sha.substring(0, 7);
     const messageLines = commit.commit.message.split("\n").filter((l) => l.trim().length > 0);
     const title = messageLines[0] ?? commit.commit.message;
-    const authorName = commit.author?.login || commit.commit.author.name;
+    const authorName = commit.commit.author.name || commit.author?.login || "Unknown";
 
     let text = `📝 **New Commit:** \`${shortId}\` by ${authorName}\n> ${title}`;
     
