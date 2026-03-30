@@ -310,9 +310,7 @@ const buildCoursePermissionOverwrites = (
   const activeAllow = String(
     viewChannelPermission | sendMessagesPermission | readMessageHistoryPermission
   );
-  const pinAllow = (
-    BigInt(viewChannelPermission) | BigInt(readMessageHistoryPermission) | pinMessagesPermission
-  ).toString();
+  const pinOnlyAllow = pinMessagesPermission.toString();
 
   return [
     {
@@ -330,19 +328,19 @@ const buildCoursePermissionOverwrites = (
     {
       id: executiveRoleId,
       type: 0,
-      allow: pinAllow,
+      allow: pinOnlyAllow,
       deny: "0",
     },
     {
       id: juniorExecutiveRoleId,
       type: 0,
-      allow: pinAllow,
+      allow: pinOnlyAllow,
       deny: "0",
     },
     {
       id: founderRoleId,
       type: 0,
-      allow: pinAllow,
+      allow: pinOnlyAllow,
       deny: "0",
     },
     {
