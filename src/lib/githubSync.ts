@@ -1,0 +1,254 @@
+const discordBotToken = process.env.DISCORD_BOT_TOKEN ?? "";
+const discordGuildId = process.env.DISCORD_GUILD_ID ?? "";
+const githubToken = process.env.GITHUB_TOKEN ?? "";
+const targetChannelName =
+  String(process.env.DISCORD_COMMITS_CHANNEL_NAME ?? "").trim() || "commits";
+const repoFullName =
+  String(process.env.GITHUB_REPOSITORY_FULL_NAME ?? "").trim() ||
+  "OoEthanoO/tutoring";
+
+interface GithubCommitNode {
+  sha: string;
+  commit: {
+    message: string;
+    author: {
+      name: string;
+    };
+  };
+  author: {
+    login: string;
+  } | null;
+}
+
+const listDiscordGuildChannels = async () => {
+  const maxAttempts = 3;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const response = await fetch(
+      `https://discord.com/api/v10/guilds/${discordGuildId}/channels`,
+      {
+        headers: {
+          Authorization: `Bot ${discordBotToken}`,
+        },
+        cache: "no-store",
+      }
+    );
+    if (!response.ok) {
+      if (response.status === 429 && attempt < maxAttempts) {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        continue;
+      }
+      throw new Error(`Failed to list Discord channels (${response.status})`);
+    }
+    return response.json() as Promise<any[]>;
+  }
+  throw new Error("Discord API retry limit exceeded.");
+};
+
+const getDiscordChannelMessages = async (channelId: string) => {
+  const maxAttempts = 3;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const response = await fetch(
+      `https://discord.com/api/v10/channels/${channelId}/messages?limit=25`,
+      {
+        headers: {
+          Authorization: `Bot ${discordBotToken}`,
+        },
+        cache: "no-store",
+      }
+    );
+    if (!response.ok) {
+      if (response.status === 429 && attempt < maxAttempts) {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        continue;
+      }
+      return [];
+    }
+    return response.json() as Promise<{ content: string }[]>;
+  }
+  return [];
+};
+
+const sendDiscordMessage = async (channelId: string, content: string) => {
+  const maxAttempts = 3;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const response = await fetch(
+      `https://discord.com/api/v10/channels/${channelId}/messages`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bot ${discordBotToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ content }),
+      }
+    );
+    if (!response.ok) {
+      if (response.status === 429 && attempt < maxAttempts) {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        continue;
+      }
+      throw new Error(`Failed to send Discord message (${response.status})`);
+    }
+    return;
+  }
+};
+
+const fetchRecentCommits = async (repo: string) => {
+  if (!githubToken) {
+    return [];
+  }
+  try {
+    const response = await fetch(
+      `https://api.github.com/repos/${repo}/commits?per_page=15`,
+      {
+        headers: {
+          Authorization: `Bearer ${githubToken}`,
+          Accept: "application/vnd.github.v3+json",
+        },
+        cache: "no-store",
+      }
+    );
+    if (!response.ok) {
+      return [];
+    }
+    return (await response.json()) as GithubCommitNode[];
+  } catch (err) {
+    return [];
+  }
+};
+
+const fetchCommitStats = async (repo: string, sha: string) => {
+  if (!githubToken) {
+    return null;
+  }
+  try {
+    const response = await fetch(
+      `https://api.github.com/repos/${repo}/commits/${sha}`,
+      {
+        headers: {
+          Authorization: `Bearer ${githubToken}`,
+          Accept: "application/vnd.github.v3+json",
+        },
+        cache: "no-store",
+      }
+    );
+    if (!response.ok) {
+      return null;
+    }
+    const data = await response.json();
+    return data?.stats as { additions?: number; deletions?: number } | undefined;
+  } catch (err) {
+    return null;
+  }
+};
+
+export type GithubSyncResult = {
+  success: boolean;
+  processed: number;
+  skippedReason: string | null;
+  errors: string[];
+};
+
+export const runGithubSync = async (): Promise<GithubSyncResult> => {
+  const result: GithubSyncResult = {
+    success: false,
+    processed: 0,
+    skippedReason: null,
+    errors: [],
+  };
+
+  if (!discordBotToken || !discordGuildId) {
+    result.skippedReason = "Discord credentials missing";
+    return result;
+  }
+
+  if (!githubToken) {
+    result.skippedReason = "GitHub token missing";
+    return result;
+  }
+
+  let channels;
+  try {
+    channels = await listDiscordGuildChannels();
+  } catch (err: any) {
+    result.errors.push(`Failed to load guild channels: ${err?.message}`);
+    return result;
+  }
+
+  const commitsChannel = channels.find(
+    (ch) => ch.type === 0 && ch.name === targetChannelName
+  );
+
+  if (!commitsChannel) {
+    result.errors.push(`Channel #${targetChannelName} not found`);
+    return result;
+  }
+
+  // Find the last handled commit by looking through the channel messages
+  const recentMessages = await getDiscordChannelMessages(commitsChannel.id);
+  const syncedShas = new Set<string>();
+  
+  for (const msg of recentMessages) {
+    const match = msg.content.match(/New Commit:\*\* `([a-f0-9]{7})/i);
+    if (match && match[1]) {
+      syncedShas.add(match[1].toLowerCase());
+    }
+  }
+
+  const githubCommits = await fetchRecentCommits(repoFullName);
+  
+  if (githubCommits.length === 0) {
+    result.skippedReason = "No commits fetched from GitHub";
+    result.success = true;
+    return result;
+  }
+
+  // We loop backward so we push older commits before newer commits
+  const unseenCommits = [];
+  for (const gc of githubCommits) {
+    const shortSha = gc.sha.substring(0, 7).toLowerCase();
+    if (syncedShas.has(shortSha)) {
+      break; 
+    }
+    unseenCommits.push(gc);
+  }
+
+  // Reverse so the oldest unseen commit pushes first!
+  unseenCommits.reverse();
+
+  // If we couldn't find ANY match in the discord channel, limit to max 1 latest commit
+  let commitsToProcess = unseenCommits;
+  if (syncedShas.size === 0 && unseenCommits.length > 0) {
+    commitsToProcess = [unseenCommits[unseenCommits.length - 1]];
+  }
+
+  let successfulPushes = 0;
+  for (const commit of commitsToProcess) {
+    const stats = await fetchCommitStats(repoFullName, commit.sha);
+    const shortId = commit.sha.substring(0, 7);
+    const messageLines = commit.commit.message.split("\n").filter((l) => l.trim().length > 0);
+    const title = messageLines[0] ?? commit.commit.message;
+    const authorName = commit.author?.login || commit.commit.author.name;
+
+    let text = `📝 **New Commit:** \`${shortId}\` by ${authorName}\n> ${title}`;
+    
+    if (stats) {
+      const added = stats.additions ?? 0;
+      const removed = stats.deletions ?? 0;
+      text += `\n📊 Lines: **+${added}** / **-${removed}**`;
+    }
+
+    try {
+      await sendDiscordMessage(commitsChannel.id, text);
+      successfulPushes += 1;
+      // Sleep slightly longer inside background sync
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    } catch (err: any) {
+      result.errors.push(`Failed to stream commit ${shortId}: ${err?.message}`);
+    }
+  }
+
+  result.processed = successfulPushes;
+  result.success = true;
+  return result;
+};

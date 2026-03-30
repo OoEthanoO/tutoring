@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { runDiscordSync, type DiscordSyncResult } from "@/lib/discordSync";
+import { runGithubSync, type GithubSyncResult } from "@/lib/githubSync";
 import { resolveRoleByEmail } from "@/lib/roles";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
@@ -1044,6 +1045,23 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  let githubSync: GithubSyncResult | null = null;
+  try {
+    githubSync = await runGithubSync();
+  } catch (error) {
+    console.error("Failed to run Github sync from cron:", error);
+    githubSync = {
+      success: false,
+      processed: 0,
+      skippedReason: null,
+      errors: [
+        error instanceof Error
+          ? error.message
+          : "Unknown runtime exception in Github sync",
+      ],
+    };
+  }
+
   return NextResponse.json({
     sentClassCount,
     sentEmailCount,
@@ -1054,5 +1072,6 @@ export async function POST(request: NextRequest) {
     reminderSkippedReason,
     discordReminderSkippedReason,
     discordSync,
+    githubSync,
   });
 }

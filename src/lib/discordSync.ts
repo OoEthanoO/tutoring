@@ -38,6 +38,7 @@ const addReactionsPermission = 64;
 const readMessageHistoryPermission = 65536;
 const connectPermission = 1048576;
 const manageChannelsPermission = 16;
+const manageMessagesPermission = 8192;
 const archiveDelayMs = 7 * 24 * 60 * 60 * 1000;
 const fundraiserVoiceChannelNamePattern = /^\$\d[\d,]*\sraised$/i;
 
@@ -299,12 +300,18 @@ const getCourseStartedAtMs = (course: CourseRow) => {
 const buildCoursePermissionOverwrites = (
   guildId: string,
   courseRoleId: string,
+  executiveRoleId: string,
+  juniorExecutiveRoleId: string,
+  founderRoleId: string,
   botUserId: string,
   archived: boolean
 ): DiscordPermissionOverwrite[] => {
   const readOnlyAllow = String(viewChannelPermission | readMessageHistoryPermission);
   const activeAllow = String(
     viewChannelPermission | sendMessagesPermission | readMessageHistoryPermission
+  );
+  const pinAllow = String(
+    viewChannelPermission | readMessageHistoryPermission | manageMessagesPermission
   );
 
   return [
@@ -319,6 +326,24 @@ const buildCoursePermissionOverwrites = (
       type: 0,
       allow: (BigInt(archived ? readOnlyAllow : activeAllow) | BigInt(manageChannelsPermission)).toString(),
       deny: archived ? String(sendMessagesPermission) : "0",
+    },
+    {
+      id: executiveRoleId,
+      type: 0,
+      allow: pinAllow,
+      deny: "0",
+    },
+    {
+      id: juniorExecutiveRoleId,
+      type: 0,
+      allow: pinAllow,
+      deny: "0",
+    },
+    {
+      id: founderRoleId,
+      type: 0,
+      allow: pinAllow,
+      deny: "0",
     },
     {
       // Keep bot access so future sync runs can still patch the channel.
@@ -1996,6 +2021,9 @@ export const runDiscordSync = async ({
     const expectedOverwrites = buildCoursePermissionOverwrites(
       discordGuildId,
       courseRoleId,
+      executiveRole.id,
+      juniorExecutiveRole.id,
+      founderRole.id,
       botUser.id,
       shouldArchive
     );
