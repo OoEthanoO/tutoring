@@ -119,7 +119,8 @@ export default function LoginPageClient() {
           <p className="mt-1">
             Please do not create multiple accounts. Only use one account to
             manage your courses and settings. This is to ensure you can easily
-            keep track of your enrollments and Discord access.
+            keep track of your enrollments and Discord access. If you have already
+            created an account, please log in to your previous account.
           </p>
         </div>
 
