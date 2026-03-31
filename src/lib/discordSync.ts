@@ -591,7 +591,7 @@ const buildCommitsPermissionOverwrites = (
   founderRoleId: string,
   botUserId: string
 ): DiscordPermissionOverwrite[] => {
-  const activeAllow = String(
+  const readOnlyAllow = String(
     viewChannelPermission | readMessageHistoryPermission
   );
 
@@ -600,30 +600,30 @@ const buildCommitsPermissionOverwrites = (
       id: guildId,
       type: 0,
       allow: "0",
-      deny: String(viewChannelPermission),
+      deny: String(viewChannelPermission | sendMessagesPermission),
     },
     {
       id: executiveRoleId,
       type: 0,
-      allow: activeAllow,
-      deny: "0",
+      allow: readOnlyAllow,
+      deny: String(sendMessagesPermission),
     },
     {
       id: juniorExecutiveRoleId,
       type: 0,
-      allow: activeAllow,
-      deny: "0",
+      allow: readOnlyAllow,
+      deny: String(sendMessagesPermission),
     },
     {
       id: founderRoleId,
       type: 0,
-      allow: activeAllow,
-      deny: "0",
+      allow: readOnlyAllow,
+      deny: String(sendMessagesPermission),
     },
     {
       id: botUserId,
       type: 1,
-      allow: String(viewChannelPermission | sendMessagesPermission),
+      allow: (BigInt(readOnlyAllow) | BigInt(sendMessagesPermission) | BigInt(manageChannelsPermission)).toString(),
       deny: "0",
     },
   ];
