@@ -795,12 +795,11 @@ export async function POST(request: NextRequest) {
       (isStandardReminder || isFollowUpReminder) && emailRemindersEnabled;
     const shouldSendExecutiveTutorReminder =
       !isFollowUpReminder &&
-      (isFounder 
-        ? reminderType !== "ten_minutes" 
+      (isFounder
+        ? reminderType !== "ten_minutes" && reminderType !== "five_minutes"
         : reminderType !== "ten_minutes" && reminderType !== "fifteen_minutes") &&
       discordReminderDeliveryEnabled &&
-      executivesChannelId !== null;
-    const shouldSendFounderChannelReminder =
+      executivesChannelId !== null;    const shouldSendFounderChannelReminder =
       !isFounder &&
       (reminderType === "one_hour" || reminderType === "ten_minutes") &&
       discordReminderDeliveryEnabled &&
