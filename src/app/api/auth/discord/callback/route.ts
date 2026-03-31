@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getAdminClient, getRequestActor } from "@/lib/authServer";
+import { resolveUserRole } from "@/lib/roles";
 
 const discordTokenUrl = "https://discord.com/api/v10/oauth2/token";
 const discordIdentityUrl = "https://discord.com/api/v10/users/@me";

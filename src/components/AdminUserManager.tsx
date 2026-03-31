@@ -462,6 +462,45 @@ export default function AdminUserManager() {
     setPendingId(null);
   };
 
+  const transferDiscord = async (userId: string) => {
+    const sourceEmail = window.prompt("Enter the email of the user to transfer the Discord connection FROM:");
+    if (!sourceEmail) return;
+
+    setPendingId(userId);
+    setStatus({ type: "idle", message: "" });
+
+    const response = await fetch("/api/admin/users", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userId,
+        transferDiscordFromEmail: sourceEmail,
+      }),
+    });
+
+    if (!response.ok) {
+      const payload = (await response.json().catch(() => null)) as
+        | { error?: string }
+        | null;
+      setStatus({
+        type: "error",
+        message: payload?.error ?? "Could not transfer Discord connection.",
+      });
+      setPendingId(null);
+      return;
+    }
+
+    const data = (await response.json()) as { user: AdminUser };
+    setUsers((current) =>
+      current.map((user) => (user.id === data.user.id ? data.user : user))
+    );
+    setStatus({
+      type: "success",
+      message: `Transferred Discord connection to ${data.user.fullName || data.user.email || "user"}. Please reload to see changes for the source user.`,
+    });
+    setPendingId(null);
+  };
+
   const updateDonationLink = async (userId: string) => {
     setPendingId(userId);
     setStatus({ type: "idle", message: "" });
@@ -988,6 +1027,14 @@ export default function AdminUserManager() {
                     {isPending ? "Working..." : "Impersonate"}
                   </button>
                 ) : null}
+                <button
+                  type="button"
+                  disabled={isPending}
+                  onClick={() => transferDiscord(user.id)}
+                  className="rounded-full border border-[var(--foreground)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  {isPending ? "Working..." : "Transfer Discord here"}
+                </button>
                 {user.role !== "executive" && user.role !== "founder" ? (
                   <button
                     type="button"

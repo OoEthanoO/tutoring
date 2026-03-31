@@ -222,6 +222,7 @@ export async function PATCH(request: NextRequest) {
       grade?: string;
       school?: string;
       strikeCount?: number;
+      transferDiscordFromEmail?: string;
     }
     | null;
 
@@ -233,7 +234,8 @@ export async function PATCH(request: NextRequest) {
       body.isJunior === undefined &&
       body.grade === undefined &&
       body.school === undefined &&
-      body.strikeCount === undefined)
+      body.strikeCount === undefined &&
+      body.transferDiscordFromEmail === undefined)
   ) {
     return NextResponse.json(
       { error: "Missing userId or update data." },
@@ -248,6 +250,76 @@ export async function PATCH(request: NextRequest) {
   const adminClient = createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false },
   });
+
+  if (body.transferDiscordFromEmail) {
+    const emailToSearch = normalizeEmail(body.transferDiscordFromEmail);
+    const { data: sourceUser, error: sourceError } = await adminClient
+      .from("app_users")
+      .select("id, discord_user_id, discord_username, discord_connected_at")
+      .ilike("email", emailToSearch)
+      .single();
+
+    if (sourceError || !sourceUser) {
+      return NextResponse.json({ error: "Source user not found." }, { status: 404 });
+    }
+
+    if (!sourceUser.discord_user_id) {
+      return NextResponse.json({ error: "Source user does not have a Discord connection." }, { status: 400 });
+    }
+
+    if (sourceUser.id === body.userId) {
+      return NextResponse.json({ error: "Cannot transfer from the same user." }, { status: 400 });
+    }
+
+    const { error: unlinkError } = await adminClient
+      .from("app_users")
+      .update({
+        discord_user_id: null,
+        discord_username: null,
+        discord_connected_at: null,
+      })
+      .eq("id", sourceUser.id);
+
+    if (unlinkError) {
+      return NextResponse.json({ error: "Failed to unlink Discord from source user." }, { status: 500 });
+    }
+
+    const { data: updatedTarget, error: linkError } = await adminClient
+      .from("app_users")
+      .update({
+        discord_user_id: sourceUser.discord_user_id,
+        discord_username: sourceUser.discord_username,
+        discord_connected_at: sourceUser.discord_connected_at,
+      })
+      .eq("id", body.userId)
+      .select("id, email, full_name, legal_name, role, created_at, tutor_promoted_at, discord_user_id, discord_username, discord_connected_at, is_junior, grade, school, strike_count")
+      .single();
+
+    if (linkError || !updatedTarget) {
+      return NextResponse.json({ error: "Failed to link Discord to target user." }, { status: 500 });
+    }
+
+    const responseUser = {
+      id: updatedTarget.id,
+      email: updatedTarget.email,
+      createdAt: updatedTarget.created_at,
+      lastSignInAt: null,
+      fullName: updatedTarget.full_name ?? "",
+      role: resolveUserRole(updatedTarget.email, updatedTarget.role ?? null),
+      donationLink: "", // We don't fetch it here, UI will preserve existing state if we just return what we have or we can ignore it
+      tutorPromotedAt: updatedTarget.tutor_promoted_at ?? null,
+      discordUserId: updatedTarget.discord_user_id ?? null,
+      discordUsername: updatedTarget.discord_username ?? null,
+      discordConnectedAt: updatedTarget.discord_connected_at ?? null,
+      isJunior: updatedTarget.is_junior ?? false,
+      grade: updatedTarget.grade ?? "",
+      school: updatedTarget.school ?? "",
+      strikeCount: updatedTarget.strike_count || 0,
+      legalName: updatedTarget.legal_name ?? null,
+    };
+
+    return NextResponse.json({ user: responseUser });
+  }
 
   const existingUser = body.role !== undefined || body.tutorPromotedAt !== undefined || body.isJunior !== undefined || body.strikeCount !== undefined
     ? await adminClient
