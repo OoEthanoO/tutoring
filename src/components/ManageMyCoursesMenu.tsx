@@ -180,6 +180,12 @@ export default function ManageMyCoursesMenu() {
   const [searchQuery, setSearchQuery] = useState("");
   const [availableTutors, setAvailableTutors] = useState<AvailableTutor[]>([]);
   const [pendingTutorCourseId, setPendingTutorCourseId] = useState<string | null>(null);
+  const [isManualEnrollOpen, setIsManualEnrollOpen] = useState(false);
+  const [enrollCourseId, setEnrollCourseId] = useState<string | null>(null);
+  const [allStudents, setAllStudents] = useState<{ id: string; fullName: string; email: string }[]>([]);
+  const [enrollUserId, setEnrollUserId] = useState("");
+  const [isEnrolling, setIsEnrolling] = useState(false);
+  const [enrollSearch, setEnrollSearch] = useState("");
 
   useEffect(() => {
     const hasUnsavedCourseEdit = editingCourseId !== null;
@@ -308,6 +314,11 @@ export default function ManageMyCoursesMenu() {
         .filter((u) => u.role === "executive" || u.role === "founder")
         .map((u) => ({ id: u.id, fullName: u.fullName, email: u.email }));
       setAvailableTutors(tutors);
+
+      const students = (data.users ?? [])
+        .filter((u) => u.role === "student")
+        .map((u) => ({ id: u.id, fullName: u.fullName, email: u.email }));
+      setAllStudents(students);
     };
 
     loadTutors();
@@ -796,6 +807,40 @@ export default function ManageMyCoursesMenu() {
     );
     setStatus({ type: "success", message: "Tutor updated." });
     setPendingTutorCourseId(null);
+  };
+
+  const onManualEnroll = async () => {
+    if (!enrollCourseId || !enrollUserId) return;
+    setIsEnrolling(true);
+    setStatus({ type: "idle", message: "" });
+
+    const response = await fetch("/api/admin/enrollments", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId: enrollUserId, courseId: enrollCourseId }),
+    });
+
+    if (!response.ok) {
+      const payload = await response.json().catch(() => null);
+      setStatus({ type: "error", message: payload?.error ?? "Failed to enroll student." });
+      setIsEnrolling(false);
+      return;
+    }
+
+    setStatus({ type: "success", message: "Student enrolled successfully." });
+    setIsEnrolling(false);
+    setIsManualEnrollOpen(false);
+    setEnrollUserId("");
+    
+    // Refresh course data
+    const fetchCourses = async () => {
+      const resp = await fetch("/api/my-courses");
+      if (resp.ok) {
+        const data = await resp.json();
+        setCourses(data.courses ?? []);
+      }
+    };
+    fetchCourses();
   };
 
   const removeTutor = async (courseId: string) => {
@@ -1313,9 +1358,25 @@ export default function ManageMyCoursesMenu() {
             )}
 
             <div className="space-y-2">
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
-                Enrolled students
-              </p>
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
+                  Enrolled students
+                </p>
+                {role === "founder" ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEnrollCourseId(course.id);
+                      setIsManualEnrollOpen(true);
+                      setEnrollUserId("");
+                      setEnrollSearch("");
+                    }}
+                    className="rounded-full border border-[var(--foreground)] px-2 py-1 text-[0.6rem] font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)]"
+                  >
+                    Add Student
+                  </button>
+                ) : null}
+              </div>
               {course.course_enrollments?.length ? (
                 <ul className="space-y-1 text-xs text-[var(--muted)]">
                   {course.course_enrollments.map((student, index) => (
@@ -1363,6 +1424,82 @@ export default function ManageMyCoursesMenu() {
           </div>
         )})}
       </div>
+
+      {isManualEnrollOpen ? (
+        <div 
+          className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 px-4" 
+          onClick={() => setIsManualEnrollOpen(false)}
+        >
+          <div 
+            className="w-full max-w-sm space-y-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-xl" 
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="space-y-1">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
+                Admin
+              </p>
+              <h3 className="text-lg font-semibold text-[var(--foreground)]">
+                Manual Enrollment
+              </h3>
+              <p className="text-sm text-[var(--muted)]">
+                Select a student to enroll in &quot;{courses.find(c => c.id === enrollCourseId)?.title}&quot;.
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              <input 
+                type="text"
+                placeholder="Search students..."
+                value={enrollSearch}
+                onChange={(e) => setEnrollSearch(e.target.value)}
+                className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+              />
+
+              <div className="max-h-48 overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--surface-muted)]">
+                {allStudents
+                  .filter(s => 
+                    s.fullName.toLowerCase().includes(enrollSearch.toLowerCase()) || 
+                    s.email.toLowerCase().includes(enrollSearch.toLowerCase())
+                  )
+                  .map(student => (
+                    <button
+                      key={student.id}
+                      type="button"
+                      onClick={() => setEnrollUserId(student.id)}
+                      className={`w-full px-4 py-2 text-left text-xs transition hover:bg-[var(--border)] ${
+                        enrollUserId === student.id ? "bg-[var(--border)] font-semibold" : ""
+                      }`}
+                    >
+                      {student.fullName || "Unknown"} ({student.email})
+                    </button>
+                  ))}
+                {allStudents.length === 0 && (
+                  <p className="p-4 text-center text-xs text-[var(--muted)]">No students found.</p>
+                )}
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setIsManualEnrollOpen(false)}
+                disabled={isEnrolling}
+                className="rounded-full border border-[var(--border)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:border-[var(--foreground)] disabled:opacity-70"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isEnrolling || !enrollUserId}
+                onClick={onManualEnroll}
+                className={`rounded-full border border-[var(--foreground)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-70`}
+              >
+                {isEnrolling ? "Enrolling..." : "Enroll Student"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

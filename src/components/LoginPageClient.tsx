@@ -114,6 +114,15 @@ export default function LoginPageClient() {
       <div className="mx-auto flex w-full max-w-md flex-col gap-6 px-6 py-10">
         <h1 className="text-xl font-semibold">Sign in</h1>
 
+        <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-800 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-400">
+          <p className="font-semibold">Notice:</p>
+          <p className="mt-1">
+            Please do not create multiple accounts. Only use one account to
+            manage your courses and settings. This is to ensure you can easily
+            keep track of your enrollments and Discord access.
+          </p>
+        </div>
+
         <div className="flex gap-2">
           <button
             type="button"

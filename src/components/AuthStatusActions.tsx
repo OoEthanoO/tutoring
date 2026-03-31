@@ -24,6 +24,8 @@ export default function AuthStatusActions() {
   const [isDiscordLinked, setIsDiscordLinked] = useState(false);
   const [isDisconnectingDiscord, setIsDisconnectingDiscord] = useState(false);
   const [isDisconnectConfirmOpen, setIsDisconnectConfirmOpen] = useState(false);
+  const [isConnectConfirmOpen, setIsConnectConfirmOpen] = useState(false);
+  const [isCheckingEnrollment, setIsCheckingEnrollment] = useState(false);
   const [isJoinGuidanceActive, setIsJoinGuidanceActive] = useState(false);
   const [isEditNameOpen, setIsEditNameOpen] = useState(false);
   const [fullNameDraft, setFullNameDraft] = useState("");
@@ -248,10 +250,34 @@ export default function AuthStatusActions() {
       }, 500);
     };
 
-    const onConnectDiscord = () => {
+    const onConnectDiscord = async () => {
       setDiscordStatus({ type: "idle", message: "" });
       setIsJoinGuidanceActive(false);
       setIsMenuOpen(false);
+
+      setIsCheckingEnrollment(true);
+      try {
+        const response = await fetch("/api/enrolled");
+        if (response.ok) {
+          const data = await response.json();
+          const courses = data.courses || [];
+          if (courses.length === 0) {
+            setIsConnectConfirmOpen(true);
+            setIsCheckingEnrollment(false);
+            return;
+          }
+        }
+      } catch (err) {
+        console.error("Failed to check enrollment", err);
+      } finally {
+        setIsCheckingEnrollment(false);
+      }
+
+      window.location.assign("/api/auth/discord/connect");
+    };
+
+    const proceedWithDiscordConnection = () => {
+      setIsConnectConfirmOpen(false);
       window.location.assign("/api/auth/discord/connect");
     };
 
@@ -341,12 +367,13 @@ export default function AuthStatusActions() {
               <button
                 type="button"
                 onClick={onConnectDiscord}
+                disabled={isCheckingEnrollment}
                 className={`w-full rounded-lg px-3 py-2 text-left text-sm transition ${isJoinGuidanceActive
                   ? "text-red-600 animate-pulse"
                   : "text-[var(--foreground)] hover:bg-[var(--border)]"
-                  }`}
+                  } ${isCheckingEnrollment ? "opacity-50 cursor-not-allowed" : ""}`}
               >
-                Connect Discord
+                {isCheckingEnrollment ? "Checking..." : "Connect Discord"}
               </button>
             )}
             <div
@@ -432,6 +459,39 @@ export default function AuthStatusActions() {
                     }`}
                 >
                   {isDisconnectingDiscord ? "Disconnecting..." : "Disconnect"}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+        {isConnectConfirmOpen ? (
+          <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 px-4" onClick={() => setIsConnectConfirmOpen(false)}>
+            <div className="w-full max-w-sm space-y-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+              <div className="space-y-1">
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
+                  Confirm
+                </p>
+                <h3 className="text-lg font-semibold text-[var(--foreground)]">
+                  Connect to Discord?
+                </h3>
+                <p className="text-sm text-[var(--muted)]">
+                  You are not currently enrolled in any courses. Do you still want to connect to Discord?
+                </p>
+              </div>
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsConnectConfirmOpen(false)}
+                  className="rounded-full border border-[var(--border)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:border-[var(--foreground)]"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={proceedWithDiscordConnection}
+                  className="rounded-full border border-[var(--foreground)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)]"
+                >
+                  Connect Anyway
                 </button>
               </div>
             </div>
