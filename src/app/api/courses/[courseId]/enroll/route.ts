@@ -1,15 +1,19 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getRequestUser } from "@/lib/authServer";
-import { resolveUserRole, founderEmails } from "@/lib/roles";
+import { resolveUserRole } from "@/lib/roles";
+import { notifyFounders } from "@/lib/notificationsServer";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
-const resendApiKey = process.env.RESEND_API_KEY ?? "";
-const resendFrom = process.env.RESEND_FROM ?? "";
+// const resendApiKey = process.env.RESEND_API_KEY ?? "";
+// const resendFrom = process.env.RESEND_FROM ?? "";
 
+// Local sendEmail removed in favor of shared utility, but we keep the student email send as a simple fetch for now or we could use the new utility too.
 const sendEmail = async (to: string, subject: string, html: string) => {
+  const resendApiKey = process.env.RESEND_API_KEY ?? "";
+  const resendFrom = process.env.RESEND_FROM ?? "";
   if (!resendApiKey || !resendFrom || !to) {
     return;
   }
@@ -64,7 +68,7 @@ export async function POST(
 
   const { data: course, error: courseError } = await adminClient
     .from("courses")
-    .select("id, max_students, course_classes(starts_at), course_enrollments(count)")
+    .select("id, title, max_students, course_classes(starts_at), course_enrollments(count)")
     .eq("id", courseId)
     .single();
 
@@ -236,21 +240,11 @@ export async function POST(
     );
   }
 
-  if (founderEmails.length > 0) {
-    const { data: courseData } = await adminClient
-      .from("courses")
-      .select("title")
-      .eq("id", courseId)
-      .maybeSingle();
-
-    const courseTitle = courseData?.title ?? "a course";
-    const subject = "New enrollment request submitted";
-    const html = `<p>${studentName} requested enrollment in <strong>${courseTitle}</strong>.</p>`;
-    
-    await Promise.all(
-      founderEmails.map((email) => sendEmail(email, subject, html))
-    );
-  }
+  const courseTitle = course?.title ?? "a course";
+  const subject = "New enrollment request submitted";
+  const html = `<p>${studentName} requested enrollment in <strong>${courseTitle}</strong>.</p>`;
+  
+  await notifyFounders(subject, html);
 
   return NextResponse.json({ request: requestData });
 }

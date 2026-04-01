@@ -1,7 +1,7 @@
 export type UserRole = "founder" | "executive" | "student";
 
 const fallbackFounderEmails = [
-  "ethans.coding.class@gmail.com",
+  "yanlearn@icloud.com",
   "jingqu2018@gmail.com",
 ];
 

@@ -4,7 +4,7 @@ import { createServerClient } from "@supabase/ssr";
 const guardedPaths = ["/onboarding"];
 const maintenancePath = "/maintenance";
 const founderEmail =
-  (process.env.NEXT_PUBLIC_FOUNDER_EMAIL ?? "ethans.coding.class@gmail.com")
+  (process.env.NEXT_PUBLIC_FOUNDER_EMAIL ?? "yanlearn@icloud.com")
     .trim()
     .toLowerCase();
 

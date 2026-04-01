@@ -121,10 +121,10 @@ export default function HelpMenu() {
                     <p className="text-sm text-[var(--foreground)]">
                         Email us at{" "}
                         <a
-                            href="mailto:ethans.coding.class@gmail.com"
+                            href="mailto:yanlearn@icloud.com"
                             className="font-semibold text-[var(--foreground)] underline decoration-2 decoration-[var(--border)] underline-offset-4 hover:decoration-[var(--foreground)] transition-all"
                         >
-                            ethans.coding.class@gmail.com
+                            yanlearn@icloud.com
                         </a>
                     </p>
                 </div>
