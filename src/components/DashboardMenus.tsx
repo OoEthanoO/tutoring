@@ -28,6 +28,7 @@ type MenuKey =
   | "founder_tools"
   | "help"
   | "events"
+  | "trash"
   | "sponsors";
 
 type MenuItem = {
@@ -44,6 +45,7 @@ export default function DashboardMenus() {
   const [canScrollRight, setCanScrollRight] = useState(false);
   const [hasUpcomingEvents, setHasUpcomingEvents] = useState(false);
   const [hasPendingRSVP, setHasPendingRSVP] = useState(false);
+  const [trashCount, setTrashCount] = useState(0);
   const router = useRouter();
   const searchParams = useSearchParams();
   const deepLinkedEventId = searchParams.get("event_id");
@@ -188,6 +190,33 @@ export default function DashboardMenus() {
     checkEvents();
   }, [role]);
 
+  useEffect(() => {
+    if (!role || !canManageCourses(role)) {
+      setTrashCount(0);
+      return;
+    }
+
+    const checkTrash = async () => {
+      try {
+        const response = await fetch("/api/courses?trash=true");
+        if (response.ok) {
+          const data = await response.json();
+          setTrashCount(data.courses?.length ?? 0);
+        }
+      } catch (err) {
+        console.error("Failed to check trash", err);
+      }
+    };
+
+    checkTrash();
+
+    const handleRefresh = () => checkTrash();
+    window.addEventListener("refresh-trash", handleRefresh);
+    return () => {
+      window.removeEventListener("refresh-trash", handleRefresh);
+    };
+  }, [role, active]);
+
   const menus = useMemo<MenuItem[]>(() => {
     const items: MenuItem[] = [
       { key: "home", label: "Home" },
@@ -213,12 +242,16 @@ export default function DashboardMenus() {
       items.push({ key: "events", label: "Events" });
     }
 
+    if (trashCount > 0) {
+      items.push({ key: "trash", label: "Trash" });
+    }
+
     items.push({ key: "help", label: "Help" });
 
     items.push({ key: "sponsors", label: "For Sponsors" });
 
     return items;
-  }, [role, hasUpcomingEvents]);
+  }, [role, hasUpcomingEvents, trashCount]);
 
   const activeMenu: MenuKey = menus.some((item) => item.key === active)
     ? active
@@ -292,6 +325,7 @@ export default function DashboardMenus() {
       {activeMenu === "founder_tools" ? <AdminUserManager /> : null}
       {activeMenu === "help" ? <HelpMenu /> : null}
       {activeMenu === "events" ? <EventsMenu /> : null}
+      {activeMenu === "trash" ? <ManageMyCoursesMenu isTrashMode={true} /> : null}
       {activeMenu === "sponsors" ? <SponsorsMenu /> : null}
     </div>
   );

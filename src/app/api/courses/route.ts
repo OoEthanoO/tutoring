@@ -130,7 +130,7 @@ export async function POST(request: NextRequest) {
       created_by_email: user.email ?? null,
     })
     .select(
-      "id, title, short_name, description, is_completed, completed_start_date, completed_end_date, completed_class_count, max_students, created_by, created_by_name, created_by_email, created_at"
+      "id, title, short_name, description, is_completed, completed_start_date, completed_end_date, completed_class_count, max_students, created_by, created_by_name, created_by_email, created_at, deleted_at"
     )
     .single();
 
@@ -229,11 +229,21 @@ export async function GET(request: NextRequest) {
     auth: { persistSession: false },
   });
 
-  const query = adminClient
+  const trash = request.nextUrl.searchParams.get("trash") === "true";
+  
+  let query = adminClient
     .from("courses")
     .select(
-      "id, title, short_name, description, is_completed, completed_start_date, completed_end_date, completed_class_count, max_students, created_by, created_by_name, created_by_email, created_at, course_classes(id, title, starts_at, duration_hours, created_at), course_enrollments(count)"
-    )
+      "id, title, short_name, description, is_completed, completed_start_date, completed_end_date, completed_class_count, max_students, created_by, created_by_name, created_by_email, created_at, deleted_at, course_classes(id, title, starts_at, duration_hours, created_at), course_enrollments(count)"
+    );
+
+  if (trash) {
+    query = query.not("deleted_at", "is", null);
+  } else {
+    query = query.is("deleted_at", null);
+  }
+
+  query = query
     .order("created_at", { ascending: false })
     .order("starts_at", { foreignTable: "course_classes", ascending: true });
 
@@ -353,7 +363,7 @@ export async function DELETE(request: NextRequest) {
   }
 
   const body = (await request.json().catch(() => null)) as
-    | { courseId?: string }
+    | { courseId?: string; permanent?: boolean }
     | null;
 
   if (!body?.courseId) {
@@ -364,16 +374,45 @@ export async function DELETE(request: NextRequest) {
     auth: { persistSession: false },
   });
 
-  const { error: deleteError } = await adminClient
-    .from("courses")
-    .delete()
-    .eq("id", body.courseId);
+  if (body.courseId === "all_trash") {
+    const { error: deleteError } = await adminClient
+      .from("courses")
+      .delete()
+      .not("deleted_at", "is", null);
 
-  if (deleteError) {
-    return NextResponse.json(
-      { error: deleteError.message ?? "Failed to delete course." },
-      { status: 500 }
-    );
+    if (deleteError) {
+      return NextResponse.json(
+        { error: deleteError.message ?? "Failed to empty trash." },
+        { status: 500 }
+      );
+    }
+    return NextResponse.json({ success: true });
+  }
+
+  if (body.permanent) {
+    const { error: deleteError } = await adminClient
+      .from("courses")
+      .delete()
+      .eq("id", body.courseId);
+
+    if (deleteError) {
+      return NextResponse.json(
+        { error: deleteError.message ?? "Failed to permanently delete course." },
+        { status: 500 }
+      );
+    }
+  } else {
+    const { error: deleteError } = await adminClient
+      .from("courses")
+      .update({ deleted_at: new Date().toISOString() })
+      .eq("id", body.courseId);
+
+    if (deleteError) {
+      return NextResponse.json(
+        { error: deleteError.message ?? "Failed to move course to trash." },
+        { status: 500 }
+      );
+    }
   }
 
   return NextResponse.json({ success: true });
@@ -412,6 +451,7 @@ export async function PATCH(request: NextRequest) {
       description?: string | null;
       createdBy?: string | null;
       maxStudents?: number | null;
+      restore?: boolean;
     }
     | null;
 
@@ -451,7 +491,8 @@ export async function PATCH(request: NextRequest) {
     description === undefined &&
     shortName === undefined &&
     createdBy === undefined &&
-    maxStudents === undefined
+    maxStudents === undefined &&
+    body.restore !== true
   ) {
     return NextResponse.json(
       { error: "Nothing to update." },
@@ -471,9 +512,13 @@ export async function PATCH(request: NextRequest) {
     created_by?: string | null;
     created_by_name?: string | null;
     created_by_email?: string | null;
+    deleted_at?: string | null;
   } = {};
   if (title !== undefined) {
     updatePayload.title = title;
+  }
+  if (body.restore === true) {
+    updatePayload.deleted_at = null;
   }
   if (description !== undefined) {
     updatePayload.description = description ? description : null;
@@ -546,7 +591,7 @@ export async function PATCH(request: NextRequest) {
 
   const { data, error: updateError } = await updateQuery
     .select(
-      "id, title, short_name, description, is_completed, completed_start_date, completed_end_date, completed_class_count, max_students, created_by, created_by_name, created_by_email, created_at"
+      "id, title, short_name, description, is_completed, completed_start_date, completed_end_date, completed_class_count, max_students, created_by, created_by_name, created_by_email, created_at, deleted_at"
     )
     .single();
 

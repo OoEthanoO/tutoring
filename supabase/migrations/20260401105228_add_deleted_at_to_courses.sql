@@ -1,0 +1,1 @@
+alter table public.courses add column if not exists deleted_at timestamp with time zone;

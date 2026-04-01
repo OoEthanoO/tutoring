@@ -145,7 +145,7 @@ const isFiveMinuteLocal = (value: string) => {
   return parsed.getMinutes() % 5 === 0;
 };
 
-export default function ManageMyCoursesMenu() {
+export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMode?: boolean }) {
   const [role, setRole] = useState<UserRole | null>(null);
   const [courses, setCourses] = useState<Course[]>([]);
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
@@ -159,6 +159,8 @@ export default function ManageMyCoursesMenu() {
   const [editCourseShortName, setEditCourseShortName] = useState("");
   const [editCourseDescription, setEditCourseDescription] = useState("");
   const [editCourseMaxStudents, setEditCourseMaxStudents] = useState<string>("");
+  const [isRestoringId, setIsRestoringId] = useState<string | null>(null);
+  const [isEmptyingTrash, setIsEmptyingTrash] = useState(false);
 
   const [pendingCourseEditId, setPendingCourseEditId] = useState<string | null>(
     null
@@ -247,7 +249,8 @@ export default function ManageMyCoursesMenu() {
       setIsLoading(true);
       setStatus({ type: "idle", message: "" });
 
-      const response = await fetch("/api/my-courses");
+      const url = isTrashMode ? "/api/courses?trash=true" : "/api/my-courses";
+      const response = await fetch(url);
       if (!response.ok) {
         const payload = (await response.json().catch(() => null)) as
           | { error?: string }
@@ -266,7 +269,7 @@ export default function ManageMyCoursesMenu() {
     };
 
     fetchCourses();
-  }, [role]);
+  }, [role, isTrashMode]);
 
   useEffect(() => {
     if (role !== "executive" && role !== "founder") {
@@ -594,28 +597,39 @@ export default function ManageMyCoursesMenu() {
           : courseItem
       )
     );
+    window.dispatchEvent(new CustomEvent("refresh-trash"));
     setStatus({ type: "success", message: "Class deleted." });
     setPendingClassDeleteId(null);
   };
 
   const deleteCourse = async (course: Course) => {
-    if (role !== "founder") {
+    if (!role || !canManageCourses(role)) {
+      return;
+    }
+
+    if (isTrashMode && role !== "founder") {
       return;
     }
 
     const name = course.title || "this course";
-    const firstConfirm = window.confirm(
-      `Are you sure you want to delete "${name}"? This cannot be undone.`
-    );
-    if (!firstConfirm) {
-      return;
-    }
+    
+    if (isTrashMode) {
+      const firstConfirm = window.confirm(
+        `Are you sure you want to PERMANENTLY delete "${name}"? This action cannot be undone.`
+      );
+      if (!firstConfirm) return;
 
-    const secondConfirm = window.confirm(
-      `Please confirm again to permanently delete "${name}".`
-    );
-    if (!secondConfirm) {
-      return;
+      const secondConfirm = window.confirm(
+        `Final confirmation: Type "DELETE" to permanently remove "${name}".`
+      );
+      if (secondConfirm !== true && window.prompt(`Type "DELETE" to confirm`) !== "DELETE") {
+        return;
+      }
+    } else {
+      const firstConfirm = window.confirm(
+        `Are you sure you want to move "${name}" to the trash? You can restore it later from the Trash tab.`
+      );
+      if (!firstConfirm) return;
     }
 
     setPendingDeleteId(course.id);
@@ -624,7 +638,10 @@ export default function ManageMyCoursesMenu() {
     const response = await fetch("/api/courses", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ courseId: course.id }),
+      body: JSON.stringify({ 
+        courseId: course.id,
+        permanent: isTrashMode
+      }),
     });
 
     if (!response.ok) {
@@ -642,8 +659,66 @@ export default function ManageMyCoursesMenu() {
     setCourses((current) =>
       current.filter((courseItem) => courseItem.id !== course.id)
     );
-    setStatus({ type: "success", message: "Course deleted." });
+    window.dispatchEvent(new CustomEvent("refresh-trash"));
+    setStatus({ 
+      type: "success", 
+      message: isTrashMode ? "Course permanently deleted." : "Course moved to trash." 
+    });
     setPendingDeleteId(null);
+  };
+
+  const restoreCourse = async (courseId: string) => {
+    setIsRestoringId(courseId);
+    setStatus({ type: "idle", message: "" });
+
+    const response = await fetch("/api/courses", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ courseId, restore: true }),
+    });
+
+    if (!response.ok) {
+      const payload = await response.json().catch(() => null);
+      setStatus({ type: "error", message: payload?.error ?? "Failed to restore course." });
+      setIsRestoringId(null);
+      return;
+    }
+
+    setCourses(current => current.filter(c => c.id !== courseId));
+    window.dispatchEvent(new CustomEvent("refresh-trash"));
+    setStatus({ type: "success", message: "Course restored successfully." });
+    setIsRestoringId(null);
+  };
+
+  const emptyTrash = async () => {
+    if (role !== "founder") return;
+    
+    const confirm1 = window.confirm("Are you sure you want to empty the trash? ALL trashed courses will be permanently deleted.");
+    if (!confirm1) return;
+
+    const confirm2 = window.confirm("This action is IRREVERSIBLE. Are you ABSOLUTELY sure?");
+    if (!confirm2) return;
+
+    setIsEmptyingTrash(true);
+    setStatus({ type: "idle", message: "" });
+
+    const response = await fetch("/api/courses", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ courseId: "all_trash" }),
+    });
+
+    if (!response.ok) {
+      const payload = await response.json().catch(() => null);
+      setStatus({ type: "error", message: payload?.error ?? "Failed to empty trash." });
+      setIsEmptyingTrash(false);
+      return;
+    }
+
+    setCourses([]);
+    window.dispatchEvent(new CustomEvent("refresh-trash"));
+    setStatus({ type: "success", message: "Trash emptied successfully." });
+    setIsEmptyingTrash(false);
   };
 
   const startEditCourse = (course: Course) => {
@@ -967,9 +1042,18 @@ export default function ManageMyCoursesMenu() {
         </p>
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-semibold text-[var(--foreground)]">
-            Manage my courses
+            {isTrashMode ? "Trash" : "Manage my courses"}
           </h2>
-          {(role === "executive" || role === "founder") &&
+          {isTrashMode && role === "founder" && courses.length > 0 && (
+            <button
+              onClick={emptyTrash}
+              disabled={isEmptyingTrash}
+              className="rounded-full border border-red-200 px-3 py-1 text-xs font-semibold text-red-500 transition hover:border-red-400 disabled:opacity-50"
+            >
+              {isEmptyingTrash ? "Emptying..." : "Empty Trash"}
+            </button>
+          )}
+          {!isTrashMode && (role === "executive" || role === "founder") &&
             donationLink &&
             donationRaised !== null ? (
             <p className="text-sm font-semibold text-[var(--foreground)]">
@@ -977,26 +1061,28 @@ export default function ManageMyCoursesMenu() {
             </p>
           ) : null}
         </div>
-        <div className="flex flex-col gap-1">
-          {(role === "executive" || role === "founder") && donationLink ? (
+        {!isTrashMode && (
+          <div className="flex flex-col gap-1">
+            {(role === "executive" || role === "founder") && donationLink ? (
+              <a
+                href={donationLink}
+                target="_blank"
+                rel="noreferrer"
+                className="text-xs font-semibold text-[var(--foreground)] underline"
+              >
+                Your donation link
+              </a>
+            ) : null}
             <a
-              href={donationLink}
+              href="https://forms.gle/WXrRhDtAv2CH5Chx6"
               target="_blank"
               rel="noreferrer"
               className="text-xs font-semibold text-[var(--foreground)] underline"
             >
-              Your donation link
+              Tutor Log Form
             </a>
-          ) : null}
-          <a
-            href="https://forms.gle/WXrRhDtAv2CH5Chx6"
-            target="_blank"
-            rel="noreferrer"
-            className="text-xs font-semibold text-[var(--foreground)] underline"
-          >
-            Tutor Log Form
-          </a>
-        </div>
+          </div>
+        )}
       </header>
 
       {status.type === "error" ? (
@@ -1127,33 +1213,37 @@ export default function ManageMyCoursesMenu() {
                               "Not Determined"}
                           </span>
                         </p>
-                        {course.created_by ? (
-                          <button
-                            type="button"
-                            disabled={pendingTutorCourseId === course.id}
-                            onClick={() => removeTutor(course.id)}
-                            className="rounded-full border border-red-200 px-3 py-1 text-[0.6rem] font-semibold text-red-500 transition hover:border-red-400 disabled:cursor-not-allowed disabled:opacity-70"
-                          >
-                            {pendingTutorCourseId === course.id ? "Removing..." : "Remove Tutor"}
-                          </button>
-                        ) : null}
-                        <select
-                          disabled={pendingTutorCourseId === course.id}
-                          value={course.created_by ?? ""}
-                          onChange={(event) => {
-                            if (event.target.value) {
-                              changeTutor(course.id, event.target.value);
-                            }
-                          }}
-                          className="rounded-full border border-[var(--border)] bg-[var(--surface)] px-3 py-1 text-[0.6rem] text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-70"
-                        >
-                          <option value="">Set tutor...</option>
-                          {availableTutors.map((tutor) => (
-                            <option key={tutor.id} value={tutor.id}>
-                              {tutor.fullName || tutor.email}
-                            </option>
-                          ))}
-                        </select>
+                        {!isTrashMode && (
+                          <>
+                            {course.created_by ? (
+                              <button
+                                type="button"
+                                disabled={pendingTutorCourseId === course.id}
+                                onClick={() => removeTutor(course.id)}
+                                className="rounded-full border border-red-200 px-3 py-1 text-[0.6rem] font-semibold text-red-500 transition hover:border-red-400 disabled:cursor-not-allowed disabled:opacity-70"
+                              >
+                                {pendingTutorCourseId === course.id ? "Removing..." : "Remove Tutor"}
+                              </button>
+                            ) : null}
+                            <select
+                              disabled={pendingTutorCourseId === course.id}
+                              value={course.created_by ?? ""}
+                              onChange={(event) => {
+                                if (event.target.value) {
+                                  changeTutor(course.id, event.target.value);
+                                }
+                              }}
+                              className="rounded-full border border-[var(--border)] bg-[var(--surface)] px-3 py-1 text-[0.6rem] text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-70"
+                            >
+                              <option value="">Set tutor...</option>
+                              {availableTutors.map((tutor) => (
+                                <option key={tutor.id} value={tutor.id}>
+                                  {tutor.fullName || tutor.email}
+                                </option>
+                              ))}
+                            </select>
+                          </>
+                        )}
                       </div>
                     ) : null}
                     {role === "founder" && course.max_students ? (
@@ -1165,7 +1255,16 @@ export default function ManageMyCoursesMenu() {
                 )}
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                {editingCourseId === course.id ? (
+                {isTrashMode ? (
+                  <button
+                    type="button"
+                    disabled={isRestoringId === course.id}
+                    onClick={() => restoreCourse(course.id)}
+                    className="rounded-full border border-[var(--border)] px-3 py-1 text-[0.6rem] font-semibold text-[var(--foreground)] transition hover:border-[var(--foreground)] disabled:opacity-50"
+                  >
+                    {isRestoringId === course.id ? "Restoring..." : "Restore"}
+                  </button>
+                ) : editingCourseId === course.id ? (
                   <>
                     <button
                       type="button"
@@ -1192,14 +1291,14 @@ export default function ManageMyCoursesMenu() {
                     Edit
                   </button>
                 )}
-                {role === "founder" ? (
+                {canManageCourses(role) && (!isTrashMode || role === "founder") ? (
                   <button
                     type="button"
                     disabled={pendingDeleteId === course.id}
                     onClick={() => deleteCourse(course)}
                     className="rounded-full border border-red-200 px-3 py-1 text-[0.6rem] font-semibold text-red-500 transition hover:border-red-400 disabled:cursor-not-allowed disabled:opacity-70"
                   >
-                    {pendingDeleteId === course.id ? "Deleting..." : "Delete"}
+                    {pendingDeleteId === course.id ? (isTrashMode ? "Deleting..." : "Moving...") : (isTrashMode ? "Delete Permanently" : "Delete")}
                   </button>
                 ) : null}
               </div>
@@ -1315,7 +1414,7 @@ export default function ManageMyCoursesMenu() {
               )}
             </div>
 
-            {course.is_completed ? null : (
+            {course.is_completed || isTrashMode ? null : (
               <form
                 className="grid gap-3 sm:grid-cols-[1fr_auto]"
                 onSubmit={(event) => onCreateClass(course.id, event)}
@@ -1362,7 +1461,7 @@ export default function ManageMyCoursesMenu() {
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
                   Enrolled students
                 </p>
-                {role === "founder" ? (
+                {role === "founder" && !isTrashMode ? (
                   <button
                     type="button"
                     onClick={() => {
@@ -1398,7 +1497,7 @@ export default function ManageMyCoursesMenu() {
                           <> · {student.student_school}</>
                         ) : null}
                       </span>
-                      {role === "founder" ? (
+                      {role === "founder" && !isTrashMode ? (
                         <button
                           type="button"
                           disabled={pendingEnrollmentDeleteId === student.id}
