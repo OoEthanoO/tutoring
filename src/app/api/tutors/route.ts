@@ -68,7 +68,8 @@ export async function GET() {
     .filter(
       (user) =>
         (user.role === "founder" || user.role === "executive") &&
-        (!user.isJunior || activeCreatorIds.has(user.id))
+        (!user.isJunior || activeCreatorIds.has(user.id)) &&
+        user.email !== "jingqu2018@gmail.com"
     )
     .sort((a, b) => {
       if (a.role === "founder" && b.role !== "founder") {
