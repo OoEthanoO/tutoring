@@ -989,10 +989,10 @@ export async function POST(request: NextRequest) {
         } else if (founderRoleId) {
           if (reminderType === "twenty_four_hours" || reminderType === "six_hours") {
             contactInstruction =
-              `If you are unable to make it to the class, you have to contact a <@&${founderRoleId}> as soon as possible.`;
+              `If you are unable to make it to the class, you have to contact a founder as soon as possible.`;
           } else if (reminderType === "one_hour") {
             contactInstruction =
-              `If you are unable to make it to the class, contact a <@&${founderRoleId}> immediately.`;
+              `If you are unable to make it to the class, contact a founder immediately.`;
           }
         }
         if (reminderType === "five_minutes") {
