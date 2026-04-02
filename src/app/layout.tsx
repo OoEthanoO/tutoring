@@ -16,8 +16,15 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "YanLearn",
-  description:
-    "Education for all",
+  description: "Education for all",
+  icons: {
+    icon: [
+      {
+        url: "/logo.svg",
+        type: "image/svg+xml",
+      },
+    ],
+  },
 };
 
 import { NotificationProvider } from "@/components/Notification";
