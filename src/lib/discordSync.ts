@@ -1447,6 +1447,21 @@ export const runDiscordSync = async ({
     const shouldBeFounder = founderDiscordUserIds.has(memberId);
     const shouldBeExecutive = websiteRole === "executive";
 
+    const expectedNick = shouldBeExecutive || shouldBeFounder ? null : (websiteUser.full_name || null);
+    if (expectedNick !== (member.nick ?? null)) {
+      try {
+        await apiClient.updateGuildMember(discordGuildId, memberId, { nick: expectedNick });
+        result.updatedMemberNickCount += 1;
+      } catch (error) {
+        result.errors.push(
+          `Failed to update nickname for member ${memberId}: ${toErrorMessage(
+            error,
+            "Unknown update member error."
+          )}`
+        );
+      }
+    }
+
     if (shouldBeFounder) {
       if (!roleSet.has(founderRole.id)) {
         await addRoleToMember(
@@ -1604,21 +1619,6 @@ export const runDiscordSync = async ({
         "baseRoleRemovedCount",
         true
       );
-    }
-
-    const expectedNick = shouldBeExecutive || shouldBeFounder ? null : (websiteUser.full_name || null);
-    if (expectedNick !== (member.nick ?? null)) {
-      try {
-        await apiClient.updateGuildMember(discordGuildId, memberId, { nick: expectedNick });
-        result.updatedMemberNickCount += 1;
-      } catch (error) {
-        result.errors.push(
-          `Failed to update nickname for member ${memberId}: ${toErrorMessage(
-            error,
-            "Unknown update member error."
-          )}`
-        );
-      }
     }
   }
 
