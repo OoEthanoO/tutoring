@@ -54,14 +54,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  // Filter out events that only have past dates for non-founders
+  // No longer filtering out past events for anyone, so executives can see all events
   let filteredEvents = events || [];
-  if (!isFounder) {
-    const now = new Date().toISOString();
-    filteredEvents = filteredEvents.filter(event =>
-      event.event_dates.some((d: any) => d.starts_at >= now)
-    );
-  }
 
   // Attach user details to responses for founder
   if (isFounder && filteredEvents) {
@@ -71,7 +65,7 @@ export async function GET(request: NextRequest) {
 
     const { data: allUsers } = await supabase
       .from("app_users")
-      .select("id, full_name, is_junior, role")
+      .select("id, full_name, email, is_junior, role")
       .in("role", ["executive", "tutor", "founder"]);
 
     const userMap = new Map(allUsers?.map(u => [u.id, u]) ?? []);
@@ -111,7 +105,7 @@ export async function POST(request: NextRequest) {
 
   const supabase = createClient(supabaseUrl, serviceRoleKey);
 
-  // Calculate deadline: 7 days before earliest date
+  // Calculate deadline: 14 days before earliest date
   let finalDeadline = deadline;
   if (!finalDeadline && dates && dates.length > 0) {
     const sorted = [...dates].sort((a, b) => {
@@ -120,7 +114,7 @@ export async function POST(request: NextRequest) {
       return dateA - dateB;
     });
     const earliest = new Date(typeof sorted[0] === "string" ? sorted[0] : sorted[0].starts_at);
-    earliest.setDate(earliest.getDate() - 7);
+    earliest.setDate(earliest.getDate() - 14);
     finalDeadline = earliest.toISOString();
   }
 
@@ -271,7 +265,7 @@ export async function PUT(request: NextRequest) {
 
   const supabase = createClient(supabaseUrl, serviceRoleKey);
 
-  // Calculate deadline: 7 days before earliest date
+  // Calculate deadline: 14 days before earliest date
   let finalDeadline = deadline;
   if (!finalDeadline && dates && dates.length > 0) {
     const sorted = [...dates].sort((a, b) => {
@@ -280,7 +274,7 @@ export async function PUT(request: NextRequest) {
       return dateA - dateB;
     });
     const earliest = new Date(typeof sorted[0] === "string" ? sorted[0] : sorted[0].starts_at);
-    earliest.setDate(earliest.getDate() - 7);
+    earliest.setDate(earliest.getDate() - 14);
     finalDeadline = earliest.toISOString();
   }
 

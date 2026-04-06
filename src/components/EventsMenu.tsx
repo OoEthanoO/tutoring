@@ -31,6 +31,7 @@ type Event = {
   all_executives?: {
     id: string;
     full_name: string;
+    email?: string;
     is_junior: boolean;
     role: string;
   }[];
@@ -57,7 +58,7 @@ export default function EventsMenu() {
   // Modal State
   const [modalData, setModalData] = useState<{
     label: string,
-    users: { id: string, full_name: string }[]
+    users: { id: string, full_name: string, email?: string }[]
   } | null>(null);
 
   useEffect(() => {
@@ -568,14 +569,28 @@ export default function EventsMenu() {
               ) : (
                 <div className="divide-y divide-[var(--border)]">
                   {modalData.users.map((u) => (
-                    <div key={u.id} className="py-3 flex items-center justify-between group">
+                    <div key={u.id} className="py-3 flex flex-col justify-center group">
                       <span className="text-xs font-bold uppercase tracking-wider text-[var(--foreground)]">{u.full_name}</span>
+                      {u.email && (
+                        <span className="text-[10px] text-[var(--muted)] mt-0.5 tracking-wider">{u.email}</span>
+                      )}
                     </div>
                   ))}
                 </div>
               )}
             </div>
-            <div className="border-t border-[var(--border)] bg-[var(--background)] p-4">
+            <div className="border-t border-[var(--border)] bg-[var(--background)] p-4 flex gap-3">
+              <button
+                onClick={() => {
+                  const text = modalData.users.map(u => `${u.full_name}, ${u.email || ''}`).join('\n');
+                  navigator.clipboard.writeText(text);
+                  alert('Copied attendees to clipboard!');
+                }}
+                disabled={modalData.users.length === 0}
+                className="w-full rounded-2xl border border-[var(--border)] py-3 text-[10px] font-black uppercase tracking-[0.2em] text-[var(--foreground)] transition hover:bg-[var(--surface)] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Copy Info
+              </button>
               <button
                 onClick={() => setModalData(null)}
                 className="w-full rounded-2xl bg-[var(--foreground)] py-3 text-[10px] font-black uppercase tracking-[0.2em] text-[var(--background)] transition hover:opacity-90 active:scale-[0.98]"
