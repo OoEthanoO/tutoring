@@ -430,13 +430,31 @@ export default function EventsMenu() {
                         )}
                       </div>
                     </div>
-                    <p className="flex items-center gap-2 text-sm text-[var(--muted)]">
-                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <div className="flex items-center gap-2 text-sm text-[var(--muted)]">
+                      <svg className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                       </svg>
-                      {event.location}
-                    </p>
+                      {event.location ? (
+                        <div className="flex items-center gap-2">
+                          <span>{event.location}</span>
+                          <button
+                            onClick={() => {
+                              navigator.clipboard.writeText(event.location);
+                              alert("Location copied!");
+                            }}
+                            className="p-1 rounded hover:bg-[var(--border)] transition-colors opacity-70 hover:opacity-100"
+                            title="Copy Location"
+                          >
+                            <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                            </svg>
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="italic opacity-80">Not Determined Yet</span>
+                      )}
+                    </div>
                     {event.description && (
                       <p className="max-w-xl text-sm leading-relaxed text-[var(--muted)] whitespace-pre-wrap">
                         {event.description}
