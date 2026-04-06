@@ -114,13 +114,16 @@ export async function POST(request: NextRequest) {
   let finalDeadline = deadline;
   if (!finalDeadline && dates && dates.length > 0) {
     const sorted = [...dates].sort((a, b) => {
-      const dateA = new Date(typeof a === "string" ? a : a.starts_at).getTime();
-      const dateB = new Date(typeof b === "string" ? b : b.starts_at).getTime();
+      const aStr = typeof a === "string" ? a : a.starts_at;
+      const bStr = typeof b === "string" ? b : b.starts_at;
+      const dateA = new Date(aStr.length === 10 ? aStr + "T00:00:00" : aStr).getTime();
+      const dateB = new Date(bStr.length === 10 ? bStr + "T00:00:00" : bStr).getTime();
       return dateA - dateB;
     });
-    const earliest = new Date(typeof sorted[0] === "string" ? sorted[0] : sorted[0].starts_at);
-    earliest.setDate(earliest.getDate() - 14);
-    finalDeadline = earliest.toISOString();
+    const earliestStr = typeof sorted[0] === "string" ? sorted[0] : sorted[0].starts_at;
+    const earliestObj = new Date(earliestStr.length === 10 ? earliestStr + "T00:00:00" : earliestStr);
+    earliestObj.setDate(earliestObj.getDate() - 14);
+    finalDeadline = earliestObj.toISOString();
   }
 
   // 1. Create the event
@@ -274,13 +277,16 @@ export async function PUT(request: NextRequest) {
   let finalDeadline = deadline;
   if (!finalDeadline && dates && dates.length > 0) {
     const sorted = [...dates].sort((a, b) => {
-      const dateA = new Date(typeof a === "string" ? a : a.starts_at).getTime();
-      const dateB = new Date(typeof b === "string" ? b : b.starts_at).getTime();
+      const aStr = typeof a === "string" ? a : a.starts_at;
+      const bStr = typeof b === "string" ? b : b.starts_at;
+      const dateA = new Date(aStr.length === 10 ? aStr + "T00:00:00" : aStr).getTime();
+      const dateB = new Date(bStr.length === 10 ? bStr + "T00:00:00" : bStr).getTime();
       return dateA - dateB;
     });
-    const earliest = new Date(typeof sorted[0] === "string" ? sorted[0] : sorted[0].starts_at);
-    earliest.setDate(earliest.getDate() - 14);
-    finalDeadline = earliest.toISOString();
+    const earliestStr = typeof sorted[0] === "string" ? sorted[0] : sorted[0].starts_at;
+    const earliestObj = new Date(earliestStr.length === 10 ? earliestStr + "T00:00:00" : earliestStr);
+    earliestObj.setDate(earliestObj.getDate() - 14);
+    finalDeadline = earliestObj.toISOString();
   }
 
   // 1. Update the event
