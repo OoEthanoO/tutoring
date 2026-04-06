@@ -47,7 +47,7 @@ export default function EventsMenu() {
   // Create Event Form State
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [dates, setDates] = useState<{starts_at: string, is_time_specified: boolean}[]>([
+  const [dates, setDates] = useState<{id?: string, starts_at: string, is_time_specified: boolean}[]>([
     { starts_at: "", is_time_specified: true }
   ]);
   const [location, setLocation] = useState("");
@@ -118,6 +118,7 @@ export default function EventsMenu() {
     }
 
     const payloadDates = validDates.map(d => ({
+      id: d.id,
       starts_at: d.is_time_specified ? new Date(d.starts_at).toISOString() : d.starts_at,
       is_time_specified: d.is_time_specified
     }));
@@ -192,12 +193,23 @@ export default function EventsMenu() {
     setDescription(event.description);
     setLocation(event.location);
     setIsJuniorExcluded(event.is_junior_excluded);
-    setDates(event.event_dates.map(d => ({
-      starts_at: d.is_time_specified 
-        ? (d.starts_at.includes('T') ? d.starts_at.substring(0, 16) : d.starts_at)
-        : (d.starts_at.includes('T') ? d.starts_at.substring(0, 10) : d.starts_at),
-      is_time_specified: d.is_time_specified
-    })));
+    setDates(event.event_dates.map(d => {
+      let starts = d.starts_at;
+      if (d.starts_at.includes('T')) {
+        if (d.is_time_specified) {
+          const dateObj = new Date(d.starts_at);
+          const tzOffset = dateObj.getTimezoneOffset() * 60000;
+          starts = new Date(dateObj.getTime() - tzOffset).toISOString().slice(0, 16);
+        } else {
+          starts = d.starts_at.substring(0, 10);
+        }
+      }
+      return {
+        id: d.id,
+        starts_at: starts,
+        is_time_specified: d.is_time_specified
+      };
+    }));
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 

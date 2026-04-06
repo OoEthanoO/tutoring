@@ -57,6 +57,11 @@ export async function GET(request: NextRequest) {
   // No longer filtering out past events for anyone, so executives can see all events
   let filteredEvents = events || [];
 
+  // Filter out inactive dates for everyone (is_active may be missing initially, assume true)
+  filteredEvents.forEach(event => {
+    event.event_dates = event.event_dates.filter((d: any) => d.is_active !== false);
+  });
+
   // Attach user details to responses for founder
   if (isFounder && filteredEvents) {
     const responseUserIds = Array.from(new Set(
@@ -298,45 +303,102 @@ export async function PUT(request: NextRequest) {
   // Fetch existing dates
   const { data: existingDates } = await supabase
     .from("event_dates")
-    .select("id, starts_at")
+    .select("id, starts_at, is_time_specified")
     .eq("event_id", id);
 
-  const existingMap = new Map(existingDates?.map(d => [d.starts_at, d.id]) ?? []);
-  const newStarts = dates.map(d => typeof d === 'string' ? d : d.starts_at);
+  const normalizeDate = (dString: string) => {
+    const t = new Date(dString).getTime();
+    return isNaN(t) ? dString : t;
+  };
 
-  // Dates to delete: those in DB NOT in new request
-  const idsToDelete = (existingDates || [])
-    .filter(d => !newStarts.includes(d.starts_at))
-    .map(d => d.id);
-
-  if (idsToDelete.length > 0) {
-    await supabase.from("event_dates").delete().in("id", idsToDelete);
-  }
-
-  // Dates to insert: those in request NOT in DB
-  const datesToInsert = dates
-    .filter(d => !existingMap.has(typeof d === 'string' ? d : d.starts_at))
-    .map(d => ({
-      event_id: id,
-      starts_at: typeof d === 'string' ? d : d.starts_at,
-      is_time_specified: typeof d === 'string' ? true : !!d.is_time_specified
-    }));
-
-  if (datesToInsert.length > 0) {
-    await supabase.from("event_dates").insert(datesToInsert);
-  }
-
-  // Dates to update: those that already exist but might have changed flags (like is_time_specified)
-  // For simplicity, we just update is_time_specified for all matching dates
-  for (const d of dates) {
-    const start = typeof d === 'string' ? d : d.starts_at;
-    const existingId = existingMap.get(start);
-    if (existingId) {
-      await supabase
-        .from("event_dates")
-        .update({ is_time_specified: typeof d === 'string' ? true : !!d.is_time_specified })
-        .eq("id", existingId);
+  const getLocalDateString = (dString: string, isTimeSpecified: boolean) => {
+    if (!isTimeSpecified) {
+      if (!dString.includes('T')) return dString.substring(0, 10);
+      try {
+        // If it's a UTC midnight representation, the UTC date is the intended day
+        return new Date(dString).toISOString().substring(0, 10);
+      } catch (e) {
+        return dString.substring(0, 10);
+      }
     }
+    const dt = new Date(dString);
+    if (isNaN(dt.getTime())) return dString.substring(0, 10);
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(dt);
+  };
+
+  const unmappedExisting = [...(existingDates || [])];
+  
+  const updates: any[] = [];
+  const inserts: any[] = [];
+
+  for (const d of dates) {
+    const startObj = normalizeDate(typeof d === 'string' ? d : d.starts_at);
+    const startRaw = typeof d === 'string' ? d : d.starts_at;
+    const isTime = typeof d === 'string' ? true : !!d.is_time_specified;
+
+    const dId = typeof d === 'string' ? undefined : d.id;
+
+    // First pass: exact match by explicit ID or exact timestamp
+    let exactIndex = -1;
+    if (dId) {
+      exactIndex = unmappedExisting.findIndex(ex => ex.id === dId);
+    }
+    if (exactIndex === -1) {
+      exactIndex = unmappedExisting.findIndex(ex => normalizeDate(ex.starts_at) === startObj);
+    }
+
+    if (exactIndex !== -1) {
+      const ex = unmappedExisting[exactIndex];
+      unmappedExisting.splice(exactIndex, 1);
+      updates.push({
+        existingId: ex.id,
+        starts_at: startRaw,
+        is_time_specified: isTime
+      });
+      continue;
+    }
+
+    // Second pass: same local date
+    const targetLocal = getLocalDateString(startRaw, isTime);
+    const localIndex = unmappedExisting.findIndex(ex => getLocalDateString(ex.starts_at, ex.is_time_specified) === targetLocal);
+    if (localIndex !== -1) {
+      const ex = unmappedExisting[localIndex];
+      unmappedExisting.splice(localIndex, 1);
+      updates.push({
+        existingId: ex.id,
+        starts_at: startRaw,
+        is_time_specified: isTime
+      });
+      continue;
+    }
+
+    // Otherwise, insert
+    inserts.push({
+      event_id: id,
+      starts_at: startRaw,
+      is_time_specified: isTime
+    });
+  }
+
+  // Deactivate whatever is left
+  const idsToDeactivate = unmappedExisting.map(ex => ex.id);
+  if (idsToDeactivate.length > 0) {
+    await supabase.from("event_dates").update({ is_active: false }).in("id", idsToDeactivate);
+  }
+
+  if (inserts.length > 0) {
+    await supabase.from("event_dates").insert(inserts);
+  }
+
+  for (const up of updates) {
+    await supabase
+      .from("event_dates")
+      .update({
+        starts_at: up.starts_at,
+        is_time_specified: up.is_time_specified,
+        is_active: true
+      })
+      .eq("id", up.existingId);
   }
 
   return NextResponse.json({ success: true });
