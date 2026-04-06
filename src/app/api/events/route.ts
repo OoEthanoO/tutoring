@@ -57,10 +57,42 @@ export async function GET(request: NextRequest) {
   // No longer filtering out past events for anyone, so executives can see all events
   let filteredEvents = events || [];
 
+  const deadlinesToFix: { id: string, deadline: string }[] = [];
+
   // Filter out inactive dates for everyone (is_active may be missing initially, assume true)
   filteredEvents.forEach(event => {
     event.event_dates = event.event_dates.filter((d: any) => d.is_active !== false);
+
+    if (event.event_dates.length > 0) {
+      const sorted = [...event.event_dates].sort((a: any, b: any) => {
+        const dateA = new Date(!a.is_time_specified ? a.starts_at.substring(0, 10) + "T00:00:00" : a.starts_at).getTime();
+        const dateB = new Date(!b.is_time_specified ? b.starts_at.substring(0, 10) + "T00:00:00" : b.starts_at).getTime();
+        return dateA - dateB;
+      });
+      const earliest = sorted[0];
+      const earliestObj = new Date(!earliest.is_time_specified ? earliest.starts_at.substring(0, 10) + "T00:00:00" : earliest.starts_at);
+      earliestObj.setDate(earliestObj.getDate() - 14);
+      const expectedDeadline = earliestObj.toISOString();
+
+      if (event.deadline) {
+        const currentObj = new Date(event.deadline);
+        const expectedObj = new Date(expectedDeadline);
+        if (currentObj.getTime() !== expectedObj.getTime()) {
+          event.deadline = expectedDeadline;
+          deadlinesToFix.push({ id: event.id, deadline: expectedDeadline });
+        }
+      } else {
+        event.deadline = expectedDeadline;
+        deadlinesToFix.push({ id: event.id, deadline: expectedDeadline });
+      }
+    }
   });
+
+  if (deadlinesToFix.length > 0) {
+    await Promise.all(deadlinesToFix.map(fix => 
+      supabase.from("events").update({ deadline: fix.deadline }).eq("id", fix.id)
+    ));
+  }
 
   // Attach user details to responses for founder
   if (isFounder && filteredEvents) {
