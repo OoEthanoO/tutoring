@@ -340,6 +340,9 @@ export async function PATCH(request: NextRequest) {
   const isPromotingToTutor =
     (body.role === "executive" || body.role === "tutor") && (existingRole !== "executive" && existingRole !== "tutor");
 
+  const isDemotingFromTutor =
+    body.role === "student" && (existingRole === "tutor" || existingRole === "executive");
+
   const shouldUpdatePromotedAt = body.tutorPromotedAt !== undefined;
   const normalizedPromotedAt =
     body.tutorPromotedAt === null ? null : body.tutorPromotedAt;
@@ -385,6 +388,17 @@ export async function PATCH(request: NextRequest) {
       { error: updateError?.message ?? "Failed to update user." },
       { status: 500 }
     );
+  }
+
+  if (isDemotingFromTutor) {
+    await adminClient
+      .from("courses")
+      .update({
+        created_by: null,
+        created_by_name: null,
+        created_by_email: null,
+      })
+      .eq("created_by", body.userId);
   }
 
   if (body.donationLink !== undefined) {
@@ -622,6 +636,16 @@ export async function DELETE(request: NextRequest) {
   const adminClient = createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false },
   });
+
+  // Make user's courses into limbo courses before deleting the user
+  await adminClient
+    .from("courses")
+    .update({
+      created_by: null,
+      created_by_name: null,
+      created_by_email: null,
+    })
+    .eq("created_by", body.userId);
 
   const { error: deleteError } = await adminClient
     .from("app_users")

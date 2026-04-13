@@ -164,6 +164,7 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
   const [isEmptyingTrash, setIsEmptyingTrash] = useState(false);
   const [bulkTutorEmail, setBulkTutorEmail] = useState("");
   const [isBulkSetting, setIsBulkSetting] = useState(false);
+  const [isEnforcingTutors, setIsEnforcingTutors] = useState(false);
 
   const [pendingCourseEditId, setPendingCourseEditId] = useState<string | null>(
     null
@@ -769,6 +770,39 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
     fetchCourses();
   };
 
+  const handleEnforceTutors = async () => {
+    const confirm = window.confirm("Are you sure you want to enforce the limbo courses rule? This will retroactively convert all courses managed by non-tutors into limbo courses.");
+    if (!confirm) return;
+
+    setIsEnforcingTutors(true);
+    setStatus({ type: "idle", message: "" });
+
+    const response = await fetch("/api/admin/enforce-tutors", {
+      method: "POST",
+    });
+
+    if (!response.ok) {
+      const payload = await response.json().catch(() => null);
+      setStatus({ type: "error", message: payload?.error ?? "Failed to enforce tutor rule." });
+      setIsEnforcingTutors(false);
+      return;
+    }
+
+    const payload = await response.json();
+    setStatus({ type: "success", message: `Successfully enforced rule. ${payload.count} courses converted to limbo.` });
+    setIsEnforcingTutors(false);
+
+    // Refresh courses
+    const fetchCourses = async () => {
+      const resp = await fetch(isTrashMode ? "/api/courses?trash=true" : "/api/my-courses");
+      if (resp.ok) {
+        const data = await resp.json();
+        setCourses(data.courses ?? []);
+      }
+    };
+    fetchCourses();
+  };
+
   const startEditCourse = (course: Course) => {
     setEditingCourseId(course.id);
     setEditCourseTitle(course.title ?? "");
@@ -1137,24 +1171,37 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
               Tutor Log Form
             </a>
             {role === "founder" && (
-              <div className="mt-4 flex flex-col gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] p-4">
-                <p className="text-xs font-semibold text-[var(--foreground)]">Bulk Assign Limbo Courses</p>
-                <div className="flex flex-wrap items-center gap-2">
-                  <input
-                    type="email"
-                    placeholder="Tutor's email address"
-                    value={bulkTutorEmail}
-                    onChange={(e) => setBulkTutorEmail(e.target.value)}
-                    className="flex-1 rounded-full border border-[var(--border)] bg-[var(--surface)] px-4 py-2 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
-                  />
-                  <button
-                    type="button"
-                    disabled={isBulkSetting}
-                    onClick={handleBulkSetTutor}
-                    className="rounded-full border border-[var(--foreground)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)] disabled:opacity-50"
-                  >
-                    {isBulkSetting ? "Assigning..." : "Assign to Email"}
-                  </button>
+              <div className="mt-4 flex flex-col gap-4 rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] p-4">
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-semibold text-[var(--foreground)]">Admin Tools</p>
+                    <button
+                      type="button"
+                      disabled={isEnforcingTutors}
+                      onClick={handleEnforceTutors}
+                      className="rounded-full border border-red-200 px-3 py-1 text-[0.6rem] font-semibold text-red-500 transition hover:border-red-400 disabled:opacity-50"
+                    >
+                      {isEnforcingTutors ? "Enforcing..." : "Enforce Limbo Rule on Existing Courses"}
+                    </button>
+                  </div>
+                  <p className="text-xs text-[var(--muted)]">Assign all limbo courses to a specific tutor email:</p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      type="email"
+                      placeholder="Tutor's email address"
+                      value={bulkTutorEmail}
+                      onChange={(e) => setBulkTutorEmail(e.target.value)}
+                      className="flex-1 rounded-full border border-[var(--border)] bg-[var(--surface)] px-4 py-2 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+                    />
+                    <button
+                      type="button"
+                      disabled={isBulkSetting}
+                      onClick={handleBulkSetTutor}
+                      className="rounded-full border border-[var(--foreground)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)] disabled:opacity-50"
+                    >
+                      {isBulkSetting ? "Assigning..." : "Assign to Email"}
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
