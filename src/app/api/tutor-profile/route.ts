@@ -66,6 +66,8 @@ const fetchDonationProgress = async (donationLink: string) => {
   }
 };
 
+export const dynamic = "force-dynamic";
+
 export async function GET(request: NextRequest) {
   if (!supabaseUrl || !supabaseAnonKey) {
     return NextResponse.json(
@@ -101,29 +103,41 @@ export async function GET(request: NextRequest) {
     .eq("user_id", user.id)
     .maybeSingle();
 
+  // Find completed courses for this user (not deleted)
   const { data: completedCourses } = await adminClient
     .from("courses")
     .select("completed_class_count")
     .eq("created_by", user.id)
+    .is("deleted_at", null)
     .eq("is_completed", true);
 
-  const completedClasses = (completedCourses ?? []).reduce(
-    (acc, course) => acc + (course.completed_class_count || 0),
-    0
-  );
+  const completedClasses = (completedCourses ?? []).reduce((acc, course) => {
+    const count = typeof course.completed_class_count === 'number' 
+      ? course.completed_class_count 
+      : Number(course.completed_class_count || 0);
+    return acc + (Number.isNaN(count) ? 0 : count);
+  }, 0);
+  
   let taughtMinutes = completedClasses * 60;
 
   const nowStr = new Date().toISOString();
+  
+  // Find past classes. We use the foreign key to match courses created_by, 
+  // ensuring we also skip deleted courses and old classes missing `created_by` get correctly counted.
   const { data: pastClasses } = await adminClient
     .from("course_classes")
-    .select("duration_hours")
-    .eq("created_by", user.id)
+    .select("duration_hours, courses!inner(created_by, deleted_at)")
+    .eq("courses.created_by", user.id)
+    .is("courses.deleted_at", null)
     .lt("starts_at", nowStr);
 
-  const pastClassHours = (pastClasses ?? []).reduce(
-    (acc, cls) => acc + (cls.duration_hours || 0),
-    0
-  );
+  const pastClassHours = (pastClasses ?? []).reduce((acc, cls) => {
+    const hours = typeof cls.duration_hours === 'number' 
+      ? cls.duration_hours 
+      : Number.parseFloat(String(cls.duration_hours || 1));
+    return acc + (Number.isNaN(hours) ? 1 : hours);
+  }, 0);
+  
   taughtMinutes += Math.round(pastClassHours * 60);
 
   const donationLink = data?.donation_link ?? "";
