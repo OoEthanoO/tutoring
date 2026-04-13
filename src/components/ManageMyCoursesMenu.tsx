@@ -151,6 +151,7 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
   const [donationLink, setDonationLink] = useState<string>("");
   const [donationRaised, setDonationRaised] = useState<number | null>(null);
+  const [taughtMinutes, setTaughtMinutes] = useState<number | null>(null);
 
   const [classStartsAt, setClassStartsAt] = useState<Record<string, string>>({});
   const [pendingCourseId, setPendingCourseId] = useState<string | null>(null);
@@ -161,6 +162,8 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
   const [editCourseMaxStudents, setEditCourseMaxStudents] = useState<string>("");
   const [isRestoringId, setIsRestoringId] = useState<string | null>(null);
   const [isEmptyingTrash, setIsEmptyingTrash] = useState(false);
+  const [bulkTutorEmail, setBulkTutorEmail] = useState("");
+  const [isBulkSetting, setIsBulkSetting] = useState(false);
 
   const [pendingCourseEditId, setPendingCourseEditId] = useState<string | null>(
     null
@@ -287,11 +290,17 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
         donationProgress?: {
           raised?: number | null;
         };
+        taughtMinutes?: number;
       };
       setDonationLink(data.donationLink ?? "");
       setDonationRaised(
         typeof data.donationProgress?.raised === "number"
           ? data.donationProgress.raised
+          : null
+      );
+      setTaughtMinutes(
+        typeof data.taughtMinutes === "number"
+          ? data.taughtMinutes
           : null
       );
     };
@@ -721,6 +730,45 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
     setIsEmptyingTrash(false);
   };
 
+  const handleBulkSetTutor = async () => {
+    if (!bulkTutorEmail.trim()) {
+      setStatus({ type: "error", message: "Please enter an email address." });
+      return;
+    }
+    const confirm = window.confirm(`Are you sure you want to assign all limbo courses to ${bulkTutorEmail}?`);
+    if (!confirm) return;
+
+    setIsBulkSetting(true);
+    setStatus({ type: "idle", message: "" });
+
+    const response = await fetch("/api/admin/bulk-set-tutor", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: bulkTutorEmail }),
+    });
+
+    if (!response.ok) {
+      const payload = await response.json().catch(() => null);
+      setStatus({ type: "error", message: payload?.error ?? "Failed to bulk assign tutors." });
+      setIsBulkSetting(false);
+      return;
+    }
+
+    setStatus({ type: "success", message: "Successfully assigned limbo courses." });
+    setBulkTutorEmail("");
+    setIsBulkSetting(false);
+
+    // Refresh courses
+    const fetchCourses = async () => {
+      const resp = await fetch(isTrashMode ? "/api/courses?trash=true" : "/api/my-courses");
+      if (resp.ok) {
+        const data = await resp.json();
+        setCourses(data.courses ?? []);
+      }
+    };
+    fetchCourses();
+  };
+
   const startEditCourse = (course: Course) => {
     setEditingCourseId(course.id);
     setEditCourseTitle(course.title ?? "");
@@ -1053,12 +1101,19 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
               {isEmptyingTrash ? "Emptying..." : "Empty Trash"}
             </button>
           )}
-          {!isTrashMode && (role === "executive" || role === "founder") &&
-            donationLink &&
-            donationRaised !== null ? (
-            <p className="text-sm font-semibold text-[var(--foreground)]">
-              ${donationRaised.toLocaleString()} raised
-            </p>
+          {!isTrashMode && (role === "executive" || role === "founder") ? (
+            <div className="flex flex-col items-end gap-1">
+              {donationLink && donationRaised !== null ? (
+                <p className="text-sm font-semibold text-[var(--foreground)]">
+                  ${donationRaised.toLocaleString()} raised
+                </p>
+              ) : null}
+              {taughtMinutes !== null ? (
+                <p className="text-sm font-semibold text-[var(--foreground)]">
+                  {taughtMinutes} minutes taught
+                </p>
+              ) : null}
+            </div>
           ) : null}
         </div>
         {!isTrashMode && (
@@ -1081,6 +1136,28 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
             >
               Tutor Log Form
             </a>
+            {role === "founder" && (
+              <div className="mt-4 flex flex-col gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] p-4">
+                <p className="text-xs font-semibold text-[var(--foreground)]">Bulk Assign Limbo Courses</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    type="email"
+                    placeholder="Tutor's email address"
+                    value={bulkTutorEmail}
+                    onChange={(e) => setBulkTutorEmail(e.target.value)}
+                    className="flex-1 rounded-full border border-[var(--border)] bg-[var(--surface)] px-4 py-2 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+                  />
+                  <button
+                    type="button"
+                    disabled={isBulkSetting}
+                    onClick={handleBulkSetTutor}
+                    className="rounded-full border border-[var(--foreground)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)] disabled:opacity-50"
+                  >
+                    {isBulkSetting ? "Assigning..." : "Assign to Email"}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </header>

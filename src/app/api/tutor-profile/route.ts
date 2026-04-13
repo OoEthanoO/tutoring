@@ -101,14 +101,40 @@ export async function GET(request: NextRequest) {
     .eq("user_id", user.id)
     .maybeSingle();
 
+  const { data: completedCourses } = await adminClient
+    .from("courses")
+    .select("completed_class_count")
+    .eq("created_by", user.id)
+    .eq("is_completed", true);
+
+  const completedClasses = (completedCourses ?? []).reduce(
+    (acc, course) => acc + (course.completed_class_count || 0),
+    0
+  );
+  let taughtMinutes = completedClasses * 60;
+
+  const nowStr = new Date().toISOString();
+  const { data: pastClasses } = await adminClient
+    .from("course_classes")
+    .select("duration_hours")
+    .eq("created_by", user.id)
+    .lt("starts_at", nowStr);
+
+  const pastClassHours = (pastClasses ?? []).reduce(
+    (acc, cls) => acc + (cls.duration_hours || 0),
+    0
+  );
+  taughtMinutes += Math.round(pastClassHours * 60);
+
   const donationLink = data?.donation_link ?? "";
   if (!donationLink) {
     return NextResponse.json({
       donationLink: "",
       donationProgress: { raised: null },
+      taughtMinutes,
     });
   }
 
   const donationProgress = await fetchDonationProgress(donationLink);
-  return NextResponse.json({ donationLink, donationProgress });
+  return NextResponse.json({ donationLink, donationProgress, taughtMinutes });
 }
