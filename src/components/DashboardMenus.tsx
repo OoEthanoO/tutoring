@@ -14,6 +14,7 @@ import MyClassesMenu from "@/components/MyClassesMenu";
 import HelpMenu from "@/components/HelpMenu";
 import SponsorsMenu from "@/components/SponsorsMenu";
 import EventsMenu from "@/components/EventsMenu";
+import FormsMenu from "@/components/FormsMenu";
 import EventReminderBanner from "@/components/EventReminderBanner";
 import { useRouter, useSearchParams } from "next/navigation";
 
@@ -28,6 +29,7 @@ type MenuKey =
   | "founder_tools"
   | "help"
   | "events"
+  | "forms"
   | "trash"
   | "sponsors";
 
@@ -44,6 +46,7 @@ export default function DashboardMenus() {
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
   const [hasUpcomingEvents, setHasUpcomingEvents] = useState(false);
+  const [hasForms, setHasForms] = useState(false);
   const [hasPendingRSVP, setHasPendingRSVP] = useState(false);
   const [trashCount, setTrashCount] = useState(0);
   const router = useRouter();
@@ -187,7 +190,23 @@ export default function DashboardMenus() {
       }
     };
 
-    checkEvents();
+    const checkForms = async () => {
+      try {
+        const response = await fetch("/api/forms");
+        if (response.ok) {
+          const data = await response.json();
+          const forms = data.forms || [];
+          setHasForms(forms.length > 0);
+        }
+      } catch (err) {
+        console.error("Failed to check forms", err);
+      }
+    };
+
+    if (role === "founder" || role === "executive") {
+      checkEvents();
+      checkForms();
+    }
   }, [role]);
 
   useEffect(() => {
@@ -242,6 +261,10 @@ export default function DashboardMenus() {
       items.push({ key: "events", label: "Events" });
     }
 
+    if (role === "founder" || (role === "executive" && hasForms)) {
+      items.push({ key: "forms", label: "Forms" });
+    }
+
     if (trashCount > 0) {
       items.push({ key: "trash", label: "Trash" });
     }
@@ -251,7 +274,7 @@ export default function DashboardMenus() {
     items.push({ key: "sponsors", label: "For Sponsors" });
 
     return items;
-  }, [role, hasUpcomingEvents, trashCount]);
+  }, [role, hasUpcomingEvents, hasForms, trashCount]);
 
   const activeMenu: MenuKey = menus.some((item) => item.key === active)
     ? active
@@ -325,6 +348,7 @@ export default function DashboardMenus() {
       {activeMenu === "founder_tools" ? <AdminUserManager /> : null}
       {activeMenu === "help" ? <HelpMenu /> : null}
       {activeMenu === "events" ? <EventsMenu /> : null}
+      {activeMenu === "forms" ? <FormsMenu /> : null}
       {activeMenu === "trash" ? <ManageMyCoursesMenu isTrashMode={true} /> : null}
       {activeMenu === "sponsors" ? <SponsorsMenu /> : null}
     </div>
