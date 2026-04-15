@@ -52,6 +52,7 @@ export default function DashboardMenus() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const deepLinkedEventId = searchParams.get("event_id");
+  const deepLinkedFormId = searchParams.get("form_id");
 
   const updateScrollIndicators = useCallback(() => {
     const el = navRef.current;
@@ -104,7 +105,7 @@ export default function DashboardMenus() {
     if (!isAuthResolved) return;
 
     const handleDeepLink = async () => {
-      if (!deepLinkedEventId) return;
+      if (!deepLinkedEventId && !deepLinkedFormId) return;
 
       if (!role) {
         router.push(`/login?redirect=${encodeURIComponent(window.location.href)}`);
@@ -112,46 +113,79 @@ export default function DashboardMenus() {
       }
 
       if (role === "student") {
-        alert("Events are only accessible to executives and tutors.");
+        alert("Events and forms are only accessible to executives and tutors.");
         setActive("home");
         router.replace("/");
         return;
       }
 
-      // If they are authorized, we need to make sure events are loaded and active
-      try {
-        const response = await fetch("/api/events");
-        if (response.ok) {
-          const data = await response.json();
-          const events = data.events || [];
-          const event = events.find((e: any) => e.id === deepLinkedEventId);
+      if (deepLinkedEventId) {
+        try {
+          const response = await fetch("/api/events");
+          if (response.ok) {
+            const data = await response.json();
+            const events = data.events || [];
+            const event = events.find((e: any) => e.id === deepLinkedEventId);
 
-          if (!event) {
-            alert("Event not found or you don't have permission to view it.");
-            router.replace("/");
-            return;
-          }
-
-          setActive("events");
-          
-          // Wait for the EventsMenu to render
-          setTimeout(() => {
-            const el = document.getElementById(`event-${deepLinkedEventId}`);
-            if (el) {
-              el.scrollIntoView({ behavior: "smooth" });
-              // Highlight it briefly
-              el.classList.add("ring-2", "ring-[var(--foreground)]");
-              setTimeout(() => el.classList.remove("ring-2", "ring-[var(--foreground)]"), 2000);
+            if (!event) {
+              alert("Event not found or you don't have permission to view it.");
+              router.replace("/");
+              return;
             }
-          }, 500);
+
+            setActive("events");
+            
+            // Wait for the EventsMenu to render
+            setTimeout(() => {
+              const el = document.getElementById(`event-${deepLinkedEventId}`);
+              if (el) {
+                el.scrollIntoView({ behavior: "smooth" });
+                // Highlight it briefly
+                el.classList.add("ring-2", "ring-[var(--foreground)]");
+                setTimeout(() => el.classList.remove("ring-2", "ring-[var(--foreground)]"), 2000);
+              }
+            }, 500);
+          }
+        } catch (err) {
+          console.error("Deep link handling failed for event", err);
         }
-      } catch (err) {
-        console.error("Deep link handling failed", err);
+      }
+
+      if (deepLinkedFormId) {
+        try {
+          const response = await fetch("/api/forms");
+          if (response.ok) {
+            const data = await response.json();
+            const forms = data.forms || [];
+            const form = forms.find((f: any) => f.id === deepLinkedFormId);
+
+            if (!form) {
+              alert("Form not found or you don't have permission to view it.");
+              router.replace("/");
+              return;
+            }
+
+            setActive("forms");
+            
+            // Wait for the FormsMenu to render
+            setTimeout(() => {
+              const el = document.getElementById(`form-${deepLinkedFormId}`);
+              if (el) {
+                el.scrollIntoView({ behavior: "smooth" });
+                // Highlight it briefly
+                el.classList.add("ring-2", "ring-[var(--foreground)]");
+                setTimeout(() => el.classList.remove("ring-2", "ring-[var(--foreground)]"), 2000);
+              }
+            }, 500);
+          }
+        } catch (err) {
+          console.error("Deep link handling failed for form", err);
+        }
       }
     };
 
     handleDeepLink();
-  }, [deepLinkedEventId, isAuthResolved, role, router]);
+  }, [deepLinkedEventId, deepLinkedFormId, isAuthResolved, role, router]);
 
   useEffect(() => {
     if (!role || (role !== "founder" && role !== "executive")) {
@@ -261,7 +295,7 @@ export default function DashboardMenus() {
       items.push({ key: "events", label: "Events" });
     }
 
-    if (role === "founder" || (role === "executive" && hasForms)) {
+    if (role === "founder" || (role === "executive" && (hasForms || active === "forms"))) {
       items.push({ key: "forms", label: "Forms" });
     }
 
@@ -274,7 +308,7 @@ export default function DashboardMenus() {
     items.push({ key: "sponsors", label: "For Sponsors" });
 
     return items;
-  }, [role, hasUpcomingEvents, hasForms, trashCount]);
+  }, [role, hasUpcomingEvents, hasForms, trashCount, active]);
 
   const activeMenu: MenuKey = menus.some((item) => item.key === active)
     ? active

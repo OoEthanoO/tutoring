@@ -83,7 +83,7 @@ export async function GET(request: NextRequest) {
       });
 
       event.all_executives = (allUsers || []).filter(u =>
-        (u.role === "executive" || u.role === "tutor") && (!event.is_junior_excluded || !u.is_junior)
+        resolveUserRole(u.email, u.role) === "executive" && (!event.is_junior_excluded || !u.is_junior)
       );
     });
   }

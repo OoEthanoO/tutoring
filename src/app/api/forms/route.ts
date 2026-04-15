@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
     const { data: allUsers } = await supabase
       .from("app_users")
       .select("id, full_name, email, is_junior, role")
-      .in("role", ["executive", "founder"]);
+      .in("role", ["executive", "tutor", "founder"]);
 
     const userMap = new Map(allUsers?.map(u => [u.id, u]) ?? []);
 
@@ -54,7 +54,7 @@ export async function GET(request: NextRequest) {
       });
 
       form.all_executives = (allUsers || []).filter(u =>
-        u.role === "executive" || u.role === "tutor"
+        resolveUserRole(u.email, u.role) === "executive"
       );
     });
   } else {

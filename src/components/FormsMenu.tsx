@@ -136,12 +136,14 @@ export default function FormsMenu() {
     }
   };
 
-  const handleRespond = async (formId: string, response: string) => {
+  const handleRespond = async (formId: string, response: string, isDeselect: boolean = false) => {
     try {
+      const method = isDeselect ? "DELETE" : "POST";
+      const body = isDeselect ? undefined : JSON.stringify({ response });
       const res = await fetch(`/api/forms/${formId}/respond`, {
-        method: "POST",
+        method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ response }),
+        body,
       });
       if (res.ok) {
         fetchForms();
@@ -152,6 +154,13 @@ export default function FormsMenu() {
     } catch (err) {
       alert("Failed to submit response");
     }
+  };
+
+  const copyFormLink = (formId: string) => {
+    const url = new URL(window.location.href);
+    url.searchParams.set("form_id", formId);
+    navigator.clipboard.writeText(url.toString());
+    alert("Form link copied to clipboard!");
   };
 
   const startEdit = (form: Form) => {
@@ -357,6 +366,15 @@ export default function FormsMenu() {
                   {isFounder && (
                     <div className="flex gap-2 opacity-0 transition-opacity group-hover:opacity-100">
                       <button
+                        onClick={() => copyFormLink(form.id)}
+                        className="rounded-full bg-[var(--background)] p-2 text-[var(--muted)] hover:text-[var(--foreground)]"
+                        title="Copy link"
+                      >
+                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                      </button>
+                      <button
                         onClick={() => startEdit(form)}
                         className="rounded-full bg-[var(--background)] p-2 text-[var(--muted)] hover:text-[var(--foreground)]"
                         title="Edit form"
@@ -385,7 +403,7 @@ export default function FormsMenu() {
                       <div key={i} className="flex items-center gap-3">
                         <button
                           disabled={isPastDeadline || isFounder}
-                          onClick={() => handleRespond(form.id, opt)}
+                          onClick={() => handleRespond(form.id, opt, isSelected)}
                           className={`flex-1 rounded-xl border p-3 text-left transition-all ${
                             isSelected 
                               ? "border-[var(--foreground)] bg-[var(--foreground)] text-[var(--background)] font-bold"
