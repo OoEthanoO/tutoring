@@ -47,6 +47,7 @@ export default function EventsMenu() {
   // Create Event Form State
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [deadline, setDeadline] = useState("");
   const [dates, setDates] = useState<{id?: string, starts_at: string, is_time_specified: boolean}[]>([
     { starts_at: "", is_time_specified: true }
   ]);
@@ -132,6 +133,7 @@ export default function EventsMenu() {
           id: editingEventId,
           title,
           description,
+          deadline: deadline ? new Date(deadline).toISOString() : undefined,
           dates: payloadDates,
           location,
           is_junior_excluded: isJuniorExcluded,
@@ -143,6 +145,7 @@ export default function EventsMenu() {
       if (res.ok) {
         setTitle("");
         setDescription("");
+        setDeadline("");
         setDates([{ starts_at: "", is_time_specified: true }]);
         setLocation("");
         setIsJuniorExcluded(false);
@@ -191,6 +194,13 @@ export default function EventsMenu() {
     setEditingEventId(event.id);
     setTitle(event.title);
     setDescription(event.description);
+    if (event.deadline) {
+      const dateObj = new Date(event.deadline);
+      const tzOffset = dateObj.getTimezoneOffset() * 60000;
+      setDeadline(new Date(dateObj.getTime() - tzOffset).toISOString().slice(0, 16));
+    } else {
+      setDeadline("");
+    }
     setLocation(event.location);
     setIsJuniorExcluded(event.is_junior_excluded);
     setDates(event.event_dates.map(d => {
@@ -253,6 +263,7 @@ export default function EventsMenu() {
                     setEditingEventId(null);
                     setTitle("");
                     setDescription("");
+                    setDeadline("");
                     setDates([{ starts_at: "", is_time_specified: true }]);
                     setLocation("");
                     setIsJuniorExcluded(false);
@@ -358,6 +369,21 @@ export default function EventsMenu() {
                 rows={3}
                 placeholder="Discussing upcoming workshops..."
               />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">
+                RSVP Deadline
+              </label>
+              <input
+                type="datetime-local"
+                value={deadline}
+                onChange={(e) => setDeadline(e.target.value)}
+                className="w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--foreground)]"
+              />
+              <p className="text-[10px] text-[var(--muted)]">
+                If left blank, defaults to the start of the earliest event date.
+              </p>
             </div>
             
             <div className="flex items-center gap-3">
