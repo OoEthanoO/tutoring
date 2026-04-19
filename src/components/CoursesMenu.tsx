@@ -6,6 +6,7 @@ import { setHasUnsavedData } from "@/lib/unsavedData";
 import { MarkdownText } from "@/lib/parseMarkdown";
 import { useNotification } from "./Notification";
 import StudentApplicationForm from "./StudentApplicationForm";
+import { resolveUserRole } from "@/lib/roles";
 
 type StatusState = {
   type: "idle" | "error";
@@ -184,6 +185,13 @@ export default function CoursesMenu() {
   });
   const { showNotification } = useNotification();
   const [isLoadingCourses, setIsLoadingCourses] = useState(false);
+  const [hideTutorNames, setHideTutorNames] = useState(false);
+  const isFounder = user ? resolveUserRole(user.email, user.role) === "founder" : false;
+
+  const getTutorDisplayName = (course: Course) => {
+    if (isFounder && hideTutorNames) return "Tutor Hidden";
+    return course.created_by_name || course.created_by_email || "Not Determined";
+  };
 
   const modalScrollRef = useRef<HTMLDivElement>(null);
 
@@ -432,16 +440,30 @@ export default function CoursesMenu() {
 
   return (
     <section className="space-y-6 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6">
-      <header className="space-y-1">
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
-          Courses
-        </p>
-        <h2 className="text-lg font-semibold text-[var(--foreground)]">
-          All courses
-        </h2>
-        <p className="text-xs text-[var(--muted)]">
-          Total class time: {totalClassTimeMinutes} minutes
-        </p>
+      <header className="flex items-start justify-between">
+        <div className="space-y-1">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
+            Courses
+          </p>
+          <h2 className="text-lg font-semibold text-[var(--foreground)]">
+            All courses
+          </h2>
+          <p className="text-xs text-[var(--muted)]">
+            Total class time: {totalClassTimeMinutes} minutes
+          </p>
+        </div>
+        
+        {isFounder && (
+          <label className="flex items-center gap-2 text-xs font-medium text-[var(--muted)] cursor-pointer hover:text-[var(--foreground)] transition-colors">
+            <input
+              type="checkbox"
+              checked={hideTutorNames}
+              onChange={(e) => setHideTutorNames(e.target.checked)}
+              className="rounded border-[var(--border)] bg-transparent text-[var(--foreground)] cursor-pointer"
+            />
+            Hide tutor names
+          </label>
+        )}
       </header>
 
       {status.type === "error" ? (
@@ -500,7 +522,7 @@ export default function CoursesMenu() {
 
                   <div className="mt-auto flex items-end justify-between gap-2 pt-2">
                     <p className="text-[10px] font-medium text-[var(--muted)] truncate">
-                      {course.created_by_name || course.created_by_email || "Not Determined"}
+                      {getTutorDisplayName(course)}
                     </p>
                     <p className="shrink-0 text-[10px] font-medium text-[var(--muted)]">
                       {course.enrollment_count ?? 0}
@@ -560,7 +582,7 @@ export default function CoursesMenu() {
 
                   <div className="mt-auto flex items-end justify-between gap-2 pt-2">
                     <p className="text-[10px] font-medium text-[var(--muted)] truncate">
-                      {course.created_by_name || course.created_by_email || "Not Determined"}
+                      {getTutorDisplayName(course)}
                     </p>
                     <p className="shrink-0 text-[10px] font-medium text-[var(--muted)]">
                       {course.enrollment_count ?? 0}
@@ -607,7 +629,7 @@ export default function CoursesMenu() {
 
                   <div className="mt-auto flex items-end justify-between gap-2 pt-2">
                     <p className="text-[10px] font-medium text-[var(--muted)] truncate">
-                      {course.created_by_name || course.created_by_email || "Not Determined"}
+                      {getTutorDisplayName(course)}
                     </p>
                     <p className="shrink-0 text-[10px] font-medium text-[var(--muted)]">
                       {startLabel} - {endLabel} • {getCompletedCourseSummary(course).classCount} classes
@@ -645,9 +667,7 @@ export default function CoursesMenu() {
                   </h3>
                   <p className="text-xs text-[var(--muted)]">
                     Tutor:{" "}
-                    {selectedCourse.created_by_name ||
-                      selectedCourse.created_by_email ||
-                      "Not Determined"}
+                    {getTutorDisplayName(selectedCourse)}
                   </p>
                 </div>
                 <button
