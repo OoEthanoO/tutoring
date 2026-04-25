@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { ClientUser, getCurrentUser, onAuthChange } from "@/lib/authClient";
 import { setHasUnsavedData } from "@/lib/unsavedData";
 import { MarkdownText } from "@/lib/parseMarkdown";
@@ -647,10 +648,10 @@ export default function CoursesMenu() {
 
     </section>
 
-      {selectedCourse ? (
+      {selectedCourse ? createPortal(
         <div
           key={selectedCourse.id}
-          className="fixed inset-0 z-30 grid place-items-center p-4 bg-black/50"
+          className="fixed inset-0 z-[9999] grid place-items-center p-4 bg-black/50"
           onClick={() => setSelectedCourse(null)}
         >
           <div
@@ -836,7 +837,7 @@ export default function CoursesMenu() {
             </div>
           </div>
         </div>
-      ) : null}
+      , document.body) : null}
     </>
   );
 }
