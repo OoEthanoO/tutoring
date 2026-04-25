@@ -146,13 +146,9 @@ const readCourse = (value: ClassRow["course"]): CourseRow | null => {
   return value ?? null;
 };
 
-const floorToFiveMinuteBoundary = (value: Date) => {
+const floorToMinuteBoundary = (value: Date) => {
   const rounded = new Date(value.getTime());
   rounded.setSeconds(0, 0);
-  const remainder = rounded.getMinutes() % 5;
-  if (remainder !== 0) {
-    rounded.setMinutes(rounded.getMinutes() - remainder);
-  }
   return rounded;
 };
 
@@ -508,7 +504,7 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  const base = floorToFiveMinuteBoundary(new Date());
+  const base = floorToMinuteBoundary(new Date());
   const candidates: CandidateReminder[] = [];
 
   for (const target of reminderTargets) {
@@ -520,7 +516,7 @@ export async function POST(request: NextRequest) {
     const windowStart = new Date(
       targetTime.getTime() - target.lowerBoundDriftMinutes * 60 * 1000
     );
-    const windowEnd = new Date(targetTime.getTime() + 5 * 60 * 1000);
+    const windowEnd = new Date(targetTime.getTime() + 1 * 60 * 1000);
 
     const { data: classes, error: classError } = await adminClient
       .from("course_classes")
@@ -555,7 +551,7 @@ export async function POST(request: NextRequest) {
 
   // Follow-ups
   const followUpWindowStart = new Date(base.getTime() - 2 * 60 * 1000);
-  const followUpWindowEnd = new Date(base.getTime() + 5 * 60 * 1000);
+  const followUpWindowEnd = new Date(base.getTime() + 1 * 60 * 1000);
   const searchStart = new Date(base.getTime() - 24 * 60 * 60 * 1000);
 
   const { data: pastClasses, error: pastClassError } = await adminClient

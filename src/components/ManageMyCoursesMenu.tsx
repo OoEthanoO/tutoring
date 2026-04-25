@@ -115,34 +115,11 @@ type StatusState = {
 
 
 const snapDateTimeLocalToFiveMinutes = (value: string) => {
-  if (!value) {
-    return value;
-  }
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return value;
-  }
-  const snapped = new Date(parsed.getTime());
-  snapped.setSeconds(0, 0);
-  const minutes = snapped.getMinutes();
-  const remainder = minutes % 5;
-  if (remainder !== 0) {
-    snapped.setMinutes(minutes + (5 - remainder));
-  }
-  const year = snapped.getFullYear();
-  const month = String(snapped.getMonth() + 1).padStart(2, "0");
-  const day = String(snapped.getDate()).padStart(2, "0");
-  const hours = String(snapped.getHours()).padStart(2, "0");
-  const mins = String(snapped.getMinutes()).padStart(2, "0");
-  return `${year}-${month}-${day}T${hours}:${mins}`;
+  return value;
 };
 
 const isFiveMinuteLocal = (value: string) => {
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return false;
-  }
-  return parsed.getMinutes() % 5 === 0;
+  return true;
 };
 
 export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMode?: boolean }) {
@@ -393,7 +370,7 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
       setStatus({
         type: "error",
         message:
-          "Class date/time must be on a 5-minute mark (for example 12:00, 12:05, 12:10).",
+          "Class date/time is invalid.",
       });
       return;
     }
@@ -461,7 +438,7 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
       setStatus({
         type: "error",
         message:
-          "Class date/time must be on a 5-minute mark (for example 12:00, 12:05, 12:10).",
+          "Class date/time is invalid.",
       });
       setPendingClassId(null);
       return;
@@ -1446,17 +1423,9 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
                         <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
                           <input
                             type="datetime-local"
-                            step={300}
                             value={editStartsAt}
                             onChange={(event) =>
                               setEditStartsAt(event.target.value)
-                            }
-                            onBlur={(event) =>
-                              setEditStartsAt(
-                                snapDateTimeLocalToFiveMinutes(
-                                  event.target.value
-                                )
-                              )
                             }
                             className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
                           />
@@ -1545,7 +1514,6 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
               >
                 <input
                   type="datetime-local"
-                  step={300}
                   value={
                     classStartsAt[course.id] || getSuggestedStartValue(course) || ""
                   }
@@ -1555,21 +1523,9 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
                       [course.id]: event.target.value,
                     }))
                   }
-                  onBlur={(event) =>
-                    setClassStartsAt((current) => ({
-                      ...current,
-                      [course.id]: snapDateTimeLocalToFiveMinutes(
-                        event.target.value
-                      ),
-                    }))
-                  }
                   className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
                   required
                 />
-                <p className="text-[0.6rem] text-[var(--muted)] sm:col-span-4">
-                  Class times must be on a 5-minute mark (e.g. 12:00, 12:05,
-                  12:10).
-                </p>
                 <button
                   type="submit"
                   disabled={pendingCourseId === course.id}
