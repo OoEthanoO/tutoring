@@ -439,6 +439,7 @@ export default function CoursesMenu() {
   };
 
   return (
+    <>
     <section className="space-y-6 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6">
       <header className="flex items-start justify-between">
         <div className="space-y-1">
@@ -644,6 +645,8 @@ export default function CoursesMenu() {
 
 
 
+    </section>
+
       {selectedCourse ? (
         <div
           key={selectedCourse.id}
@@ -834,6 +837,6 @@ export default function CoursesMenu() {
           </div>
         </div>
       ) : null}
-    </section>
+    </>
   );
 }

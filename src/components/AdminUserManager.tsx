@@ -852,6 +852,7 @@ export default function AdminUserManager() {
   }
 
   return (
+    <>
     <section className="space-y-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6">
       <header className="flex flex-wrap items-center justify-between gap-4">
         <div className="space-y-1">
@@ -1280,6 +1281,8 @@ export default function AdminUserManager() {
         ) : null}
       </div>
 
+    </section >
+
       {/* Student Application Modal */}
       {(selectedApplications.length > 0 || applicationError) && (
         <div className="fixed inset-0 z-50 grid place-items-center p-4 bg-black/50 overflow-y-auto" onClick={() => { setSelectedApplications([]); setApplicationError(""); }}>
@@ -1372,6 +1375,6 @@ export default function AdminUserManager() {
           </div>
         </div>
       )}
-    </section >
+    </>
   );
 }
