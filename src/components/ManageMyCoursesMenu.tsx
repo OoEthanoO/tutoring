@@ -1468,8 +1468,8 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
                                 </label>
                                 <input
                                   type="number"
-                                  min="5"
-                                  step="5"
+                                  min="1"
+                                  step="1"
                                   value={editDurationMinutes}
                                   onChange={(event) => setEditDurationMinutes(event.target.value)}
                                   className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
@@ -1583,8 +1583,8 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
                       </label>
                       <input
                         type="number"
-                        min="5"
-                        step="5"
+                        min="1"
+                        step="1"
                         value={classDurationMinutes[course.id] ?? "60"}
                         onChange={(event) =>
                           setClassDurationMinutes((current) => ({

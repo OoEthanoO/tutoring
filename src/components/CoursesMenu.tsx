@@ -647,12 +647,10 @@ export default function CoursesMenu() {
       {selectedCourse ? (
         <div
           key={selectedCourse.id}
-          style={{ transform: "translateZ(0)", backfaceVisibility: "hidden" }}
           className="fixed inset-0 z-30 grid place-items-center p-4 overflow-y-auto overscroll-contain bg-black/50"
           onClick={() => setSelectedCourse(null)}
         >
           <div
-            style={{ transform: "translateZ(0)", backfaceVisibility: "hidden" }}
             className="w-full md:w-[50vw] max-h-full flex flex-col rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-xl overflow-hidden overscroll-contain min-h-0"
             onClick={(e) => e.stopPropagation()}
           >

@@ -192,7 +192,6 @@ export default function StudentApplicationForm({
             type="button"
             onClick={onCancel}
             disabled={isSubmitting}
-            style={{ transform: "translateZ(0)", backfaceVisibility: "hidden" }}
             className="rounded-full border border-[var(--border)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] hover:border-[var(--foreground)] disabled:opacity-50"
           >
             <span key={isSubmitting ? "cancelling" : "cancel"}>Cancel</span>
@@ -202,7 +201,6 @@ export default function StudentApplicationForm({
           key="submit-button"
           type="submit"
           disabled={isSubmitting || isConfirmDisabled || isGuest}
-          style={{ transform: "translateZ(0)", backfaceVisibility: "hidden" }}
           className="rounded-full bg-[var(--foreground)] px-6 py-2 text-xs font-semibold text-[var(--surface)] hover:opacity-90 disabled:opacity-50 min-w-[140px]"
         >
           <span key={isSubmitting ? "submitting" : "idle"}>

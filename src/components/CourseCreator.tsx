@@ -420,8 +420,8 @@ export default function CourseCreator() {
                   </label>
                   <input
                     type="number"
-                    min="5"
-                    step="5"
+                    min="1"
+                    step="1"
                     value={draftClassDurationMinutes}
                     onChange={(event) => setDraftClassDurationMinutes(event.target.value)}
                     className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
