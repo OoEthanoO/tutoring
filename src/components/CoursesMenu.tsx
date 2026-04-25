@@ -647,14 +647,14 @@ export default function CoursesMenu() {
       {selectedCourse ? (
         <div
           key={selectedCourse.id}
-          className="fixed inset-0 z-30 grid place-items-center p-4 overflow-y-auto overscroll-contain bg-black/50"
+          className="fixed inset-0 z-30 grid place-items-center p-4 bg-black/50"
           onClick={() => setSelectedCourse(null)}
         >
           <div
-            className="w-full md:w-[50vw] max-h-full flex flex-col rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-xl overflow-hidden overscroll-contain min-h-0"
+            className="w-full md:w-[50vw] max-h-full flex flex-col rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-xl overflow-hidden min-h-0"
             onClick={(e) => e.stopPropagation()}
           >
-            <div ref={modalScrollRef} className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-6 space-y-4">
+            <div ref={modalScrollRef} style={{ willChange: "transform" }} className="flex-1 min-h-0 overflow-y-auto p-6 space-y-4 bg-[var(--surface)]">
               <div className="flex items-start justify-between">
                 <div className="space-y-1">
                   <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">

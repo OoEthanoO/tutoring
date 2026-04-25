@@ -72,3 +72,6 @@ ol.list-decimal li {
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
 }
+html {
+  background: var(--background);
+}
