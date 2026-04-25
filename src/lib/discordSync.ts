@@ -1998,6 +1998,13 @@ export const runDiscordSync = async ({
     const isPastEnd = nowMs >= endedAtMs;
     const isPastArchiveDelay = nowMs >= endedAtMs + archiveDelayMs;
 
+    if (!isPastEnd && nextFlags.includes("w")) {
+      nextFlags = nextFlags.replace(/w/g, "");
+    }
+    if (!isPastArchiveDelay && nextFlags.includes("a")) {
+      nextFlags = nextFlags.replace(/a/g, "");
+    }
+
     if (isPastEnd && !currentFlags.includes("w") && existingChannel) {
       try {
         await apiClient.createChannelMessage(
