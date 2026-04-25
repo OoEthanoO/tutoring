@@ -198,7 +198,7 @@ export default function EnrolledCoursesMenu() {
                     <li key={courseClass.id}>
                       {courseClass.title} ·{" "}
                       {new Date(courseClass.starts_at).toLocaleString()} ·{" "}
-                      1 hr
+                      {Math.round((courseClass.duration_hours || 1) * 60)} min
                     </li>
                   ))}
                 </ul>

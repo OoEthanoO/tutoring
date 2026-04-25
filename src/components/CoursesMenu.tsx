@@ -27,9 +27,9 @@ const sortClassesByStart = (classes: CourseClass[]) =>
       new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime()
   );
 
-const getClassTimes = (startsAt: string) => {
+const getClassTimes = (startsAt: string, durationHours: number = 1) => {
   const start = new Date(startsAt);
-  const end = new Date(start.getTime() + 60 * 60 * 1000);
+  const end = new Date(start.getTime() + durationHours * 60 * 60 * 1000);
   return { start, end };
 };
 
@@ -295,7 +295,7 @@ export default function CoursesMenu() {
         if (!Number.isFinite(startsAt)) {
           return false;
         }
-        const endsAt = startsAt + 60 * 60 * 1000;
+        const endsAt = startsAt + (item.duration_hours || 1) * 60 * 60 * 1000;
         return nowMs >= startsAt && nowMs <= endsAt;
       }),
     [nowMs]
@@ -400,7 +400,7 @@ export default function CoursesMenu() {
 
       const classMinutes = (course.course_classes ?? []).reduce(
         (classSum, courseClass) => {
-          const { start, end } = getClassTimes(courseClass.starts_at);
+          const { start, end } = getClassTimes(courseClass.starts_at, courseClass.duration_hours || 1);
           const startMs = start.getTime();
           const endMs = end.getTime();
           if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) {
@@ -710,7 +710,8 @@ export default function CoursesMenu() {
                   <ul className="space-y-1 text-xs text-[var(--muted)]">
                     {sortClassesByStart(selectedCourse.course_classes).map((courseClass) => {
                       const { start, end } = getClassTimes(
-                        courseClass.starts_at
+                        courseClass.starts_at,
+                        courseClass.duration_hours || 1
                       );
                       const tone = getClassTimeStyle(start, end);
                       return (
