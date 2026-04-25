@@ -261,7 +261,7 @@ const getCourseEndedAtMs = (course: CourseRow) => {
     const durationHours =
       typeof classRow.duration_hours === "number"
         ? classRow.duration_hours
-        : Number.parseFloat(String(classRow.duration_hours));
+        : Number.parseFloat(String(classRow.duration_hours || 1));
     const durationMs =
       Number.isFinite(durationHours) && durationHours > 0
         ? durationHours * 60 * 60 * 1000

@@ -581,7 +581,7 @@ export async function POST(request: NextRequest) {
     const startsAt = new Date(classRow.starts_at);
     const durationHours = typeof classRow.duration_hours === 'number'
       ? classRow.duration_hours
-      : Number.parseFloat(String(classRow.duration_hours));
+      : Number.parseFloat(String(classRow.duration_hours || 1));
 
     if (Number.isNaN(durationHours)) {
       continue;
