@@ -131,6 +131,7 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
   const [taughtMinutes, setTaughtMinutes] = useState<number | null>(null);
 
   const [classStartsAt, setClassStartsAt] = useState<Record<string, string>>({});
+  const [classDurationHours, setClassDurationHours] = useState<Record<string, string>>({});
   const [pendingCourseId, setPendingCourseId] = useState<string | null>(null);
   const [editingCourseId, setEditingCourseId] = useState<string | null>(null);
   const [editCourseTitle, setEditCourseTitle] = useState("");
@@ -148,6 +149,7 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
   );
   const [editingClassId, setEditingClassId] = useState<string | null>(null);
   const [editStartsAt, setEditStartsAt] = useState("");
+  const [editDurationHours, setEditDurationHours] = useState("");
   const [pendingClassId, setPendingClassId] = useState<string | null>(null);
   const [pendingClassDeleteId, setPendingClassDeleteId] = useState<string | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
@@ -343,7 +345,14 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
     const latest = sorted[sorted.length - 1];
 
     const suggested = new Date(latest.starts_at);
-    suggested.setDate(suggested.getDate() + 7);
+    
+    if (sorted.length === 1) {
+      suggested.setDate(suggested.getDate() + 7);
+    } else {
+      const secondLatest = sorted[sorted.length - 2];
+      const diffMs = new Date(latest.starts_at).getTime() - new Date(secondLatest.starts_at).getTime();
+      suggested.setTime(suggested.getTime() + diffMs);
+    }
 
     return snapDateTimeLocalToFiveMinutes(
       toLocalDateTimeInputValue(suggested)
@@ -382,6 +391,7 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
       body: JSON.stringify({
         title: titleValue,
         startsAt: new Date(startsAtValue).toISOString(),
+        durationHours: classDurationHours[courseId] ? Number.parseFloat(classDurationHours[courseId]) : 1,
       }),
     });
 
@@ -410,6 +420,7 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
     );
 
     setClassStartsAt((current) => ({ ...current, [courseId]: "" }));
+    setClassDurationHours((current) => ({ ...current, [courseId]: "" }));
     setStatus({ type: "success", message: "Class added." });
     setPendingCourseId(null);
   };
@@ -419,11 +430,17 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
     setEditStartsAt(
       toLocalDateTimeInputValue(new Date(courseClass.starts_at))
     );
+    setEditDurationHours(
+      typeof courseClass.duration_hours === "number"
+        ? String(courseClass.duration_hours)
+        : String(courseClass.duration_hours || 1)
+    );
   };
 
   const cancelEditClass = () => {
     setEditingClassId(null);
     setEditStartsAt("");
+    setEditDurationHours("");
   };
 
   const saveClassEdit = async () => {
@@ -471,14 +488,26 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
 
       const timeDiffMs = newTime.getTime() - oldTime.getTime();
 
-      if (oldDateStr === newDateStr && timeDiffMs !== 0) {
+      const oldDuration = typeof targetClass.duration_hours === "number" ? targetClass.duration_hours : Number.parseFloat(String(targetClass.duration_hours || 1));
+      const newDuration = editDurationHours ? Number.parseFloat(editDurationHours) : undefined;
+      const durationChanged = newDuration !== undefined && newDuration !== oldDuration;
+
+      const timeChanged = oldDateStr === newDateStr && timeDiffMs !== 0;
+
+      if (timeChanged || durationChanged) {
         const subsequentClasses = (targetCourse.course_classes ?? []).filter(
           (c) => new Date(c.starts_at).getTime() > oldTime.getTime()
         );
 
         if (subsequentClasses.length > 0) {
+          const actionText = timeChanged && durationChanged
+            ? "time and duration"
+            : timeChanged
+            ? "time"
+            : "duration";
+
           const confirmShift = window.confirm(
-            `You changed the time of this class. Do you want to apply this same time change to all ${subsequentClasses.length} subsequent classes in this course?`
+            `You changed the ${actionText} of this class. Do you want to apply this same change to all ${subsequentClasses.length} subsequent classes in this course?`
           );
           if (confirmShift) {
             const [, newTimePart] = editStartsAt.split("T");
@@ -489,8 +518,9 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
               const newLocalStr = `${localDatePart}T${newTimePart}`;
               return {
                 classId: subClass.id,
-                startsAt: new Date(newLocalStr).toISOString(),
-              };
+                startsAt: timeChanged ? new Date(newLocalStr).toISOString() : undefined,
+                durationHours: durationChanged ? newDuration : undefined,
+              } as any; // Type assertion since our type definition earlier didn't explicitly add durationHours but the API expects it
             });
           }
         }
@@ -502,6 +532,7 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         startsAt: editStartsAt ? new Date(editStartsAt).toISOString() : undefined,
+        durationHours: editDurationHours ? Number.parseFloat(editDurationHours) : undefined,
         bulkClassUpdates,
       }),
     });
@@ -1421,15 +1452,32 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
                     <li key={courseClass.id} className="space-y-2">
                       {editingClassId === courseClass.id ? (
                         <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
-                          <input
-                            type="datetime-local"
-                            value={editStartsAt}
-                            onChange={(event) =>
-                              setEditStartsAt(event.target.value)
-                            }
-                            className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
-                          />
-                          <div className="flex gap-2">
+                          <div className="space-y-2">
+                            <input
+                              type="datetime-local"
+                              value={editStartsAt}
+                              onChange={(event) =>
+                                setEditStartsAt(event.target.value)
+                              }
+                              className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+                            />
+                            {role === "founder" && (
+                              <div className="flex items-center gap-2">
+                                <label className="text-[0.6rem] font-semibold uppercase tracking-[0.2em] text-[var(--muted)] whitespace-nowrap">
+                                  Duration (hrs)
+                                </label>
+                                <input
+                                  type="number"
+                                  min="0.25"
+                                  step="0.25"
+                                  value={editDurationHours}
+                                  onChange={(event) => setEditDurationHours(event.target.value)}
+                                  className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+                                />
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex gap-2 items-start">
                             <button
                               type="button"
                               disabled={pendingClassId === courseClass.id}
@@ -1509,27 +1557,49 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
 
             {course.is_completed || isTrashMode ? null : (
               <form
-                className="grid gap-3 sm:grid-cols-[1fr_auto]"
+                className="flex flex-col gap-3 sm:flex-row sm:items-start"
                 onSubmit={(event) => onCreateClass(course.id, event)}
               >
-                <input
-                  type="datetime-local"
-                  value={
-                    classStartsAt[course.id] || getSuggestedStartValue(course) || ""
-                  }
-                  onChange={(event) =>
-                    setClassStartsAt((current) => ({
-                      ...current,
-                      [course.id]: event.target.value,
-                    }))
-                  }
-                  className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
-                  required
-                />
+                <div className="flex-1 space-y-2">
+                  <input
+                    type="datetime-local"
+                    value={
+                      classStartsAt[course.id] || getSuggestedStartValue(course) || ""
+                    }
+                    onChange={(event) =>
+                      setClassStartsAt((current) => ({
+                        ...current,
+                        [course.id]: event.target.value,
+                      }))
+                    }
+                    className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+                    required
+                  />
+                  {role === "founder" && (
+                    <div className="flex items-center gap-2">
+                      <label className="text-[0.6rem] font-semibold uppercase tracking-[0.2em] text-[var(--muted)] whitespace-nowrap">
+                        Duration (hrs)
+                      </label>
+                      <input
+                        type="number"
+                        min="0.25"
+                        step="0.25"
+                        value={classDurationHours[course.id] ?? "1"}
+                        onChange={(event) =>
+                          setClassDurationHours((current) => ({
+                            ...current,
+                            [course.id]: event.target.value,
+                          }))
+                        }
+                        className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+                      />
+                    </div>
+                  )}
+                </div>
                 <button
                   type="submit"
                   disabled={pendingCourseId === course.id}
-                  className="rounded-full border border-[var(--foreground)] px-4 py-3 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-70 sm:col-span-4"
+                  className="rounded-full border border-[var(--foreground)] px-4 py-3 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-70 whitespace-nowrap"
                 >
                   {pendingCourseId === course.id ? "Adding..." : "Add class"}
                 </button>

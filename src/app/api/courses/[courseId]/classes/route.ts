@@ -104,7 +104,7 @@ export async function POST(
       course_id: courseId,
       title,
       starts_at: startsAt,
-      duration_hours: 1,
+      duration_hours: role === "founder" && typeof body?.durationHours === "number" ? body.durationHours : 1,
       created_by: user.id,
     })
     .select("id, title, starts_at, duration_hours, created_at")

@@ -34,7 +34,8 @@ export default function CourseCreator() {
   const [completedEndDate, setCompletedEndDate] = useState("");
   const [completedClassCount, setCompletedClassCount] = useState("1");
   const [maxStudents, setMaxStudents] = useState<string>("");
-  const [draftClasses, setDraftClasses] = useState<{ startsAt: string }[]>([]);
+  const [draftClassDurationHours, setDraftClassDurationHours] = useState<string>("1");
+  const [draftClasses, setDraftClasses] = useState<{ startsAt: string; durationHours: number }[]>([]);
 
   useEffect(() => {
     const load = async () => {
@@ -145,6 +146,7 @@ export default function CourseCreator() {
             .map((item, index) => ({
               title: `Class ${index + 1}`,
               startsAt: new Date(item.startsAt).toISOString(),
+              durationHours: item.durationHours,
             })),
       }),
     });
@@ -173,6 +175,7 @@ export default function CourseCreator() {
     setCompletedEndDate("");
     setCompletedClassCount("1");
     setMaxStudents("");
+    setDraftClassDurationHours("1");
     setDraftClasses([]);
     setStatus({ type: "success", message: "Course created." });
     setIsSubmitting(false);
@@ -203,6 +206,7 @@ export default function CourseCreator() {
 
     const nextEntry = {
       startsAt: startsAtValue,
+      durationHours: Number.parseFloat(draftClassDurationHours) || 1,
     };
     const updatedDrafts = [...draftClasses, nextEntry];
 
@@ -232,7 +236,14 @@ export default function CourseCreator() {
     const latest = sorted[sorted.length - 1];
 
     const suggested = new Date(latest.startsAt);
-    suggested.setDate(suggested.getDate() + 7);
+    
+    if (sorted.length === 1) {
+      suggested.setDate(suggested.getDate() + 7);
+    } else {
+      const secondLatest = sorted[sorted.length - 2];
+      const diffMs = new Date(latest.startsAt).getTime() - new Date(secondLatest.startsAt).getTime();
+      suggested.setTime(suggested.getTime() + diffMs);
+    }
 
     return snapDateTimeLocalToFiveMinutes(toLocalDateTimeInputValue(suggested));
   };
@@ -402,6 +413,21 @@ export default function CourseCreator() {
                   className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
                 />
               </div>
+              {userRole === "founder" && (
+                <div className="space-y-1">
+                  <label className="text-[0.6rem] font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
+                    Duration (hours)
+                  </label>
+                  <input
+                    type="number"
+                    min="0.25"
+                    step="0.25"
+                    value={draftClassDurationHours}
+                    onChange={(event) => setDraftClassDurationHours(event.target.value)}
+                    className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+                  />
+                </div>
+              )}
               <button
                 type="button"
                 onClick={addDraftClass}
@@ -433,11 +459,12 @@ export default function CourseCreator() {
                         -{" "}
                         {new Date(
                           new Date(draftClass.startsAt).getTime() +
-                          60 * 60 * 1000
+                          (draftClass.durationHours || 1) * 60 * 60 * 1000
                         ).toLocaleTimeString([], {
                           hour: "numeric",
                           minute: "2-digit",
                         })}
+                        {draftClass.durationHours !== 1 ? ` (${draftClass.durationHours} hrs)` : ""}
                       </span>
                       <button
                         type="button"

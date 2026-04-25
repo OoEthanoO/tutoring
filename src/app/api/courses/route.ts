@@ -139,7 +139,7 @@ export async function POST(request: NextRequest) {
     .map((item) => ({
       title: item?.title?.trim() ?? "",
       startsAt: item?.startsAt?.trim() ?? "",
-      durationHours: 1,
+      durationHours: role === "founder" && typeof item?.durationHours === "number" ? item.durationHours : 1,
     }))
     .filter((item) => item.title && item.startsAt);
 

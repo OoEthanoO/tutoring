@@ -49,14 +49,14 @@ export async function PATCH(
         title?: string;
         startsAt?: string;
         durationHours?: number;
-        bulkClassUpdates?: { classId: string; startsAt: string }[];
+        bulkClassUpdates?: { classId: string; startsAt?: string; durationHours?: number }[];
       }
     | null;
 
   const nextTitle = body?.title?.trim();
   const nextStartsAt = body?.startsAt?.trim();
 
-  if (!nextTitle && !nextStartsAt) {
+  if (!nextTitle && !nextStartsAt && typeof body?.durationHours !== "number") {
     return NextResponse.json({ error: "No updates provided." }, { status: 400 });
   }
 
@@ -105,7 +105,9 @@ export async function PATCH(
   if (nextStartsAt) {
     updates.starts_at = nextStartsAt;
   }
-  updates.duration_hours = 1;
+  if (role === "founder" && typeof body?.durationHours === "number") {
+    updates.duration_hours = body.durationHours;
+  }
 
   const { data: updated, error: updateError } = await adminClient
     .from("course_classes")
@@ -135,14 +137,22 @@ export async function PATCH(
   const updatesList = body?.bulkClassUpdates;
   if (Array.isArray(updatesList) && updatesList.length > 0) {
     for (const update of updatesList) {
-      if (!update.classId || !update.startsAt) {
+      if (!update.classId || (!update.startsAt && typeof update.durationHours !== "number")) {
         continue;
+      }
+
+      const bulkUpdatePayload: any = {};
+      if (update.startsAt) {
+        bulkUpdatePayload.starts_at = new Date(update.startsAt).toISOString();
+      }
+      if (role === "founder" && typeof update.durationHours === "number") {
+        bulkUpdatePayload.duration_hours = update.durationHours;
       }
 
       // To ensure security, check the subclass belongs to the same course_id
       const { data: shiftedClass } = await adminClient
         .from("course_classes")
-        .update({ starts_at: new Date(update.startsAt).toISOString() })
+        .update(bulkUpdatePayload)
         .eq("id", update.classId)
         .eq("course_id", classRow.course_id)
         .select("id, title, starts_at, duration_hours, created_at")
