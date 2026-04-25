@@ -654,7 +654,7 @@ export default function CoursesMenu() {
             className="w-full md:w-[50vw] max-h-full flex flex-col rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-xl overflow-hidden min-h-0"
             onClick={(e) => e.stopPropagation()}
           >
-            <div ref={modalScrollRef} style={{ willChange: "transform" }} className="flex-1 min-h-0 overflow-y-auto p-6 space-y-4 bg-[var(--surface)]">
+            <div ref={modalScrollRef} className="flex-1 min-h-0 overflow-y-auto p-6 space-y-4">
               <div className="flex items-start justify-between">
                 <div className="space-y-1">
                   <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
