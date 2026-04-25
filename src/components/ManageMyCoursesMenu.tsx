@@ -131,7 +131,7 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
   const [taughtMinutes, setTaughtMinutes] = useState<number | null>(null);
 
   const [classStartsAt, setClassStartsAt] = useState<Record<string, string>>({});
-  const [classDurationHours, setClassDurationHours] = useState<Record<string, string>>({});
+  const [classDurationMinutes, setClassDurationMinutes] = useState<Record<string, string>>({});
   const [pendingCourseId, setPendingCourseId] = useState<string | null>(null);
   const [editingCourseId, setEditingCourseId] = useState<string | null>(null);
   const [editCourseTitle, setEditCourseTitle] = useState("");
@@ -149,7 +149,7 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
   );
   const [editingClassId, setEditingClassId] = useState<string | null>(null);
   const [editStartsAt, setEditStartsAt] = useState("");
-  const [editDurationHours, setEditDurationHours] = useState("");
+  const [editDurationMinutes, setEditDurationMinutes] = useState("");
   const [pendingClassId, setPendingClassId] = useState<string | null>(null);
   const [pendingClassDeleteId, setPendingClassDeleteId] = useState<string | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
@@ -391,7 +391,7 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
       body: JSON.stringify({
         title: titleValue,
         startsAt: new Date(startsAtValue).toISOString(),
-        durationHours: classDurationHours[courseId] ? Number.parseFloat(classDurationHours[courseId]) : 1,
+        durationHours: classDurationMinutes[courseId] ? Number.parseInt(classDurationMinutes[courseId]) / 60 : 1,
       }),
     });
 
@@ -420,7 +420,7 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
     );
 
     setClassStartsAt((current) => ({ ...current, [courseId]: "" }));
-    setClassDurationHours((current) => ({ ...current, [courseId]: "" }));
+    setClassDurationMinutes((current) => ({ ...current, [courseId]: "" }));
     setStatus({ type: "success", message: "Class added." });
     setPendingCourseId(null);
   };
@@ -430,17 +430,17 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
     setEditStartsAt(
       toLocalDateTimeInputValue(new Date(courseClass.starts_at))
     );
-    setEditDurationHours(
+    setEditDurationMinutes(
       typeof courseClass.duration_hours === "number"
-        ? String(courseClass.duration_hours)
-        : String(courseClass.duration_hours || 1)
+        ? String(Math.round(courseClass.duration_hours * 60))
+        : String(Math.round((courseClass.duration_hours || 1) * 60))
     );
   };
 
   const cancelEditClass = () => {
     setEditingClassId(null);
     setEditStartsAt("");
-    setEditDurationHours("");
+    setEditDurationMinutes("");
   };
 
   const saveClassEdit = async () => {
@@ -489,7 +489,7 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
       const timeDiffMs = newTime.getTime() - oldTime.getTime();
 
       const oldDuration = typeof targetClass.duration_hours === "number" ? targetClass.duration_hours : Number.parseFloat(String(targetClass.duration_hours || 1));
-      const newDuration = editDurationHours ? Number.parseFloat(editDurationHours) : undefined;
+      const newDuration = editDurationMinutes ? Number.parseInt(editDurationMinutes) / 60 : undefined;
       const durationChanged = newDuration !== undefined && newDuration !== oldDuration;
 
       const timeChanged = oldDateStr === newDateStr && timeDiffMs !== 0;
@@ -532,7 +532,7 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         startsAt: editStartsAt ? new Date(editStartsAt).toISOString() : undefined,
-        durationHours: editDurationHours ? Number.parseFloat(editDurationHours) : undefined,
+        durationHours: editDurationMinutes ? Number.parseInt(editDurationMinutes) / 60 : undefined,
         bulkClassUpdates,
       }),
     });
@@ -1464,14 +1464,14 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
                             {role === "founder" && (
                               <div className="flex items-center gap-2">
                                 <label className="text-[0.6rem] font-semibold uppercase tracking-[0.2em] text-[var(--muted)] whitespace-nowrap">
-                                  Duration (hrs)
+                                  Duration (min)
                                 </label>
                                 <input
                                   type="number"
-                                  min="0.25"
-                                  step="0.25"
-                                  value={editDurationHours}
-                                  onChange={(event) => setEditDurationHours(event.target.value)}
+                                  min="5"
+                                  step="5"
+                                  value={editDurationMinutes}
+                                  onChange={(event) => setEditDurationMinutes(event.target.value)}
                                   className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
                                 />
                               </div>
@@ -1518,14 +1518,15 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
                                   }
                                 )}{" "}
                                 -{" "}
-                                {new Date(
-                                  new Date(courseClass.starts_at).getTime() +
-                                  60 * 60 * 1000
-                                ).toLocaleTimeString([], {
-                                  hour: "numeric",
-                                  minute: "2-digit",
-                                })}
-                              </span>
+                                  {new Date(
+                                    new Date(courseClass.starts_at).getTime() +
+                                    (courseClass.duration_hours || 1) * 60 * 60 * 1000
+                                  ).toLocaleTimeString([], {
+                                    hour: "numeric",
+                                    minute: "2-digit",
+                                  })}
+                                  {courseClass.duration_hours !== 1 ? ` (${Math.round(courseClass.duration_hours * 60)} min)` : ""}
+                                </span>
                             );
                           })()}
                           <div className="flex gap-2">
@@ -1578,15 +1579,15 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
                   {role === "founder" && (
                     <div className="flex items-center gap-2">
                       <label className="text-[0.6rem] font-semibold uppercase tracking-[0.2em] text-[var(--muted)] whitespace-nowrap">
-                        Duration (hrs)
+                        Duration (min)
                       </label>
                       <input
                         type="number"
-                        min="0.25"
-                        step="0.25"
-                        value={classDurationHours[course.id] ?? "1"}
+                        min="5"
+                        step="5"
+                        value={classDurationMinutes[course.id] ?? "60"}
                         onChange={(event) =>
-                          setClassDurationHours((current) => ({
+                          setClassDurationMinutes((current) => ({
                             ...current,
                             [course.id]: event.target.value,
                           }))

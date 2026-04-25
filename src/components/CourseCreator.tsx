@@ -34,7 +34,7 @@ export default function CourseCreator() {
   const [completedEndDate, setCompletedEndDate] = useState("");
   const [completedClassCount, setCompletedClassCount] = useState("1");
   const [maxStudents, setMaxStudents] = useState<string>("");
-  const [draftClassDurationHours, setDraftClassDurationHours] = useState<string>("1");
+  const [draftClassDurationMinutes, setDraftClassDurationMinutes] = useState<string>("60");
   const [draftClasses, setDraftClasses] = useState<{ startsAt: string; durationHours: number }[]>([]);
 
   useEffect(() => {
@@ -175,7 +175,7 @@ export default function CourseCreator() {
     setCompletedEndDate("");
     setCompletedClassCount("1");
     setMaxStudents("");
-    setDraftClassDurationHours("1");
+    setDraftClassDurationMinutes("60");
     setDraftClasses([]);
     setStatus({ type: "success", message: "Course created." });
     setIsSubmitting(false);
@@ -206,7 +206,7 @@ export default function CourseCreator() {
 
     const nextEntry = {
       startsAt: startsAtValue,
-      durationHours: Number.parseFloat(draftClassDurationHours) || 1,
+      durationHours: Number.parseInt(draftClassDurationMinutes) / 60 || 1,
     };
     const updatedDrafts = [...draftClasses, nextEntry];
 
@@ -416,14 +416,14 @@ export default function CourseCreator() {
               {userRole === "founder" && (
                 <div className="space-y-1">
                   <label className="text-[0.6rem] font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
-                    Duration (hours)
+                    Duration (minutes)
                   </label>
                   <input
                     type="number"
-                    min="0.25"
-                    step="0.25"
-                    value={draftClassDurationHours}
-                    onChange={(event) => setDraftClassDurationHours(event.target.value)}
+                    min="5"
+                    step="5"
+                    value={draftClassDurationMinutes}
+                    onChange={(event) => setDraftClassDurationMinutes(event.target.value)}
                     className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
                   />
                 </div>
@@ -464,7 +464,7 @@ export default function CourseCreator() {
                           hour: "numeric",
                           minute: "2-digit",
                         })}
-                        {draftClass.durationHours !== 1 ? ` (${draftClass.durationHours} hrs)` : ""}
+                        {draftClass.durationHours !== 1 ? ` (${Math.round(draftClass.durationHours * 60)} min)` : ""}
                       </span>
                       <button
                         type="button"
