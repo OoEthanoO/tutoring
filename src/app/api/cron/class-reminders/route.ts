@@ -915,7 +915,7 @@ export async function POST(request: NextRequest) {
                 : `Please join the breakout room that starts with "${escapeHtml(
                   `${tutorFirstName}${tutorLastInitial ? ` ${tutorLastInitial}` : ""}`
                 )}" followed by the name of the course.`
-              }</p>\n        <p><strong>Please join the breakout room immediately after joining the meeting. Do not stay in the main meeting room.</strong></p>`
+              }</p>\n        <p><strong>Please join the breakout room immediately after joining the meeting. Do not stay in the main meeting room.</strong></p>\n        <p><strong>Please use your registered student name to log into Zoom, otherwise you may be removed by the administrator and bear the consequences of not being able to attend the class.</strong></p>`
         }
       `;
         const nonFounderDiscordInstruction = [
@@ -928,6 +928,7 @@ export async function POST(request: NextRequest) {
               `${tutorFirstName}${tutorLastInitial ? ` ${tutorLastInitial}` : ""}`
             )}" followed by the name of the course.`,
           "**Please join the breakout room immediately after joining the meeting. Do not stay in the main meeting room.**",
+          "**Please use your registered student name to log into Zoom, otherwise you may be removed by the administrator and bear the consequences of not being able to attend the class.**",
         ].join("\n");
 
         discordContent = [
@@ -955,6 +956,7 @@ export async function POST(request: NextRequest) {
           `Zoom ID: ${escapeDiscordText(defaultZoomId)}`,
           `Password: ${escapeDiscordText(defaultZoomPassword)}${fiveMinBreakoutInstruction}`,
           `**Please join the breakout room immediately after joining the meeting. Do not stay in the main meeting room.**`,
+          `**Please use your registered student name to log into Zoom, otherwise you may be removed by the administrator and bear the consequences of not being able to attend the class.**`,
         ].join("\n");
 
         discordContent = [

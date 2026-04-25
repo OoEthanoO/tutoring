@@ -220,7 +220,8 @@ export async function PATCH(
                breakoutRoomName
                  ? `Breakout room: "${breakoutRoomName}"`
                  : `Please join the breakout room that starts with "${tutorFirstName}${tutorLastInitial ? ` ${tutorLastInitial}` : ""}" followed by the name of the course.`
-             }</p>`
+             }</p>
+             <p><strong>Please use your registered student name to log into Zoom, otherwise you may be removed by the administrator and bear the consequences of not being able to attend the class.</strong></p>`
            }`
         : `<p>Your enrollment request for <strong>${courseTitle}</strong> has been rejected.</p>`;
 
