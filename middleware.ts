@@ -3,10 +3,9 @@ import { createServerClient } from "@supabase/ssr";
 
 const guardedPaths = ["/onboarding"];
 const maintenancePath = "/maintenance";
-const founderEmail =
-  (process.env.NEXT_PUBLIC_FOUNDER_EMAIL ?? "ethanyanxu@icloud.com")
-    .trim()
-    .toLowerCase();
+const founderEmails = (process.env.NEXT_PUBLIC_FOUNDER_EMAIL ?? "ethanyanxu@icloud.com")
+  .split(",")
+  .map((e) => e.trim().toLowerCase());
 
 const readMaintenanceMode = async () => {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
@@ -119,14 +118,14 @@ const isFounderSession = async (request: NextRequest) => {
 
   const role = String(user.role ?? "").toLowerCase();
   const email = String(user.email ?? "").toLowerCase();
-  return role === "founder" || email === founderEmail;
+  return role === "founder" || founderEmails.includes(email);
 };
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const maintenanceEnabled = await readMaintenanceMode();
   const isFounder = maintenanceEnabled ? await isFounderSession(request) : false;
-  const isPublicMaintenanceAccess = pathname === "/login" || pathname === maintenancePath;
+  const isPublicMaintenanceAccess = pathname === "/login" || pathname === "/login/" || pathname === maintenancePath || pathname === maintenancePath + "/";
 
   const host = request.headers.get("host");
 
