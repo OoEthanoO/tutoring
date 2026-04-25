@@ -184,13 +184,26 @@ export async function PATCH(
       ? `${tutorFirstName}${tutorLastInitial ? ` ${tutorLastInitial}` : ""}: ${courseShortName.trim()}`
       : "";
 
+  const tutorId = Array.isArray(requestData.course)
+    ? requestData.course[0]?.created_by
+    : (requestData.course as { created_by?: string } | null)?.created_by;
+
   const { data: tutorProfile } = await adminClient
     .from("tutor_profiles")
     .select("donation_link")
-    .eq("user_id", (requestData as any).course.created_by)
+    .eq("user_id", tutorId)
     .maybeSingle();
 
   const donationLink = tutorProfile?.donation_link ?? "";
+
+  let isFounderCourse = false;
+  if (tutorId) {
+    const { data: userResp } = await adminClient.auth.admin.getUserById(tutorId);
+    const tutorEmail = userResp.user?.email;
+    if (tutorEmail) {
+      isFounderCourse = resolveUserRole(tutorEmail, null) === "founder";
+    }
+  }
 
   if (studentEmail) {
     const isApproval = action === "approve" || action === "expand_and_approve";
@@ -200,11 +213,15 @@ export async function PATCH(
     const html = isApproval
         ? `<p>Your enrollment request for <strong>${courseTitle}</strong> has been approved.</p>
            <p>Please attend the class 5 minutes before the start time:</p>
-           <p>Zoom ID: ${defaultZoomId}<br/>Password: ${defaultZoomPassword}<br/>${
-             breakoutRoomName
-               ? `Breakout room: "${breakoutRoomName}"`
-               : `Please join the breakout room that starts with "${tutorFirstName}${tutorLastInitial ? ` ${tutorLastInitial}` : ""}" followed by the name of the course.`
-           }</p>`
+           ${isFounderCourse ? 
+             `<p>This course is hosted on Schoolhouse! Please join the session via the Schoolhouse platform.</p>` 
+             : 
+             `<p>Zoom ID: ${defaultZoomId}<br/>Password: ${defaultZoomPassword}<br/>${
+               breakoutRoomName
+                 ? `Breakout room: "${breakoutRoomName}"`
+                 : `Please join the breakout room that starts with "${tutorFirstName}${tutorLastInitial ? ` ${tutorLastInitial}` : ""}" followed by the name of the course.`
+             }</p>`
+           }`
         : `<p>Your enrollment request for <strong>${courseTitle}</strong> has been rejected.</p>`;
 
     await sendEmail(studentEmail, subject, html);

@@ -2,6 +2,8 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import LoginPageClient from "@/components/LoginPageClient";
 import { getSessionUser } from "@/lib/authServer";
+import { resolveUserRole } from "@/lib/roles";
+import { getMaintenanceMode } from "@/lib/siteSettings";
 
 export default async function LoginPage() {
   const cookieStore = await cookies();
@@ -9,7 +11,15 @@ export default async function LoginPage() {
   const user = await getSessionUser(token);
 
   if (user) {
-    redirect("/");
+    const maintenanceEnabled = await getMaintenanceMode();
+    const role = resolveUserRole(user.email, user.role ?? null);
+    
+    if (maintenanceEnabled && role !== "founder") {
+      // Do not redirect to "/", they are stuck in maintenance mode.
+      // Let them see the login page so they can sign in as a founder.
+    } else {
+      redirect("/");
+    }
   }
 
   return <LoginPageClient />;
