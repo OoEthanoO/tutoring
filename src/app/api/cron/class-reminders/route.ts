@@ -909,7 +909,7 @@ export async function POST(request: NextRequest) {
         <p><strong>Start time (${torontoTimeZone}):</strong> ${startLabel}</p>
         ${
           isFounder
-            ? `<p>Please attend the class 5 minutes before the start time on the Schoolhouse platform.</p>`
+            ? `<p>Please attend the class 5 minutes before the start time on the Schoolhouse platform. If you don't have a Schoolhouse account yet, please create one using this link: <a href="https://schoolhouse.world/?ref=u-mx1o1c1hti">https://schoolhouse.world/?ref=u-mx1o1c1hti</a></p>`
             : `<p>Please attend the class 5 minutes before the start time:</p>\n        <p>Zoom ID: ${escapeHtml(defaultZoomId)}<br/>Password: ${escapeHtml(defaultZoomPassword)}<br/>${breakoutRoomName
                 ? `Breakout room: "${escapeHtml(breakoutRoomName)}"`
                 : `Please join the breakout room that starts with "${escapeHtml(
@@ -940,7 +940,7 @@ export async function POST(request: NextRequest) {
             formatTorontoDateTime(classRow.starts_at)
           )}`,
           isFounder
-            ? "Please attend the class 5 minutes before the start time on the Schoolhouse platform."
+            ? "Please attend the class 5 minutes before the start time on the Schoolhouse platform. If you don't have a Schoolhouse account yet, please create one using this link: https://schoolhouse.world/?ref=u-mx1o1c1hti"
             : nonFounderDiscordInstruction,
         ].join("\n");
       }
@@ -968,7 +968,7 @@ export async function POST(request: NextRequest) {
             formatTorontoDateTime(classRow.starts_at)
           )}`,
           isFounder
-            ? "Please join the meeting on the Schoolhouse platform immediately!"
+            ? "Please join the meeting on the Schoolhouse platform immediately! If you don't have a Schoolhouse account yet, please create one using this link: https://schoolhouse.world/?ref=u-mx1o1c1hti"
             : nonFounderFiveMinInstruction,
         ].join("\n");
       }

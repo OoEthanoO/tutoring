@@ -214,7 +214,7 @@ export async function PATCH(
         ? `<p>Your enrollment request for <strong>${courseTitle}</strong> has been approved.</p>
            <p>Please attend the class 5 minutes before the start time:</p>
            ${isFounderCourse ? 
-             `<p>This course is hosted on Schoolhouse! Please join the session via the Schoolhouse platform.</p>` 
+             `<p>This course is hosted on Schoolhouse! Please join the session via the Schoolhouse platform. If you don't have a Schoolhouse account yet, please create one using this link: <a href="https://schoolhouse.world/?ref=u-mx1o1c1hti">https://schoolhouse.world/?ref=u-mx1o1c1hti</a></p>` 
              : 
              `<p>Zoom ID: ${defaultZoomId}<br/>Password: ${defaultZoomPassword}<br/>${
                breakoutRoomName
