@@ -86,7 +86,7 @@ export async function PATCH(
   const { data: requestData, error: requestError } = await adminClient
     .from("course_enrollment_requests")
     .select(
-      "id, course_id, student_id, student_name, student_email, status, course:courses(id, title, short_name, created_by_name, created_by, max_students, course_enrollments(count))"
+      "id, course_id, student_id, student_name, student_email, status, course:courses(id, title, short_name, created_by_name, created_by, created_by_email, max_students, course_enrollments(count))"
     )
     .eq("id", requestId)
     .single();
@@ -197,12 +197,12 @@ export async function PATCH(
   const donationLink = tutorProfile?.donation_link ?? "";
 
   let isFounderCourse = false;
-  if (tutorId) {
-    const { data: userResp } = await adminClient.auth.admin.getUserById(tutorId);
-    const tutorEmail = userResp.user?.email;
-    if (tutorEmail) {
-      isFounderCourse = resolveUserRole(tutorEmail, null) === "founder";
-    }
+  const tutorEmail = Array.isArray(requestData.course)
+    ? requestData.course[0]?.created_by_email
+    : (requestData.course as { created_by_email?: string } | null)?.created_by_email;
+    
+  if (tutorEmail) {
+    isFounderCourse = resolveUserRole(tutorEmail, null) === "founder";
   }
 
   if (studentEmail) {

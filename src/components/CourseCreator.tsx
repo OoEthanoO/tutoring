@@ -101,7 +101,7 @@ export default function CourseCreator() {
 
     if (userRole === "tutor") {
       const ok = window.confirm(
-        "This course will immediately become public. You will not be able to delete it unless you contact the admin (ethanyanxu@icloud.com), but you can still edit it after creation. Do you want to continue?"
+        "This course will immediately become public. You will not be able to delete it unless you contact the admin (ethanxucoder@gmail.com), but you can still edit it after creation. Do you want to continue?"
       );
       if (!ok) {
         return;
@@ -114,7 +114,7 @@ export default function CourseCreator() {
       );
       if (currentRole === "executive") {
         const ok = window.confirm(
-          "This course will immediately become public. You will not be able to delete it unless you contact the admin (ethanyanxu@icloud.com), but you can still edit it after creation. Do you want to continue?"
+          "This course will immediately become public. You will not be able to delete it unless you contact the admin (ethanxucoder@gmail.com), but you can still edit it after creation. Do you want to continue?"
         );
         if (!ok) {
           return;
