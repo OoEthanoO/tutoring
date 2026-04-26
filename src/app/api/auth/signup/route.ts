@@ -59,6 +59,20 @@ export async function POST(request: NextRequest) {
   }
 
   const adminClient = getAdminClient();
+
+  const { data: banned } = await adminClient
+    .from("banned_emails")
+    .select("email")
+    .eq("email", email)
+    .maybeSingle();
+
+  if (banned) {
+    return NextResponse.json(
+      { error: "You are not permitted to create an account." },
+      { status: 403 }
+    );
+  }
+
   const { data: existing } = await adminClient
     .from("app_users")
     .select("id")

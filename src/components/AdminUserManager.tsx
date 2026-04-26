@@ -8,6 +8,7 @@ import {
   onAuthChange,
 } from "@/lib/authClient";
 import { resolveUserRole } from "@/lib/roles";
+import AdminBannedEmails from "@/components/AdminBannedEmails";
 
 type AdminUser = {
   id: string;
@@ -1281,6 +1282,7 @@ export default function AdminUserManager() {
         ) : null}
       </div>
 
+      <AdminBannedEmails />
     </section >
 
       {/* Student Application Modal */}
