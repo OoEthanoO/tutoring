@@ -1248,7 +1248,8 @@ export const runDiscordSync = async ({
         .not("email_verified_at", "is", null),
       adminClient
         .from("courses")
-        .select("id, title, is_completed, created_by, course_classes(starts_at, duration_hours)"),
+        .select("id, title, is_completed, created_by, course_classes(starts_at, duration_hours)")
+        .is("deleted_at", null),
       adminClient
         .from("course_enrollments")
         .select("course_id, student_id"),
