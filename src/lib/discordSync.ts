@@ -9,7 +9,7 @@ const defaultArchiveCategoryName = "Archived";
 const defaultTextCategoryName = "Text";
 const defaultVoiceCategoryName = "Voice";
 const defaultInfoChannelName = "info";
-const defaultNoticeChannelName = "notice";
+const defaultReadmeChannelName = "readme";
 const defaultTasksChannelName = "tasks";
 const defaultWebsiteVoiceChannelName = "learn.ethanyanxu.com";
 const defaultEveryoneChatChannelName = "everyone";
@@ -433,7 +433,7 @@ const buildTasksPermissionOverwrites = (
   ];
 };
 
-const buildNoticePermissionOverwrites = (
+const buildReadmePermissionOverwrites = (
   guildId: string,
   executiveRoleId: string,
   juniorExecutiveRoleId: string,
@@ -1185,9 +1185,14 @@ export const runDiscordSync = async ({
   const commitsChannelName =
     String(process.env.DISCORD_COMMITS_CHANNEL_NAME ?? "").trim() ||
     defaultCommitsChannelName;
-  const noticeChannelName =
-    String(process.env.DISCORD_NOTICE_CHANNEL_NAME ?? "").trim() ||
-    defaultNoticeChannelName;
+  const readmeChannelName =
+    String(process.env.DISCORD_README_CHANNEL_NAME ?? "")
+      .trim()
+      .toLowerCase() ||
+    String(process.env.DISCORD_NOTICE_CHANNEL_NAME ?? "")
+      .trim()
+      .toLowerCase() ||
+    defaultReadmeChannelName;
   const websiteVoiceChannelName =
     String(process.env.DISCORD_URL_VOICE_CHANNEL_NAME ?? "").trim() ||
     defaultWebsiteVoiceChannelName;
@@ -2233,11 +2238,12 @@ export const runDiscordSync = async ({
     ),
   });
 
-  const noticeChannel = await ensureFixedChannel({
-    name: noticeChannelName,
+  const readmeChannel = await ensureFixedChannel({
+    name: readmeChannelName,
+    oldName: "notice",
     channelType: discordTextChannelType,
     parentId: null,
-    permissionOverwrites: buildNoticePermissionOverwrites(
+    permissionOverwrites: buildReadmePermissionOverwrites(
       discordGuildId,
       executiveRole.id,
       juniorExecutiveRole.id,
@@ -2786,10 +2792,10 @@ export const runDiscordSync = async ({
     );
     nextTopLevelPosition += 1;
   }
-  if (noticeChannel) {
+  if (readmeChannel) {
     await enforceTopLevelPosition(
-      noticeChannel.id,
-      noticeChannelName,
+      readmeChannel.id,
+      readmeChannelName,
       nextTopLevelPosition
     );
     nextTopLevelPosition += 1;
@@ -2854,8 +2860,8 @@ export const runDiscordSync = async ({
   if (infoChannel) {
     allowedTextChannelIds.add(infoChannel.id);
   }
-  if (noticeChannel) {
-    allowedTextChannelIds.add(noticeChannel.id);
+  if (readmeChannel) {
+    allowedTextChannelIds.add(readmeChannel.id);
   }
   if (tasksChannel) {
     allowedTextChannelIds.add(tasksChannel.id);
