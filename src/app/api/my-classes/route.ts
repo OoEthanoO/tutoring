@@ -35,14 +35,14 @@ export async function GET(request: NextRequest) {
   const { data: enrolledData, error: enrolledError } = await adminClient
     .from("course_enrollments")
     .select(
-      "course:courses(id, title, created_by_name, created_by_email, course_classes(id, title, starts_at, duration_hours))"
+      "course:courses(id, title, deleted_at, created_by_name, created_by_email, course_classes(id, title, starts_at, duration_hours))"
     )
     .eq("student_id", user.id);
 
   if (!enrolledError && enrolledData) {
     for (const item of enrolledData) {
       const course = item.course as any;
-      if (!course) continue;
+      if (!course || course.deleted_at) continue;
       const classes = course.course_classes || [];
       for (const cls of classes) {
         const startMs = new Date(cls.starts_at).getTime();
@@ -70,8 +70,9 @@ export async function GET(request: NextRequest) {
   let query = adminClient
     .from("courses")
     .select(
-      "id, title, created_by, created_by_name, created_by_email, course_classes(id, title, starts_at, duration_hours), course_enrollments(student_name, student_email)"
-    );
+      "id, title, created_by, created_by_name, created_by_email, deleted_at, course_classes(id, title, starts_at, duration_hours), course_enrollments(student_name, student_email)"
+    )
+    .is("deleted_at", null);
 
   if (!isFounder) {
     query = query.eq("created_by", user.id);
