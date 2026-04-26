@@ -2864,6 +2864,7 @@ export const runDiscordSync = async ({
   if (scienceTutorsChannel) allowedTextChannelIds.add(scienceTutorsChannel.id);
   if (mathTutorsChannel) allowedTextChannelIds.add(mathTutorsChannel.id);
   if (nonprofitTeamChannel) allowedTextChannelIds.add(nonprofitTeamChannel.id);
+  if (developmentTeamChannel) allowedTextChannelIds.add(developmentTeamChannel.id);
 
   const allowedVoiceChannelIds = new Set<string>();
   if (websiteVoiceChannel) {
@@ -2878,6 +2879,7 @@ export const runDiscordSync = async ({
   if (scienceTutorsVoiceChannel) allowedVoiceChannelIds.add(scienceTutorsVoiceChannel.id);
   if (mathTutorsVoiceChannel) allowedVoiceChannelIds.add(mathTutorsVoiceChannel.id);
   if (nonprofitTeamVoiceChannel) allowedVoiceChannelIds.add(nonprofitTeamVoiceChannel.id);
+  if (developmentTeamVoiceChannel) allowedVoiceChannelIds.add(developmentTeamVoiceChannel.id);
 
   const allowedCategoryIds = new Set<string>([
     textCategory.id,
