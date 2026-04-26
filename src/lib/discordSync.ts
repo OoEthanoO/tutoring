@@ -1101,12 +1101,24 @@ const findCourseChannel = (
   }
 
   const byNameCandidates = channels
-    .filter(
-      (channel) =>
-        channel.type === discordTextChannelType &&
-        channel.name === expectedName &&
-        !usedChannelIds.has(channel.id)
-    )
+    .filter((channel) => {
+      if (
+        channel.type !== discordTextChannelType ||
+        usedChannelIds.has(channel.id)
+      ) {
+        return false;
+      }
+
+      if (channel.name !== expectedName) {
+        return false;
+      }
+
+      // Only allow matching by name if the channel has no course ID in its topic,
+      // or if the topic already matches this specific course ID. This prevents
+      // a new course with the same name from hijacking an existing course's channel.
+      const { id: existingTopicCourseId } = readCourseIdFromTopic(channel.topic);
+      return !existingTopicCourseId || existingTopicCourseId === courseId;
+    })
     .sort((left, right) => left.id.localeCompare(right.id));
 
   return byNameCandidates[0] ?? null;
