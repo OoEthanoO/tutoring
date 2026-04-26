@@ -26,6 +26,8 @@ const defaultScienceTutorsVoiceChannelName = "Science Tutors";
 const defaultMathTutorsVoiceChannelName = "Math Tutors";
 const defaultNonprofitTeamChannelName = "nonprofit-team";
 const defaultNonprofitTeamVoiceChannelName = "Nonprofit Team";
+const defaultDevelopmentTeamChannelName = "development-team";
+const defaultDevelopmentTeamVoiceChannelName = "Development Team";
 const discordTextChannelType = 0;
 const discordVoiceChannelType = 2;
 const discordCategoryChannelType = 4;
@@ -1197,6 +1199,8 @@ export const runDiscordSync = async ({
   const mathTutorsVoiceChannelName = String(process.env.DISCORD_MATH_TUTORS_VOICE_CHANNEL_NAME ?? "").trim() || defaultMathTutorsVoiceChannelName;
   const nonprofitTeamChannelName = String(process.env.DISCORD_NONPROFIT_TEAM_CHANNEL_NAME ?? "").trim() || defaultNonprofitTeamChannelName;
   const nonprofitTeamVoiceChannelName = String(process.env.DISCORD_NONPROFIT_TEAM_VOICE_CHANNEL_NAME ?? "").trim() || defaultNonprofitTeamVoiceChannelName;
+  const developmentTeamChannelName = String(process.env.DISCORD_DEVELOPMENT_TEAM_CHANNEL_NAME ?? "").trim() || defaultDevelopmentTeamChannelName;
+  const developmentTeamVoiceChannelName = String(process.env.DISCORD_DEVELOPMENT_TEAM_VOICE_CHANNEL_NAME ?? "").trim() || defaultDevelopmentTeamVoiceChannelName;
 
   const protectedRoleNames = new Set(
     String(process.env.DISCORD_PROTECTED_ROLE_NAMES ?? "")
@@ -1343,6 +1347,7 @@ export const runDiscordSync = async ({
   const scienceTutorsRole = await ensureRole("Science Tutor", false);
   const mathTutorsRole = await ensureRole("Math Tutor", false);
   const nonprofitTeamRole = await ensureRole("Nonprofit Team", false);
+  const developmentTeamRole = await ensureRole("Development Team", false);
   const founderRole = await ensureRole("Founder", false);
   const strikeRole = await ensureRole("Strike", false);
 
@@ -1355,6 +1360,7 @@ export const runDiscordSync = async ({
     scienceTutorsRole.id,
     mathTutorsRole.id,
     nonprofitTeamRole.id,
+    developmentTeamRole.id,
     strikeRole.id,
   ]);
   const founderDiscordUserIds = new Set(
@@ -2442,6 +2448,18 @@ export const runDiscordSync = async ({
     ),
   });
 
+  const developmentTeamChannel = await ensureFixedChannel({
+    name: developmentTeamChannelName,
+    channelType: discordTextChannelType,
+    parentId: textCategory.id,
+    permissionOverwrites: buildRoleExclusiveTextPermissionOverwrites(
+      discordGuildId,
+      developmentTeamRole.id,
+      botUser.id,
+      [founderRole.id]
+    ),
+  });
+
   const everyoneVoiceChannel = await ensureFixedChannel({
     name: everyoneVoiceChannelName,
     channelType: discordVoiceChannelType,
@@ -2511,6 +2529,18 @@ export const runDiscordSync = async ({
     permissionOverwrites: buildRoleExclusiveVoicePermissionOverwrites(
       discordGuildId,
       nonprofitTeamRole.id,
+      botUser.id,
+      [founderRole.id]
+    ),
+  });
+
+  const developmentTeamVoiceChannel = await ensureFixedChannel({
+    name: developmentTeamVoiceChannelName,
+    channelType: discordVoiceChannelType,
+    parentId: voiceCategory.id,
+    permissionOverwrites: buildRoleExclusiveVoicePermissionOverwrites(
+      discordGuildId,
+      developmentTeamRole.id,
       botUser.id,
       [founderRole.id]
     ),
@@ -2614,10 +2644,14 @@ export const runDiscordSync = async ({
     );
     nextTextPosition += 1;
   }
-
-
-
-
+  if (developmentTeamChannel) {
+    await enforceTextPosition(
+      developmentTeamChannel.id,
+      developmentTeamChannelName,
+      nextTextPosition
+    );
+    nextTextPosition += 1;
+  }
 
   const enforceVoicePosition = async (
     channelId: string,
@@ -2683,6 +2717,10 @@ export const runDiscordSync = async ({
   }
   if (nonprofitTeamVoiceChannel) {
     await enforceVoicePosition(nonprofitTeamVoiceChannel.id, nonprofitTeamVoiceChannelName, nextVoicePosition);
+    nextVoicePosition += 1;
+  }
+  if (developmentTeamVoiceChannel) {
+    await enforceVoicePosition(developmentTeamVoiceChannel.id, developmentTeamVoiceChannelName, nextVoicePosition);
     nextVoicePosition += 1;
   }
 
