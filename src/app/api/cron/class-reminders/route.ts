@@ -505,7 +505,7 @@ export async function POST(request: NextRequest) {
   }
 
   const base = floorToMinuteBoundary(new Date());
-  const candidates: CandidateReminder[] = [];
+  let candidates: CandidateReminder[] = [];
 
   for (const target of reminderTargets) {
     const targetTime = new Date(
@@ -595,6 +595,26 @@ export async function POST(request: NextRequest) {
         reminderLabel: "0 minutes",
         classRow,
       });
+    }
+  }
+
+  // Deduplicate reminders using logs to prevent multiple sends during the drift window
+  const candidateClassIdsForLogs = Array.from(
+    new Set(candidates.map((c) => c.classRow.id))
+  );
+  if (candidateClassIdsForLogs.length > 0) {
+    const { data: existingLogs } = await adminClient
+      .from("class_reminder_logs")
+      .select("class_id, reminder_type")
+      .in("class_id", candidateClassIdsForLogs);
+
+    if (existingLogs) {
+      const logSet = new Set(
+        existingLogs.map((l) => `${l.class_id}:${l.reminder_type}`)
+      );
+      candidates = candidates.filter(
+        (c) => !logSet.has(`${c.classRow.id}:${c.reminderType}`)
+      );
     }
   }
 
@@ -761,6 +781,7 @@ export async function POST(request: NextRequest) {
     discordRemindersEnabled && !discordReminderSkippedReason;
 
   for (const candidate of candidates) {
+    let wasAnyReminderSent = false;
     const { classRow, reminderType, reminderLabel } = candidate;
     const course = readCourse(classRow.course);
     if (!course) {
@@ -1037,6 +1058,7 @@ export async function POST(request: NextRequest) {
     if (successfulSends > 0) {
       sentClassCount += 1;
       sentEmailCount += successfulSends;
+      wasAnyReminderSent = true;
     }
 
     if (shouldSendCourseDiscordReminder) {
@@ -1055,6 +1077,7 @@ export async function POST(request: NextRequest) {
             message
           );
           sentDiscordReminderCount += 1;
+          wasAnyReminderSent = true;
           await sleep(150);
         } catch (error) {
           failedClasses.push({
@@ -1086,6 +1109,7 @@ export async function POST(request: NextRequest) {
               executiveTutorContent
             );
             sentDiscordFollowUpCount += 1;
+            wasAnyReminderSent = true;
             await sleep(150);
           } catch (error) {
             failedClasses.push({
@@ -1131,6 +1155,7 @@ export async function POST(request: NextRequest) {
           founderContent
         );
         sentDiscordFollowUpCount += 1;
+        wasAnyReminderSent = true;
         await sleep(150);
       } catch (error) {
         failedClasses.push({
@@ -1141,6 +1166,12 @@ export async function POST(request: NextRequest) {
             }`,
         });
       }
+    }
+    if (wasAnyReminderSent) {
+      await adminClient.from("class_reminder_logs").insert({
+        class_id: classRow.id,
+        reminder_type: reminderType,
+      });
     }
   }
 
