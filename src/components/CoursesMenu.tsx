@@ -81,7 +81,8 @@ const formatCompletedDate = (value?: string | null) => {
   if (!value) {
     return "Unknown";
   }
-  const parsed = new Date(`${value}T00:00:00`);
+  const [y, m, d] = value.split("-").map(Number);
+  const parsed = new Date(y, m - 1, d);
   if (Number.isNaN(parsed.getTime())) {
     return value;
   }

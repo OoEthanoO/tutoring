@@ -450,7 +450,7 @@ export default function CourseCreator() {
                       className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--border)] px-3 py-2"
                     >
                       <span>
-                        Class {index + 1} · {draftClass.startsAt.split("T")[0]}{" "}
+                        Class {index + 1} · {new Date(draftClass.startsAt).toLocaleDateString()}{" "}
                         ·{" "}
                         {new Date(draftClass.startsAt).toLocaleTimeString([], {
                           hour: "numeric",

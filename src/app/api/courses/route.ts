@@ -428,6 +428,9 @@ export async function PATCH(request: NextRequest) {
       description?: string | null;
       createdBy?: string | null;
       maxStudents?: number | null;
+      completedStartDate?: string | null;
+      completedEndDate?: string | null;
+      completedClassCount?: number | null;
       restore?: boolean;
     }
     | null;
@@ -458,6 +461,12 @@ export async function PATCH(request: NextRequest) {
       : typeof body.maxStudents === "number" && body.maxStudents > 0
         ? Math.floor(body.maxStudents)
         : undefined;
+  const completedStartDate =
+    typeof body.completedStartDate === "string" ? body.completedStartDate.trim() : undefined;
+  const completedEndDate =
+    typeof body.completedEndDate === "string" ? body.completedEndDate.trim() : undefined;
+  const completedClassCount =
+    typeof body.completedClassCount === "number" ? Math.floor(body.completedClassCount) : undefined;
 
   if (title !== undefined && !title) {
     return NextResponse.json({ error: "Title is required." }, { status: 400 });
@@ -489,6 +498,9 @@ export async function PATCH(request: NextRequest) {
     created_by?: string | null;
     created_by_name?: string | null;
     created_by_email?: string | null;
+    completed_start_date?: string | null;
+    completed_end_date?: string | null;
+    completed_class_count?: number | null;
     deleted_at?: string | null;
   } = {};
   if (title !== undefined) {
@@ -517,6 +529,17 @@ export async function PATCH(request: NextRequest) {
       );
     }
     updatePayload.max_students = maxStudents;
+  }
+  if (completedStartDate !== undefined || completedEndDate !== undefined || completedClassCount !== undefined) {
+    if (role !== "founder") {
+      return NextResponse.json(
+        { error: "Only the founder can edit completed course details." },
+        { status: 403 }
+      );
+    }
+    if (completedStartDate !== undefined) updatePayload.completed_start_date = completedStartDate || null;
+    if (completedEndDate !== undefined) updatePayload.completed_end_date = completedEndDate || null;
+    if (completedClassCount !== undefined) updatePayload.completed_class_count = completedClassCount || null;
   }
 
   if (createdBy === null) {

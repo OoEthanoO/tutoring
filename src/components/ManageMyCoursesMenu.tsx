@@ -138,6 +138,9 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
   const [editCourseShortName, setEditCourseShortName] = useState("");
   const [editCourseDescription, setEditCourseDescription] = useState("");
   const [editCourseMaxStudents, setEditCourseMaxStudents] = useState<string>("");
+  const [editCompletedStartDate, setEditCompletedStartDate] = useState("");
+  const [editCompletedEndDate, setEditCompletedEndDate] = useState("");
+  const [editCompletedClassCount, setEditCompletedClassCount] = useState("");
   const [isRestoringId, setIsRestoringId] = useState<string | null>(null);
   const [isEmptyingTrash, setIsEmptyingTrash] = useState(false);
   const [bulkTutorEmail, setBulkTutorEmail] = useState("");
@@ -195,7 +198,8 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
     if (!value) {
       return "Unknown";
     }
-    const parsed = new Date(`${value}T00:00:00`);
+    const [y, m, d] = value.split("-").map(Number);
+    const parsed = new Date(y, m - 1, d);
     if (Number.isNaN(parsed.getTime())) {
       return value;
     }
@@ -817,7 +821,9 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
     setEditCourseShortName(course.short_name ?? "");
     setEditCourseDescription(course.description ?? "");
     setEditCourseMaxStudents(course.max_students ? String(course.max_students) : "");
-
+    setEditCompletedStartDate(course.completed_start_date ?? "");
+    setEditCompletedEndDate(course.completed_end_date ?? "");
+    setEditCompletedClassCount(course.completed_class_count ? String(course.completed_class_count) : "");
   };
 
   const cancelEditCourse = () => {
@@ -826,7 +832,9 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
     setEditCourseShortName("");
     setEditCourseDescription("");
     setEditCourseMaxStudents("");
-
+    setEditCompletedStartDate("");
+    setEditCompletedEndDate("");
+    setEditCompletedClassCount("");
   };
 
   const saveCourseEdit = async (courseId: string) => {
@@ -850,7 +858,9 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
         shortName: role === "founder" ? editCourseShortName.trim() : undefined,
         description: editCourseDescription.trim(),
         maxStudents: role === "founder" ? (editCourseMaxStudents ? Number(editCourseMaxStudents) : null) : undefined,
-
+        completedStartDate: role === "founder" ? (editCompletedStartDate || null) : undefined,
+        completedEndDate: role === "founder" ? (editCompletedEndDate || null) : undefined,
+        completedClassCount: role === "founder" ? (editCompletedClassCount ? Number(editCompletedClassCount) : null) : undefined,
       }),
     });
 
@@ -1319,6 +1329,45 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
                         className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
                       />
                     ) : null}
+                    {role === "founder" && course.is_completed ? (
+                      <div className="grid gap-3 sm:grid-cols-3">
+                        <div className="space-y-1">
+                          <label className="text-[0.6rem] font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
+                            Start date
+                          </label>
+                          <input
+                            type="date"
+                            value={editCompletedStartDate}
+                            onChange={(event) => setEditCompletedStartDate(event.target.value)}
+                            className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[0.6rem] font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
+                            End date
+                          </label>
+                          <input
+                            type="date"
+                            value={editCompletedEndDate}
+                            onChange={(event) => setEditCompletedEndDate(event.target.value)}
+                            className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[0.6rem] font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
+                            Classes
+                          </label>
+                          <input
+                            type="number"
+                            min="1"
+                            step="1"
+                            value={editCompletedClassCount}
+                            onChange={(event) => setEditCompletedClassCount(event.target.value)}
+                            className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+                          />
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                 ) : (
                   <div>
@@ -1509,7 +1558,7 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
                             return (
                               <span>
                                 Class {index + 1} ·{" "}
-                                {courseClass.starts_at.split("T")[0]} ·{" "}
+                                {new Date(courseClass.starts_at).toLocaleDateString()} ·{" "}
                                 {new Date(courseClass.starts_at).toLocaleTimeString(
                                   [],
                                   {
