@@ -445,7 +445,6 @@ export async function POST(request: NextRequest) {
       courseRoleRemovedCount: 0,
       createdChannelCount: 0,
       updatedChannelCount: 0,
-      archivedChannelCount: 0,
       deletedChannelCount: 0,
       deletedCourseRoleCount: 0,
       updatedMemberNickCount: 0,

@@ -5,7 +5,6 @@ import { fetchFundraisingRaisedAmount } from "@/lib/fundraising";
 const discordApiBase = "https://discord.com/api/v10";
 const courseTopicPrefix = "yanlearn-course-id:";
 const defaultCoursesCategoryName = "Courses";
-const defaultArchiveCategoryName = "Archived";
 const defaultTextCategoryName = "Text";
 const defaultVoiceCategoryName = "Voice";
 const defaultInfoChannelName = "info";
@@ -41,7 +40,7 @@ const readMessageHistoryPermission = 65536;
 const connectPermission = 1048576;
 const manageChannelsPermission = 16;
 const pinMessagesPermission = BigInt(1) << BigInt(51);
-const archiveDelayMs = 7 * 24 * 60 * 60 * 1000;
+const deletionDelayMs = 7 * 24 * 60 * 60 * 1000;
 const fundraiserVoiceChannelNamePattern = /^\$\d[\d,]*\sraised$/i;
 
 type WebsiteUserRow = {
@@ -137,7 +136,6 @@ export type DiscordSyncResult = {
   courseRoleRemovedCount: number;
   createdChannelCount: number;
   updatedChannelCount: number;
-  archivedChannelCount: number;
   deletedChannelCount: number;
   deletedCourseRoleCount: number;
   updatedMemberNickCount: number;
@@ -305,8 +303,7 @@ const buildCoursePermissionOverwrites = (
   executiveRoleId: string,
   juniorExecutiveRoleId: string,
   founderRoleId: string,
-  botUserId: string,
-  archived: boolean
+  botUserId: string
 ): DiscordPermissionOverwrite[] => {
   const readOnlyAllow = String(viewChannelPermission | readMessageHistoryPermission);
   const activeAllow = String(
@@ -324,8 +321,8 @@ const buildCoursePermissionOverwrites = (
     {
       id: courseRoleId,
       type: 0,
-      allow: (BigInt(archived ? readOnlyAllow : activeAllow) | BigInt(manageChannelsPermission)).toString(),
-      deny: archived ? String(sendMessagesPermission) : "0",
+      allow: (BigInt(activeAllow) | BigInt(manageChannelsPermission)).toString(),
+      deny: "0",
     },
     {
       id: executiveRoleId,
@@ -1151,7 +1148,6 @@ const buildZeroResult = (
   courseRoleRemovedCount: 0,
   createdChannelCount: 0,
   updatedChannelCount: 0,
-  archivedChannelCount: 0,
   deletedChannelCount: 0,
   deletedCourseRoleCount: 0,
   updatedMemberNickCount: 0,
@@ -1167,9 +1163,6 @@ export const runDiscordSync = async ({
   const coursesCategoryName =
     String(process.env.DISCORD_COURSES_CATEGORY_NAME ?? "").trim() ||
     defaultCoursesCategoryName;
-  const archiveCategoryName =
-    String(process.env.DISCORD_ARCHIVE_CATEGORY_NAME ?? "").trim() ||
-    defaultArchiveCategoryName;
   const textCategoryName =
     String(process.env.DISCORD_TEXT_CATEGORY_NAME ?? "").trim() ||
     defaultTextCategoryName;
@@ -1717,12 +1710,9 @@ export const runDiscordSync = async ({
   const courseRoleIdByCourseId = new Map<string, string>();
   for (const course of websiteCourses) {
     const endedAtMs = endedAtMsByCourseId.get(course.id) ?? Number.POSITIVE_INFINITY;
-    const isPastArchiveDelay = nowMs >= endedAtMs + archiveDelayMs;
-    const shouldArchive = isPastArchiveDelay;
-    const hasManagedChannel = courseIdsWithManagedChannels.has(course.id);
+    const isPastDeletionDelay = nowMs >= endedAtMs + deletionDelayMs;
 
-    // Completed courses without a managed channel should not create roles/channels.
-    if (shouldArchive && !hasManagedChannel) {
+    if (isPastDeletionDelay) {
       continue;
     }
 
@@ -1874,7 +1864,14 @@ export const runDiscordSync = async ({
     }
   }
 
-  const activeCourseIdSet = new Set(websiteCourses.map((course) => course.id));
+  const activeCourseIdSet = new Set(
+    websiteCourses
+      .filter((course) => {
+        const endedAtMs = endedAtMsByCourseId.get(course.id) ?? Number.POSITIVE_INFINITY;
+        return nowMs < endedAtMs + deletionDelayMs;
+      })
+      .map((course) => course.id)
+  );
   const expectedCourseRoleIdSet = new Set(courseRoleIdByCourseId.values());
   const staleCourseRoleIdCandidates = new Set<string>();
 
@@ -1967,10 +1964,9 @@ export const runDiscordSync = async ({
   const textCategory = await ensureCategory(textCategoryName);
   const voiceCategory = await ensureCategory(voiceCategoryName);
   const coursesCategory = await ensureCategory(coursesCategoryName);
-  const archiveCategory = await ensureCategory(archiveCategoryName);
 
-  // Ensure Courses and Archived categories deny @everyone viewChannel so
-  // students cannot see other people's course channels in the sidebar.
+
+  // Ensure Courses category denies @everyone viewChannel so
   const privateCategoryOverwrites: DiscordPermissionOverwrite[] = [
     {
       id: discordGuildId,
@@ -1980,7 +1976,7 @@ export const runDiscordSync = async ({
     },
   ];
 
-  for (const cat of [coursesCategory, archiveCategory]) {
+  for (const cat of [coursesCategory]) {
     if (!areOverwritesEqual(cat.permission_overwrites, privateCategoryOverwrites)) {
       try {
         const updated = await apiClient.updateGuildChannel(cat.id, {
@@ -2020,12 +2016,12 @@ export const runDiscordSync = async ({
     let nextFlags = currentFlags;
 
     const isPastEnd = nowMs >= endedAtMs;
-    const isPastArchiveDelay = nowMs >= endedAtMs + archiveDelayMs;
+    const isPastDeletionDelay = nowMs >= endedAtMs + deletionDelayMs;
 
     if (!isPastEnd && nextFlags.includes("w")) {
       nextFlags = nextFlags.replace(/w/g, "");
     }
-    if (!isPastArchiveDelay && nextFlags.includes("a")) {
+    if (!isPastDeletionDelay && nextFlags.includes("a")) {
       nextFlags = nextFlags.replace(/a/g, "");
     }
 
@@ -2033,7 +2029,7 @@ export const runDiscordSync = async ({
       try {
         await apiClient.createChannelMessage(
           existingChannel.id,
-          `**The course has officially concluded!** <@&${courseRoleId}>\n\nThis channel will remain open for one more week to allow you to save any notes, resources, or final discussions.\n\n**Archive Date:** in 7 days\nAfter this time, the channel will be moved to the **Archived** section and become read-only. You will still be able to access all previous messages and materials.`
+          `**The course has officially concluded!** <@&${courseRoleId}>\n\nThis channel will remain open for one more week to allow you to save any notes, resources, or final discussions.\n\n**Deletion Date:** in 7 days\nAfter this time, this channel and its corresponding role will be permanently deleted. Please make sure to save any important materials before then.`
         );
         nextFlags += "w";
       } catch (error) {
@@ -2041,37 +2037,17 @@ export const runDiscordSync = async ({
       }
     }
 
-    let shouldArchive = false;
-    if (isPastArchiveDelay) {
-      shouldArchive = true;
-      if (!currentFlags.includes("a") && existingChannel) {
-        try {
-          await apiClient.createChannelMessage(
-            existingChannel.id,
-            `**This channel has now been archived.**\n\nThe course is complete, and this channel is now read-only. You can still browse the history and access shared resources.`
-          );
-          nextFlags += "a";
-        } catch (error) {
-          result.errors.push(`Failed to send archive notice for course "${course.title}": ${toErrorMessage(error, "Unknown error")}`);
-        }
-      }
-    }
-
     const expectedTopic = getCourseTopicMarker(course.id, nextFlags);
-    const expectedParentId = shouldArchive ? archiveCategory.id : coursesCategory.id;
+    const expectedParentId = coursesCategory.id;
     const expectedOverwrites = buildCoursePermissionOverwrites(
       discordGuildId,
       courseRoleId,
       executiveRole.id,
       juniorExecutiveRole.id,
       founderRole.id,
-      botUser.id,
-      shouldArchive
+      botUser.id
     );
 
-    if (!existingChannel && shouldArchive) {
-      continue;
-    }
 
     if (!existingChannel) {
       try {
@@ -2129,11 +2105,7 @@ export const runDiscordSync = async ({
       if (channelIndex >= 0) {
         mutableChannels[channelIndex] = updatedChannel;
       }
-      if (shouldArchive) {
-        result.archivedChannelCount += 1;
-      } else {
-        result.updatedChannelCount += 1;
-      }
+      result.updatedChannelCount += 1;
     } catch (error) {
       result.errors.push(
         `Failed to update channel "${existingChannel.name}" for course "${course.title}": ${toErrorMessage(
@@ -2850,11 +2822,8 @@ export const runDiscordSync = async ({
     nextTopLevelPosition
   );
   nextTopLevelPosition += 1;
-  await enforceTopLevelPosition(
-    archiveCategory.id,
-    archiveCategoryName,
-    nextTopLevelPosition
-  );
+  nextTopLevelPosition += 1;
+
 
   const allowedTextChannelIds = new Set<string>(usedChannelIds);
   if (infoChannel) {
@@ -2903,7 +2872,6 @@ export const runDiscordSync = async ({
     textCategory.id,
     voiceCategory.id,
     coursesCategory.id,
-    archiveCategory.id,
   ]);
 
   for (const channel of [...mutableChannels]) {
