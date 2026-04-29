@@ -49,7 +49,7 @@ const getDiscordChannelMessages = async (channelId: string) => {
   const maxAttempts = 3;
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     const response = await fetch(
-      `https://discord.com/api/v10/channels/${channelId}/messages?limit=25`,
+      `https://discord.com/api/v10/channels/${channelId}/messages?limit=50`,
       {
         headers: {
           Authorization: `Bot ${discordBotToken}`,
@@ -62,11 +62,11 @@ const getDiscordChannelMessages = async (channelId: string) => {
         await new Promise((resolve) => setTimeout(resolve, 1000));
         continue;
       }
-      return [];
+      return null;
     }
     return response.json() as Promise<{ content: string }[]>;
   }
-  return [];
+  return null;
 };
 
 const sendDiscordMessage = async (channelId: string, content: string) => {
@@ -187,10 +187,16 @@ export const runGithubSync = async (): Promise<GithubSyncResult> => {
 
   // Find the last handled commit by looking through the channel messages
   const recentMessages = await getDiscordChannelMessages(commitsChannel.id);
+  if (recentMessages === null) {
+    result.errors.push("Failed to fetch recent messages from Discord channel; skipping sync to avoid duplicates.");
+    return result;
+  }
+
   const syncedShas = new Set<string>();
   
   for (const msg of recentMessages) {
-    const match = msg.content.match(/New Commit:\*\* `([a-f0-9]{7})/i);
+    // Robust regex to find the commit SHA (7-40 hex chars) in various bolding formats
+    const match = msg.content.match(/(?:New Commit:|\*\*New Commit:\*\*)\s*`([a-f0-9]{7,40})`/i);
     if (match && match[1]) {
       syncedShas.add(match[1].toLowerCase());
     }
