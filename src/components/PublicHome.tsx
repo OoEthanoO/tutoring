@@ -87,7 +87,7 @@ export default function PublicHome() {
           About the Founder
         </h3>
         <p className="text-sm text-[var(--muted)]">
-          Ethan Yan Xu, Toronto Highschooler, programming and computer science
+          Yan Xu, Toronto Highschooler, programming and computer science
           enthusiast, 6 years of coding experience, fluent in Java, C++, and
           Python. Exam score of 5 on AP Computer Science Applied and excellent
           results in CCC. As of January 2026, more than 280 classes have been

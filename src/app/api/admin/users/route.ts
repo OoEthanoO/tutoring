@@ -571,7 +571,7 @@ export async function POST(request: NextRequest) {
 </ol>
 <p>If you authorized Discord but closed that tab before joining, open your profile card and click <strong>Join Discord Server</strong> to retry.</p>
 <p>This keeps server access limited to verified YanLearn users.</p>
-<p>Thanks,<br/>Ethan Yan Xu</p>`
+<p>Thanks,<br/>Yan Xu</p>`
     );
 
     if (!emailResult.ok) {

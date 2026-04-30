@@ -31,7 +31,7 @@ export default function Footer() {
         }
 
         const data = (await response.json()) as { total: number };
-        
+
         setTotalCommits((prev) => {
           if (prev !== null && data.total !== prev) {
             if (!hasAnyUnsavedData()) {
@@ -121,7 +121,7 @@ export default function Footer() {
           onBlur={() => setIsCreditHovered(false)}
         >
           <span style={{ color: isCreditHovered ? "#3b82f6" : "var(--muted)" }}>
-            Made with ❤️ by Ethan Yan Xu
+            Made with ❤️ by Yan Xu
           </span>
         </a>
 

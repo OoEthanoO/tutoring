@@ -81,7 +81,7 @@ export default function HomeMenu({ isSignedIn }: HomeMenuProps) {
           About the Founder
         </h3>
         <p className="text-sm text-[var(--muted)]">
-          Ethan Yan Xu, IB program, G11, programming and computer science
+          Yan Xu, IB program, G11, programming and computer science
           enthusiast, 7 years of coding experience, fluent in Java, C++, and
           Python. He has been a programming tutor for three years.
         </p>
