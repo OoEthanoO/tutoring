@@ -74,6 +74,7 @@ export default function AdminUserManager() {
   const [isSendingDiscordReminder, setIsSendingDiscordReminder] =
     useState(false);
   const [isFixingClasses, setIsFixingClasses] = useState(false);
+  const [isSyncingNames, setIsSyncingNames] = useState(false);
   const [discordReminderSkipList, setDiscordReminderSkipList] = useState("");
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [impersonatedUserId, setImpersonatedUserId] = useState<string | null>(
@@ -848,6 +849,46 @@ export default function AdminUserManager() {
     setIsFixingClasses(false);
   };
 
+  const syncProfileNames = async () => {
+    const confirmed = window.confirm(
+      "Sync all profile names to denormalized fields in courses and enrollments?"
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setIsSyncingNames(true);
+    setStatus({ type: "idle", message: "" });
+
+    const response = await fetch("/api/admin/sync-names", {
+      method: "POST",
+    });
+
+    if (!response.ok) {
+      const payload = (await response.json().catch(() => null)) as
+        | { error?: string }
+        | null;
+      setStatus({
+        type: "error",
+        message: payload?.error ?? "Could not sync names.",
+      });
+      setIsSyncingNames(false);
+      return;
+    }
+
+    const data = (await response.json()) as { 
+      coursesUpdated: number; 
+      enrollmentsUpdated: number; 
+      requestsUpdated: number; 
+    };
+    
+    setStatus({
+      type: "success",
+      message: `Successfully synced names. Updated ${data.coursesUpdated} courses, ${data.enrollmentsUpdated} enrollments, and ${data.requestsUpdated} requests.`,
+    });
+    setIsSyncingNames(false);
+  };
+
   if (!isFounder) {
     return null;
   }
@@ -913,6 +954,14 @@ export default function AdminUserManager() {
             className="rounded-full border border-[var(--foreground)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-70"
           >
             {isFixingClasses ? "Fixing classes..." : "Fix class numbering"}
+          </button>
+          <button
+            type="button"
+            onClick={syncProfileNames}
+            disabled={isSyncingNames}
+            className="rounded-full border border-[var(--foreground)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            {isSyncingNames ? "Syncing names..." : "Sync profile names"}
           </button>
         </div>
         <div className="space-y-1">
