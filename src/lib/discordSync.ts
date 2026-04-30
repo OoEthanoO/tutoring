@@ -544,6 +544,7 @@ const buildEveryoneVoicePermissionOverwrites = (
   guildId: string,
   studentRoleId: string,
   executiveRoleId: string,
+  juniorExecutiveRoleId: string,
   founderRoleId: string,
   botUserId: string
 ): DiscordPermissionOverwrite[] => {
@@ -564,6 +565,12 @@ const buildEveryoneVoicePermissionOverwrites = (
     },
     {
       id: executiveRoleId,
+      type: 0,
+      allow: activeAllow,
+      deny: "0",
+    },
+    {
+      id: juniorExecutiveRoleId,
       type: 0,
       allow: activeAllow,
       deny: "0",
@@ -2458,6 +2465,7 @@ export const runDiscordSync = async ({
       discordGuildId,
       studentRole.id,
       executiveRole.id,
+      juniorExecutiveRole.id,
       founderRole.id,
       botUser.id
     ),
