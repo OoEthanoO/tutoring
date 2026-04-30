@@ -58,5 +58,22 @@ export async function PATCH(request: NextRequest) {
     );
   }
 
+  if (updates.full_name) {
+    await Promise.all([
+      adminClient
+        .from("courses")
+        .update({ created_by_name: updates.full_name })
+        .eq("created_by", user.id),
+      adminClient
+        .from("course_enrollments")
+        .update({ student_name: updates.full_name })
+        .eq("student_id", user.id),
+      adminClient
+        .from("course_enrollment_requests")
+        .update({ student_name: updates.full_name })
+        .eq("student_id", user.id),
+    ]);
+  }
+
   return NextResponse.json({ success: true });
 }
