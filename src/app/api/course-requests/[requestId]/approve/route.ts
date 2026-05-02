@@ -1,0 +1,152 @@
+import { NextResponse, type NextRequest } from "next/server";
+import { createClient } from "@supabase/supabase-js";
+import { resolveUserRole } from "@/lib/roles";
+import { getRequestUser } from "@/lib/authServer";
+import { relabelClassesForCourse } from "@/lib/classTools";
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
+const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
+
+export async function POST(
+  request: NextRequest,
+  { params }: { params: { requestId: string } }
+) {
+  const { requestId } = await params;
+  
+  if (!supabaseUrl || !supabaseAnonKey) {
+    return NextResponse.json(
+      { error: "Missing Supabase environment configuration." },
+      { status: 500 }
+    );
+  }
+
+  const user = await getRequestUser(request);
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  }
+
+  const role = resolveUserRole(user.email, user.role ?? null);
+  if (role !== "founder") {
+    return NextResponse.json({ error: "Forbidden. Only founders can approve." }, { status: 403 });
+  }
+
+  if (!serviceRoleKey) {
+    return NextResponse.json(
+      { error: "Missing SUPABASE_SERVICE_ROLE_KEY." },
+      { status: 500 }
+    );
+  }
+
+  const body = (await request.json().catch(() => null)) as {
+    classes?: { title?: string; startsAt?: string; durationHours?: number }[];
+    maxStudents?: number | null;
+  } | null;
+
+  const classes = Array.isArray(body?.classes) ? body?.classes ?? [] : [];
+  const maxStudents =
+    typeof body?.maxStudents === "number" && body.maxStudents > 0
+      ? Math.floor(body.maxStudents)
+      : null;
+
+  const adminClient = createClient(supabaseUrl, serviceRoleKey, {
+    auth: { persistSession: false },
+  });
+
+  const { data: requestRecord, error: reqError } = await adminClient
+    .from("course_creation_requests")
+    .select("*, app_users!course_creation_requests_created_by_fkey(full_name, email)")
+    .eq("id", requestId)
+    .single();
+
+  if (reqError || !requestRecord) {
+    return NextResponse.json(
+      { error: reqError?.message ?? "Request not found." },
+      { status: 404 }
+    );
+  }
+
+  if (requestRecord.status !== "pending") {
+    return NextResponse.json(
+      { error: "Request is already processed." },
+      { status: 400 }
+    );
+  }
+
+  const creatorUser = Array.isArray(requestRecord.app_users) 
+    ? requestRecord.app_users[0] 
+    : requestRecord.app_users;
+
+  const creatorName = creatorUser?.full_name?.trim() || creatorUser?.email || "Unknown tutor";
+
+  // Create the course
+  const { data: courseData, error: courseError } = await adminClient
+    .from("courses")
+    .insert({
+      title: requestRecord.title,
+      description: requestRecord.description,
+      is_completed: false,
+      max_students: maxStudents,
+      created_by: requestRecord.created_by,
+      created_by_name: creatorName,
+      created_by_email: creatorUser?.email ?? null,
+    })
+    .select("id")
+    .single();
+
+  if (courseError || !courseData) {
+    return NextResponse.json(
+      { error: courseError?.message ?? "Failed to create course." },
+      { status: 500 }
+    );
+  }
+
+  // Create classes if provided
+  const classRows = classes
+    .map((item) => ({
+      title: item?.title?.trim() ?? "",
+      startsAt: item?.startsAt?.trim() ?? "",
+      durationHours: typeof item?.durationHours === "number" ? item.durationHours : 1,
+    }))
+    .filter((item) => item.title && item.startsAt);
+
+  if (classRows.length > 0) {
+    const { error: classError } = await adminClient
+      .from("course_classes")
+      .insert(
+        classRows.map((item) => ({
+          course_id: courseData.id,
+          title: item.title,
+          starts_at: item.startsAt,
+          duration_hours: item.durationHours,
+          created_by: requestRecord.created_by,
+        }))
+      );
+
+    if (classError) {
+      // It failed partially, but course is created. Let user handle missing classes manually.
+      console.error("Failed to add classes to course", courseData.id, classError);
+    } else {
+      await relabelClassesForCourse(courseData.id, adminClient);
+    }
+  }
+
+  // Mark request as approved
+  const { error: updateError } = await adminClient
+    .from("course_creation_requests")
+    .update({
+      status: "approved",
+      decided_at: new Date().toISOString(),
+      decided_by: user.id,
+    })
+    .eq("id", requestId);
+
+  if (updateError) {
+    return NextResponse.json(
+      { error: updateError.message ?? "Course created, but failed to update request status." },
+      { status: 500 }
+    );
+  }
+
+  return NextResponse.json({ success: true, courseId: courseData.id });
+}

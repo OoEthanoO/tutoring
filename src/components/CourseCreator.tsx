@@ -9,40 +9,28 @@ type StatusState = {
   message: string;
 };
 
-const snapDateTimeLocalToFiveMinutes = (value: string) => {
-  return value;
-};
-
-const isFiveMinuteLocal = (value: string) => {
-  return true;
-};
+const DAYS_OF_WEEK = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
 export default function CourseCreator() {
   const titleInputRef = useRef<HTMLInputElement | null>(null);
   const [canCreate, setCanCreate] = useState(false);
-  const [userRole, setUserRole] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [timeframes, setTimeframes] = useState<Record<string, string>>({});
+  const [frequency, setFrequency] = useState("");
+  const [notes, setNotes] = useState("");
+  
   const [status, setStatus] = useState<StatusState>({
     type: "idle",
     message: "",
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [draftClassStartsAt, setDraftClassStartsAt] = useState("");
-  const [isCompletedCourse, setIsCompletedCourse] = useState(false);
-  const [completedStartDate, setCompletedStartDate] = useState("");
-  const [completedEndDate, setCompletedEndDate] = useState("");
-  const [completedClassCount, setCompletedClassCount] = useState("1");
-  const [maxStudents, setMaxStudents] = useState<string>("");
-  const [draftClassDurationMinutes, setDraftClassDurationMinutes] = useState<string>("60");
-  const [draftClasses, setDraftClasses] = useState<{ startsAt: string; durationHours: number }[]>([]);
 
   useEffect(() => {
     const load = async () => {
       const user = await getCurrentUser();
       if (!user) {
         setCanCreate(false);
-        setUserRole(null);
         return;
       }
 
@@ -50,11 +38,7 @@ export default function CourseCreator() {
         user.email,
         user.role ?? null
       );
-      setUserRole(resolvedRole);
       setCanCreate(canManageCourses(resolvedRole));
-      if (resolvedRole !== "founder") {
-        setIsCompletedCourse(false);
-      }
     };
 
     load();
@@ -62,6 +46,9 @@ export default function CourseCreator() {
     return onAuthChange(load);
   }, []);
 
+  const handleTimeframeChange = (day: string, value: string) => {
+    setTimeframes(prev => ({ ...prev, [day]: value }));
+  };
 
   const onSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -72,82 +59,16 @@ export default function CourseCreator() {
       return;
     }
 
-    if (isCompletedCourse) {
-      const classCount = Number(completedClassCount);
-      if (
-        !completedStartDate ||
-        !completedEndDate ||
-        !Number.isFinite(classCount) ||
-        classCount <= 0
-      ) {
-        setStatus({
-          type: "error",
-          message:
-            "Completed courses require start date, end date, and number of classes.",
-        });
-        return;
-      }
-      if (
-        new Date(completedEndDate).getTime() <
-        new Date(completedStartDate).getTime()
-      ) {
-        setStatus({
-          type: "error",
-          message: "End date must be after start date.",
-        });
-        return;
-      }
-    }
-
-    if (userRole === "tutor") {
-      const ok = window.confirm(
-        "This course will immediately become public. You will not be able to delete it unless you contact the admin (ethanxucoder@gmail.com), but you can still edit it after creation. Do you want to continue?"
-      );
-      if (!ok) {
-        return;
-      }
-    } else if (userRole === null) {
-      const currentUser = await getCurrentUser();
-      const currentRole = resolveUserRole(
-        currentUser?.email ?? null,
-        currentUser?.role ?? null
-      );
-      if (currentRole === "executive") {
-        const ok = window.confirm(
-          "This course will immediately become public. You will not be able to delete it unless you contact the admin (ethanxucoder@gmail.com), but you can still edit it after creation. Do you want to continue?"
-        );
-        if (!ok) {
-          return;
-        }
-      }
-    }
-
     setIsSubmitting(true);
-    const response = await fetch("/api/courses", {
+    const response = await fetch("/api/course-requests", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         title: title.trim(),
-        description: isCompletedCourse ? "" : description.trim(),
-        isCompleted: isCompletedCourse,
-        completedStartDate: isCompletedCourse ? completedStartDate : undefined,
-        completedEndDate: isCompletedCourse ? completedEndDate : undefined,
-        completedClassCount: isCompletedCourse
-          ? Number(completedClassCount)
-          : undefined,
-        maxStudents: userRole === "founder" && maxStudents ? Number(maxStudents) : undefined,
-        classes: isCompletedCourse
-          ? []
-          : [...draftClasses]
-            .sort(
-              (a, b) =>
-                new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()
-            )
-            .map((item, index) => ({
-              title: `Class ${index + 1}`,
-              startsAt: new Date(item.startsAt).toISOString(),
-              durationHours: item.durationHours,
-            })),
+        description: description.trim(),
+        timeframes,
+        frequency: frequency.trim(),
+        notes: notes.trim()
       }),
     });
 
@@ -157,7 +78,7 @@ export default function CourseCreator() {
         | null;
       setStatus({
         type: "error",
-        message: payload?.error ?? "Unable to create course.",
+        message: payload?.error ?? "Unable to submit course request.",
       });
       setIsSubmitting(false);
       return;
@@ -166,97 +87,12 @@ export default function CourseCreator() {
     await response.json().catch(() => null);
     setTitle("");
     setDescription("");
-    setDraftClassStartsAt("");
-    setDescription("");
-    if (userRole !== "founder" || !isCompletedCourse) {
-      setIsCompletedCourse(false);
-    }
-    setCompletedStartDate("");
-    setCompletedEndDate("");
-    setCompletedClassCount("1");
-    setMaxStudents("");
-    setDraftClassDurationMinutes("60");
-    setDraftClasses([]);
-    setStatus({ type: "success", message: "Course created." });
+    setTimeframes({});
+    setFrequency("");
+    setNotes("");
+    setStatus({ type: "success", message: "Course request submitted successfully." });
     setIsSubmitting(false);
-
-    if (userRole === "founder" && isCompletedCourse) {
-      titleInputRef.current?.focus();
-    }
   };
-
-
-  const addDraftClass = () => {
-    setStatus({ type: "idle", message: "" });
-
-    const startsAtValue = draftClassStartsAt;
-
-    if (!startsAtValue) {
-      setStatus({ type: "error", message: "Class date/time is required." });
-      return;
-    }
-    if (!isFiveMinuteLocal(startsAtValue)) {
-      setStatus({
-        type: "error",
-        message:
-          "Class date/time is invalid.",
-      });
-      return;
-    }
-
-    const nextEntry = {
-      startsAt: startsAtValue,
-      durationHours: Number.parseInt(draftClassDurationMinutes) / 60 || 1,
-    };
-    const updatedDrafts = [...draftClasses, nextEntry];
-
-    setDraftClasses(updatedDrafts);
-
-    const nextDraftStart = getSuggestedStartValueFromDraft(updatedDrafts);
-
-    setDraftClassStartsAt(nextDraftStart);
-  };
-
-  const removeDraftClass = (index: number) => {
-    setDraftClasses((current) =>
-      current.filter((_, currentIndex) => currentIndex !== index)
-    );
-  };
-
-  const getSuggestedStartValueFromDraft = (
-    classes: { startsAt: string }[]
-  ) => {
-    if (classes.length === 0) {
-      return "";
-    }
-
-    const sorted = [...classes].sort(
-      (a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()
-    );
-    const latest = sorted[sorted.length - 1];
-
-    const suggested = new Date(latest.startsAt);
-    
-    if (sorted.length === 1) {
-      suggested.setDate(suggested.getDate() + 7);
-    } else {
-      const secondLatest = sorted[sorted.length - 2];
-      const diffMs = new Date(latest.startsAt).getTime() - new Date(secondLatest.startsAt).getTime();
-      suggested.setTime(suggested.getTime() + diffMs);
-    }
-
-    return snapDateTimeLocalToFiveMinutes(toLocalDateTimeInputValue(suggested));
-  };
-
-  const toLocalDateTimeInputValue = (value: Date) => {
-    const year = value.getFullYear();
-    const month = String(value.getMonth() + 1).padStart(2, "0");
-    const day = String(value.getDate()).padStart(2, "0");
-    const hours = String(value.getHours()).padStart(2, "0");
-    const minutes = String(value.getMinutes()).padStart(2, "0");
-    return `${year}-${month}-${day}T${hours}:${minutes}`;
-  };
-
 
   if (!canCreate) {
     return null;
@@ -266,11 +102,14 @@ export default function CourseCreator() {
     <section className="space-y-8 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6">
       <header className="space-y-1">
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
-          Create courses
+          Submit Request
         </p>
         <h2 className="text-lg font-semibold text-[var(--foreground)]">
-          Create a new course
+          Submit a course creation request
         </h2>
+        <p className="text-sm text-[var(--muted)]">
+          Your request will be reviewed by founders before being added to the catalog.
+        </p>
       </header>
 
       {status.type !== "idle" ? (
@@ -300,201 +139,82 @@ export default function CourseCreator() {
             required
           />
         </div>
-        {!isCompletedCourse ? (
-          <div>
-            <label className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
-              Description
-            </label>
-            <textarea
-              value={description}
-              onChange={(event) => setDescription(event.target.value)}
-              placeholder="What students will learn, projects, and outcomes."
-              rows={4}
-              className="mt-2 w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
-            />
-            <p className="px-1 mt-1 text-xs text-[var(--muted)]">Markdown is supported for formatting</p>
+        
+        <div>
+          <label className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
+            Description
+          </label>
+          <textarea
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+            placeholder="What students will learn, projects, and outcomes."
+            rows={4}
+            className="mt-2 w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+          />
+          <p className="px-1 mt-1 text-xs text-[var(--muted)]">Markdown is supported for formatting</p>
+        </div>
+
+        <div className="space-y-3 rounded-xl border border-[var(--border)] px-4 py-4">
+          <div className="space-y-1">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
+              Available Timeframes
+            </p>
+            <p className="text-xs text-[var(--muted)]">
+              Enter the set of time intervals you are available to teach for each day. Separate multiple intervals with commas (e.g. "9:30am-11am, 3pm-5pm"). Partial hours are allowed. Leave blank if you are not available on that day.
+            </p>
           </div>
-        ) : null}
-        {userRole === "founder" ? (
-          <div>
-            <label className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
-              Max Students (Optional)
-            </label>
-            <input
-              type="number"
-              min="1"
-              step="1"
-              value={maxStudents}
-              onChange={(event) => setMaxStudents(event.target.value)}
-              placeholder="Leave blank for unlimited"
-              className="mt-2 w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
-            />
-          </div>
-        ) : null}
-        {userRole === "founder" ? (
-          <div className="space-y-3 rounded-xl border border-[var(--border)] px-4 py-4">
-            <label className="flex items-center gap-2 text-xs text-[var(--foreground)]">
-              <input
-                type="checkbox"
-                checked={isCompletedCourse}
-                onChange={(event) => setIsCompletedCourse(event.target.checked)}
-              />
-              Create as completed course
-            </label>
-            {isCompletedCourse ? (
-              <div className="grid gap-3 sm:grid-cols-3">
-                <div className="space-y-1">
-                  <label className="text-[0.6rem] font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
-                    Start date
-                  </label>
-                  <input
-                    type="date"
-                    value={completedStartDate}
-                    onChange={(event) => setCompletedStartDate(event.target.value)}
-                    className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
-                    required={isCompletedCourse}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[0.6rem] font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
-                    End date
-                  </label>
-                  <input
-                    type="date"
-                    value={completedEndDate}
-                    onChange={(event) => setCompletedEndDate(event.target.value)}
-                    className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
-                    required={isCompletedCourse}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[0.6rem] font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
-                    Number of classes
-                  </label>
-                  <input
-                    type="number"
-                    min="1"
-                    step="1"
-                    value={completedClassCount}
-                    onChange={(event) => setCompletedClassCount(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") {
-                        event.preventDefault();
-                        event.currentTarget.form?.requestSubmit();
-                      }
-                    }}
-                    className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
-                    required={isCompletedCourse}
-                  />
-                </div>
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-        {!isCompletedCourse ? (
-          <div className="space-y-3 rounded-xl border border-dashed border-[var(--border)] px-4 py-4">
-            <div className="space-y-1">
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
-                Classes (Optional)
-              </p>
-              <p className="text-xs text-[var(--muted)]">
-                Add classes now or later.
-              </p>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
-              <div className="space-y-1">
+          <div className="grid gap-3 sm:grid-cols-2">
+            {DAYS_OF_WEEK.map(day => (
+              <div key={day} className="space-y-1">
                 <label className="text-[0.6rem] font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
-                  Date &amp; time
+                  {day}
                 </label>
                 <input
-                  type="datetime-local"
-                  value={draftClassStartsAt}
-                  onChange={(event) => setDraftClassStartsAt(event.target.value)}
+                  type="text"
+                  value={timeframes[day] || ""}
+                  onChange={(e) => handleTimeframeChange(day, e.target.value)}
+                  placeholder="e.g. 9am-11am, 3pm-5pm (leave blank for no availability)"
                   className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
                 />
               </div>
-              {userRole === "founder" && (
-                <div className="space-y-1">
-                  <label className="text-[0.6rem] font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
-                    Duration (minutes)
-                  </label>
-                  <input
-                    type="number"
-                    min="1"
-                    step="1"
-                    value={draftClassDurationMinutes}
-                    onChange={(event) => setDraftClassDurationMinutes(event.target.value)}
-                    className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
-                  />
-                </div>
-              )}
-              <button
-                type="button"
-                onClick={addDraftClass}
-                className="rounded-full border border-[var(--foreground)] px-4 py-3 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)] sm:col-span-2"
-              >
-                Add class
-              </button>
-            </div>
-            {draftClasses.length ? (
-              <ul className="space-y-2 text-xs text-[var(--muted)]">
-                {[...draftClasses]
-                  .sort(
-                    (a, b) =>
-                      new Date(a.startsAt).getTime() -
-                      new Date(b.startsAt).getTime()
-                  )
-                  .map((draftClass, index) => (
-                    <li
-                      key={`${draftClass.startsAt}-${index}`}
-                      className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--border)] px-3 py-2"
-                    >
-                      <span>
-                        Class {index + 1} · {new Date(draftClass.startsAt).toLocaleDateString()}{" "}
-                        ·{" "}
-                        {new Date(draftClass.startsAt).toLocaleTimeString([], {
-                          hour: "numeric",
-                          minute: "2-digit",
-                        })}{" "}
-                        -{" "}
-                        {new Date(
-                          new Date(draftClass.startsAt).getTime() +
-                          (draftClass.durationHours || 1) * 60 * 60 * 1000
-                        ).toLocaleTimeString([], {
-                          hour: "numeric",
-                          minute: "2-digit",
-                        })}
-                        {draftClass.durationHours !== 1 ? ` (${Math.round(draftClass.durationHours * 60)} min)` : ""}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const originalIndex = draftClasses.findIndex(
-                            (c) => c.startsAt === draftClass.startsAt
-                          );
-                          if (originalIndex !== -1) {
-                            removeDraftClass(originalIndex);
-                          }
-                        }}
-                        className="text-xs font-semibold text-[var(--foreground)] transition hover:text-red-500"
-                      >
-                        Remove
-                      </button>
-                    </li>
-                  ))}
-              </ul>
-            ) : null}
+            ))}
           </div>
-        ) : null}
+        </div>
+
+        <div>
+          <label className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
+            Frequency
+          </label>
+          <input
+            type="text"
+            value={frequency}
+            onChange={(event) => setFrequency(event.target.value)}
+            placeholder="e.g. Weekly, Twice per week"
+            className="mt-2 w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+          />
+        </div>
+
+        <div>
+          <label className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
+            Notes for Founders (Optional)
+          </label>
+          <textarea
+            value={notes}
+            onChange={(event) => setNotes(event.target.value)}
+            placeholder="Any additional information you want the founders to know."
+            rows={3}
+            className="mt-2 w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+          />
+        </div>
+
         <button
           type="submit"
           disabled={isSubmitting}
           className="w-full rounded-full border border-[var(--foreground)] px-6 py-3 text-sm font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-70"
         >
-          {isSubmitting ? "Creating..." : "Create course"}
+          {isSubmitting ? "Submitting..." : "Submit course request"}
         </button>
       </form>
-
     </section>
   );
 }

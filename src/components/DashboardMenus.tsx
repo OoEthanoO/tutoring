@@ -16,6 +16,7 @@ import SponsorsMenu from "@/components/SponsorsMenu";
 import EventsMenu from "@/components/EventsMenu";
 import FormsMenu from "@/components/FormsMenu";
 import EventReminderBanner from "@/components/EventReminderBanner";
+import CourseRequestsMenu from "@/components/CourseRequestsMenu";
 import { useRouter, useSearchParams } from "next/navigation";
 
 type MenuKey =
@@ -24,6 +25,7 @@ type MenuKey =
   | "enrolled_courses"
   | "my_classes"
   | "create"
+  | "manage_course_requests"
   | "manage_courses"
   | "manage_enrollments"
   | "founder_tools"
@@ -282,7 +284,10 @@ export default function DashboardMenus() {
     }
 
     if (role && canManageCourses(role)) {
-      items.push({ key: "create", label: "Create courses" });
+      items.push({ key: "create", label: "Submit course request" });
+      if (role === "founder") {
+        items.push({ key: "manage_course_requests", label: "Manage course requests" });
+      }
       items.push({ key: "manage_courses", label: "Manage my courses" });
     }
 
@@ -377,6 +382,7 @@ export default function DashboardMenus() {
       {activeMenu === "enrolled_courses" ? <EnrolledCoursesMenu /> : null}
       {activeMenu === "my_classes" ? <MyClassesMenu /> : null}
       {activeMenu === "create" ? <CourseCreator /> : null}
+      {activeMenu === "manage_course_requests" ? <CourseRequestsMenu /> : null}
       {activeMenu === "manage_courses" ? <ManageMyCoursesMenu /> : null}
       {activeMenu === "manage_enrollments" ? <ManageEnrollmentsMenu /> : null}
       {activeMenu === "founder_tools" ? <AdminUserManager /> : null}
