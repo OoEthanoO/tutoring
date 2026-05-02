@@ -18,6 +18,7 @@ export default function CourseCreator() {
   const [description, setDescription] = useState("");
   const [timeframes, setTimeframes] = useState<Record<string, string>>({});
   const [frequency, setFrequency] = useState("");
+  const [totalClasses, setTotalClasses] = useState<number>(1);
   const [notes, setNotes] = useState("");
 
   const [status, setStatus] = useState<StatusState>({
@@ -76,6 +77,7 @@ export default function CourseCreator() {
           description: description.trim(),
           timeframes,
           frequency: frequency.trim(),
+          totalClasses,
           notes: notes.trim()
         }),
       });
@@ -97,6 +99,7 @@ export default function CourseCreator() {
       setDescription("");
       setTimeframes({});
       setFrequency("");
+      setTotalClasses(1);
       setNotes("");
       setStatus({ type: "success", message: "Course request submitted successfully." });
     } catch (err) {
@@ -205,6 +208,22 @@ export default function CourseCreator() {
               placeholder="e.g. Weekly, Twice per week"
               className="mt-2 w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
             />
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
+              Total Number of Classes
+            </label>
+            <input
+              type="number"
+              min={1}
+              value={totalClasses}
+              onChange={(event) => setTotalClasses(parseInt(event.target.value) || 1)}
+              placeholder="e.g. 8"
+              className="mt-2 w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+              required
+            />
+            <p className="px-1 mt-1 text-xs text-[var(--muted)]">Specify exactly how many classes this course should consist of.</p>
           </div>
 
           <div>
