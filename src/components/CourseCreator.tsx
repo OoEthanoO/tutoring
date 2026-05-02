@@ -243,7 +243,7 @@ export default function CourseCreator() {
               className="mt-2 w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
               required
             />
-            <p className="px-1 mt-1 text-xs text-[var(--muted)]">When would you like to start teaching this course?</p>
+            <p className="px-1 mt-1 text-xs text-[var(--muted)]">What is your earliest start date for teaching this course?</p>
           </div>
 
           <div>
