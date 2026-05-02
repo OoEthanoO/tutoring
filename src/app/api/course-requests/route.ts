@@ -39,6 +39,7 @@ export async function POST(request: NextRequest) {
     frequency?: string;
     notes?: string;
     totalClasses?: number;
+    startDate?: string;
   } | null;
 
   const title = body?.title?.trim() ?? "";
@@ -47,6 +48,7 @@ export async function POST(request: NextRequest) {
   const frequency = body?.frequency?.trim() ?? "";
   const notes = body?.notes?.trim() ?? "";
   const totalClasses = typeof body?.totalClasses === "number" ? body.totalClasses : 1;
+  const startDate = body?.startDate?.trim() || new Date().toISOString().split('T')[0];
 
   if (!title) {
     return NextResponse.json({ error: "Title is required." }, { status: 400 });
@@ -65,6 +67,7 @@ export async function POST(request: NextRequest) {
       frequency,
       notes,
       total_classes: totalClasses,
+      start_date: startDate,
       created_by: user.id,
       status: "pending",
     })
@@ -109,7 +112,7 @@ export async function GET(request: NextRequest) {
 
   let query = adminClient
     .from("course_creation_requests")
-    .select("id, title, description, timeframes, frequency, notes, total_classes, status, created_by, created_at, decided_at, decided_by, app_users!course_creation_requests_created_by_fkey(full_name, email)")
+    .select("id, title, description, timeframes, frequency, notes, total_classes, start_date, status, created_by, created_at, decided_at, decided_by, app_users!course_creation_requests_created_by_fkey(full_name, email)")
     .order("created_at", { ascending: false });
 
   if (role !== "founder") {

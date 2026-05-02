@@ -11,6 +11,7 @@ type RequestRecord = {
   timeframes: Record<string, string>;
   frequency: string;
   total_classes: number;
+  start_date: string;
   notes: string;
   status: string;
   created_at: string;
@@ -209,6 +210,10 @@ export default function CourseRequestsMenu() {
                   <div className="space-y-1">
                     <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">Total Classes</p>
                     <p className="text-sm">{req.total_classes}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">Proposed Start Date</p>
+                    <p className="text-sm">{req.start_date}</p>
                   </div>
                 </div>
 

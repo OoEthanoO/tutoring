@@ -19,6 +19,7 @@ export default function CourseCreator() {
   const [timeframes, setTimeframes] = useState<Record<string, string>>({});
   const [frequency, setFrequency] = useState("");
   const [totalClasses, setTotalClasses] = useState<number>(1);
+  const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
   const [notes, setNotes] = useState("");
 
   const [status, setStatus] = useState<StatusState>({
@@ -78,6 +79,7 @@ export default function CourseCreator() {
           timeframes,
           frequency: frequency.trim(),
           totalClasses,
+          startDate,
           notes: notes.trim()
         }),
       });
@@ -100,6 +102,7 @@ export default function CourseCreator() {
       setTimeframes({});
       setFrequency("");
       setTotalClasses(1);
+      setStartDate(new Date().toISOString().split('T')[0]);
       setNotes("");
       setStatus({ type: "success", message: "Course request submitted successfully." });
     } catch (err) {
@@ -178,6 +181,9 @@ export default function CourseCreator() {
               <p className="text-xs text-[var(--muted)]">
                 Enter the set of time intervals you are available to teach for each day. Separate multiple intervals with commas (e.g. "9:30am-11am, 3pm-5pm"). Partial hours are allowed. Leave blank if you are not available on that day.
               </p>
+              <p className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                Tip: The wider your available timeframes are, the higher the chance to have more students. Please put your full availability.
+              </p>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               {DAYS_OF_WEEK.map(day => (
@@ -224,6 +230,20 @@ export default function CourseCreator() {
               required
             />
             <p className="px-1 mt-1 text-xs text-[var(--muted)]">Specify exactly how many classes this course should consist of.</p>
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
+              Proposed Start Date
+            </label>
+            <input
+              type="date"
+              value={startDate}
+              onChange={(event) => setStartDate(event.target.value)}
+              className="mt-2 w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+              required
+            />
+            <p className="px-1 mt-1 text-xs text-[var(--muted)]">When would you like to start teaching this course?</p>
           </div>
 
           <div>
