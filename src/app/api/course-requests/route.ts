@@ -32,6 +32,11 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const body = (await request.json().catch(() => null)) as {
+    title?: string;
+    description?: string;
+    timeframes?: Record<string, string>;
+    frequency?: string;
     notes?: string;
     totalClasses?: number;
   } | null;
