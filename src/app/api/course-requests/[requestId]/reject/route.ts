@@ -9,7 +9,7 @@ const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { requestId: string } }
+  { params }: { params: Promise<{ requestId: string }> }
 ) {
   const { requestId } = await params;
   
