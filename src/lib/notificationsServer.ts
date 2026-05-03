@@ -2,6 +2,8 @@ import { founderEmails } from "./roles";
 
 const resendApiKey = process.env.RESEND_API_KEY ?? "";
 const resendFrom = process.env.RESEND_FROM ?? "";
+const discordBotToken = process.env.DISCORD_BOT_TOKEN ?? "";
+const discordGuildId = process.env.DISCORD_GUILD_ID ?? "";
 
 const sleep = (ms: number) =>
   new Promise<void>((resolve) => {
@@ -89,5 +91,64 @@ export const notifyFounders = async (subject: string, html: string) => {
 
     // Sequential delay to ensure delivery and avoid throttling (2 req/sec rate limit)
     await sleep(1000);
+  }
+};
+
+/**
+ * Sends a Discord message to a channel by its name.
+ */
+export const sendDiscordMessageByChannelName = async (channelName: string, content: string): Promise<boolean> => {
+  if (!discordBotToken || !discordGuildId || !channelName || !content) {
+    console.warn("Skipping Discord message: Missing configuration, channel name, or content.");
+    return false;
+  }
+
+  try {
+    // 1. List channels to find the ID
+    const channelsRes = await fetch(
+      `https://discord.com/api/v10/guilds/${discordGuildId}/channels`,
+      {
+        headers: { Authorization: `Bot ${discordBotToken}` },
+      }
+    );
+
+    if (!channelsRes.ok) {
+      console.error(`Failed to list Discord channels: ${channelsRes.status}`);
+      return false;
+    }
+
+    const channels = (await channelsRes.json()) as any[];
+    const targetChannel = channels.find(
+      (ch) => (ch.type === 0 || ch.type === 5) && ch.name === channelName
+    );
+
+    if (!targetChannel) {
+      console.error(`Discord channel #${channelName} not found.`);
+      return false;
+    }
+
+    // 2. Send the message
+    const messageRes = await fetch(
+      `https://discord.com/api/v10/channels/${targetChannel.id}/messages`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bot ${discordBotToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ content }),
+      }
+    );
+
+    if (!messageRes.ok) {
+      const errorText = await messageRes.text().catch(() => "Unknown error");
+      console.error(`Failed to send Discord message to #${channelName}:`, errorText);
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error(`Error sending Discord message to #${channelName}:`, error);
+    return false;
   }
 };

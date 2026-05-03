@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { resolveUserRole } from "@/lib/roles";
 import { getRequestUser } from "@/lib/authServer";
 import { relabelClassesForCourse } from "@/lib/classTools";
+import { sendEmail, sendDiscordMessageByChannelName } from "@/lib/notificationsServer";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
@@ -55,7 +56,7 @@ export async function POST(
 
   const { data: requestRecord, error: reqError } = await adminClient
     .from("course_creation_requests")
-    .select("*, app_users!course_creation_requests_created_by_fkey(full_name, email)")
+    .select("*, app_users!course_creation_requests_created_by_fkey(full_name, email, discord_user_id)")
     .eq("id", requestId)
     .single();
 
@@ -147,6 +148,45 @@ export async function POST(
       { status: 500 }
     );
   }
+
+  // Send notifications
+  (async () => {
+    try {
+      const execUser = Array.isArray(requestRecord.app_users) ? requestRecord.app_users[0] : requestRecord.app_users;
+      const execEmail = execUser?.email;
+      const execDiscordId = execUser?.discord_user_id;
+
+      if (!execEmail) return;
+
+      const courseTitle = requestRecord.title;
+      const classDetails = classRows.map((c, i) => 
+        `Class ${i + 1}: ${new Date(c.startsAt).toLocaleString('en-US', { timeZone: 'America/Toronto', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} (${c.durationHours}h)`
+      ).join('\n');
+
+      const emailSubject = `Course Request Approved: ${courseTitle}`;
+      const emailHtml = `
+        <h1>Your Course Request has been Approved!</h1>
+        <p>Hi ${execUser.full_name || 'there'},</p>
+        <p>Your request for the course <strong>${courseTitle}</strong> has been approved and finalized.</p>
+        <h2>Course Details</h2>
+        <p><strong>Title:</strong> ${courseTitle}</p>
+        <p><strong>Max Students:</strong> ${maxStudents || 'Unlimited'}</p>
+        <h3>Finalized Classes:</h3>
+        <pre>${classDetails || 'No classes scheduled yet.'}</pre>
+        <p>Good luck with your course!</p>
+      `;
+
+      await sendEmail(execEmail, emailSubject, emailHtml);
+
+      if (execDiscordId) {
+        const discordMention = `<@${execDiscordId}>`;
+        const discordContent = `${discordMention} Your course request for **${courseTitle}** has been approved!\n\n**Finalized Details:**\n- **Max Students:** ${maxStudents || 'Unlimited'}\n**Classes:**\n${classDetails || 'No classes scheduled.'}`;
+        await sendDiscordMessageByChannelName("executive", discordContent);
+      }
+    } catch (err) {
+      console.error("Failed to send approval notifications:", err);
+    }
+  })();
 
   return NextResponse.json({ success: true, courseId: courseData.id });
 }
