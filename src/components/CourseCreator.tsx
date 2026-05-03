@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { getCurrentUser, onAuthChange } from "@/lib/authClient";
 import { canManageCourses, resolveUserRole } from "@/lib/roles";
+import { setHasUnsavedData } from "@/lib/unsavedData";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 
@@ -68,6 +69,24 @@ export default function CourseCreator({ editData, onSuccess, onCancel }: CourseC
       return () => clearTimeout(timer);
     }
   }, [status]);
+
+  // Prevent accidental reloads and tab closures while the modal is open/component is mounted
+  useEffect(() => {
+    setHasUnsavedData("courseCreator", true);
+    
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "You have unsaved changes. Are you sure you want to leave?";
+      return e.returnValue;
+    };
+    
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    
+    return () => {
+      setHasUnsavedData("courseCreator", false);
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, []);
 
   const handleTimeframeChange = (day: string, value: string) => {
     setTimeframes(prev => ({ ...prev, [day]: value }));
