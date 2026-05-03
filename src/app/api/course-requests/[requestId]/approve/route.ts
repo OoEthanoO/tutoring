@@ -156,6 +156,8 @@ export async function POST(
       const execEmail = execUser?.email;
       const execDiscordId = execUser?.discord_user_id;
 
+      console.log(`Notification debug: execEmail=${execEmail}, execDiscordId=${execDiscordId}`);
+
       if (!execEmail) return;
 
       const courseTitle = requestRecord.title;
@@ -178,11 +180,9 @@ export async function POST(
 
       await sendEmail(execEmail, emailSubject, emailHtml);
 
-      if (execDiscordId) {
-        const discordMention = `<@${execDiscordId}>`;
-        const discordContent = `${discordMention} Your course request for **${courseTitle}** has been approved!\n\n**Finalized Details:**\n- **Max Students:** ${maxStudents || 'Unlimited'}\n**Classes:**\n${classDetails || 'No classes scheduled.'}`;
-        await sendDiscordMessageByChannelName("executive", discordContent);
-      }
+      const discordMention = execDiscordId ? `<@${execDiscordId}>` : `**${execUser.full_name || execUser.email}**`;
+      const discordContent = `${discordMention} Your course request for **${courseTitle}** has been approved!\n\n**Finalized Details:**\n- **Max Students:** ${maxStudents || 'Unlimited'}\n**Classes:**\n${classDetails || 'No classes scheduled.'}`;
+      await sendDiscordMessageByChannelName("executives", discordContent);
     } catch (err) {
       console.error("Failed to send approval notifications:", err);
     }

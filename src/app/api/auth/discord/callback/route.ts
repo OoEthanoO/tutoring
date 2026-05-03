@@ -180,7 +180,15 @@ export async function GET(request: NextRequest) {
   }
 
   if (existingUser && existingUser.id !== actor.id) {
-    return redirectWithStatus("already_linked");
+    // Automatically disconnect from previous user to allow linking to the new one
+    await adminClient
+      .from("app_users")
+      .update({
+        discord_user_id: null,
+        discord_username: null,
+        discord_connected_at: null,
+      })
+      .eq("id", existingUser.id);
   }
 
   const { error: updateError } = await adminClient

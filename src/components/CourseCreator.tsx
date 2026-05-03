@@ -49,6 +49,15 @@ export default function CourseCreator() {
     return onAuthChange(load);
   }, []);
 
+  useEffect(() => {
+    if (status.type === "success") {
+      const timer = setTimeout(() => {
+        setStatus({ type: "idle", message: "" });
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [status]);
+
   const handleTimeframeChange = (day: string, value: string) => {
     setTimeframes(prev => ({ ...prev, [day]: value }));
   };
@@ -132,14 +141,43 @@ export default function CourseCreator() {
         </header>
 
         {status.type !== "idle" ? (
-          <div
-            className={
-              status.type === "error"
-                ? "rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-400"
-                : "rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-400"
-            }
-          >
-            {status.message}
+          <div className="fixed inset-x-4 top-4 z-[100] flex justify-center pointer-events-none">
+            <div
+              className={`
+                pointer-events-auto flex items-center gap-3 rounded-2xl border px-6 py-4 shadow-2xl animate-in fade-in slide-in-from-top-4 duration-300
+                ${
+                  status.type === "error"
+                    ? "border-red-200 bg-red-50 text-red-800 dark:border-red-900/50 dark:bg-red-950/80 dark:text-red-400"
+                    : "border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-900/50 dark:bg-emerald-950/80 dark:text-emerald-400"
+                }
+              `}
+            >
+              <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
+                status.type === "error" ? "bg-red-100 dark:bg-red-900/50" : "bg-emerald-100 dark:bg-emerald-900/50"
+              }`}>
+                {status.type === "error" ? (
+                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                ) : (
+                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                )}
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-bold">{status.type === "error" ? "Error" : "Success"}</p>
+                <p className="text-sm opacity-90">{status.message}</p>
+              </div>
+              <button
+                onClick={() => setStatus({ type: "idle", message: "" })}
+                className="ml-4 rounded-lg p-1 hover:bg-black/5 transition-colors"
+              >
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
           </div>
         ) : null}
 

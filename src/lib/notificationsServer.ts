@@ -123,7 +123,7 @@ export const sendDiscordMessageByChannelName = async (channelName: string, conte
     );
 
     if (!targetChannel) {
-      console.error(`Discord channel #${channelName} not found.`);
+      console.error(`Discord channel #${channelName} not found. Available channels:`, channels.map(ch => ch.name).join(', '));
       return false;
     }
 
