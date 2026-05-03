@@ -7,7 +7,7 @@ import { setHasUnsavedData } from "@/lib/unsavedData";
 
 type Mode = "signin" | "signup" | "forgot";
 
-export default function LoginPageClient() {
+export default function LoginPageClient({ maintenanceEnabled = false }: { maintenanceEnabled?: boolean }) {
   const [mode, setMode] = useState<Mode>("signin");
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
@@ -144,16 +144,18 @@ export default function LoginPageClient() {
           >
             Sign in
           </button>
-          <button
-            type="button"
-            onClick={() => setMode("signup")}
-            className={`rounded border px-3 py-2 text-sm ${mode === "signup"
-              ? "border-[var(--foreground)]"
-              : "border-[var(--border)]"
-              }`}
-          >
-            Sign up
-          </button>
+          {!maintenanceEnabled ? (
+            <button
+              type="button"
+              onClick={() => setMode("signup")}
+              className={`rounded border px-3 py-2 text-sm ${mode === "signup"
+                ? "border-[var(--foreground)]"
+                : "border-[var(--border)]"
+                }`}
+            >
+              Sign up
+            </button>
+          ) : null}
         </div>
 
         <form className="space-y-4" onSubmit={onSubmit}>

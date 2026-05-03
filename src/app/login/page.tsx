@@ -9,9 +9,9 @@ export default async function LoginPage() {
   const cookieStore = await cookies();
   const token = cookieStore.get("session")?.value;
   const user = await getSessionUser(token);
+  const maintenanceEnabled = await getMaintenanceMode();
 
   if (user) {
-    const maintenanceEnabled = await getMaintenanceMode();
     const role = resolveUserRole(user.email, user.role ?? null);
     
     if (maintenanceEnabled && role !== "founder") {
@@ -22,5 +22,5 @@ export default async function LoginPage() {
     }
   }
 
-  return <LoginPageClient />;
+  return <LoginPageClient maintenanceEnabled={maintenanceEnabled} />;
 }
