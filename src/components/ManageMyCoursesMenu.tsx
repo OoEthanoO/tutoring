@@ -134,6 +134,7 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
   const [classDurationMinutes, setClassDurationMinutes] = useState<Record<string, string>>({});
   const [pendingCourseId, setPendingCourseId] = useState<string | null>(null);
   const [editingCourseId, setEditingCourseId] = useState<string | null>(null);
+  const [copiedCourseId, setCopiedCourseId] = useState<string | null>(null);
   const [editCourseTitle, setEditCourseTitle] = useState("");
   const [editCourseShortName, setEditCourseShortName] = useState("");
   const [editCourseDescription, setEditCourseDescription] = useState("");
@@ -1382,6 +1383,25 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
                     {course.description ? (
                       <div className="text-xs text-[var(--muted)]">
                         <MarkdownText text={course.description} />
+                        {isTrashMode ? (
+                          <div className="mt-2">
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                try {
+                                  await navigator.clipboard.writeText(course.description || "");
+                                  setCopiedCourseId(course.id);
+                                  window.setTimeout(() => setCopiedCourseId(null), 2000);
+                                } catch (e) {
+                                  // ignore clipboard errors
+                                }
+                              }}
+                              className="rounded-full border border-[var(--border)] px-3 py-1 text-[0.7rem] font-semibold"
+                            >
+                              {copiedCourseId === course.id ? "Copied!" : "Copy description"}
+                            </button>
+                          </div>
+                        ) : null}
                       </div>
                     ) : null}
                     {role === "founder" ? (

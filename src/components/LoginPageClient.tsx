@@ -14,6 +14,8 @@ export default function LoginPageClient() {
   const [password, setPassword] = useState("");
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
+  const [resendSending, setResendSending] = useState(false);
+  const [resendSent, setResendSent] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const router = useRouter();
 
@@ -209,6 +211,42 @@ export default function LoginPageClient() {
           {error ? (
             <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-400">
               {error}
+              {String(error).toLowerCase().includes("verify your email") ? (
+                <div className="mt-2">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (!email) {
+                        setError("Please enter your email above to resend verification.");
+                        return;
+                      }
+                      setResendSending(true);
+                      setResendSent(false);
+                      try {
+                        const response = await fetch("/api/auth/resend", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ email }),
+                        });
+                        if (response.ok) {
+                          setResendSent(true);
+                          setStatus("Verification email resent. Check your inbox.");
+                        } else {
+                          setError("Unable to resend verification. Please try again later.");
+                        }
+                      } catch (e) {
+                        setError("Unable to resend verification. Please try again later.");
+                      } finally {
+                        setResendSending(false);
+                      }
+                    }}
+                    disabled={resendSending || resendSent}
+                    className="ml-2 rounded-full border border-[var(--border)] px-3 py-1 text-xs font-semibold"
+                  >
+                    {resendSending ? "Sending..." : resendSent ? "Sent" : "Resend verification email"}
+                  </button>
+                </div>
+              ) : null}
             </div>
           ) : null}
           {status ? (

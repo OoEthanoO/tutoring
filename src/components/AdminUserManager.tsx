@@ -64,6 +64,9 @@ export default function AdminUserManager() {
   const [roleFilter, setRoleFilter] = useState<"all" | "student" | "executive">(
     "all"
   );
+  const [verifiedFilter, setVerifiedFilter] = useState<"all" | "verified" | "unverified">(
+    "all"
+  );
   const [status, setStatus] = useState<StatusState>({
     type: "idle",
     message: "",
@@ -167,7 +170,15 @@ export default function AdminUserManager() {
       setIsLoading(true);
       setStatus({ type: "idle", message: "" });
 
-      const response = await fetch("/api/admin/users");
+      const base = "/api/admin/users";
+      let url = base;
+      if (verifiedFilter === "unverified") {
+        url = `${base}?unverified=true`;
+      } else if (verifiedFilter === "all") {
+        url = `${base}?all=true`;
+      }
+
+      const response = await fetch(url);
       if (!response.ok) {
         const payload = (await response.json().catch(() => null)) as
           | { error?: string }
@@ -217,7 +228,7 @@ export default function AdminUserManager() {
     };
 
     fetchUsers();
-  }, [isFounder]);
+  }, [isFounder, verifiedFilter]);
 
   useEffect(() => {
     if (!isFounder) {
@@ -1002,6 +1013,17 @@ export default function AdminUserManager() {
           <option value="all">All roles</option>
           <option value="student">Students</option>
           <option value="executive">Executives</option>
+        </select>
+        <select
+          value={verifiedFilter}
+          onChange={(event) =>
+            setVerifiedFilter(event.target.value as "all" | "verified" | "unverified")
+          }
+          className="w-full rounded-full border border-[var(--border)] bg-[var(--surface)] px-4 py-2 text-xs text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)] sm:w-44"
+        >
+          <option value="all">All verification</option>
+          <option value="verified">Verified</option>
+          <option value="unverified">Unverified</option>
         </select>
       </div>
 

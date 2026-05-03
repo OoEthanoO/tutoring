@@ -3,7 +3,7 @@ import { createServerClient } from "@supabase/ssr";
 
 const guardedPaths = ["/onboarding"];
 const maintenancePath = "/maintenance";
-const founderEmails = (process.env.NEXT_PUBLIC_FOUNDER_EMAIL ?? "ethanxucoder@gmail.com")
+const founderEmails = (process.env.NEXT_PUBLIC_FOUNDER_EMAIL ?? "ethanyanxu@icloud.com")
   .split(",")
   .map((e) => e.trim().toLowerCase());
 

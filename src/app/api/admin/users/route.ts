@@ -134,15 +134,25 @@ export async function GET(request: NextRequest) {
     Number(request.nextUrl.searchParams.get("perPage") ?? "200")
   );
 
-  const { data, error: listError } = await adminClient
+  const wantUnverified = request.nextUrl.searchParams.get("unverified") === "true";
+  const wantAll = request.nextUrl.searchParams.get("all") === "true";
+
+  let query = adminClient
     .from("app_users")
     .select(
       "id, email, full_name, legal_name, role, created_at, tutor_promoted_at, discord_user_id, discord_username, discord_connected_at, is_junior, grade, school, strike_count"
     )
-    .not("email_verified_at", "is", null)
     .ilike("email", search ? `%${search}%` : "%")
-    .order("created_at", { ascending: false })
-    .range((page - 1) * perPage, page * perPage - 1);
+    .order("created_at", { ascending: false });
+
+  if (wantUnverified) {
+    query = query.is("email_verified_at", "is", null);
+  } else if (!wantAll) {
+    // default: only verified users
+    query = query.not("email_verified_at", "is", null);
+  }
+
+  const { data, error: listError } = await query.range((page - 1) * perPage, page * perPage - 1);
 
   if (listError || !data) {
     return NextResponse.json(
