@@ -179,6 +179,27 @@ export default function CourseRequestsMenu() {
     }
   };
 
+  const changeStatus = async (requestId: string, newStatus: string) => {
+    setActioningId(requestId);
+    try {
+      const res = await fetch("/api/course-requests", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ requestId, status: newStatus }),
+      });
+      if (res.ok) {
+        setRequests(reqs => reqs.map(r => r.id === requestId ? { ...r, status: newStatus } : r));
+      } else {
+        const errorData = await res.json().catch(() => ({}));
+        alert(`Failed to change status: ${errorData.error || 'Unknown error'}`);
+      }
+    } catch (e: any) {
+      alert(`An error occurred: ${e.message}`);
+    } finally {
+      setActioningId(null);
+    }
+  };
+
   const addDraftClass = () => {
     if (!draftClassStartsAt) {
       alert("Class date/time is required.");
@@ -303,9 +324,23 @@ export default function CourseRequestsMenu() {
                     <h3 className="font-semibold text-[var(--foreground)]">{req.title}</h3>
                     <p className="text-sm text-[var(--muted)]">From {req.app_users?.full_name || req.app_users?.email}</p>
                   </div>
-                  <div className={`text-xs font-semibold px-2 py-1 rounded-full ${getStatusBadge(req.status).classes}`}>
-                    {getStatusBadge(req.status).label}
-                  </div>
+                  {isFounder ? (
+                    <select 
+                      value={req.status}
+                      onChange={(e) => changeStatus(req.id, e.target.value)}
+                      disabled={actioningId === req.id}
+                      className={`text-xs font-semibold px-2 py-1 outline-none appearance-none rounded-full cursor-pointer hover:opacity-80 transition disabled:opacity-50 text-center ${getStatusBadge(req.status).classes}`}
+                    >
+                      <option value="draft">Draft</option>
+                      <option value="in_review">In Review</option>
+                      <option value="approved">Approved</option>
+                      <option value="rejected">Rejected</option>
+                    </select>
+                  ) : (
+                    <div className={`text-xs font-semibold px-2 py-1 rounded-full ${getStatusBadge(req.status).classes}`}>
+                      {getStatusBadge(req.status).label}
+                    </div>
+                  )}
                 </div>
                 
                 <p className="text-sm text-[var(--foreground)]">{req.description || "(No description)"}</p>
@@ -475,10 +510,27 @@ export default function CourseRequestsMenu() {
                 <div className="flex items-start justify-between">
                   <div>
                     <h3 className="font-semibold text-[var(--foreground)]">{req.title}</h3>
+                    {isFounder && (
+                      <p className="text-sm text-[var(--muted)]">From {req.app_users?.full_name || req.app_users?.email}</p>
+                    )}
                   </div>
-                  <div className={`text-xs font-semibold px-2 py-1 rounded-full ${getStatusBadge(req.status).classes}`}>
-                    {getStatusBadge(req.status).label}
-                  </div>
+                  {isFounder ? (
+                    <select 
+                      value={req.status}
+                      onChange={(e) => changeStatus(req.id, e.target.value)}
+                      disabled={actioningId === req.id}
+                      className={`text-xs font-semibold px-2 py-1 outline-none appearance-none rounded-full cursor-pointer hover:opacity-80 transition disabled:opacity-50 text-center ${getStatusBadge(req.status).classes}`}
+                    >
+                      <option value="draft">Draft</option>
+                      <option value="in_review">In Review</option>
+                      <option value="approved">Approved</option>
+                      <option value="rejected">Rejected</option>
+                    </select>
+                  ) : (
+                    <div className={`text-xs font-semibold px-2 py-1 rounded-full ${getStatusBadge(req.status).classes}`}>
+                      {getStatusBadge(req.status).label}
+                    </div>
+                  )}
                 </div>
 
                 <p className="text-sm text-[var(--foreground)]">{req.description || "(No description)"}</p>

@@ -215,10 +215,14 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: "Forbidden." }, { status: 403 });
   }
 
-  // If status is "rejected", change it to "draft" on edit
+  // If status is "rejected", change it to "draft" on edit (unless admin overrides explicitly)
   let newStatus = existing.status === "rejected" ? "draft" : existing.status;
-  // Allow explicitly setting status to "in_review" (e.g. for resubmission)
-  if (body?.status === "in_review" && (existing.status === "draft" || existing.status === "rejected")) {
+  
+  // Admins can explicitly set any status
+  if ((role === "founder" || role === "executive") && body?.status) {
+    newStatus = body.status;
+  } else if (body?.status === "in_review" && (existing.status === "draft" || existing.status === "rejected")) {
+    // Normal users can only resubmit
     newStatus = "in_review";
   }
 
