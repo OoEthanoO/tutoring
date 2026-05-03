@@ -152,3 +152,17 @@ export const sendDiscordMessageByChannelName = async (channelName: string, conte
     return false;
   }
 };
+export const getDiscordRoleIdByName = async (roleName: string): Promise<string | null> => {
+  if (!discordBotToken || !discordGuildId) return null;
+  try {
+    const res = await fetch(`https://discord.com/api/v10/guilds/${discordGuildId}/roles`, {
+      headers: { Authorization: `Bot ${discordBotToken}` }
+    });
+    if (!res.ok) return null;
+    const roles = await res.json() as any[];
+    const role = roles.find(r => r.name.toLowerCase() === roleName.toLowerCase());
+    return role ? role.id : null;
+  } catch {
+    return null;
+  }
+};

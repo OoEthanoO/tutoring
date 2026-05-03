@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { canManageCourses, resolveUserRole } from "@/lib/roles";
 import { getRequestUser } from "@/lib/authServer";
-import { notifyFounders, sendDiscordMessageByChannelName } from "@/lib/notificationsServer";
+import { notifyFounders, sendDiscordMessageByChannelName, getDiscordRoleIdByName } from "@/lib/notificationsServer";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
@@ -103,7 +103,9 @@ export async function POST(request: NextRequest) {
   });
 
   // Send Discord message to founders channel (best-effort, non-blocking)
-  const discordMessage = `@Founder New course request: **${title}** from ${user.full_name} (${user.email})`;
+  const founderRoleId = await getDiscordRoleIdByName("Founder");
+  const founderMention = founderRoleId ? `<@&${founderRoleId}>` : "@Founder";
+  const discordMessage = `${founderMention} New course request: **${title}** from ${user.full_name} (${user.email})`;
   sendDiscordMessageByChannelName("founders", discordMessage).catch((err) => {
     console.error("Failed to send Discord message:", err);
   });
@@ -252,7 +254,9 @@ export async function PATCH(request: NextRequest) {
   if (newStatus === "in_review" && existing.status !== "in_review") {
     const courseTitle = body?.title || existing.title || "Unknown Course";
     
-    const discordMessage = `@Founder Course request resubmitted: **${courseTitle}** by ${user.full_name} (${user.email})`;
+    const founderRoleId = await getDiscordRoleIdByName("Founder");
+    const founderMention = founderRoleId ? `<@&${founderRoleId}>` : "@Founder";
+    const discordMessage = `${founderMention} Course request resubmitted: **${courseTitle}** by ${user.full_name} (${user.email})`;
     sendDiscordMessageByChannelName("founders", discordMessage).catch((err) => {
       console.error("Failed to send Discord message:", err);
     });
