@@ -329,7 +329,7 @@ export default function CourseRequestsMenu() {
                       value={req.status}
                       onChange={(e) => changeStatus(req.id, e.target.value)}
                       disabled={actioningId === req.id}
-                      className={`text-xs font-semibold px-2 py-1 outline-none appearance-none rounded-full cursor-pointer hover:opacity-80 transition disabled:opacity-50 text-center ${getStatusBadge(req.status).classes}`}
+                      style={{ textAlignLast: "center" }} className={`text-xs font-semibold px-3 py-1 outline-none appearance-none rounded-full cursor-pointer hover:opacity-80 transition disabled:opacity-50 text-center ${getStatusBadge(req.status).classes}`}
                     >
                       <option value="draft">Draft</option>
                       <option value="in_review">In Review</option>
@@ -519,7 +519,7 @@ export default function CourseRequestsMenu() {
                       value={req.status}
                       onChange={(e) => changeStatus(req.id, e.target.value)}
                       disabled={actioningId === req.id}
-                      className={`text-xs font-semibold px-2 py-1 outline-none appearance-none rounded-full cursor-pointer hover:opacity-80 transition disabled:opacity-50 text-center ${getStatusBadge(req.status).classes}`}
+                      style={{ textAlignLast: "center" }} className={`text-xs font-semibold px-3 py-1 outline-none appearance-none rounded-full cursor-pointer hover:opacity-80 transition disabled:opacity-50 text-center ${getStatusBadge(req.status).classes}`}
                     >
                       <option value="draft">Draft</option>
                       <option value="in_review">In Review</option>
