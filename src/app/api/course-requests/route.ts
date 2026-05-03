@@ -103,7 +103,7 @@ export async function POST(request: NextRequest) {
   });
 
   // Send Discord message to founders channel (best-effort, non-blocking)
-  const discordMessage = `@founders New course request: **${title}** from ${user.full_name} (${user.email})`;
+  const discordMessage = `@Founder New course request: **${title}** from ${user.full_name} (${user.email})`;
   sendDiscordMessageByChannelName("founders", discordMessage).catch((err) => {
     console.error("Failed to send Discord message:", err);
   });
@@ -207,7 +207,7 @@ export async function PATCH(request: NextRequest) {
   // Verify the user owns this request or is a founder
   const { data: existing } = await adminClient
     .from("course_creation_requests")
-    .select("created_by, status")
+    .select("created_by, status, title")
     .eq("id", requestId)
     .maybeSingle();
 
@@ -246,6 +246,26 @@ export async function PATCH(request: NextRequest) {
       { error: updateError.message ?? "Failed to update request." },
       { status: 500 }
     );
+  }
+
+  // If status changed to in_review (e.g. resubmission), notify founders
+  if (newStatus === "in_review" && existing.status !== "in_review") {
+    const courseTitle = body?.title || existing.title || "Unknown Course";
+    
+    const discordMessage = `@Founder Course request resubmitted: **${courseTitle}** by ${user.full_name} (${user.email})`;
+    sendDiscordMessageByChannelName("founders", discordMessage).catch((err) => {
+      console.error("Failed to send Discord message:", err);
+    });
+
+    const emailHtml = `
+      <h1>Course Request Resubmitted</h1>
+      <p><strong>${user.full_name}</strong> (${user.email}) has resubmitted their course request.</p>
+      <p><strong>Title:</strong> ${courseTitle}</p>
+      <p>Please review it in the founders dashboard.</p>
+    `;
+    notifyFounders("Course Request Resubmitted", emailHtml).catch((err) => {
+      console.error("Failed to send founder emails:", err);
+    });
   }
 
   return NextResponse.json({ success: true });

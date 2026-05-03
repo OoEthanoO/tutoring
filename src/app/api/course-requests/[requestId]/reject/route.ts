@@ -96,19 +96,21 @@ export async function POST(
         const emailHtml = `
           <h1>Your Course Request was Rejected</h1>
           <p>Hi ${requesterName},</p>
-          <p>Your course request for <strong>${requestRecord.title}</strong> has been rejected by the founders.</p>
+          <p>Your course request for <strong>${requestRecord.title}</strong> has been rejected.</p>
           <h2>Reason</h2>
           <p>${note}</p>
-          <p>If you'd like to revise and resubmit, you can edit your request in the "My course requests" tab.</p>
+          <p>If you'd like to revise and resubmit, please go back on the website, edit the course request, and resubmit.</p>
         `;
 
         await sendEmail(execEmail, emailSubject, emailHtml);
       }
 
       const discordMention = execDiscordId ? `<@${execDiscordId}>` : `**${requesterName}**`;
-      const discordContent = `${discordMention} Your course request for **${requestRecord.title}** was rejected by the founders.
+      const discordContent = `${discordMention} Your course request for **${requestRecord.title}** was rejected.
 
-Reason: ${note}`;
+Reason: ${note}
+
+If you'd like to revise and resubmit, please go back on the website, edit the course request, and resubmit.`;
       await sendDiscordMessageByChannelName("executives", discordContent);
     } catch (err) {
       console.error("Failed to send rejection notifications:", err);
