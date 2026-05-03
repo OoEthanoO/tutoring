@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { canManageCourses, resolveUserRole } from "@/lib/roles";
 import { getRequestUser } from "@/lib/authServer";
+import { notifyFounders, sendDiscordMessageByChannelName } from "@/lib/notificationsServer";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
@@ -80,6 +81,32 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
+
+  // Notify founders via email and Discord
+  const requestLink = `${process.env.NEXT_PUBLIC_SITE_URL ?? ""}/`;
+  const emailHtml = `
+    <h2>New Course Request Submitted</h2>
+    <p><strong>Title:</strong> ${title}</p>
+    <p><strong>Submitted by:</strong> ${user.full_name} (${user.email})</p>
+    <p><strong>Description:</strong></p>
+    <p>${description || "(No description provided)"}</p>
+    <p><strong>Frequency:</strong> ${frequency || "(Not specified)"}</p>
+    <p><strong>Total Classes:</strong> ${totalClasses}</p>
+    <p><strong>Start Date:</strong> ${startDate}</p>
+    ${notes ? `<p><strong>Notes:</strong></p><p>${notes}</p>` : ""}
+    <p><a href="${requestLink}">View in YanLearn</a></p>
+  `;
+
+  // Send emails sequentially to all founders (best-effort, non-blocking)
+  notifyFounders("New Course Request Submission", emailHtml).catch((err) => {
+    console.error("Failed to send founder emails:", err);
+  });
+
+  // Send Discord message to founders channel (best-effort, non-blocking)
+  const discordMessage = `@founders New course request: **${title}** from ${user.full_name} (${user.email})`;
+  sendDiscordMessageByChannelName("founders", discordMessage).catch((err) => {
+    console.error("Failed to send Discord message:", err);
+  });
 
   return NextResponse.json({ success: true, request: data });
 }
