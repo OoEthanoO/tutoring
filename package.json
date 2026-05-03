@@ -16,10 +16,12 @@
   "dependencies": {
     "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.99.2",
+    "@types/react-datepicker": "^6.2.0",
     "bcryptjs": "^2.4.3",
     "dotenv": "^17.3.1",
     "next": "^16.2.1",
     "react": "19.2.3",
+    "react-datepicker": "^9.1.0",
     "react-dom": "19.2.3",
     "xlsx": "https://cdn.sheetjs.com/xlsx-latest/xlsx-latest.tgz"
   },

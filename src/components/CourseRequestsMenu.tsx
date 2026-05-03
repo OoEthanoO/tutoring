@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { getCurrentUser, onAuthChange } from "@/lib/authClient";
 import { resolveUserRole } from "@/lib/roles";
+import DatePicker from "react-datepicker";
+import "react-datepicker/dist/react-datepicker.css";
 
 type RequestRecord = {
   id: string;
@@ -31,7 +33,7 @@ export default function CourseRequestsMenu() {
   // Approval state for a specific request
   const [approvingId, setApprovingId] = useState<string | null>(null);
   const [maxStudents, setMaxStudents] = useState<string>("");
-  const [draftClassStartsAt, setDraftClassStartsAt] = useState("");
+  const [draftClassStartsAt, setDraftClassStartsAt] = useState<Date | null>(new Date());
   const [draftClassDurationMinutes, setDraftClassDurationMinutes] = useState<string>("60");
   const [draftClasses, setDraftClasses] = useState<{ startsAt: string; durationHours: number }[]>([]);
 
@@ -134,7 +136,7 @@ export default function CourseRequestsMenu() {
       return;
     }
     const nextEntry = {
-      startsAt: draftClassStartsAt,
+      startsAt: draftClassStartsAt ? draftClassStartsAt.toISOString() : new Date().toISOString(),
       durationHours: Number.parseInt(draftClassDurationMinutes) / 60 || 1,
     };
     const updatedDrafts = [...draftClasses, nextEntry];
@@ -150,7 +152,7 @@ export default function CourseRequestsMenu() {
         const diffMs = new Date(latest.startsAt).getTime() - new Date(secondLatest.startsAt).getTime();
         suggested.setTime(suggested.getTime() + diffMs);
       }
-      setDraftClassStartsAt(toLocalDateTimeInputValue(suggested));
+      setDraftClassStartsAt(suggested);
     }
   };
 
@@ -247,12 +249,15 @@ export default function CourseRequestsMenu() {
                       <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
                         <div className="space-y-1">
                           <label className="text-[0.6rem] font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">Date &amp; time</label>
-                          <input
-                            type="datetime-local"
-                            value={draftClassStartsAt}
-                            onChange={(e) => setDraftClassStartsAt(e.target.value)}
-                            className="w-full rounded-xl border border-[var(--border)] px-4 py-3 text-sm"
-                          />
+                          <div className="mt-1">
+                            <DatePicker
+                              selected={draftClassStartsAt}
+                              onChange={(date: Date | null) => setDraftClassStartsAt(date)}
+                              showTimeSelect
+                              dateFormat="Pp"
+                              className="w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-4 py-3 text-sm text-[var(--foreground)]"
+                            />
+                          </div>
                         </div>
                         <div className="space-y-1">
                           <label className="text-[0.6rem] font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">Duration (min)</label>

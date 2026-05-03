@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { getCurrentUser, onAuthChange } from "@/lib/authClient";
 import { canManageCourses, resolveUserRole } from "@/lib/roles";
+import DatePicker from "react-datepicker";
+import "react-datepicker/dist/react-datepicker.css";
 
 type StatusState = {
   type: "idle" | "error" | "success";
@@ -19,7 +21,7 @@ export default function CourseCreator() {
   const [timeframes, setTimeframes] = useState<Record<string, string>>({});
   const [frequency, setFrequency] = useState("");
   const [totalClasses, setTotalClasses] = useState<number>(1);
-  const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
+  const [startDate, setStartDate] = useState<Date | null>(new Date());
   const [notes, setNotes] = useState("");
 
   const [status, setStatus] = useState<StatusState>({
@@ -88,7 +90,7 @@ export default function CourseCreator() {
           timeframes,
           frequency: frequency.trim(),
           totalClasses,
-          startDate,
+          startDate: startDate?.toISOString().split('T')[0],
           notes: notes.trim()
         }),
       });
@@ -111,7 +113,7 @@ export default function CourseCreator() {
       setTimeframes({});
       setFrequency("");
       setTotalClasses(1);
-      setStartDate(new Date().toISOString().split('T')[0]);
+      setStartDate(new Date());
       setNotes("");
       setStatus({ type: "success", message: "Course request submitted successfully." });
     } catch (err) {
@@ -274,13 +276,16 @@ export default function CourseCreator() {
             <label className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
               Proposed Start Date
             </label>
-            <input
-              type="date"
-              value={startDate}
-              onChange={(event) => setStartDate(event.target.value)}
-              className="mt-2 w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
-              required
-            />
+            <div className="mt-2">
+              <DatePicker
+                selected={startDate}
+                onChange={(date: Date | null) => setStartDate(date)}
+                dateFormat="yyyy-MM-dd"
+                className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+                placeholderText="Click to select a date"
+                required
+              />
+            </div>
             <p className="px-1 mt-1 text-xs text-[var(--muted)]">What is your earliest start date for teaching this course?</p>
           </div>
 
