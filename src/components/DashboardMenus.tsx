@@ -24,7 +24,7 @@ type MenuKey =
   | "all_courses"
   | "enrolled_courses"
   | "my_classes"
-  | "create"
+
   | "manage_course_requests"
   | "manage_courses"
   | "manage_enrollments"
@@ -284,11 +284,9 @@ export default function DashboardMenus() {
     }
 
     if (role && canManageCourses(role)) {
-      items.push({ key: "create", label: "Submit course request" });
-      if (role === "founder") {
-        items.push({ key: "manage_course_requests", label: "Manage course requests" });
-      }
-      items.push({ key: "manage_courses", label: "Manage my courses" });
+      // Single unified requests page (founders will have approve/reject controls)
+      items.push({ key: "manage_course_requests", label: "Course requests" });
+      items.push({ key: "manage_courses", label: "My courses" });
     }
 
     if (role === "founder") {
@@ -381,7 +379,6 @@ export default function DashboardMenus() {
       {activeMenu === "all_courses" ? <CoursesMenu /> : null}
       {activeMenu === "enrolled_courses" ? <EnrolledCoursesMenu /> : null}
       {activeMenu === "my_classes" ? <MyClassesMenu /> : null}
-      {activeMenu === "create" ? <CourseCreator /> : null}
       {activeMenu === "manage_course_requests" ? <CourseRequestsMenu /> : null}
       {activeMenu === "manage_courses" ? <ManageMyCoursesMenu /> : null}
       {activeMenu === "manage_enrollments" ? <ManageEnrollmentsMenu /> : null}

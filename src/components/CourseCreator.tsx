@@ -13,16 +13,25 @@ type StatusState = {
 
 const DAYS_OF_WEEK = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
-export default function CourseCreator() {
+type CourseCreatorProps = {
+  editData?: any | null;
+  onSuccess?: () => void;
+  onCancel?: () => void;
+};
+
+export default function CourseCreator({ editData, onSuccess, onCancel }: CourseCreatorProps = {}) {
   const titleInputRef = useRef<HTMLInputElement | null>(null);
   const [canCreate, setCanCreate] = useState(false);
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [timeframes, setTimeframes] = useState<Record<string, string>>({});
-  const [frequency, setFrequency] = useState("");
-  const [totalClasses, setTotalClasses] = useState<number>(1);
-  const [startDate, setStartDate] = useState<Date | null>(new Date());
-  const [notes, setNotes] = useState("");
+  const [title, setTitle] = useState(editData?.title || "");
+  const [description, setDescription] = useState(editData?.description || "");
+  const [timeframes, setTimeframes] = useState<Record<string, string>>(editData?.timeframes || {});
+  const [frequency, setFrequency] = useState(editData?.frequency || "");
+  const [totalClasses, setTotalClasses] = useState<number>(editData?.total_classes || 1);
+  
+  // Parse editData.start_date safely, handling YYYY-MM-DD strings matching local TZ dates better
+  const initialStartDate = editData?.start_date ? new Date(editData.start_date + 'T12:00:00Z') : new Date();
+  const [startDate, setStartDate] = useState<Date | null>(initialStartDate);
+  const [notes, setNotes] = useState(editData?.notes || "");
 
   const [status, setStatus] = useState<StatusState>({
     type: "idle",
@@ -81,17 +90,20 @@ export default function CourseCreator() {
     setIsSubmitting(true);
 
     try {
+      const isEditing = !!editData?.id;
       const response = await fetch("/api/course-requests", {
-        method: "POST",
+        method: isEditing ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          requestId: editData?.id,
           title: title.trim(),
           description: description.trim(),
           timeframes,
           frequency: frequency.trim(),
           totalClasses,
           startDate: startDate?.toISOString().split('T')[0],
-          notes: notes.trim()
+          notes: notes.trim(),
+          status: isEditing && editData?.status === "rejected" ? "draft" : undefined,
         }),
       });
 
@@ -108,14 +120,22 @@ export default function CourseCreator() {
       }
 
       await response.json().catch(() => null);
-      setTitle("");
-      setDescription("");
-      setTimeframes({});
-      setFrequency("");
-      setTotalClasses(1);
-      setStartDate(new Date());
-      setNotes("");
-      setStatus({ type: "success", message: "Course request submitted successfully." });
+      
+      if (!isEditing) {
+        setTitle("");
+        setDescription("");
+        setTimeframes({});
+        setFrequency("");
+        setTotalClasses(1);
+        setStartDate(new Date());
+        setNotes("");
+      }
+      
+      setStatus({ type: "success", message: isEditing ? "Course request updated successfully." : "Course request submitted successfully." });
+      
+      if (onSuccess) {
+        onSuccess();
+      }
     } catch (err) {
       setStatus({ type: "error", message: "An unexpected error occurred." });
     } finally {
@@ -131,14 +151,14 @@ export default function CourseCreator() {
     <section className="relative">
       <div className="space-y-8 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6">
         <header className="space-y-1">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
-            Submit Request
+          <p className="text-[0.65rem] font-bold uppercase tracking-[0.2em] text-[var(--muted)]">
+            {editData ? "Edit Request" : "Submit Request"}
           </p>
           <h2 className="text-lg font-semibold text-[var(--foreground)]">
-            Submit a course creation request
+            {editData ? "Edit your course creation request" : "Submit a course creation request"}
           </h2>
           <p className="text-sm text-[var(--muted)]">
-            Your request will be reviewed by founders before being added to the catalog.
+            {editData ? "Your changes will be saved as a draft or sent back for review." : "Your request will be reviewed by founders before being added to the catalog."}
           </p>
         </header>
 
@@ -185,7 +205,7 @@ export default function CourseCreator() {
 
         <form className="space-y-4" onSubmit={onSubmit}>
           <div>
-            <label className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
+            <label className="text-[0.65rem] font-bold uppercase tracking-[0.2em] text-[var(--muted)]">
               Title
             </label>
             <input
@@ -200,7 +220,7 @@ export default function CourseCreator() {
           </div>
 
           <div>
-            <label className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
+            <label className="text-[0.65rem] font-bold uppercase tracking-[0.2em] text-[var(--muted)]">
               Description
             </label>
             <textarea
@@ -215,7 +235,7 @@ export default function CourseCreator() {
 
           <div className="space-y-3 rounded-xl border border-[var(--border)] px-4 py-4">
             <div className="space-y-1">
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
+              <p className="text-[0.65rem] font-bold uppercase tracking-[0.2em] text-[var(--muted)]">
                 Available Timeframes
               </p>
               <p className="text-xs text-[var(--muted)]">
@@ -244,7 +264,7 @@ export default function CourseCreator() {
           </div>
 
           <div>
-            <label className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
+            <label className="text-[0.65rem] font-bold uppercase tracking-[0.2em] text-[var(--muted)]">
               Frequency
             </label>
             <input
@@ -258,7 +278,7 @@ export default function CourseCreator() {
           </div>
 
           <div>
-            <label className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
+            <label className="text-[0.65rem] font-bold uppercase tracking-[0.2em] text-[var(--muted)]">
               Total Number of Classes
             </label>
             <input
@@ -274,7 +294,7 @@ export default function CourseCreator() {
           </div>
 
           <div>
-            <label className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
+            <label className="text-[0.65rem] font-bold uppercase tracking-[0.2em] text-[var(--muted)]">
               Proposed Start Date
             </label>
             <div className="mt-2">
@@ -291,7 +311,7 @@ export default function CourseCreator() {
           </div>
 
           <div>
-            <label className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
+            <label className="text-[0.65rem] font-bold uppercase tracking-[0.2em] text-[var(--muted)]">
               Notes for Founders (Optional)
             </label>
             <textarea
@@ -303,13 +323,25 @@ export default function CourseCreator() {
             />
           </div>
 
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            className="w-full rounded-full border border-[var(--foreground)] px-6 py-3 text-sm font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-70"
-          >
-            {isSubmitting ? "Submitting..." : "Submit course request"}
-          </button>
+          <div className="flex gap-2">
+            {onCancel && (
+              <button
+                type="button"
+                className="w-1/3 rounded-full border border-[var(--border)] px-6 py-3 text-sm font-semibold text-[var(--muted)] transition hover:bg-[var(--border)] hover:text-[var(--foreground)]"
+                onClick={onCancel}
+                disabled={isSubmitting}
+              >
+                Cancel
+              </button>
+            )}
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className={`w-full rounded-full border border-[var(--foreground)] px-6 py-3 text-sm font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-70 ${onCancel ? "w-2/3" : ""}`}
+            >
+              {isSubmitting ? "Submitting..." : editData ? "Save changes" : "Submit course request"}
+            </button>
+          </div>
         </form>
       </div>
 

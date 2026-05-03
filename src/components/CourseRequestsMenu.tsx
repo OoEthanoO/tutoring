@@ -5,6 +5,7 @@ import { getCurrentUser, onAuthChange } from "@/lib/authClient";
 import { resolveUserRole } from "@/lib/roles";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
+import CourseCreator from "./CourseCreator";
 
 type RequestRecord = {
   id: string;
@@ -27,18 +28,20 @@ export default function CourseRequestsMenu() {
   const [role, setRole] = useState<string | null>(null);
   const [isFounder, setIsFounder] = useState(false);
   const [requests, setRequests] = useState<RequestRecord[]>([]);
+  const [isCreatorModalOpen, setIsCreatorModalOpen] = useState(false);
+  const [editData, setEditData] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
   const [actioningId, setActioningId] = useState<string | null>(null);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState<Partial<RequestRecord>>({});
-
+  
   // Approval state for a specific request
   const [approvingId, setApprovingId] = useState<string | null>(null);
   const [maxStudents, setMaxStudents] = useState<string>("");
   const [draftClassStartsAt, setDraftClassStartsAt] = useState<Date | null>(new Date());
   const [draftClassDurationMinutes, setDraftClassDurationMinutes] = useState<string>("60");
   const [draftClasses, setDraftClasses] = useState<{ startsAt: string; durationHours: number }[]>([]);
+  const [rejectingId, setRejectingId] = useState<string | null>(null);
+  const [rejectNote, setRejectNote] = useState<string>("");
 
   useEffect(() => {
     const load = async () => {
@@ -77,65 +80,32 @@ export default function CourseRequestsMenu() {
     }
   };
 
-  const handleReject = async (id: string) => {
-    if (!confirm("Are you sure you want to reject this request?")) return;
-    
+  const handleReject = (id: string) => {
+    // Open the rejection note UI
+    setRejectingId(id);
+    setRejectNote("");
+  };
+
+  const submitRejection = async (id: string) => {
+    if (!rejectNote || !rejectNote.trim()) {
+      alert("Please provide a reason for rejection.");
+      return;
+    }
+
     setActioningId(id);
     try {
-      const res = await fetch(`/api/course-requests/${id}/reject`, { method: "POST" });
-      if (res.ok) {
-        setRequests(reqs => reqs.map(r => r.id === id ? { ...r, status: "rejected" } : r));
-      } else {
-        alert("Failed to reject request.");
-      }
-    } catch (e) {
-      alert("An error occurred.");
-    } finally {
-      setActioningId(null);
-    }
-  };
-
-  const startEditing = (request: RequestRecord) => {
-    setEditingId(request.id);
-    setEditForm({ ...request });
-  };
-
-  const cancelEditing = () => {
-    setEditingId(null);
-    setEditForm({});
-  };
-
-  const saveEdit = async (requestId: string) => {
-    setActioningId(requestId);
-    try {
-      const res = await fetch("/api/course-requests", {
-        method: "PATCH",
+      const res = await fetch(`/api/course-requests/${id}/reject`, {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          requestId,
-          title: editForm.title,
-          description: editForm.description,
-          timeframes: editForm.timeframes,
-          frequency: editForm.frequency,
-          totalClasses: editForm.total_classes,
-          startDate: editForm.start_date,
-          notes: editForm.notes,
-        }),
+        body: JSON.stringify({ note: rejectNote.trim() }),
       });
-
       if (res.ok) {
-        // Update local state to reflect the edit (status will change from "rejected" to "draft")
-        setRequests(reqs =>
-          reqs.map(r =>
-            r.id === requestId
-              ? { ...r, ...editForm, status: "draft" }
-              : r
-          )
-        );
-        cancelEditing();
-        alert("Request updated. Submit it again to send for review.");
+        setRequests(reqs => reqs.map(r => r.id === id ? { ...r, status: "rejected", notes: rejectNote.trim() } : r));
+        setRejectingId(null);
+        setRejectNote("");
       } else {
-        alert("Failed to save changes.");
+        const err = await res.json().catch(() => null);
+        alert(err?.error || "Failed to reject request.");
       }
     } catch (e) {
       alert("An error occurred.");
@@ -152,7 +122,7 @@ export default function CourseRequestsMenu() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           requestId,
-          title: (requests.find(r => r.id === requestId)?.title || "").trim(),
+          status: "in_review",
         }),
       });
 
@@ -244,7 +214,7 @@ export default function CourseRequestsMenu() {
     return `${year}-${month}-${day}T${hours}:${minutes}`;
   };
 
-  if (!isFounder && !role) return null;
+  if (!role) return null;
 
   const getStatusBadge = (status: string) => {
     const badgeClasses: Record<string, string> = {
@@ -253,24 +223,75 @@ export default function CourseRequestsMenu() {
       approved: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
       rejected: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
     };
-    const label = status === "in_review" ? "In Review" : status.charAt(0).toUpperCase() + status.slice(1);
-    return { label, classes: badgeClasses[status] || badgeClasses.draft };
+    const label = status === "in_review" || status === "pending" ? "In Review" : status.charAt(0).toUpperCase() + status.slice(1);
+    const classes = badgeClasses[status] ?? badgeClasses['in_review'] ?? badgeClasses.draft;
+    return { label, classes };
   };
 
   if (isLoading) {
     return <div className="p-6 text-sm text-[var(--muted)]">Loading requests...</div>;
   }
 
-  const inReviewRequests = requests.filter(r => r.status === "in_review");
-  const otherRequests = requests.filter(r => r.status !== "in_review");
+  const inReviewRequests = requests.filter(r => r.status === "in_review" || r.status === "pending");
+  const otherRequests = requests.filter(r => !(r.status === "in_review" || r.status === "pending"));
 
-  // For non-founders, show their own requests; for founders, show all pending requests first
+  // Unified page: founders see pending (in_review) + history; non-founders see their own history (GET already filters)
   const displayRequests = isFounder
     ? { pending: inReviewRequests, history: otherRequests }
-    : { pending: [], history: otherRequests };
+    : { pending: [], history: requests };
 
   return (
     <div className="space-y-8">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-[var(--foreground)]">Course Requests</h1>
+          <p className="text-sm text-[var(--muted)]">Manage and review incoming course creation requests.</p>
+        </div>
+        <button
+          onClick={() => {
+            setEditData(null);
+            setIsCreatorModalOpen(true);
+          }}
+          className="rounded-full bg-[var(--foreground)] px-4 py-2 text-sm font-semibold text-[var(--background)] transition-colors hover:bg-[var(--foreground)]/90"
+        >
+          Submit course request
+        </button>
+      </div>
+
+      {isCreatorModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm shadow-xl">
+          <div className="relative w-full max-w-2xl bg-[var(--background)] rounded-2xl border border-[var(--border)] overflow-hidden my-auto max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border)] bg-[var(--surface)]">
+              <h2 className="text-lg font-bold">{editData ? "Edit course request" : "Submit course request"}</h2>
+              <button 
+                onClick={() => { 
+                  setIsCreatorModalOpen(false); 
+                  setEditData(null);
+                  fetchRequests(); 
+                }} 
+                className="text-[var(--muted)] hover:text-[var(--foreground)]"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="overflow-y-auto p-6">
+              <CourseCreator 
+                editData={editData} 
+                onSuccess={() => {
+                  fetchRequests();
+                  setIsCreatorModalOpen(false);
+                  setEditData(null);
+                }}
+                onCancel={() => {
+                  setIsCreatorModalOpen(false);
+                  setEditData(null);
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
       {isFounder && displayRequests.pending.length > 0 && (
         <section className="space-y-4">
           <h2 className="text-lg font-semibold text-[var(--foreground)]">Pending Review</h2>
@@ -289,40 +310,46 @@ export default function CourseRequestsMenu() {
                 
                 <p className="text-sm text-[var(--foreground)]">{req.description || "(No description)"}</p>
                 
-                <div className="grid sm:grid-cols-2 gap-4">
-                  {Object.keys(req.timeframes || {}).length > 0 && (
-                    <div className="space-y-1">
-                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">Timeframes</p>
-                      <ul className="text-sm space-y-1">
-                        {Object.entries(req.timeframes || {}).filter(([_, v]) => v).map(([day, time]) => (
-                          <li key={day}><span className="font-medium">{day}:</span> {time}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
+                <div className="flex flex-wrap gap-x-12 gap-y-4 pt-2">
                   {req.frequency && (
-                    <div className="space-y-1">
-                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">Frequency</p>
-                      <p className="text-sm">{req.frequency}</p>
+                    <div>
+                      <p className="text-[0.65rem] font-bold uppercase tracking-[0.2em] text-[var(--muted)]">Frequency</p>
+                      <p className="text-sm font-medium mt-0.5">{req.frequency}</p>
                     </div>
                   )}
                   {req.total_classes && (
-                    <div className="space-y-1">
-                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">Total Classes</p>
-                      <p className="text-sm">{req.total_classes}</p>
+                    <div>
+                      <p className="text-[0.65rem] font-bold uppercase tracking-[0.2em] text-[var(--muted)]">Classes</p>
+                      <p className="text-sm font-medium mt-0.5">{req.total_classes}</p>
                     </div>
                   )}
                   {req.start_date && (
-                    <div className="space-y-1">
-                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">Start Date</p>
-                      <p className="text-sm">{req.start_date}</p>
+                    <div>
+                      <p className="text-[0.65rem] font-bold uppercase tracking-[0.2em] text-[var(--muted)]">Start Date</p>
+                      <p className="text-sm font-medium mt-0.5">{req.start_date}</p>
                     </div>
                   )}
                 </div>
+                
+                {Object.keys(req.timeframes || {}).filter(([_, v]) => v).length > 0 && (
+                  <div className="pt-2">
+                    <p className="text-[0.65rem] font-bold uppercase tracking-[0.2em] text-[var(--muted)] mb-2">Timeframes</p>
+                    <div className="flex flex-wrap gap-2">
+                      {Object.entries(req.timeframes || {}).filter(([_, v]) => v).map(([day, time]) => (
+                        <div key={day} className="px-3 py-1.5 rounded-lg bg-[var(--background)] border border-[var(--border)] text-xs text-[var(--foreground)]">
+                          <span className="font-semibold">{day}:</span> {time}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {req.notes && (
-                  <div className="text-sm bg-[var(--background)] p-3 rounded-lg border border-[var(--border)]">
-                    <strong>Notes:</strong> {req.notes}
+                  <div className="pt-2">
+                     <p className="text-[0.65rem] font-bold uppercase tracking-[0.2em] text-[var(--muted)] mb-1.5">Notes</p>
+                     <div className="rounded-xl bg-orange-500/10 border border-orange-500/20 p-4 text-sm text-orange-900 dark:text-orange-200 whitespace-pre-wrap">
+                       {req.notes}
+                     </div>
                   </div>
                 )}
 
@@ -330,27 +357,108 @@ export default function CourseRequestsMenu() {
                   <form onSubmit={handleApproveSubmit} className="mt-6 space-y-4 border-t border-[var(--border)] pt-4">
                     <h4 className="font-semibold text-sm">Approve &amp; Create Classes</h4>
                     <div>
-                      <label className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">Max Students</label>
+                      <label className="text-[0.65rem] font-bold uppercase tracking-[0.2em] text-[var(--muted)]">Max Students</label>
                       <input type="number" min="1" value={maxStudents} onChange={(e) => setMaxStudents(e.target.value)} placeholder="Leave blank for unlimited" className="mt-2 w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-4 py-3 text-sm text-[var(--foreground)] outline-none" />
                     </div>
-                    <div className="flex gap-2">
-                      <button type="submit" disabled={actioningId === req.id} className="flex-1 rounded-full border border-[var(--foreground)] px-4 py-2 text-sm font-semibold transition disabled:opacity-70">
-                        {actioningId === req.id ? "Creating..." : "Create Course"}
+
+                    <div className="space-y-3 rounded-xl border border-[var(--border)] bg-[var(--background)] p-4">
+                      <p className="text-[0.65rem] font-bold uppercase tracking-[0.2em] text-[var(--muted)]">Classes</p>
+                      <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+                        <div className="space-y-1">
+                          <label className="text-[0.6rem] font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">Date &amp; time</label>
+                          <div className="mt-1">
+                            <DatePicker
+                              selected={draftClassStartsAt}
+                              onChange={(date: Date | null) => setDraftClassStartsAt(date)}
+                              showTimeSelect
+                              dateFormat="Pp"
+                              className="w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-4 py-3 text-sm text-[var(--foreground)]"
+                            />
+                          </div>
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[0.6rem] font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">Duration (min)</label>
+                          <input
+                            type="number"
+                            value={draftClassDurationMinutes}
+                            onChange={(e) => setDraftClassDurationMinutes(e.target.value)}
+                            className="w-full rounded-xl border border-[var(--border)] px-4 py-3 text-sm"
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={addDraftClass}
+                          className="rounded-full border border-[var(--foreground)] px-4 py-3 text-xs font-semibold sm:col-span-2 hover:bg-[var(--border)] transition"
+                        >
+                          Add class
+                        </button>
+                      </div>
+                      
+                      {draftClasses.length > 0 && (
+                        <ul className="space-y-2 text-xs">
+                          {draftClasses.map((c, i) => (
+                            <li key={i} className="flex justify-between p-2 border border-[var(--border)] rounded">
+                              <span>Class {i + 1} - {new Date(c.startsAt).toLocaleString()} ({Math.round(c.durationHours * 60)}m)</span>
+                              <button
+                                type="button"
+                                onClick={() => setDraftClasses(prev => prev.filter((_, idx) => idx !== i))}
+                                className="text-red-500 hover:underline"
+                              >
+                                Remove
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row gap-2 items-stretch">
+                      <button
+                        id={`confirm-approval-${req.id}`}
+                        type="submit"
+                        disabled={actioningId === req.id}
+                        className="flex-1 rounded-full border border-[var(--foreground)] px-4 py-2 text-sm font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)] disabled:opacity-50"
+                        title="Confirm Approval and create course"
+                      >
+                        {actioningId === req.id ? "Approving..." : "Confirm Approval"}
                       </button>
-                      <button type="button" onClick={() => setApprovingId(null)} className="flex-1 rounded-full border border-[var(--border)] px-4 py-2 text-sm transition">
+                      <button
+                        type="button"
+                        onClick={() => setApprovingId(null)}
+                        className="rounded-full border border-[var(--border)] px-4 py-2 text-sm font-semibold hover:bg-[var(--border)] sm:ml-2"
+                      >
                         Cancel
                       </button>
                     </div>
                   </form>
                 ) : (
-                  <div className="flex gap-2">
-                    <button onClick={() => setApprovingId(req.id)} disabled={actioningId === req.id} className="flex-1 rounded-full bg-green-600 text-white px-4 py-2 text-sm font-semibold transition hover:bg-green-700 disabled:opacity-70">
-                      Approve
-                    </button>
-                    <button onClick={() => handleReject(req.id)} disabled={actioningId === req.id} className="flex-1 rounded-full bg-red-600 text-white px-4 py-2 text-sm font-semibold transition hover:bg-red-700 disabled:opacity-70">
-                      Reject
-                    </button>
-                  </div>
+                  isFounder && (
+                    <div className="flex flex-col gap-2">
+                      <div className="flex gap-2">
+                        <button onClick={() => setApprovingId(req.id)} disabled={actioningId === req.id} className="flex-1 rounded-full border border-emerald-600 px-4 py-2 text-sm font-semibold text-emerald-600 transition hover:bg-emerald-50 disabled:opacity-70">
+                          Approve
+                        </button>
+                        <button onClick={() => handleReject(req.id)} disabled={actioningId === req.id} className="flex-1 rounded-full border border-red-600 px-4 py-2 text-sm font-semibold text-red-600 transition hover:bg-red-50 disabled:opacity-70">
+                          Reject
+                        </button>
+                      </div>
+
+                      {rejectingId === req.id && (
+                        <div className="mt-2 space-y-2">
+                          <label className="text-[0.65rem] font-bold uppercase tracking-[0.2em] text-[var(--muted)]">Rejection note (required)</label>
+                          <textarea value={rejectNote} onChange={(e) => setRejectNote(e.target.value)} className="w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-4 py-3 text-sm text-[var(--foreground)] outline-none" rows={3} />
+                          <div className="flex gap-2">
+                            <button onClick={() => submitRejection(req.id)} disabled={actioningId === req.id} className="flex-1 rounded-full border border-red-600 px-4 py-2 text-sm font-semibold text-red-600 transition hover:bg-red-50 disabled:opacity-70">
+                              {actioningId === req.id ? "Rejecting..." : "Submit Rejection"}
+                            </button>
+                            <button onClick={() => { setRejectingId(null); setRejectNote(""); }} disabled={actioningId === req.id} className="flex-1 rounded-full border border-[var(--border)] px-4 py-2 text-sm transition">
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )
                 )}
               </div>
             ))}
@@ -362,58 +470,81 @@ export default function CourseRequestsMenu() {
         <section className="space-y-4">
           <h2 className="text-lg font-semibold text-[var(--foreground)]">Request History</h2>
           <div className="grid gap-4">
-            {displayRequests.history.map(req => (
+              {displayRequests.history.map(req => (
               <div key={req.id} className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 space-y-4">
                 <div className="flex items-start justify-between">
                   <div>
                     <h3 className="font-semibold text-[var(--foreground)]">{req.title}</h3>
-                    {!isFounder && <p className="text-sm text-[var(--muted)]">Status: {getStatusBadge(req.status).label}</p>}
                   </div>
                   <div className={`text-xs font-semibold px-2 py-1 rounded-full ${getStatusBadge(req.status).classes}`}>
                     {getStatusBadge(req.status).label}
                   </div>
                 </div>
 
-                {editingId === req.id && !isFounder ? (
-                  <div className="space-y-4 border-t border-[var(--border)] pt-4">
-                    <div>
-                      <label className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">Title</label>
-                      <input type="text" value={editForm.title || ""} onChange={(e) => setEditForm({...editForm, title: e.target.value})} className="mt-2 w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-4 py-3 text-sm text-[var(--foreground)] outline-none" />
+                <p className="text-sm text-[var(--foreground)]">{req.description || "(No description)"}</p>
+                
+                <div className="flex flex-wrap gap-x-12 gap-y-4 pt-2">
+                      {req.frequency && (
+                        <div>
+                          <p className="text-[0.65rem] font-bold uppercase tracking-[0.2em] text-[var(--muted)]">Frequency</p>
+                          <p className="text-sm font-medium mt-0.5">{req.frequency}</p>
+                        </div>
+                      )}
+                      {req.total_classes && (
+                        <div>
+                          <p className="text-[0.65rem] font-bold uppercase tracking-[0.2em] text-[var(--muted)]">Classes</p>
+                          <p className="text-sm font-medium mt-0.5">{req.total_classes}</p>
+                        </div>
+                      )}
+                      {req.start_date && (
+                        <div>
+                          <p className="text-[0.65rem] font-bold uppercase tracking-[0.2em] text-[var(--muted)]">Start Date</p>
+                          <p className="text-sm font-medium mt-0.5">{req.start_date}</p>
+                        </div>
+                      )}
                     </div>
-                    <div>
-                      <label className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">Description</label>
-                      <textarea value={editForm.description || ""} onChange={(e) => setEditForm({...editForm, description: e.target.value})} className="mt-2 w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-4 py-3 text-sm text-[var(--foreground)] outline-none" rows={3} />
-                    </div>
-                    <div>
-                      <label className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">Frequency</label>
-                      <input type="text" value={editForm.frequency || ""} onChange={(e) => setEditForm({...editForm, frequency: e.target.value})} className="mt-2 w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-4 py-3 text-sm text-[var(--foreground)] outline-none" placeholder="e.g., Weekly, Twice per week" />
-                    </div>
-                    <div className="flex gap-2">
-                      <button onClick={() => saveEdit(req.id)} disabled={actioningId === req.id} className="flex-1 rounded-full bg-blue-600 text-white px-4 py-2 text-sm font-semibold transition hover:bg-blue-700 disabled:opacity-70">
-                        {actioningId === req.id ? "Saving..." : "Save Changes"}
-                      </button>
-                      <button onClick={cancelEditing} disabled={actioningId === req.id} className="flex-1 rounded-full border border-[var(--border)] px-4 py-2 text-sm transition disabled:opacity-70">
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    <p className="text-sm text-[var(--foreground)]">{req.description || "(No description)"}</p>
-                    {(req.status === "rejected" || req.status === "draft") && !isFounder && (
-                      <div className="flex gap-2">
-                        <button onClick={() => startEditing(req)} disabled={actioningId === req.id} className="flex-1 rounded-full border border-[var(--foreground)] px-4 py-2 text-sm font-semibold transition hover:bg-[var(--border)] disabled:opacity-70">
+                    
+                    {Object.keys(req.timeframes || {}).filter(([_, v]) => v).length > 0 && (
+                      <div className="pt-2">
+                        <p className="text-[0.65rem] font-bold uppercase tracking-[0.2em] text-[var(--muted)] mb-2">Timeframes</p>
+                        <div className="flex flex-wrap gap-2">
+                          {Object.entries(req.timeframes || {}).filter(([_, v]) => v).map(([day, time]) => (
+                            <div key={day} className="px-3 py-1.5 rounded-lg bg-[var(--background)] border border-[var(--border)] text-xs text-[var(--foreground)]">
+                              <span className="font-semibold">{day}:</span> {time}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {req.notes && (
+                      <div className="pt-2">
+                         <p className="text-[0.65rem] font-bold uppercase tracking-[0.2em] text-[var(--muted)] mb-1.5">Notes / Rejection Reason</p>
+                         <div className="rounded-xl bg-orange-500/10 border border-orange-500/20 p-4 text-sm text-orange-900 dark:text-orange-200 whitespace-pre-wrap">
+                           {req.notes}
+                         </div>
+                      </div>
+                    )}
+
+                    {(req.status === "rejected" || req.status === "draft") && (
+                      <div className="flex gap-2 mt-4 pt-4 border-t border-[var(--border)]">
+                        <button 
+                          onClick={() => {
+                            setEditData(req);
+                            setIsCreatorModalOpen(true);
+                          }} 
+                          disabled={actioningId === req.id} 
+                          className="flex-1 rounded-full border border-[var(--foreground)] px-4 py-2 text-sm font-semibold transition hover:bg-[var(--border)] disabled:opacity-70"
+                        >
                           Edit Request
                         </button>
                         {req.status === "draft" && (
-                          <button onClick={() => resubmitRequest(req.id)} disabled={actioningId === req.id} className="flex-1 rounded-full bg-blue-600 text-white px-4 py-2 text-sm font-semibold transition hover:bg-blue-700 disabled:opacity-70">
+                          <button onClick={() => resubmitRequest(req.id)} disabled={actioningId === req.id} className="flex-1 rounded-full bg-[var(--foreground)] text-[var(--background)] px-4 py-2 text-sm font-semibold transition hover:bg-[var(--foreground)]/90 disabled:opacity-70">
                             {actioningId === req.id ? "Resubmitting..." : "Resubmit"}
                           </button>
                         )}
                       </div>
                     )}
-                  </>
-                )}
               </div>
             ))}
           </div>

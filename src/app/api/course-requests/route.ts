@@ -187,6 +187,7 @@ export async function PATCH(request: NextRequest) {
     notes?: string;
     totalClasses?: number;
     startDate?: string;
+    status?: string;
   } | null;
 
   const requestId = body?.requestId;
@@ -201,19 +202,25 @@ export async function PATCH(request: NextRequest) {
     auth: { persistSession: false },
   });
 
-  // Verify the user owns this request
+  const role = resolveUserRole(user.email, user.role ?? null);
+
+  // Verify the user owns this request or is a founder
   const { data: existing } = await adminClient
     .from("course_creation_requests")
     .select("created_by, status")
     .eq("id", requestId)
     .maybeSingle();
 
-  if (!existing || existing.created_by !== user.id) {
+  if (!existing || (existing.created_by !== user.id && role !== "founder" && role !== "executive")) {
     return NextResponse.json({ error: "Forbidden." }, { status: 403 });
   }
 
   // If status is "rejected", change it to "draft" on edit
-  const newStatus = existing.status === "rejected" ? "draft" : existing.status;
+  let newStatus = existing.status === "rejected" ? "draft" : existing.status;
+  // Allow explicitly setting status to "in_review" (e.g. for resubmission)
+  if (body?.status === "in_review" && (existing.status === "draft" || existing.status === "rejected")) {
+    newStatus = "in_review";
+  }
 
   const updatePayload: Record<string, any> = { status: newStatus };
 
