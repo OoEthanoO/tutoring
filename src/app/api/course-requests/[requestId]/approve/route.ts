@@ -67,9 +67,9 @@ export async function POST(
     );
   }
 
-  if (requestRecord.status !== "pending") {
+  if (requestRecord.status !== "in_review") {
     return NextResponse.json(
-      { error: "Request is already processed." },
+      { error: "Request is not in review." },
       { status: 400 }
     );
   }

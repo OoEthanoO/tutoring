@@ -70,7 +70,7 @@ export async function POST(request: NextRequest) {
       total_classes: totalClasses,
       start_date: startDate,
       created_by: user.id,
-      status: "pending",
+      status: "in_review",
     })
     .select("id")
     .single();
@@ -156,4 +156,86 @@ export async function GET(request: NextRequest) {
   }
 
   return NextResponse.json({ requests: data });
+}
+
+export async function PATCH(request: NextRequest) {
+  if (!supabaseUrl || !supabaseAnonKey) {
+    return NextResponse.json(
+      { error: "Missing Supabase environment configuration." },
+      { status: 500 }
+    );
+  }
+
+  const user = await getRequestUser(request);
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  }
+
+  if (!serviceRoleKey) {
+    return NextResponse.json(
+      { error: "Missing SUPABASE_SERVICE_ROLE_KEY." },
+      { status: 500 }
+    );
+  }
+
+  const body = (await request.json().catch(() => null)) as {
+    requestId?: string;
+    title?: string;
+    description?: string;
+    timeframes?: Record<string, string>;
+    frequency?: string;
+    notes?: string;
+    totalClasses?: number;
+    startDate?: string;
+  } | null;
+
+  const requestId = body?.requestId;
+  if (!requestId) {
+    return NextResponse.json(
+      { error: "Request ID is required." },
+      { status: 400 }
+    );
+  }
+
+  const adminClient = createClient(supabaseUrl, serviceRoleKey, {
+    auth: { persistSession: false },
+  });
+
+  // Verify the user owns this request
+  const { data: existing } = await adminClient
+    .from("course_creation_requests")
+    .select("created_by, status")
+    .eq("id", requestId)
+    .maybeSingle();
+
+  if (!existing || existing.created_by !== user.id) {
+    return NextResponse.json({ error: "Forbidden." }, { status: 403 });
+  }
+
+  // If status is "rejected", change it to "draft" on edit
+  const newStatus = existing.status === "rejected" ? "draft" : existing.status;
+
+  const updatePayload: Record<string, any> = { status: newStatus };
+
+  if (body?.title !== undefined) updatePayload.title = body.title.trim();
+  if (body?.description !== undefined) updatePayload.description = body.description.trim();
+  if (body?.timeframes !== undefined) updatePayload.timeframes = body.timeframes;
+  if (body?.frequency !== undefined) updatePayload.frequency = body.frequency.trim();
+  if (body?.notes !== undefined) updatePayload.notes = body.notes.trim();
+  if (body?.totalClasses !== undefined) updatePayload.total_classes = body.totalClasses;
+  if (body?.startDate !== undefined) updatePayload.start_date = body.startDate.trim();
+
+  const { error: updateError } = await adminClient
+    .from("course_creation_requests")
+    .update(updatePayload)
+    .eq("id", requestId);
+
+  if (updateError) {
+    return NextResponse.json(
+      { error: updateError.message ?? "Failed to update request." },
+      { status: 500 }
+    );
+  }
+
+  return NextResponse.json({ success: true });
 }

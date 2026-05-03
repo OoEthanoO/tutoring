@@ -49,7 +49,7 @@ export async function POST(
       decided_by: user.id,
     })
     .eq("id", requestId)
-    .eq("status", "pending");
+    .eq("status", "in_review");
 
   if (updateError) {
     return NextResponse.json(

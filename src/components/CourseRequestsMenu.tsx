@@ -24,11 +24,14 @@ const snapDateTimeLocalToFiveMinutes = (value: string) => value;
 const isFiveMinuteLocal = (value: string) => true;
 
 export default function CourseRequestsMenu() {
+  const [role, setRole] = useState<string | null>(null);
   const [isFounder, setIsFounder] = useState(false);
   const [requests, setRequests] = useState<RequestRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
   const [actioningId, setActioningId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<Partial<RequestRecord>>({});
 
   // Approval state for a specific request
   const [approvingId, setApprovingId] = useState<string | null>(null);
@@ -46,14 +49,11 @@ export default function CourseRequestsMenu() {
         return;
       }
 
-      const role = resolveUserRole(user.email, user.role ?? null);
-      setIsFounder(role === "founder");
+      const resolvedRole = resolveUserRole(user.email, user.role ?? null);
+      setRole(resolvedRole);
+      setIsFounder(resolvedRole === "founder");
 
-      if (role === "founder") {
-        fetchRequests();
-      } else {
-        setIsLoading(false);
-      }
+      fetchRequests();
     };
 
     load();
@@ -87,6 +87,85 @@ export default function CourseRequestsMenu() {
         setRequests(reqs => reqs.map(r => r.id === id ? { ...r, status: "rejected" } : r));
       } else {
         alert("Failed to reject request.");
+      }
+    } catch (e) {
+      alert("An error occurred.");
+    } finally {
+      setActioningId(null);
+    }
+  };
+
+  const startEditing = (request: RequestRecord) => {
+    setEditingId(request.id);
+    setEditForm({ ...request });
+  };
+
+  const cancelEditing = () => {
+    setEditingId(null);
+    setEditForm({});
+  };
+
+  const saveEdit = async (requestId: string) => {
+    setActioningId(requestId);
+    try {
+      const res = await fetch("/api/course-requests", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          requestId,
+          title: editForm.title,
+          description: editForm.description,
+          timeframes: editForm.timeframes,
+          frequency: editForm.frequency,
+          totalClasses: editForm.total_classes,
+          startDate: editForm.start_date,
+          notes: editForm.notes,
+        }),
+      });
+
+      if (res.ok) {
+        // Update local state to reflect the edit (status will change from "rejected" to "draft")
+        setRequests(reqs =>
+          reqs.map(r =>
+            r.id === requestId
+              ? { ...r, ...editForm, status: "draft" }
+              : r
+          )
+        );
+        cancelEditing();
+        alert("Request updated. Submit it again to send for review.");
+      } else {
+        alert("Failed to save changes.");
+      }
+    } catch (e) {
+      alert("An error occurred.");
+    } finally {
+      setActioningId(null);
+    }
+  };
+
+  const resubmitRequest = async (requestId: string) => {
+    setActioningId(requestId);
+    try {
+      const res = await fetch("/api/course-requests", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          requestId,
+          title: (requests.find(r => r.id === requestId)?.title || "").trim(),
+        }),
+      });
+
+      if (res.ok) {
+        // Change status from "draft" to "in_review"
+        setRequests(reqs =>
+          reqs.map(r =>
+            r.id === requestId ? { ...r, status: "in_review" } : r
+          )
+        );
+        alert("Request resubmitted for review.");
+      } else {
+        alert("Failed to resubmit request.");
       }
     } catch (e) {
       alert("An error occurred.");
@@ -165,167 +244,110 @@ export default function CourseRequestsMenu() {
     return `${year}-${month}-${day}T${hours}:${minutes}`;
   };
 
-  if (!isFounder) return null;
+  if (!isFounder && !role) return null;
+
+  const getStatusBadge = (status: string) => {
+    const badgeClasses: Record<string, string> = {
+      draft: "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400",
+      in_review: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400",
+      approved: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
+      rejected: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
+    };
+    const label = status === "in_review" ? "In Review" : status.charAt(0).toUpperCase() + status.slice(1);
+    return { label, classes: badgeClasses[status] || badgeClasses.draft };
+  };
 
   if (isLoading) {
     return <div className="p-6 text-sm text-[var(--muted)]">Loading requests...</div>;
   }
 
-  const pendingRequests = requests.filter(r => r.status === "pending");
-  const historyRequests = requests.filter(r => r.status !== "pending");
+  const inReviewRequests = requests.filter(r => r.status === "in_review");
+  const otherRequests = requests.filter(r => r.status !== "in_review");
+
+  // For non-founders, show their own requests; for founders, show all pending requests first
+  const displayRequests = isFounder
+    ? { pending: inReviewRequests, history: otherRequests }
+    : { pending: [], history: otherRequests };
 
   return (
     <div className="space-y-8">
-      <section className="space-y-4">
-        <h2 className="text-lg font-semibold text-[var(--foreground)]">Pending Requests</h2>
-        {pendingRequests.length === 0 ? (
-          <p className="text-sm text-[var(--muted)]">No pending requests.</p>
-        ) : (
+      {isFounder && displayRequests.pending.length > 0 && (
+        <section className="space-y-4">
+          <h2 className="text-lg font-semibold text-[var(--foreground)]">Pending Review</h2>
           <div className="grid gap-4">
-            {pendingRequests.map(req => (
+            {displayRequests.pending.map(req => (
               <div key={req.id} className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 space-y-4">
                 <div className="flex items-start justify-between">
                   <div>
                     <h3 className="font-semibold text-[var(--foreground)]">{req.title}</h3>
-                    <p className="text-sm text-[var(--muted)]">Requested by {req.app_users?.full_name || req.app_users?.email}</p>
+                    <p className="text-sm text-[var(--muted)]">From {req.app_users?.full_name || req.app_users?.email}</p>
                   </div>
-                  <div className="text-xs font-semibold px-2 py-1 bg-amber-100 text-amber-800 rounded-full dark:bg-amber-900/30 dark:text-amber-400">
-                    Pending
+                  <div className={`text-xs font-semibold px-2 py-1 rounded-full ${getStatusBadge(req.status).classes}`}>
+                    {getStatusBadge(req.status).label}
                   </div>
                 </div>
                 
-                <p className="text-sm text-[var(--foreground)] whitespace-pre-wrap">{req.description}</p>
+                <p className="text-sm text-[var(--foreground)]">{req.description || "(No description)"}</p>
                 
                 <div className="grid sm:grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">Timeframes</p>
-                    <ul className="text-sm space-y-1">
-                      {Object.entries(req.timeframes || {}).filter(([_, v]) => v).map(([day, time]) => (
-                        <li key={day}><span className="font-medium">{day}:</span> {time}</li>
-                      ))}
-                    </ul>
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">Frequency</p>
-                    <p className="text-sm">{req.frequency}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">Total Classes</p>
-                    <p className="text-sm">{req.total_classes}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">Proposed Start Date</p>
-                    <p className="text-sm">{req.start_date}</p>
-                  </div>
+                  {Object.keys(req.timeframes || {}).length > 0 && (
+                    <div className="space-y-1">
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">Timeframes</p>
+                      <ul className="text-sm space-y-1">
+                        {Object.entries(req.timeframes || {}).filter(([_, v]) => v).map(([day, time]) => (
+                          <li key={day}><span className="font-medium">{day}:</span> {time}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {req.frequency && (
+                    <div className="space-y-1">
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">Frequency</p>
+                      <p className="text-sm">{req.frequency}</p>
+                    </div>
+                  )}
+                  {req.total_classes && (
+                    <div className="space-y-1">
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">Total Classes</p>
+                      <p className="text-sm">{req.total_classes}</p>
+                    </div>
+                  )}
+                  {req.start_date && (
+                    <div className="space-y-1">
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">Start Date</p>
+                      <p className="text-sm">{req.start_date}</p>
+                    </div>
+                  )}
                 </div>
 
                 {req.notes && (
-                  <div className="space-y-1 bg-[var(--background)] p-3 rounded-lg border border-[var(--border)]">
-                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">Notes</p>
-                    <p className="text-sm">{req.notes}</p>
+                  <div className="text-sm bg-[var(--background)] p-3 rounded-lg border border-[var(--border)]">
+                    <strong>Notes:</strong> {req.notes}
                   </div>
                 )}
 
                 {approvingId === req.id ? (
                   <form onSubmit={handleApproveSubmit} className="mt-6 space-y-4 border-t border-[var(--border)] pt-4">
-                    <h4 className="font-semibold text-sm text-[var(--foreground)]">Approve &amp; Create Classes</h4>
-                    
+                    <h4 className="font-semibold text-sm">Approve &amp; Create Classes</h4>
                     <div>
-                      <label className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
-                        Max Students (Optional)
-                      </label>
-                      <input
-                        type="number"
-                        min="1"
-                        value={maxStudents}
-                        onChange={(e) => setMaxStudents(e.target.value)}
-                        placeholder="Leave blank for unlimited"
-                        className="mt-2 w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-4 py-3 text-sm text-[var(--foreground)] outline-none"
-                      />
+                      <label className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">Max Students</label>
+                      <input type="number" min="1" value={maxStudents} onChange={(e) => setMaxStudents(e.target.value)} placeholder="Leave blank for unlimited" className="mt-2 w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-4 py-3 text-sm text-[var(--foreground)] outline-none" />
                     </div>
-
-                    <div className="space-y-3 rounded-xl border border-[var(--border)] bg-[var(--background)] p-4">
-                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">Classes</p>
-                      <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
-                        <div className="space-y-1">
-                          <label className="text-[0.6rem] font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">Date &amp; time</label>
-                          <div className="mt-1">
-                            <DatePicker
-                              selected={draftClassStartsAt}
-                              onChange={(date: Date | null) => setDraftClassStartsAt(date)}
-                              showTimeSelect
-                              dateFormat="Pp"
-                              className="w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-4 py-3 text-sm text-[var(--foreground)]"
-                            />
-                          </div>
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-[0.6rem] font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">Duration (min)</label>
-                          <input
-                            type="number"
-                            value={draftClassDurationMinutes}
-                            onChange={(e) => setDraftClassDurationMinutes(e.target.value)}
-                            className="w-full rounded-xl border border-[var(--border)] px-4 py-3 text-sm"
-                          />
-                        </div>
-                        <button
-                          type="button"
-                          onClick={addDraftClass}
-                          className="rounded-full border border-[var(--foreground)] px-4 py-3 text-xs font-semibold sm:col-span-2 hover:bg-[var(--border)] transition"
-                        >
-                          Add class
-                        </button>
-                      </div>
-                      
-                      {draftClasses.length > 0 && (
-                        <ul className="space-y-2 text-xs">
-                          {draftClasses.map((c, i) => (
-                            <li key={i} className="flex justify-between p-2 border border-[var(--border)] rounded">
-                              <span>Class {i + 1} - {new Date(c.startsAt).toLocaleString()} ({Math.round(c.durationHours * 60)}m)</span>
-                              <button
-                                type="button"
-                                onClick={() => setDraftClasses(prev => prev.filter((_, idx) => idx !== i))}
-                                className="text-red-500 hover:underline"
-                              >
-                                Remove
-                              </button>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </div>
-
                     <div className="flex gap-2">
-                      <button
-                        type="submit"
-                        disabled={actioningId === req.id || draftClasses.length === 0}
-                        className="rounded-full bg-emerald-600 text-white px-4 py-2 text-sm font-semibold hover:bg-emerald-700 disabled:opacity-50"
-                      >
-                        {actioningId === req.id ? "Approving..." : "Confirm Approval"}
+                      <button type="submit" disabled={actioningId === req.id} className="flex-1 rounded-full border border-[var(--foreground)] px-4 py-2 text-sm font-semibold transition disabled:opacity-70">
+                        {actioningId === req.id ? "Creating..." : "Create Course"}
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => setApprovingId(null)}
-                        className="rounded-full border border-[var(--border)] px-4 py-2 text-sm font-semibold hover:bg-[var(--border)]"
-                      >
+                      <button type="button" onClick={() => setApprovingId(null)} className="flex-1 rounded-full border border-[var(--border)] px-4 py-2 text-sm transition">
                         Cancel
                       </button>
                     </div>
                   </form>
                 ) : (
-                  <div className="flex gap-2 pt-2">
-                    <button
-                      onClick={() => { setApprovingId(req.id); setDraftClasses([]); }}
-                      disabled={actioningId !== null}
-                      className="rounded-full border border-emerald-600 text-emerald-600 px-4 py-2 text-xs font-semibold hover:bg-emerald-50 dark:hover:bg-emerald-950 transition disabled:opacity-50"
-                    >
-                      Approve &amp; Setup Classes
+                  <div className="flex gap-2">
+                    <button onClick={() => setApprovingId(req.id)} disabled={actioningId === req.id} className="flex-1 rounded-full bg-green-600 text-white px-4 py-2 text-sm font-semibold transition hover:bg-green-700 disabled:opacity-70">
+                      Approve
                     </button>
-                    <button
-                      onClick={() => handleReject(req.id)}
-                      disabled={actioningId !== null}
-                      className="rounded-full border border-red-600 text-red-600 px-4 py-2 text-xs font-semibold hover:bg-red-50 dark:hover:bg-red-950 transition disabled:opacity-50"
-                    >
+                    <button onClick={() => handleReject(req.id)} disabled={actioningId === req.id} className="flex-1 rounded-full bg-red-600 text-white px-4 py-2 text-sm font-semibold transition hover:bg-red-700 disabled:opacity-70">
                       Reject
                     </button>
                   </div>
@@ -333,32 +355,75 @@ export default function CourseRequestsMenu() {
               </div>
             ))}
           </div>
-        )}
-      </section>
+        </section>
+      )}
 
-      {historyRequests.length > 0 && (
+      {displayRequests.history.length > 0 && (
         <section className="space-y-4">
-          <h2 className="text-lg font-semibold text-[var(--foreground)]">History</h2>
+          <h2 className="text-lg font-semibold text-[var(--foreground)]">Request History</h2>
           <div className="grid gap-4">
-            {historyRequests.map(req => (
-              <div key={req.id} className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 flex justify-between items-center opacity-70">
-                <div>
-                  <h3 className="font-semibold text-[var(--foreground)]">{req.title}</h3>
-                  <p className="text-xs text-[var(--muted)]">Requested by {req.app_users?.full_name || req.app_users?.email}</p>
+            {displayRequests.history.map(req => (
+              <div key={req.id} className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 space-y-4">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <h3 className="font-semibold text-[var(--foreground)]">{req.title}</h3>
+                    {!isFounder && <p className="text-sm text-[var(--muted)]">Status: {getStatusBadge(req.status).label}</p>}
+                  </div>
+                  <div className={`text-xs font-semibold px-2 py-1 rounded-full ${getStatusBadge(req.status).classes}`}>
+                    {getStatusBadge(req.status).label}
+                  </div>
                 </div>
-                <div>
-                  <span className={`text-xs font-semibold px-2 py-1 rounded-full ${
-                    req.status === "approved" 
-                      ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400"
-                      : "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400"
-                  }`}>
-                    {req.status.charAt(0).toUpperCase() + req.status.slice(1)}
-                  </span>
-                </div>
+
+                {editingId === req.id && !isFounder ? (
+                  <div className="space-y-4 border-t border-[var(--border)] pt-4">
+                    <div>
+                      <label className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">Title</label>
+                      <input type="text" value={editForm.title || ""} onChange={(e) => setEditForm({...editForm, title: e.target.value})} className="mt-2 w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-4 py-3 text-sm text-[var(--foreground)] outline-none" />
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">Description</label>
+                      <textarea value={editForm.description || ""} onChange={(e) => setEditForm({...editForm, description: e.target.value})} className="mt-2 w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-4 py-3 text-sm text-[var(--foreground)] outline-none" rows={3} />
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">Frequency</label>
+                      <input type="text" value={editForm.frequency || ""} onChange={(e) => setEditForm({...editForm, frequency: e.target.value})} className="mt-2 w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-4 py-3 text-sm text-[var(--foreground)] outline-none" placeholder="e.g., Weekly, Twice per week" />
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => saveEdit(req.id)} disabled={actioningId === req.id} className="flex-1 rounded-full bg-blue-600 text-white px-4 py-2 text-sm font-semibold transition hover:bg-blue-700 disabled:opacity-70">
+                        {actioningId === req.id ? "Saving..." : "Save Changes"}
+                      </button>
+                      <button onClick={cancelEditing} disabled={actioningId === req.id} className="flex-1 rounded-full border border-[var(--border)] px-4 py-2 text-sm transition disabled:opacity-70">
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <p className="text-sm text-[var(--foreground)]">{req.description || "(No description)"}</p>
+                    {(req.status === "rejected" || req.status === "draft") && !isFounder && (
+                      <div className="flex gap-2">
+                        <button onClick={() => startEditing(req)} disabled={actioningId === req.id} className="flex-1 rounded-full border border-[var(--foreground)] px-4 py-2 text-sm font-semibold transition hover:bg-[var(--border)] disabled:opacity-70">
+                          Edit Request
+                        </button>
+                        {req.status === "draft" && (
+                          <button onClick={() => resubmitRequest(req.id)} disabled={actioningId === req.id} className="flex-1 rounded-full bg-blue-600 text-white px-4 py-2 text-sm font-semibold transition hover:bg-blue-700 disabled:opacity-70">
+                            {actioningId === req.id ? "Resubmitting..." : "Resubmit"}
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
             ))}
           </div>
         </section>
+      )}
+
+      {requests.length === 0 && (
+        <div className="text-center text-sm text-[var(--muted)] py-8">
+          {isFounder ? "No requests to review." : "No course requests yet."}
+        </div>
       )}
     </div>
   );

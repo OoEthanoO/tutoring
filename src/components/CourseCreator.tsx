@@ -254,6 +254,7 @@ export default function CourseCreator() {
               placeholder="e.g. Weekly, Twice per week"
               className="mt-2 w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
             />
+            <p className="px-1 mt-1 text-xs text-[var(--muted)]">You can enter multiple frequencies separated by commas (e.g., "Weekly, Twice per week").</p>
           </div>
 
           <div>
