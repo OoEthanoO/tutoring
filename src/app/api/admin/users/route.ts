@@ -146,7 +146,7 @@ export async function GET(request: NextRequest) {
     .order("created_at", { ascending: false });
 
   if (wantUnverified) {
-    query = query.is("email_verified_at", "is", null);
+    query = query.is("email_verified_at", null);
   } else if (!wantAll) {
     // default: only verified users
     query = query.not("email_verified_at", "is", null);
