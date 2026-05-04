@@ -4,6 +4,8 @@ export type ClientUser = {
   full_name: string | null;
   legal_name: string | null;
   role: string;
+  custom_role?: string | null;
+  custom_roles?: { role_level: string } | { role_level: string }[] | null;
   email_verified_at: string | null;
   discord_user_id: string | null;
   discord_username: string | null;

@@ -25,6 +25,7 @@ type AdminUser = {
   school?: string;
   strikeCount?: number;
   legalName?: string | null;
+  customRole?: string | null;
 };
 
 type StatusState = {
@@ -61,9 +62,8 @@ export default function AdminUserManager() {
   const [isFounder, setIsFounder] = useState(false);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
-  const [roleFilter, setRoleFilter] = useState<"all" | "student" | "executive">(
-    "all"
-  );
+  const [roleFilter, setRoleFilter] = useState<"all" | "student" | "executive">("all");
+  const [availableCustomRoles, setAvailableCustomRoles] = useState<{name: string}[]>([]);
   const [verifiedFilter, setVerifiedFilter] = useState<"all" | "verified" | "unverified">(
     "all"
   );
@@ -149,9 +149,14 @@ export default function AdminUserManager() {
       const auth = await getAuthContext();
       const user = auth.user;
       const role = resolveUserRole(user?.email ?? null, user?.role ?? null);
-      setIsFounder(role === "founder");
-      setImpersonatedUserId(auth.impersonatedUserId);
-      if (role !== "founder") {
+      if (role === "founder") {
+        setIsFounder(true);
+        setImpersonatedUserId(auth.impersonatedUserId);
+        const rolesRes = await fetch("/api/admin/roles");
+        if (rolesRes.ok) {
+          setAvailableCustomRoles((await rolesRes.json()).roles || []);
+        }
+      } else {
         setUsers([]);
       }
     };
@@ -603,6 +608,29 @@ export default function AdminUserManager() {
     const data = (await response.json()) as { user: AdminUser };
     setUsers((current) => current.map((user) => (user.id === data.user.id ? data.user : user)));
     setStatus({ type: "success", message: `Updated strike for ${data.user.fullName || data.user.email || "user"}.` });
+    setPendingId(null);
+  };
+
+  const updateCustomRole = async (userId: string, customRole: string | null) => {
+    setPendingId(userId);
+    setStatus({ type: "idle", message: "" });
+
+    const response = await fetch("/api/admin/users", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, customRole }),
+    });
+
+    if (!response.ok) {
+      const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+      setStatus({ type: "error", message: payload?.error ?? "Could not update custom role." });
+      setPendingId(null);
+      return;
+    }
+
+    const data = (await response.json()) as { user: AdminUser };
+    setUsers((current) => current.map((user) => (user.id === data.user.id ? data.user : user)));
+    setStatus({ type: "success", message: `Updated custom role for ${data.user.fullName || data.user.email || "user"}.` });
     setPendingId(null);
   };
 
@@ -1129,10 +1157,30 @@ export default function AdminUserManager() {
                         {isPending ? "Updating..." : "Make student"}
                       </button>
                     ) : null}
-                    <div className="space-y-2 rounded-xl border border-[var(--border)]/70 bg-[var(--surface)] px-3 py-3">
-                      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
-                        {user.role === "founder" ? "Founder settings" : "Executive settings"}
-                      </p>
+                    <div className="space-y-4 rounded-xl border border-[var(--border)]/70 bg-[var(--surface)] px-3 py-3">
+                      <div className="space-y-2">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+                          {user.role === "founder" ? "Founder settings" : "Executive settings"}
+                        </p>
+                        
+                        {availableCustomRoles.length > 0 && (
+                          <div className="flex flex-col gap-1 mt-2">
+                            <label className="text-xs text-[var(--muted)]">Custom Role</label>
+                            <select
+                              value={user.customRole || ""}
+                              onChange={(e) => updateCustomRole(user.id, e.target.value || null)}
+                              disabled={isPending}
+                              className="rounded-lg border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-xs text-[var(--foreground)] w-full max-w-xs focus:border-[var(--foreground)] focus:outline-none"
+                            >
+                              <option value="">None (Default)</option>
+                              {availableCustomRoles.map((r) => (
+                                <option key={r.name} value={r.name}>{r.name}</option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
+                      </div>
+                      
                       {user.role !== "founder" ? (
                         <div className="flex items-center gap-2">
                           <input

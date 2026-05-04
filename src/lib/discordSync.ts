@@ -51,6 +51,7 @@ type WebsiteUserRow = {
   discord_user_id: string | null;
   is_junior: boolean | null;
   strike_count?: number | null;
+  custom_roles?: { role_level: string } | { role_level: string }[] | null;
 };
 
 type CourseRow = {
@@ -1265,7 +1266,7 @@ export const runDiscordSync = async ({
     await Promise.all([
       adminClient
         .from("app_users")
-        .select("id, email, full_name, role, discord_user_id, is_junior, strike_count")
+        .select("id, email, full_name, role, discord_user_id, is_junior, strike_count, custom_roles(role_level)")
         .not("email_verified_at", "is", null),
       adminClient
         .from("courses")
@@ -1357,6 +1358,9 @@ export const runDiscordSync = async ({
     return created;
   };
 
+  const ceoRole = await ensureRole("CEO", false);
+  const cooRole = await ensureRole("COO", false);
+  const chiefExecutiveRole = await ensureRole("Chief Executive", false);
   const studentRole = await ensureRole("Student", false);
   const executiveRole = await ensureRole("Executive", false);
   const juniorExecutiveRole = await ensureRole("Junior Executive", false);
@@ -1369,6 +1373,9 @@ export const runDiscordSync = async ({
   const strikeRole = await ensureRole("Strike", false);
 
   const baseRoleIds = new Set([
+    ceoRole.id,
+    cooRole.id,
+    chiefExecutiveRole.id,
     studentRole.id,
     executiveRole.id,
     juniorExecutiveRole.id,
@@ -1467,11 +1474,28 @@ export const runDiscordSync = async ({
       continue;
     }
 
-    const websiteRole = resolveUserRole(websiteUser.email, websiteUser.role);
-    const shouldBeFounder = founderDiscordUserIds.has(memberId);
-    const shouldBeExecutive = websiteRole === "executive";
+    const customRoleVal = Array.isArray(websiteUser.custom_roles)
+      ? websiteUser.custom_roles[0]?.role_level
+      : (websiteUser.custom_roles)?.role_level;
+    const websiteRole = resolveUserRole(websiteUser.email, websiteUser.role, customRoleVal);
+    const isHardcodedFounder = founderDiscordUserIds.has(memberId) && !customRoleVal;
 
-    const expectedNick = shouldBeExecutive || shouldBeFounder ? null : (websiteUser.full_name || null);
+    let targetHierarchyRoleId = studentRole.id;
+    if (isHardcodedFounder || websiteRole === "founder") targetHierarchyRoleId = founderRole.id;
+    else if (websiteRole === "CEO") targetHierarchyRoleId = ceoRole.id;
+    else if (websiteRole === "COO") targetHierarchyRoleId = cooRole.id;
+    else if (websiteRole === "Chief Executive") targetHierarchyRoleId = chiefExecutiveRole.id;
+    else if (websiteRole === "Executive" || websiteRole === "executive") targetHierarchyRoleId = websiteUser.is_junior ? juniorExecutiveRole.id : executiveRole.id;
+    else if (websiteRole === "Junior Executive") targetHierarchyRoleId = juniorExecutiveRole.id;
+
+    const hierarchyRoleIds = [
+      ceoRole.id, cooRole.id, chiefExecutiveRole.id, founderRole.id,
+      executiveRole.id, juniorExecutiveRole.id, studentRole.id
+    ];
+
+    const isExecTier = [ceoRole.id, cooRole.id, chiefExecutiveRole.id, executiveRole.id, juniorExecutiveRole.id].includes(targetHierarchyRoleId);
+    const expectedNick = targetHierarchyRoleId !== studentRole.id ? null : (websiteUser.full_name || null);
+
     if (expectedNick !== (member.nick ?? null)) {
       try {
         await apiClient.updateGuildMember(discordGuildId, memberId, { nick: expectedNick });
@@ -1486,110 +1510,17 @@ export const runDiscordSync = async ({
       }
     }
 
-    if (shouldBeFounder) {
-      if (!roleSet.has(founderRole.id)) {
-        await addRoleToMember(
-          memberId,
-          founderRole.id,
-          roleSet,
-          "baseRoleAddedCount"
-        );
-      }
-
-      if (roleSet.has(executiveRole.id)) {
-        await addRoleToMember(
-          memberId,
-          executiveRole.id,
-          roleSet,
-          "baseRoleRemovedCount",
-          true
-        );
-      }
-
-      if (roleSet.has(studentRole.id)) {
-        await addRoleToMember(
-          memberId,
-          studentRole.id,
-          roleSet,
-          "baseRoleRemovedCount",
-          true
-        );
-      }
-
-      if (roleSet.has(juniorExecutiveRole.id)) {
-        await addRoleToMember(
-          memberId,
-          juniorExecutiveRole.id,
-          roleSet,
-          "baseRoleRemovedCount",
-          true
-        );
-      }
-      continue;
+    if (!roleSet.has(targetHierarchyRoleId)) {
+      await addRoleToMember(memberId, targetHierarchyRoleId, roleSet, "baseRoleAddedCount");
     }
 
-    if (shouldBeExecutive) {
-      if (websiteUser.is_junior) {
-        // Junior Executive logic
-        if (!roleSet.has(juniorExecutiveRole.id)) {
-          await addRoleToMember(
-            memberId,
-            juniorExecutiveRole.id,
-            roleSet,
-            "baseRoleAddedCount"
-          );
-        }
-        // Remove Executive role if it exists for a Junior
-        if (roleSet.has(executiveRole.id)) {
-          await addRoleToMember(
-            memberId,
-            executiveRole.id,
-            roleSet,
-            "baseRoleRemovedCount",
-            true
-          );
-        }
-      } else {
-        // Regular Executive logic
-        if (!roleSet.has(executiveRole.id)) {
-          await addRoleToMember(
-            memberId,
-            executiveRole.id,
-            roleSet,
-            "baseRoleAddedCount"
-          );
-        }
-        // Remove Junior Executive role if it exists for a regular Executive
-        if (roleSet.has(juniorExecutiveRole.id)) {
-          await addRoleToMember(
-            memberId,
-            juniorExecutiveRole.id,
-            roleSet,
-            "baseRoleRemovedCount",
-            true
-          );
-        }
+    for (const rId of hierarchyRoleIds) {
+      if (rId !== targetHierarchyRoleId && roleSet.has(rId)) {
+        await addRoleToMember(memberId, rId, roleSet, "baseRoleRemovedCount", true);
       }
+    }
 
-      if (roleSet.has(studentRole.id)) {
-        await addRoleToMember(
-          memberId,
-          studentRole.id,
-          roleSet,
-          "baseRoleRemovedCount",
-          true
-        );
-      }
-      if (roleSet.has(founderRole.id)) {
-        await addRoleToMember(
-          memberId,
-          founderRole.id,
-          roleSet,
-          "baseRoleRemovedCount",
-          true
-        );
-      }
-
+    if (isExecTier) {
       const strikeCount = websiteUser.strike_count || 0;
       if (strikeCount > 0) {
         if (!roleSet.has(strikeRole.id)) {
@@ -1598,51 +1529,10 @@ export const runDiscordSync = async ({
       } else if (roleSet.has(strikeRole.id)) {
         await addRoleToMember(memberId, strikeRole.id, roleSet, "baseRoleRemovedCount", true);
       }
-
-      continue;
-    }
-
-    if (roleSet.has(juniorExecutiveRole.id)) {
-      await addRoleToMember(
-        memberId,
-        juniorExecutiveRole.id,
-        roleSet,
-        "baseRoleRemovedCount",
-        true
-      );
-    }
-
-    if (roleSet.has(strikeRole.id)) {
-      await addRoleToMember(memberId, strikeRole.id, roleSet, "baseRoleRemovedCount", true);
-    }
-
-    if (!roleSet.has(studentRole.id)) {
-      await addRoleToMember(
-        memberId,
-        studentRole.id,
-        roleSet,
-        "baseRoleAddedCount"
-      );
-    }
-
-    if (roleSet.has(executiveRole.id)) {
-      await addRoleToMember(
-        memberId,
-        executiveRole.id,
-        roleSet,
-        "baseRoleRemovedCount",
-        true
-      );
-    }
-
-    if (roleSet.has(founderRole.id)) {
-      await addRoleToMember(
-        memberId,
-        founderRole.id,
-        roleSet,
-        "baseRoleRemovedCount",
-        true
-      );
+    } else {
+      if (roleSet.has(strikeRole.id)) {
+        await addRoleToMember(memberId, strikeRole.id, roleSet, "baseRoleRemovedCount", true);
+      }
     }
   }
 

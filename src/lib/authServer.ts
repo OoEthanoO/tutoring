@@ -11,6 +11,8 @@ export type SessionUser = {
   full_name: string | null;
   legal_name: string | null;
   role: string;
+  custom_role: string | null;
+  custom_roles?: { role_level: string } | { role_level: string }[] | null;
   email_verified_at: string | null;
   discord_user_id: string | null;
   discord_username: string | null;
@@ -47,7 +49,7 @@ export const getSessionUser = async (token?: string | null) => {
   const { data } = await adminClient
     .from("app_sessions")
     .select(
-      "user:app_users(id, email, full_name, legal_name, role, email_verified_at, discord_user_id, discord_username, discord_connected_at, is_junior, grade, school), expires_at"
+      "user:app_users(id, email, full_name, legal_name, role, custom_role, custom_roles(role_level), email_verified_at, discord_user_id, discord_username, discord_connected_at, is_junior, grade, school, grade, school), expires_at"
     )
     .eq("token_hash", tokenHash)
     .gt("expires_at", now)
@@ -90,7 +92,7 @@ export const getRequestUser = async (
   const { data: impersonatedUser } = await adminClient
     .from("app_users")
     .select(
-      "id, email, full_name, legal_name, role, email_verified_at, discord_user_id, discord_username, discord_connected_at, is_junior"
+      "id, email, full_name, legal_name, role, custom_role, custom_roles(role_level), email_verified_at, discord_user_id, discord_username, discord_connected_at, is_junior, grade, school"
     )
     .eq("id", impersonatedUserId)
     .maybeSingle();
@@ -132,7 +134,7 @@ export const getRequestAuthContext = async (
   const { data: impersonatedUser } = await adminClient
     .from("app_users")
     .select(
-      "id, email, full_name, legal_name, role, email_verified_at, discord_user_id, discord_username, discord_connected_at, is_junior"
+      "id, email, full_name, legal_name, role, custom_role, custom_roles(role_level), email_verified_at, discord_user_id, discord_username, discord_connected_at, is_junior, grade, school"
     )
     .eq("id", impersonatedUserId)
     .maybeSingle();

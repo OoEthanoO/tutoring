@@ -10,6 +10,7 @@ import EnrolledCoursesMenu from "@/components/EnrolledCoursesMenu";
 import HomeMenu from "@/components/HomeMenu";
 import ManageEnrollmentsMenu from "@/components/ManageEnrollmentsMenu";
 import ManageMyCoursesMenu from "@/components/ManageMyCoursesMenu";
+import RolesManagerMenu from "@/components/RolesManagerMenu";
 import MyClassesMenu from "@/components/MyClassesMenu";
 import HelpMenu from "@/components/HelpMenu";
 import SponsorsMenu from "@/components/SponsorsMenu";
@@ -33,6 +34,7 @@ type MenuKey =
   | "events"
   | "forms"
   | "trash"
+  | "roles_manager"
   | "sponsors";
 
 type MenuItem = {
@@ -51,6 +53,7 @@ export default function DashboardMenus() {
   const [hasForms, setHasForms] = useState(false);
   const [hasPendingRSVP, setHasPendingRSVP] = useState(false);
   const [trashCount, setTrashCount] = useState(0);
+  const [currentUser, setCurrentUser] = useState<any>(null);
   const router = useRouter();
   const searchParams = useSearchParams();
   const deepLinkedEventId = searchParams.get("event_id");
@@ -80,6 +83,7 @@ export default function DashboardMenus() {
   useEffect(() => {
     const load = async () => {
       const user = await getCurrentUser();
+      setCurrentUser(user);
       if (!user) {
         setRole(null);
         setActive("home");
@@ -89,7 +93,8 @@ export default function DashboardMenus() {
 
       const resolvedRole = resolveUserRole(
         user.email,
-        user.role ?? null
+        user.role ?? null,
+        Array.isArray(user.custom_roles) ? user.custom_roles[0]?.role_level : user.custom_roles?.role_level ?? null
       );
       setRole(resolvedRole);
       setIsAuthResolved(true);
@@ -306,12 +311,16 @@ export default function DashboardMenus() {
       items.push({ key: "trash", label: "Trash" });
     }
 
+    if (currentUser?.email === "ethanyanxu@icloud.com") {
+      items.push({ key: "roles_manager", label: "Roles" });
+    }
+
     items.push({ key: "help", label: "Help" });
 
     items.push({ key: "sponsors", label: "For Sponsors" });
 
     return items;
-  }, [role, hasUpcomingEvents, hasForms, trashCount, active]);
+  }, [role, hasUpcomingEvents, hasForms, trashCount, active, currentUser]);
 
   const activeMenu: MenuKey = menus.some((item) => item.key === active)
     ? active
@@ -387,6 +396,7 @@ export default function DashboardMenus() {
       {activeMenu === "events" ? <EventsMenu /> : null}
       {activeMenu === "forms" ? <FormsMenu /> : null}
       {activeMenu === "trash" ? <ManageMyCoursesMenu isTrashMode={true} /> : null}
+      {activeMenu === "roles_manager" ? <RolesManagerMenu /> : null}
       {activeMenu === "sponsors" ? <SponsorsMenu /> : null}
     </div>
   );

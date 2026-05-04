@@ -1,4 +1,4 @@
-export type UserRole = "founder" | "executive" | "student";
+export type UserRole = "CEO" | "COO" | "Chief Executive" | "founder" | "Executive" | "executive" | "Junior Executive" | "Student" | "student";
 
 const fallbackFounderEmails = [
   "ethanyanxu@icloud.com",
@@ -15,7 +15,6 @@ export const resolveRoleByEmail = (email?: string | null): UserRole => {
   if (!email) {
     return "student";
   }
-
   return founderEmails.some(
     (founder) => email.toLowerCase() === founder.toLowerCase()
   )
@@ -27,37 +26,50 @@ const normalizeRole = (role?: string | null): UserRole | null => {
   if (!role) {
     return null;
   }
-
   const value = role.toLowerCase();
-
-  if (
-    value === "founder" ||
-    value === "executive" ||
-    value === "student" ||
-    value === "tutor"
-  ) {
-    return (value === "tutor" ? "executive" : value) as UserRole;
-  }
+  
+  if (value === "ceo") return "CEO";
+  if (value === "coo") return "COO";
+  if (value === "chief executive") return "Chief Executive";
+  if (value === "executive") return "executive";
+  if (value === "junior executive") return "Junior Executive";
+  if (value === "founder") return "founder";
+  if (value === "student") return "student";
+  if (value === "tutor") return "executive";
 
   return null;
 };
 
 export const resolveUserRole = (
   email?: string | null,
-  roleValue?: string | null
+  roleValue?: string | null,
+  customRoleLevel?: string | null
 ): UserRole => {
+  if (customRoleLevel) {
+    const matched = normalizeRole(customRoleLevel);
+    if (matched) {
+       // if it's a valid level, we might just return it, though we need to make sure ethanyanxu still has founder access implicitly or CEO access
+       // let's just return the custom level
+       const emailRole = resolveRoleByEmail(email);
+       if (emailRole === 'founder' && (matched === 'Student' || matched === 'student' || matched === 'executive' || matched === 'Executive' || matched === 'Junior Executive')) {
+         return 'founder'; // Don't downgrade hardcoded founders!
+       }
+       return matched;
+    }
+  }
+
   const emailRole = resolveRoleByEmail(email);
   if (emailRole === "founder") {
     return "founder";
   }
 
   const role = normalizeRole(roleValue);
-  if (role === "executive") {
-    return "executive";
+  if (role) {
+    return role;
   }
 
   return "student";
 };
 
 export const canManageCourses = (role: UserRole): boolean =>
-  role === "founder" || role === "executive";
+  role === "founder" || role === "CEO" || role === "COO" || role === "Chief Executive" || role === "executive" || role === "Executive";
