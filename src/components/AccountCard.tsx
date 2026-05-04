@@ -12,6 +12,7 @@ type AccountInfo = {
   discordUserId: string | null;
   discordUsername: string | null;
   isJunior: boolean;
+  customRole: string | null;
 };
 
 export default function AccountCard({ onClick }: { onClick?: () => void }) {
@@ -42,6 +43,7 @@ export default function AccountCard({ onClick }: { onClick?: () => void }) {
         discordUserId,
         discordUsername,
         isJunior: user.is_junior,
+        customRole: user.custom_role ?? null,
       });
     };
 
@@ -80,7 +82,7 @@ export default function AccountCard({ onClick }: { onClick?: () => void }) {
 
       <div className="flex items-center gap-2">
         <span className="inline-flex h-6 items-center px-1 text-[10px] font-medium uppercase text-[var(--muted)] border-0">
-          {isExecutive(account.role as any) ? (account.isJunior ? "JUNIOR EXEC" : "EXEC") : account.role}
+          {account.customRole || (isExecutive(account.role as any) ? (account.isJunior ? "JUNIOR EXEC" : "EXEC") : account.role.toUpperCase())}
         </span>
         {account.isImpersonating ? (
           <span className="inline-flex h-6 items-center rounded-md bg-amber-500/10 px-2 text-[10px] font-medium uppercase text-amber-600">
