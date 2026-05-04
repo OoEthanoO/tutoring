@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { getCurrentUser, onAuthChange } from "@/lib/authClient";
-import { resolveUserRole } from "@/lib/roles";
+import { isFounder, resolveUserRole } from "@/lib/roles";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import CourseCreator from "./CourseCreator";
@@ -36,7 +36,7 @@ const dayOrder: Record<string, number> = {
 
 export default function CourseRequestsMenu() {
   const [role, setRole] = useState<string | null>(null);
-  const [isFounder, setIsFounder] = useState(false);
+  const [isFounderAccess, setIsFounderAccess] = useState(false);
   const [requests, setRequests] = useState<RequestRecord[]>([]);
   const [isCreatorModalOpen, setIsCreatorModalOpen] = useState(false);
   const [editData, setEditData] = useState<any>(null);
@@ -57,14 +57,14 @@ export default function CourseRequestsMenu() {
     const load = async () => {
       const user = await getCurrentUser();
       if (!user) {
-        setIsFounder(false);
+        setIsFounderAccess(false);
         setIsLoading(false);
         return;
       }
 
       const resolvedRole = resolveUserRole(user.email, user.role ?? null);
       setRole(resolvedRole);
-      setIsFounder(resolvedRole === "founder");
+      setIsFounderAccess(isFounder(resolvedRole as any));
 
       fetchRequests();
     };
@@ -267,7 +267,7 @@ export default function CourseRequestsMenu() {
   const otherRequests = requests.filter(r => !(r.status === "in_review" || r.status === "pending"));
 
   // Unified page: founders see pending (in_review) + history; non-founders see their own history (GET already filters)
-  const displayRequests = isFounder
+  const displayRequests = isFounderAccess
     ? { pending: inReviewRequests, history: otherRequests }
     : { pending: [], history: requests };
 
@@ -276,7 +276,7 @@ export default function CourseRequestsMenu() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-[var(--foreground)]">Course Requests</h1>
-          {isFounder ? (
+          {isFounderAccess ? (
             <p className="text-sm text-[var(--muted)]">Manage and review incoming course creation requests.</p>
           ) : (
             <p className="text-sm text-[var(--muted)]">Submit and track your course creation requests.</p>
@@ -327,7 +327,7 @@ export default function CourseRequestsMenu() {
         </div>
       )}
 
-      {isFounder && displayRequests.pending.length > 0 && (
+      {isFounderAccess && displayRequests.pending.length > 0 && (
         <section className="space-y-4">
           <h2 className="text-lg font-semibold text-[var(--foreground)]">Pending Review</h2>
           <div className="grid gap-4">
@@ -338,7 +338,7 @@ export default function CourseRequestsMenu() {
                     <h3 className="font-semibold text-[var(--foreground)]">{req.title}</h3>
                     <p className="text-sm text-[var(--muted)]">From {req.app_users?.full_name || req.app_users?.email}</p>
                   </div>
-                  {isFounder ? (
+                  {isFounderAccess ? (
                     <select 
                       value={req.status}
                       onChange={(e) => changeStatus(req.id, e.target.value)}
@@ -484,7 +484,7 @@ export default function CourseRequestsMenu() {
                     </div>
                   </form>
                 ) : (
-                  isFounder && (
+                  isFounderAccess && (
                     <div className="flex flex-col gap-2">
                       <div className="flex gap-2">
                         <button onClick={() => setApprovingId(req.id)} disabled={actioningId === req.id} className="flex-1 rounded-full border border-emerald-600 px-4 py-2 text-sm font-semibold text-emerald-600 transition hover:bg-emerald-50 disabled:opacity-70">
@@ -527,11 +527,11 @@ export default function CourseRequestsMenu() {
                 <div className="flex items-start justify-between">
                   <div>
                     <h3 className="font-semibold text-[var(--foreground)]">{req.title}</h3>
-                    {isFounder && (
+                    {isFounderAccess && (
                       <p className="text-sm text-[var(--muted)]">From {req.app_users?.full_name || req.app_users?.email}</p>
                     )}
                   </div>
-                  {isFounder ? (
+                  {isFounderAccess ? (
                     <select 
                       value={req.status}
                       onChange={(e) => changeStatus(req.id, e.target.value)}
@@ -625,7 +625,7 @@ export default function CourseRequestsMenu() {
 
       {requests.length === 0 && (
         <div className="text-center text-sm text-[var(--muted)] py-8">
-          {isFounder ? "No requests to review." : "No course requests yet."}
+          {isFounderAccess ? "No requests to review." : "No course requests yet."}
         </div>
       )}
     </div>

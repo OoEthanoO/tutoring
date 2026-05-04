@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { resolveUserRole, founderEmails } from "@/lib/roles";
+import { resolveUserRole, founderEmails, isFounder, isExecutive } from "@/lib/roles";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
@@ -67,15 +67,15 @@ export async function GET() {
     })
     .filter(
       (user) =>
-        (user.role === "founder" || user.role === "executive") &&
+        isExecutive(user.role as any) &&
         (!user.isJunior || activeCreatorIds.has(user.id)) &&
         user.email !== "jingqu2018@gmail.com"
     )
     .sort((a, b) => {
-      if (a.role === "founder" && b.role !== "founder") {
+      if (isFounder(a.role as any) && !isFounder(b.role as any)) {
         return -1;
       }
-      if (b.role === "founder" && a.role !== "founder") {
+      if (isFounder(b.role as any) && !isFounder(a.role as any)) {
         return 1;
       }
       const promotedA = new Date(a.promotedAt).getTime();

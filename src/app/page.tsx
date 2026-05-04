@@ -4,7 +4,7 @@ import AuthStatusActions from "@/components/AuthStatusActions";
 import DashboardMenus from "@/components/DashboardMenus";
 import Footer from "@/components/Footer";
 import { getSessionUser } from "@/lib/authServer";
-import { resolveUserRole } from "@/lib/roles";
+import { isFounder, resolveUserRole } from "@/lib/roles";
 import { getMaintenanceMode } from "@/lib/siteSettings";
 
 export default async function Home() {
@@ -12,9 +12,9 @@ export default async function Home() {
   const token = cookieStore.get("session")?.value;
   const user = await getSessionUser(token);
   const role = resolveUserRole(user?.email ?? null, user?.role ?? null);
-  const isFounder = role === "founder";
+  const isFounderUser = isFounder(role as any);
   const maintenanceEnabled = await getMaintenanceMode();
-  const showMaintenance = maintenanceEnabled && !isFounder;
+  const showMaintenance = maintenanceEnabled && !isFounderUser;
 
   if (showMaintenance) {
     return (
@@ -43,7 +43,7 @@ export default async function Home() {
   return (
     <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
       <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-6 px-6 py-10">
-        {maintenanceEnabled && isFounder ? (
+        {maintenanceEnabled && isFounderUser ? (
           <div className="rounded-2xl border-2 border-amber-500 bg-amber-50 px-5 py-4 text-amber-900 dark:bg-amber-950/30 dark:text-amber-400">
             <p className="text-xs font-semibold uppercase tracking-[0.2em]">
               Maintenance Mode Active

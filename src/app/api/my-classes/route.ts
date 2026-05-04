@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getRequestUser } from "@/lib/authServer";
-import { resolveUserRole } from "@/lib/roles";
+import { isFounder, resolveUserRole } from "@/lib/roles";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
   });
 
   const role = resolveUserRole(user.email, user.role ?? null);
-  const isFounder = role === "founder";
+  const isFounderUser = isFounder(role as any);
 
   const nowMs = Date.now();
   const upcomingClasses: any[] = [];
@@ -74,7 +74,7 @@ export async function GET(request: NextRequest) {
     )
     .is("deleted_at", null);
 
-  if (!isFounder) {
+  if (!isFounderUser) {
     query = query.eq("created_by", user.id);
   }
 

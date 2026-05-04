@@ -7,7 +7,7 @@ import {
   getAuthContext,
   onAuthChange,
 } from "@/lib/authClient";
-import { resolveUserRole } from "@/lib/roles";
+import { isExecutive, isFounder, resolveUserRole } from "@/lib/roles";
 import AdminBannedEmails from "@/components/AdminBannedEmails";
 
 type AdminUser = {
@@ -59,7 +59,7 @@ type StudentApplication = {
 
 export default function AdminUserManager() {
   const router = useRouter();
-  const [isFounder, setIsFounder] = useState(false);
+  const [isFounderAccess, setIsFounderAccess] = useState(false);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<"all" | "student" | "executive">("all");
@@ -149,8 +149,8 @@ export default function AdminUserManager() {
       const auth = await getAuthContext();
       const user = auth.user;
       const role = resolveUserRole(user?.email ?? null, user?.role ?? null);
-      if (role === "founder") {
-        setIsFounder(true);
+      setIsFounderAccess(isFounder(role as any));
+      if (isFounder(role as any)) {
         setImpersonatedUserId(auth.impersonatedUserId);
         const rolesRes = await fetch("/api/admin/roles");
         if (rolesRes.ok) {
@@ -167,7 +167,7 @@ export default function AdminUserManager() {
   }, []);
 
   useEffect(() => {
-    if (!isFounder) {
+    if (!isFounderAccess) {
       return;
     }
 
@@ -233,10 +233,10 @@ export default function AdminUserManager() {
     };
 
     fetchUsers();
-  }, [isFounder, verifiedFilter]);
+  }, [isFounderAccess, verifiedFilter]);
 
   useEffect(() => {
-    if (!isFounder) {
+    if (!isFounderAccess) {
       return;
     }
 
@@ -250,10 +250,10 @@ export default function AdminUserManager() {
     };
 
     fetchSchools();
-  }, [isFounder]);
+  }, [isFounderAccess]);
 
   useEffect(() => {
-    if (!isFounder) {
+    if (!isFounderAccess) {
       return;
     }
 
@@ -267,10 +267,10 @@ export default function AdminUserManager() {
     };
 
     loadMaintenance();
-  }, [isFounder]);
+  }, [isFounderAccess]);
 
   useEffect(() => {
-    if (!isFounder) {
+    if (!isFounderAccess) {
       return;
     }
 
@@ -293,7 +293,7 @@ export default function AdminUserManager() {
     };
 
     fetchFeedback();
-  }, [isFounder]);
+  }, [isFounderAccess]);
 
   const filteredUsers = useMemo(() => {
     const normalizedSearch = searchQuery.trim().toLowerCase();
@@ -349,7 +349,7 @@ export default function AdminUserManager() {
     const target = users.find((user) => user.id === userId);
     const name = target?.fullName || target?.email || "this user";
     const action =
-      role === "executive"
+      isExecutive(role as any)
         ? `Promote ${name} to executive?`
         : `Demote ${name} to student?`;
     if (!window.confirm(action)) {
@@ -928,7 +928,7 @@ export default function AdminUserManager() {
     setIsSyncingNames(false);
   };
 
-  if (!isFounder) {
+  if (!isFounderAccess) {
     return null;
   }
 
@@ -1088,7 +1088,7 @@ export default function AdminUserManager() {
                   <p className="text-sm font-semibold text-[var(--foreground)]">
                     {user.fullName || "Unnamed user"}
                   </p>
-                  {user.legalName && (user.role === "executive" || user.role === "founder") ? (
+                  {user.legalName && isExecutive(user.role as any) ? (
                     <span className="rounded bg-[var(--border)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--foreground)]">
                       Legal: {user.legalName}
                     </span>
@@ -1106,7 +1106,7 @@ export default function AdminUserManager() {
                       : "Connected"
                     : "Not connected"}
                 </p>
-                {user.role === "executive" ? (
+                {isExecutive(user.role as any) ? (
                   <p className="text-xs text-[var(--muted)]">
                     Promoted: {formatPromotedDate(user.tutorPromotedAt)}
                   </p>
@@ -1118,7 +1118,7 @@ export default function AdminUserManager() {
                 ) : null}
               </div>
               <div className="flex flex-col gap-2">
-                {user.role !== "founder" ? (
+                {!isFounder(user.role as any) ? (
                   <button
                     type="button"
                     disabled={isPending}
@@ -1136,7 +1136,7 @@ export default function AdminUserManager() {
                 >
                   {isPending ? "Working..." : "Transfer Discord here"}
                 </button>
-                {user.role !== "executive" && user.role !== "founder" ? (
+                {!isExecutive(user.role as any) && !isFounder(user.role as any) ? (
                   <button
                     type="button"
                     disabled={isPending}
@@ -1147,7 +1147,7 @@ export default function AdminUserManager() {
                   </button>
                 ) : (
                   <>
-                    {user.role !== "founder" ? (
+                    {!isFounder(user.role as any) ? (
                       <button
                         type="button"
                         disabled={isPending}
@@ -1160,7 +1160,7 @@ export default function AdminUserManager() {
                     <div className="space-y-4 rounded-xl border border-[var(--border)]/70 bg-[var(--surface)] px-3 py-3">
                       <div className="space-y-2">
                         <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
-                          {user.role === "founder" ? "Founder settings" : "Executive settings"}
+                          {isFounder(user.role as any) ? "Founder settings" : "Executive settings"}
                         </p>
                         
                         {availableCustomRoles.length > 0 && (

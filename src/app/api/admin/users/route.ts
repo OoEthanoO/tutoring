@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { resolveUserRole } from "@/lib/roles";
+import { isExecutive, isFounder, resolveUserRole } from "@/lib/roles";
 import { getRequestUser } from "@/lib/authServer";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
@@ -90,7 +90,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
-  if (resolveUserRole(user.email, user.role ?? null) !== "founder") {
+  if (!isFounder(resolveUserRole(user.email, user.role ?? null))) {
     return NextResponse.json({ error: "Forbidden." }, { status: 403 });
   }
 
@@ -212,7 +212,7 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
-  if (resolveUserRole(user.email, user.role ?? null) !== "founder") {
+  if (!isFounder(resolveUserRole(user.email, user.role ?? null))) {
     return NextResponse.json({ error: "Forbidden." }, { status: 403 });
   }
 
@@ -256,7 +256,7 @@ export async function PATCH(request: NextRequest) {
     );
   }
 
-  if (body.role && body.role !== "executive" && body.role !== "tutor" && body.role !== "student") {
+  if (body.role && !isExecutive(body.role as any) && body.role !== "tutor" && body.role !== "student") {
     return NextResponse.json({ error: "Invalid role." }, { status: 400 });
   }
 
@@ -352,10 +352,10 @@ export async function PATCH(request: NextRequest) {
 
   const existingRole = existingUser?.data?.role ?? null;
   const isPromotingToTutor =
-    (body.role === "executive" || body.role === "tutor") && (existingRole !== "executive" && existingRole !== "tutor");
+    isExecutive(body.role as any) && !isExecutive(existingRole as any) && existingRole !== "tutor";
 
   const isDemotingFromTutor =
-    body.role === "student" && (existingRole === "tutor" || existingRole === "executive");
+    body.role === "student" && (existingRole === "tutor" || isExecutive(existingRole as any));
 
   const shouldUpdatePromotedAt = body.tutorPromotedAt !== undefined;
   const normalizedPromotedAt =
@@ -364,7 +364,7 @@ export async function PATCH(request: NextRequest) {
   const updatePayload =
     body.role || shouldUpdatePromotedAt || body.isJunior !== undefined || body.grade !== undefined || body.school !== undefined || body.strikeCount !== undefined || body.customRole !== undefined
       ? {
-        role: body.role === "executive" ? "tutor" : (body.role ?? existingRole ?? "student"),
+        role: isExecutive(body.role as any) ? "tutor" : (body.role ?? existingRole ?? "student"),
         tutor_promoted_at: isPromotingToTutor
           ? new Date().toISOString()
           : shouldUpdatePromotedAt
@@ -494,7 +494,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
-  if (resolveUserRole(user.email, user.role ?? null) !== "founder") {
+  if (!isFounder(resolveUserRole(user.email, user.role ?? null))) {
     return NextResponse.json({ error: "Forbidden." }, { status: 403 });
   }
 
@@ -630,7 +630,7 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
-  if (resolveUserRole(user.email, user.role ?? null) !== "founder") {
+  if (!isFounder(resolveUserRole(user.email, user.role ?? null))) {
     return NextResponse.json({ error: "Forbidden." }, { status: 403 });
   }
 

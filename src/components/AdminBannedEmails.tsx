@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { resolveUserRole } from "@/lib/roles";
+import { isFounder, resolveUserRole } from "@/lib/roles";
 import { getAuthContext, onAuthChange } from "@/lib/authClient";
 
 type BannedEmail = {
@@ -15,7 +15,7 @@ type StatusState = {
 };
 
 export default function AdminBannedEmails() {
-  const [isFounder, setIsFounder] = useState(false);
+  const [isFounderAccess, setIsFounderAccess] = useState(false);
   const [bannedEmails, setBannedEmails] = useState<BannedEmail[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [emailInput, setEmailInput] = useState("");
@@ -27,14 +27,14 @@ export default function AdminBannedEmails() {
       const auth = await getAuthContext();
       const user = auth.user;
       const role = resolveUserRole(user?.email ?? null, user?.role ?? null);
-      setIsFounder(role === "founder");
+      setIsFounderAccess(isFounder(role as any));
     };
     load();
     return onAuthChange(load);
   }, []);
 
   useEffect(() => {
-    if (!isFounder) return;
+    if (!isFounderAccess) return;
 
     const fetchBannedEmails = async () => {
       setIsLoading(true);
@@ -54,7 +54,7 @@ export default function AdminBannedEmails() {
     };
 
     fetchBannedEmails();
-  }, [isFounder]);
+  }, [isFounderAccess]);
 
   const handleAddEmail = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -122,7 +122,7 @@ export default function AdminBannedEmails() {
     }
   };
 
-  if (!isFounder) return null;
+  if (!isFounderAccess) return null;
 
   return (
     <div className="mt-8 rounded-xl border border-[var(--border)] bg-[var(--background)] p-6 shadow-sm">

@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { canManageCourses, resolveUserRole } from "@/lib/roles";
+import { canManageCourses, isFounder, resolveUserRole } from "@/lib/roles";
 import { getRequestUser } from "@/lib/authServer";
 import { relabelClassesForCourse } from "@/lib/classTools";
 
@@ -92,9 +92,9 @@ export async function PATCH(
     );
   }
 
-  const isFounder = role === "founder";
+  const isFounderUser = isFounder(role as any);
   const isOwner = courseRow.created_by === user.id;
-  if (!isFounder && !isOwner) {
+  if (!isFounderUser && !isOwner) {
     return NextResponse.json({ error: "Forbidden." }, { status: 403 });
   }
 
@@ -105,7 +105,7 @@ export async function PATCH(
   if (nextStartsAt) {
     updates.starts_at = nextStartsAt;
   }
-  if (role === "founder" && typeof body?.durationHours === "number") {
+  if (isFounder(role) && typeof body?.durationHours === "number") {
     updates.duration_hours = body.durationHours;
   }
 
@@ -145,7 +145,7 @@ export async function PATCH(
       if (update.startsAt) {
         bulkUpdatePayload.starts_at = new Date(update.startsAt).toISOString();
       }
-      if (role === "founder" && typeof update.durationHours === "number") {
+      if (isFounder(role) && typeof update.durationHours === "number") {
         bulkUpdatePayload.duration_hours = update.durationHours;
       }
 
@@ -234,9 +234,9 @@ export async function DELETE(
     );
   }
 
-  const isFounder = role === "founder";
+  const isFounderUser = isFounder(role as any);
   const isOwner = courseRow.created_by === user.id;
-  if (!isFounder && !isOwner) {
+  if (!isFounderUser && !isOwner) {
     return NextResponse.json({ error: "Forbidden." }, { status: 403 });
   }
 

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { getCurrentUser } from "@/lib/authClient";
-import { resolveUserRole } from "@/lib/roles";
+import { isExecutive, isFounder, resolveUserRole } from "@/lib/roles";
 
 type FormResponse = {
   user_id: string;
@@ -81,7 +81,7 @@ export default function FormsMenu() {
   };
 
   useEffect(() => {
-    if (role === "founder" || role === "executive" || role === "tutor") {
+    if (role && isExecutive(role as any)) {
       fetchForms();
     }
   }, [role]);
@@ -201,11 +201,11 @@ export default function FormsMenu() {
     );
   }
 
-  const isFounder = role === "founder";
+  const isFounderUser = role && isFounder(role as any);
 
   return (
     <div className="space-y-8">
-      {isFounder && (
+      {isFounderUser && (
         <section className="space-y-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6">
           <header className="space-y-1">
             <div className="flex items-center justify-between">
@@ -363,7 +363,7 @@ export default function FormsMenu() {
                       </p>
                     </div>
                   </div>
-                  {isFounder && (
+                  {isFounderUser && (
                     <div className="flex gap-2 opacity-0 transition-opacity group-hover:opacity-100">
                       <button
                         onClick={() => copyFormLink(form.id)}
@@ -412,7 +412,7 @@ export default function FormsMenu() {
                         >
                           {opt}
                         </button>
-                        {isFounder && (
+                        {isFounderUser && (
                           <div className="w-20 text-right">
                             <button
                               onClick={() => {
@@ -436,7 +436,7 @@ export default function FormsMenu() {
                   })}
                 </div>
 
-                {isFounder && form.all_executives && (
+                {isFounderUser && form.all_executives && (
                   <div className="mt-6 border-t border-[var(--border)] pt-4">
                     <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-[var(--muted)]">
                       <span>Response Rate</span>

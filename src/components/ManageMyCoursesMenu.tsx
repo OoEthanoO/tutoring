@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { getCurrentUser, onAuthChange } from "@/lib/authClient";
-import { canManageCourses, resolveUserRole, type UserRole } from "@/lib/roles";
+import { canManageCourses, isExecutive, isFounder, resolveUserRole, type UserRole } from "@/lib/roles";
 import { setHasUnsavedData } from "@/lib/unsavedData";
 import { MarkdownText } from "@/lib/parseMarkdown";
 
@@ -260,7 +260,7 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
   }, [role, isTrashMode]);
 
   useEffect(() => {
-    if (role !== "executive" && role !== "founder") {
+    if (!isExecutive(role)) {
       return;
     }
 
@@ -294,7 +294,7 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
   }, [role]);
 
   useEffect(() => {
-    if (role !== "founder") {
+    if (!isFounder(role)) {
       return;
     }
 
@@ -308,7 +308,7 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
         users: { id: string; fullName: string; email: string; role: string }[];
       };
       const tutors = (data.users ?? [])
-        .filter((u) => u.role === "executive" || u.role === "founder")
+        .filter((u) => isExecutive(u.role as any))
         .map((u) => ({ id: u.id, fullName: u.fullName, email: u.email }));
       setAvailableTutors(tutors);
 
@@ -630,7 +630,7 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
       return;
     }
 
-    if (isTrashMode && role !== "founder") {
+    if (isTrashMode && !isFounder(role)) {
       return;
     }
 
@@ -714,7 +714,7 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
   };
 
   const emptyTrash = async () => {
-    if (role !== "founder") return;
+    if (!isFounder(role)) return;
     
     const confirm1 = window.confirm("Are you sure you want to empty the trash? ALL trashed courses will be permanently deleted.");
     if (!confirm1) return;
@@ -856,12 +856,12 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
       body: JSON.stringify({
         courseId,
         title: titleValue,
-        shortName: role === "founder" ? editCourseShortName.trim() : undefined,
+        shortName: isFounder(role) ? editCourseShortName.trim() : undefined,
         description: editCourseDescription.trim(),
-        maxStudents: role === "founder" ? (editCourseMaxStudents ? Number(editCourseMaxStudents) : null) : undefined,
-        completedStartDate: role === "founder" ? (editCompletedStartDate || null) : undefined,
-        completedEndDate: role === "founder" ? (editCompletedEndDate || null) : undefined,
-        completedClassCount: role === "founder" ? (editCompletedClassCount ? Number(editCompletedClassCount) : null) : undefined,
+        maxStudents: isFounder(role) ? (editCourseMaxStudents ? Number(editCourseMaxStudents) : null) : undefined,
+        completedStartDate: isFounder(role) ? (editCompletedStartDate || null) : undefined,
+        completedEndDate: isFounder(role) ? (editCompletedEndDate || null) : undefined,
+        completedClassCount: isFounder(role) ? (editCompletedClassCount ? Number(editCompletedClassCount) : null) : undefined,
       }),
     });
 
@@ -1145,7 +1145,7 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
           <h2 className="text-lg font-semibold text-[var(--foreground)]">
             {isTrashMode ? "Trash" : "Manage my courses"}
           </h2>
-          {isTrashMode && role === "founder" && courses.length > 0 && (
+          {isTrashMode && isFounder(role) && courses.length > 0 && (
             <button
               onClick={emptyTrash}
               disabled={isEmptyingTrash}
@@ -1154,7 +1154,7 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
               {isEmptyingTrash ? "Emptying..." : "Empty Trash"}
             </button>
           )}
-          {!isTrashMode && (role === "executive" || role === "founder") ? (
+          {!isTrashMode && isExecutive(role) ? (
             <div className="flex flex-col items-end gap-1">
               {donationLink && donationRaised !== null ? (
                 <p className="text-sm font-semibold text-[var(--foreground)]">
@@ -1171,7 +1171,7 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
         </div>
         {!isTrashMode && (
           <div className="flex flex-col gap-1">
-            {(role === "executive" || role === "founder") && donationLink ? (
+            {isExecutive(role) && donationLink ? (
               <a
                 href={donationLink}
                 target="_blank"
@@ -1189,7 +1189,7 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
             >
               Tutor Log Form
             </a>
-            {role === "founder" && (
+            {isFounder(role) && (
               <div className="mt-4 flex flex-col gap-4 rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] p-4">
                 <div className="flex flex-col gap-2">
                   <div className="flex items-center justify-between">
@@ -1306,7 +1306,7 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
                       className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
                     />
                     <p className="px-1 text-xs text-[var(--muted)]">Markdown is supported for formatting</p>
-                    {role === "founder" ? (
+                    {isFounder(role) ? (
                       <input
                         type="number"
                         min="1"
@@ -1319,7 +1319,7 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
                         className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
                       />
                     ) : null}
-                    {role === "founder" ? (
+                    {isFounder(role) ? (
                       <input
                         type="text"
                         value={editCourseShortName}
@@ -1330,7 +1330,7 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
                         className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
                       />
                     ) : null}
-                    {role === "founder" && course.is_completed ? (
+                    {isFounder(role) && course.is_completed ? (
                       <div className="grid gap-3 sm:grid-cols-3">
                         <div className="space-y-1">
                           <label className="text-[0.6rem] font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
@@ -1375,7 +1375,7 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
                     <p className="text-sm font-semibold text-[var(--foreground)]">
                       {course.title}
                     </p>
-                    {role === "founder" && course.short_name ? (
+                    {isFounder(role) && course.short_name ? (
                       <p className="text-xs text-[var(--muted)]">
                         Short name: {course.short_name}
                       </p>
@@ -1404,7 +1404,7 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
                         ) : null}
                       </div>
                     ) : null}
-                    {role === "founder" ? (
+                    {isFounder(role) ? (
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="text-xs text-[var(--muted)]">
                           Tutor:{" "}
@@ -1447,7 +1447,7 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
                         )}
                       </div>
                     ) : null}
-                    {role === "founder" && course.max_students ? (
+                    {isFounder(role) && course.max_students ? (
                       <p className="text-xs text-[var(--muted)]">
                         Max Students: {course.max_students}
                       </p>
@@ -1492,7 +1492,7 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
                     Edit
                   </button>
                 )}
-                {canManageCourses(role) && (!isTrashMode || role === "founder") ? (
+                {canManageCourses(role) && (!isTrashMode || isFounder(role)) ? (
                   <button
                     type="button"
                     disabled={pendingDeleteId === course.id}
@@ -1530,7 +1530,7 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
                               }
                               className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
                             />
-                            {role === "founder" && (
+                            {isFounder(role) && (
                               <div className="flex items-center gap-2">
                                 <label className="text-[0.6rem] font-semibold uppercase tracking-[0.2em] text-[var(--muted)] whitespace-nowrap">
                                   Duration (min)
@@ -1645,7 +1645,7 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
                     className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
                     required
                   />
-                  {role === "founder" && (
+                  {isFounder(role) && (
                     <div className="flex items-center gap-2">
                       <label className="text-[0.6rem] font-semibold uppercase tracking-[0.2em] text-[var(--muted)] whitespace-nowrap">
                         Duration (min)
@@ -1681,7 +1681,7 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
                   Enrolled students
                 </p>
-                {role === "founder" && !isTrashMode ? (
+                {isFounder(role) && !isTrashMode ? (
                   <button
                     type="button"
                     onClick={() => {
@@ -1717,7 +1717,7 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
                           <> · {student.student_school}</>
                         ) : null}
                       </span>
-                      {role === "founder" && !isTrashMode ? (
+                      {isFounder(role) && !isTrashMode ? (
                         <button
                           type="button"
                           disabled={pendingEnrollmentDeleteId === student.id}

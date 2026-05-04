@@ -71,5 +71,17 @@ export const resolveUserRole = (
   return "student";
 };
 
-export const canManageCourses = (role: UserRole): boolean =>
-  role === "founder" || role === "CEO" || role === "COO" || role === "Chief Executive" || role === "executive" || role === "Executive";
+export const isExecutive = (role: UserRole | null): boolean =>
+  role === "founder" ||
+  role === "CEO" ||
+  role === "COO" ||
+  role === "Chief Executive" ||
+  role === "Executive" ||
+  role === "executive" ||
+  role === "Junior Executive";
+
+export const isFounder = (role: UserRole | null): boolean =>
+  role === "founder" || role === "CEO" || role === "COO";
+
+export const canManageCourses = (role: UserRole | null): boolean =>
+  role ? (isFounder(role) || role === "Chief Executive" || role === "Executive" || role === "executive") : false;

@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { canManageCourses, resolveUserRole } from "@/lib/roles";
+import { canManageCourses, isExecutive, isFounder, resolveUserRole } from "@/lib/roles";
 import { getRequestUser } from "@/lib/authServer";
 import { notifyFounders, sendDiscordMessageByChannelName, getDiscordRoleIdByName } from "@/lib/notificationsServer";
 
@@ -144,7 +144,7 @@ export async function GET(request: NextRequest) {
     .select("id, title, description, timeframes, frequency, notes, total_classes, start_date, status, created_by, created_at, decided_at, decided_by, app_users!course_creation_requests_created_by_fkey(full_name, email)")
     .order("created_at", { ascending: false });
 
-  if (role !== "founder") {
+  if (!isFounder(role)) {
     query = query.eq("created_by", user.id);
   }
 
@@ -213,7 +213,7 @@ export async function PATCH(request: NextRequest) {
     .eq("id", requestId)
     .maybeSingle();
 
-  if (!existing || (existing.created_by !== user.id && role !== "founder" && role !== "executive")) {
+  if (!existing || (existing.created_by !== user.id && !isExecutive(role as any))) {
     return NextResponse.json({ error: "Forbidden." }, { status: 403 });
   }
 
@@ -221,7 +221,7 @@ export async function PATCH(request: NextRequest) {
   let newStatus = existing.status === "rejected" ? "draft" : existing.status;
   
   // Admins can explicitly set any status
-  if ((role === "founder" || role === "executive") && body?.status) {
+  if (isExecutive(role as any) && body?.status) {
     newStatus = body.status;
   } else if (body?.status === "in_review" && (existing.status === "draft" || existing.status === "rejected")) {
     // Normal users can only resubmit

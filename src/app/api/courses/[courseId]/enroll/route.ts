@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getRequestUser } from "@/lib/authServer";
-import { resolveUserRole } from "@/lib/roles";
+import { isFounder, resolveUserRole } from "@/lib/roles";
 import { notifyFounders } from "@/lib/notificationsServer";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
@@ -129,7 +129,7 @@ export async function POST(
     const role = resolveUserRole(user.email, user.role ?? null);
 
     if (existingRequest.status === "rejected") {
-      if (role === "founder") {
+      if (isFounder(role as any)) {
         // Founders can re-enroll after rejection.
         await adminClient
           .from("course_enrollment_requests")

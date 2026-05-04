@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { getAuthContext, onAuthChange } from "@/lib/authClient";
-import { resolveUserRole } from "@/lib/roles";
+import { isExecutive, resolveUserRole } from "@/lib/roles";
 
 type AccountInfo = {
   email: string;
@@ -80,7 +80,7 @@ export default function AccountCard({ onClick }: { onClick?: () => void }) {
 
       <div className="flex items-center gap-2">
         <span className="inline-flex h-6 items-center px-1 text-[10px] font-medium uppercase text-[var(--muted)] border-0">
-          {account.role === "executive" ? (account.isJunior ? "JUNIOR EXEC" : "EXEC") : account.role}
+          {isExecutive(account.role as any) ? (account.isJunior ? "JUNIOR EXEC" : "EXEC") : account.role}
         </span>
         {account.isImpersonating ? (
           <span className="inline-flex h-6 items-center rounded-md bg-amber-500/10 px-2 text-[10px] font-medium uppercase text-amber-600">

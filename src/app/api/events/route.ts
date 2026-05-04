@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getRequestUser } from "@/lib/authServer";
-import { resolveUserRole } from "@/lib/roles";
+import { isExecutive as checkIsExecutive, isFounder as checkIsFounder, resolveUserRole } from "@/lib/roles";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
@@ -13,14 +13,14 @@ export async function GET(request: NextRequest) {
   }
 
   const role = resolveUserRole(user.email, user.role ?? null);
-  const isExecutive = role === "founder" || role === "executive";
+  const isExecutive = checkIsExecutive(role);
 
   if (!isExecutive) {
     return NextResponse.json({ error: "Forbidden." }, { status: 403 });
   }
 
   const supabase = createClient(supabaseUrl, serviceRoleKey);
-  const isFounder = role === "founder";
+  const isFounder = checkIsFounder(role);
 
   // Fetch events with nested dates and responses
   let query = supabase
@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
-  if (resolveUserRole(user.email, user.role ?? null) !== "founder") {
+  if (!checkIsFounder(resolveUserRole(user.email, user.role ?? null))) {
     return NextResponse.json({ error: "Forbidden." }, { status: 403 });
   }
 
@@ -169,8 +169,7 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
-  const role = resolveUserRole(user.email, user.role ?? null);
-  if (role !== "executive" && role !== "founder") {
+  if (!checkIsExecutive(role)) {
     return NextResponse.json({ error: "Forbidden." }, { status: 403 });
   }
 
@@ -258,7 +257,7 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
-  if (resolveUserRole(user.email, user.role ?? null) !== "founder") {
+  if (!checkIsFounder(resolveUserRole(user.email, user.role ?? null))) {
     return NextResponse.json({ error: "Forbidden." }, { status: 403 });
   }
 

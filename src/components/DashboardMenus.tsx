@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getCurrentUser, onAuthChange } from "@/lib/authClient";
-import { canManageCourses, resolveUserRole, type UserRole } from "@/lib/roles";
+import { canManageCourses, isExecutive, isFounder, resolveUserRole, type UserRole } from "@/lib/roles";
 import AdminUserManager from "@/components/AdminUserManager";
 import CourseCreator from "@/components/CourseCreator";
 import CoursesMenu from "@/components/CoursesMenu";
@@ -195,7 +195,7 @@ export default function DashboardMenus() {
   }, [deepLinkedEventId, deepLinkedFormId, isAuthResolved, role, router]);
 
   useEffect(() => {
-    if (!role || (role !== "founder" && role !== "executive")) {
+    if (!role || !isExecutive(role)) {
       setHasUpcomingEvents(false);
       return;
     }
@@ -208,8 +208,8 @@ export default function DashboardMenus() {
           const events = data.events || [];
           setHasUpcomingEvents(events.length > 0);
 
-          // Detect pending RSVPs for executives
-          if (role === "executive") {
+          // Detect pending RSVPs for executives (non-founders)
+          if (isExecutive(role) && !isFounder(role)) {
              const user = await getCurrentUser();
              if (user) {
                const now = new Date();
@@ -244,14 +244,14 @@ export default function DashboardMenus() {
       }
     };
 
-    if (role === "founder" || role === "executive") {
+    if (isExecutive(role)) {
       checkEvents();
       checkForms();
     }
   }, [role]);
 
   useEffect(() => {
-    if (!role || !canManageCourses(role) || role === "executive") {
+    if (!role || !canManageCourses(role) || (isExecutive(role) && !isFounder(role))) {
       setTrashCount(0);
       return;
     }
@@ -294,20 +294,24 @@ export default function DashboardMenus() {
       items.push({ key: "manage_courses", label: "My courses" });
     }
 
-    if (role === "founder") {
+    if (isFounder(role)) {
       items.push({ key: "manage_enrollments", label: "Manage enrollments" });
       items.push({ key: "founder_tools", label: "Manage accounts" });
     }
 
-    if (role === "founder" || role === "executive") {
+    if (isExecutive(role)) {
       items.push({ key: "events", label: "Events" });
     }
 
-    if (role === "founder" || (role === "executive" && (hasForms || active === "forms"))) {
+    if (isFounder(role) || (isExecutive(role) && (hasForms || active === "forms"))) {
       items.push({ key: "forms", label: "Forms" });
     }
 
-    if (trashCount > 0 && role !== "executive") {
+    if (trashCount > 0 && !isExecutive(role)) {
+      items.push({ key: "trash", label: "Trash" });
+    }
+    // Founders/high-level roles should always see trash if there is something in it
+    if (trashCount > 0 && isFounder(role)) {
       items.push({ key: "trash", label: "Trash" });
     }
 

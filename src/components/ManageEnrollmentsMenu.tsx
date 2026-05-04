@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { getCurrentUser, onAuthChange } from "@/lib/authClient";
-import { resolveUserRole } from "@/lib/roles";
+import { isFounder, resolveUserRole } from "@/lib/roles";
 
 type RequestCourse = {
   id: string;
@@ -42,7 +42,7 @@ type StatusState = {
 };
 
 export default function ManageEnrollmentsMenu() {
-  const [isFounder, setIsFounder] = useState(false);
+  const [isFounderAccess, setIsFounderAccess] = useState(false);
   const [requests, setRequests] = useState<EnrollmentRequest[]>([]);
   const [status, setStatus] = useState<StatusState>({
     type: "idle",
@@ -55,7 +55,7 @@ export default function ManageEnrollmentsMenu() {
     const load = async () => {
       const user = await getCurrentUser();
       const role = resolveUserRole(user?.email ?? null, user?.role ?? null);
-      setIsFounder(role === "founder");
+      setIsFounderAccess(isFounder(role as any));
     };
 
     load();
@@ -63,7 +63,7 @@ export default function ManageEnrollmentsMenu() {
   }, []);
 
   useEffect(() => {
-    if (!isFounder) {
+    if (!isFounderAccess) {
       return;
     }
 
@@ -92,7 +92,7 @@ export default function ManageEnrollmentsMenu() {
     };
 
     fetchRequests();
-  }, [isFounder]);
+  }, [isFounderAccess]);
 
   const updateRequest = async (
     requestId: string,
@@ -156,7 +156,7 @@ export default function ManageEnrollmentsMenu() {
     setPendingId(null);
   };
 
-  if (!isFounder) {
+  if (!isFounderAccess) {
     return null;
   }
 

@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { canManageCourses, resolveUserRole } from "@/lib/roles";
+import { canManageCourses, isFounder, resolveUserRole } from "@/lib/roles";
 import { getRequestUser } from "@/lib/authServer";
 import { relabelClassesForCourse } from "@/lib/classTools";
 
@@ -81,10 +81,10 @@ export async function POST(
     );
   }
 
-  const isFounder = role === "founder";
+  const isFounderUser = isFounder(role as any);
   const isOwner = course.created_by === user.id;
 
-  if (!isFounder && !isOwner) {
+  if (!isFounderUser && !isOwner) {
     return NextResponse.json(
       { error: "Only the course owner can add classes." },
       { status: 403 }
@@ -104,7 +104,7 @@ export async function POST(
       course_id: courseId,
       title,
       starts_at: startsAt,
-      duration_hours: role === "founder" && typeof body?.durationHours === "number" ? body.durationHours : 1,
+      duration_hours: isFounder(role) && typeof body?.durationHours === "number" ? body.durationHours : 1,
       created_by: user.id,
     })
     .select("id, title, starts_at, duration_hours, created_at")

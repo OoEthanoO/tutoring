@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { canManageCourses, resolveUserRole } from "@/lib/roles";
+import { canManageCourses, isExecutive, isFounder, resolveUserRole } from "@/lib/roles";
 import { getRequestUser } from "@/lib/authServer";
 import { relabelClassesForCourse } from "@/lib/classTools";
 
@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Title is required." }, { status: 400 });
   }
 
-  if (isCompleted && role !== "founder") {
+  if (isCompleted && !isFounder(role)) {
     return NextResponse.json(
       { error: "Only the founder can create completed courses." },
       { status: 403 }
@@ -114,7 +114,7 @@ export async function POST(request: NextRequest) {
       completed_start_date: isCompleted ? completedStartDate : null,
       completed_end_date: isCompleted ? completedEndDate : null,
       completed_class_count: isCompleted ? completedClassCount : null,
-      max_students: role === "founder" ? maxStudents : null,
+      max_students: isFounder(role) ? maxStudents : null,
       created_by: user.id,
       created_by_name: creatorName,
       created_by_email: user.email ?? null,
@@ -139,7 +139,7 @@ export async function POST(request: NextRequest) {
     .map((item) => ({
       title: item?.title?.trim() ?? "",
       startsAt: item?.startsAt?.trim() ?? "",
-      durationHours: role === "founder" && typeof item?.durationHours === "number" ? item.durationHours : 1,
+      durationHours: isFounder(role) && typeof item?.durationHours === "number" ? item.durationHours : 1,
     }))
     .filter((item) => item.title && item.startsAt);
 
@@ -297,7 +297,7 @@ export async function GET(request: NextRequest) {
       : request?.status ?? null;
 
     // Founders should never be stuck with "rejected" – let them re-enroll.
-    if (userRole === "founder" && enrollmentStatus === "rejected") {
+    if (isFounder(userRole as any) && enrollmentStatus === "rejected") {
       enrollmentStatus = null;
     }
 
@@ -328,7 +328,7 @@ export async function DELETE(request: NextRequest) {
   }
 
   const role = resolveUserRole(user.email, user.role ?? null);
-  if (role !== "founder") {
+  if (!isFounder(role)) {
     return NextResponse.json({ error: "Forbidden." }, { status: 403 });
   }
 
@@ -513,7 +513,7 @@ export async function PATCH(request: NextRequest) {
     updatePayload.description = description ? description : null;
   }
   if (shortName !== undefined) {
-    if (role !== "founder") {
+    if (!isFounder(role)) {
       return NextResponse.json(
         { error: "Only the founder can set short name." },
         { status: 403 }
@@ -522,7 +522,7 @@ export async function PATCH(request: NextRequest) {
     updatePayload.short_name = shortName || null;
   }
   if (maxStudents !== undefined) {
-    if (role !== "founder") {
+    if (!isFounder(role)) {
       return NextResponse.json(
         { error: "Only the founder can set max students." },
         { status: 403 }
@@ -531,7 +531,7 @@ export async function PATCH(request: NextRequest) {
     updatePayload.max_students = maxStudents;
   }
   if (completedStartDate !== undefined || completedEndDate !== undefined || completedClassCount !== undefined) {
-    if (role !== "founder") {
+    if (!isFounder(role)) {
       return NextResponse.json(
         { error: "Only the founder can edit completed course details." },
         { status: 403 }
@@ -543,14 +543,14 @@ export async function PATCH(request: NextRequest) {
   }
 
   if (createdBy === null) {
-    if (role !== "founder") {
+    if (!isFounder(role)) {
       return NextResponse.json({ error: "Forbidden." }, { status: 403 });
     }
     updatePayload.created_by = null;
     updatePayload.created_by_name = null;
     updatePayload.created_by_email = null;
   } else if (createdBy !== undefined) {
-    if (role !== "founder") {
+    if (!isFounder(role)) {
       return NextResponse.json({ error: "Forbidden." }, { status: 403 });
     }
 
@@ -585,7 +585,7 @@ export async function PATCH(request: NextRequest) {
     .update(updatePayload)
     .eq("id", body.courseId);
 
-  if (role === "executive" && createdBy === undefined) {
+  if (isExecutive(role) && !isFounder(role) && createdBy === undefined) {
     updateQuery = updateQuery.eq("created_by", user.id);
   }
 

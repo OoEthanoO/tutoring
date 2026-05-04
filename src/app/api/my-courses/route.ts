@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { canManageCourses, resolveUserRole } from "@/lib/roles";
+import { canManageCourses, isFounder, resolveUserRole } from "@/lib/roles";
 import { getRequestUser } from "@/lib/authServer";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
     .is("deleted_at", null)
     .order("created_at", { ascending: false });
 
-  if (role === "executive") {
+  if (!isFounder(role)) {
     query = query.eq("created_by", user.id);
   }
 

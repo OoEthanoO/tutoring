@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { getCurrentUser } from "@/lib/authClient";
-import { resolveUserRole } from "@/lib/roles";
+import { isExecutive, isFounder, resolveUserRole } from "@/lib/roles";
 
 type EventResponse = {
   user_id: string;
@@ -38,7 +38,7 @@ type Event = {
 };
 
 export default function EventsMenu() {
-  const [role, setRole] = useState<string | null>(null);
+   const [role, setRole] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [events, setEvents] = useState<Event[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -92,7 +92,7 @@ export default function EventsMenu() {
   };
 
   useEffect(() => {
-    if (role === "founder" || role === "executive") {
+    if (role && isExecutive(role as any)) {
       fetchEvents();
     }
   }, [role]);
@@ -246,11 +246,11 @@ export default function EventsMenu() {
     );
   }
 
-  const isFounder = role === "founder";
+  const isFounderUser = role && isFounder(role as any);
 
   return (
     <div className="space-y-8">
-      {isFounder && (
+      {isFounderUser && (
         <section className="space-y-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6">
           <header className="space-y-1">
             <div className="flex items-center justify-between">
@@ -432,7 +432,7 @@ export default function EventsMenu() {
                     <div className="flex items-start justify-between gap-4">
                       <h3 className="text-xl font-bold text-[var(--foreground)]">{event.title}</h3>
                       <div className="flex items-center gap-3 mt-1.5 ">
-                        {isFounder && (
+                        {isFounderUser && (
                           <>
                             <button
                               onClick={() => startEdit(event)}
@@ -500,7 +500,7 @@ export default function EventsMenu() {
                       <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">
                         {isFounder ? "Attendance Status per Date" : "Select your availability for each date"}
                       </p>
-                      {event.event_dates.length > 1 && !isFounder && (
+                      {event.event_dates.length > 1 && !isFounderUser && (
                         <p className="text-[10px] italic text-[var(--muted)] leading-relaxed">
                           Note: This event typically takes place on only one of these dates. Please mark your availability for all dates.
                         </p>
@@ -526,7 +526,7 @@ export default function EventsMenu() {
                                 )}
                              </div>
                              
-                             {!isFounder && (
+                             {!isFounderUser && (
                                <div className="flex gap-2">
                                  <button
                                    disabled={isPastDeadline}
@@ -553,7 +553,7 @@ export default function EventsMenu() {
                                </div>
                              )}
 
-                             {isFounder && event.all_executives && (
+                             {isFounderUser && event.all_executives && (
                                <div className="grid grid-cols-3 gap-6 w-full max-w-lg">
                                  {[
                                    {
