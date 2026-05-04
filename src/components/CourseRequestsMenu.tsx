@@ -266,7 +266,11 @@ export default function CourseRequestsMenu() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-[var(--foreground)]">Course Requests</h1>
-          <p className="text-sm text-[var(--muted)]">Manage and review incoming course creation requests.</p>
+          {isFounder ? (
+            <p className="text-sm text-[var(--muted)]">Manage and review incoming course creation requests.</p>
+          ) : (
+            <p className="text-sm text-[var(--muted)]">Submit and track your course creation requests.</p>
+          )}
         </div>
         <button
           onClick={() => {
