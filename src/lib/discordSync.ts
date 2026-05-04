@@ -639,31 +639,22 @@ const buildCommitsPermissionOverwrites = (
 const buildFoundersPermissionOverwrites = (
   guildId: string,
   founderRoleId: string,
-  botUserId: string
+  botUserId: string,
+  cooRoleId: string,
+  ceoRoleId: string,
+  chiefExecutiveRoleId: string
 ): DiscordPermissionOverwrite[] => {
   const activeAllow = String(
-    viewChannelPermission | readMessageHistoryPermission
+    viewChannelPermission | readMessageHistoryPermission | sendMessagesPermission
   );
 
   return [
-    {
-      id: guildId,
-      type: 0,
-      allow: "0",
-      deny: String(viewChannelPermission),
-    },
-    {
-      id: founderRoleId,
-      type: 0,
-      allow: activeAllow,
-      deny: "0",
-    },
-    {
-      id: botUserId,
-      type: 1,
-      allow: String(viewChannelPermission | sendMessagesPermission),
-      deny: "0",
-    },
+    { id: guildId, type: 0, allow: "0", deny: String(viewChannelPermission) },
+    { id: founderRoleId, type: 0, allow: activeAllow, deny: "0" },
+    { id: cooRoleId, type: 0, allow: activeAllow, deny: "0" },
+    { id: ceoRoleId, type: 0, allow: activeAllow, deny: "0" },
+    { id: chiefExecutiveRoleId, type: 0, allow: activeAllow, deny: "0" },
+    { id: botUserId, type: 1, allow: activeAllow, deny: "0" },
   ];
 };
 
@@ -2269,7 +2260,10 @@ export const runDiscordSync = async ({
     permissionOverwrites: buildFoundersPermissionOverwrites(
       discordGuildId,
       founderRole.id,
-      botUser.id
+      botUser.id,
+      cooRole.id,
+      ceoRole.id,
+      chiefExecutiveRole.id
     ),
   });
 
@@ -2282,7 +2276,7 @@ export const runDiscordSync = async ({
       discordGuildId,
       executiveRole.id,
       botUser.id,
-      [founderRole.id, juniorExecutiveRole.id]
+      [founderRole.id, cooRole.id, ceoRole.id, chiefExecutiveRole.id, juniorExecutiveRole.id]
     ),
   });
 
@@ -2294,7 +2288,7 @@ export const runDiscordSync = async ({
       discordGuildId,
       socialMediaRole.id,
       botUser.id,
-      [founderRole.id]
+      [founderRole.id, cooRole.id, ceoRole.id, chiefExecutiveRole.id]
     ),
   });
 
@@ -2307,7 +2301,7 @@ export const runDiscordSync = async ({
       discordGuildId,
       scienceTutorsRole.id,
       botUser.id,
-      [founderRole.id]
+      [founderRole.id, cooRole.id, ceoRole.id, chiefExecutiveRole.id]
     ),
   });
 
@@ -2319,7 +2313,7 @@ export const runDiscordSync = async ({
       discordGuildId,
       mathTutorsRole.id,
       botUser.id,
-      [founderRole.id]
+      [founderRole.id, cooRole.id, ceoRole.id, chiefExecutiveRole.id]
     ),
   });
 
@@ -2331,7 +2325,7 @@ export const runDiscordSync = async ({
       discordGuildId,
       nonprofitTeamRole.id,
       botUser.id,
-      [founderRole.id]
+      [founderRole.id, cooRole.id, ceoRole.id, chiefExecutiveRole.id]
     ),
   });
 
@@ -2343,7 +2337,7 @@ export const runDiscordSync = async ({
       discordGuildId,
       developmentTeamRole.id,
       botUser.id,
-      [founderRole.id]
+      [founderRole.id, cooRole.id, ceoRole.id, chiefExecutiveRole.id]
     ),
   });
 
@@ -2369,7 +2363,7 @@ export const runDiscordSync = async ({
       discordGuildId,
       executiveRole.id,
       botUser.id,
-      [founderRole.id, juniorExecutiveRole.id]
+      [founderRole.id, cooRole.id, ceoRole.id, chiefExecutiveRole.id, juniorExecutiveRole.id]
     ),
   });
 
@@ -2381,7 +2375,7 @@ export const runDiscordSync = async ({
       discordGuildId,
       socialMediaRole.id,
       botUser.id,
-      [founderRole.id]
+      [founderRole.id, cooRole.id, ceoRole.id, chiefExecutiveRole.id]
     ),
   });
 
@@ -2394,7 +2388,7 @@ export const runDiscordSync = async ({
       discordGuildId,
       scienceTutorsRole.id,
       botUser.id,
-      [founderRole.id]
+      [founderRole.id, cooRole.id, ceoRole.id, chiefExecutiveRole.id]
     ),
   });
 
@@ -2406,7 +2400,7 @@ export const runDiscordSync = async ({
       discordGuildId,
       mathTutorsRole.id,
       botUser.id,
-      [founderRole.id]
+      [founderRole.id, cooRole.id, ceoRole.id, chiefExecutiveRole.id]
     ),
   });
 
@@ -2418,7 +2412,7 @@ export const runDiscordSync = async ({
       discordGuildId,
       nonprofitTeamRole.id,
       botUser.id,
-      [founderRole.id]
+      [founderRole.id, cooRole.id, ceoRole.id, chiefExecutiveRole.id]
     ),
   });
 
@@ -2430,7 +2424,7 @@ export const runDiscordSync = async ({
       discordGuildId,
       developmentTeamRole.id,
       botUser.id,
-      [founderRole.id]
+      [founderRole.id, cooRole.id, ceoRole.id, chiefExecutiveRole.id]
     ),
   });
 
