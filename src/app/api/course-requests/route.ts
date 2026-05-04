@@ -103,8 +103,8 @@ export async function POST(request: NextRequest) {
   });
 
   // Send Discord message to founders channel (best-effort, non-blocking)
-  const founderRoleId = await getDiscordRoleIdByName("Founder");
-  const founderMention = founderRoleId ? `<@&${founderRoleId}>` : "@Founder";
+  const cooRoleId = await getDiscordRoleIdByName("COO");
+  const founderMention = cooRoleId ? `<@&${cooRoleId}>` : "@COO";
   const discordMessage = `${founderMention} New course request: **${title}** from ${user.full_name} (${user.email})`;
   sendDiscordMessageByChannelName("founders", discordMessage).catch((err) => {
     console.error("Failed to send Discord message:", err);

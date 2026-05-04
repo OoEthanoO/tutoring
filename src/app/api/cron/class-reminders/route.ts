@@ -472,6 +472,7 @@ export async function POST(request: NextRequest) {
   let executivesChannelId: string | null = null;
   let foundersChannelId: string | null = null;
   let founderRoleId: string | null = null;
+  let cooRoleId: string | null = null;
 
   if (!discordRemindersEnabled) {
     discordReminderSkippedReason =
@@ -495,6 +496,8 @@ export async function POST(request: NextRequest) {
       foundersChannelId = foundersChannel?.id ?? null;
       const founderRole = guildRoles.find((r) => r.name === "Founder");
       founderRoleId = founderRole?.id ?? null;
+      const cooRole = guildRoles.find((r) => r.name === "COO");
+      cooRoleId = cooRole?.id ?? null;
     } catch (error) {
       discordReminderSkippedReason =
         error instanceof Error
@@ -1129,9 +1132,11 @@ export async function POST(request: NextRequest) {
     ) {
       let founderContent = "";
 
+      const pingRoleId = cooRoleId || founderRoleId;
+
       if (reminderType === "ten_minutes") {
         founderContent = [
-          `<@&${founderRoleId}> A class is starting in **10 minutes**. **Please open the Zoom meeting!**`,
+          `<@&${pingRoleId}> A class is starting in **10 minutes**. **Please open the Zoom meeting!**`,
           `**Course:** ${escapeDiscordText(courseTitleRaw)}`,
           isStandardClassTitle ? `**${escapeDiscordText(classTitleRaw)}**` : `**Class:** ${escapeDiscordText(classTitleRaw)}`,
           `**Tutor:** ${escapeDiscordText(tutorNameRaw)}`,
@@ -1139,7 +1144,7 @@ export async function POST(request: NextRequest) {
         ].join("\n");
       } else {
         founderContent = [
-          `<@&${founderRoleId}> A class is starting in **1 hour**.`,
+          `<@&${pingRoleId}> A class is starting in **1 hour**.`,
           `**Course:** ${escapeDiscordText(courseTitleRaw)}`,
           isStandardClassTitle ? `**${escapeDiscordText(classTitleRaw)}**` : `**Class:** ${escapeDiscordText(classTitleRaw)}`,
           `**Tutor:** ${escapeDiscordText(tutorNameRaw)}`,
