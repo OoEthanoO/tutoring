@@ -51,7 +51,7 @@ type WebsiteUserRow = {
   discord_user_id: string | null;
   is_junior: boolean | null;
   strike_count?: number | null;
-  custom_roles?: { role_level: string } | { role_level: string }[] | null;
+  custom_roles?: { name: string; role_level: string } | { name: string; role_level: string }[] | null;
 };
 
 type CourseRow = {
@@ -304,7 +304,10 @@ const buildCoursePermissionOverwrites = (
   executiveRoleId: string,
   juniorExecutiveRoleId: string,
   founderRoleId: string,
-  botUserId: string
+  botUserId: string,
+  ceoRoleId: string,
+  cooRoleId: string,
+  chiefExecutiveRoleId: string
 ): DiscordPermissionOverwrite[] => {
   const readOnlyAllow = String(viewChannelPermission | readMessageHistoryPermission);
   const activeAllow = String(
@@ -344,6 +347,24 @@ const buildCoursePermissionOverwrites = (
       deny: "0",
     },
     {
+      id: ceoRoleId,
+      type: 0,
+      allow: pinOnlyAllow,
+      deny: "0",
+    },
+    {
+      id: cooRoleId,
+      type: 0,
+      allow: pinOnlyAllow,
+      deny: "0",
+    },
+    {
+      id: chiefExecutiveRoleId,
+      type: 0,
+      allow: pinOnlyAllow,
+      deny: "0",
+    },
+    {
       // Keep bot access so future sync runs can still patch the channel.
       id: botUserId,
       type: 1,
@@ -356,7 +377,10 @@ const buildCoursePermissionOverwrites = (
 const buildInfoPermissionOverwrites = (
   guildId: string,
   founderRoleId: string,
-  botUserId: string
+  botUserId: string,
+  ceoRoleId: string,
+  cooRoleId: string,
+  chiefExecutiveRoleId: string
 ): DiscordPermissionOverwrite[] => {
   const readOnlyAllow = String(viewChannelPermission | readMessageHistoryPermission);
   const founderAllow = String(
@@ -372,6 +396,24 @@ const buildInfoPermissionOverwrites = (
     },
     {
       id: founderRoleId,
+      type: 0,
+      allow: founderAllow,
+      deny: "0",
+    },
+    {
+      id: ceoRoleId,
+      type: 0,
+      allow: founderAllow,
+      deny: "0",
+    },
+    {
+      id: cooRoleId,
+      type: 0,
+      allow: founderAllow,
+      deny: "0",
+    },
+    {
+      id: chiefExecutiveRoleId,
       type: 0,
       allow: founderAllow,
       deny: "0",
@@ -390,7 +432,10 @@ const buildTasksPermissionOverwrites = (
   executiveRoleId: string,
   juniorExecutiveRoleId: string,
   founderRoleId: string,
-  botUserId: string
+  botUserId: string,
+  ceoRoleId: string,
+  cooRoleId: string,
+  chiefExecutiveRoleId: string
 ): DiscordPermissionOverwrite[] => {
   const readOnlyAllow = String(viewChannelPermission | readMessageHistoryPermission);
   const founderAllow = String(
@@ -423,6 +468,24 @@ const buildTasksPermissionOverwrites = (
       deny: "0",
     },
     {
+      id: ceoRoleId,
+      type: 0,
+      allow: founderAllow,
+      deny: "0",
+    },
+    {
+      id: cooRoleId,
+      type: 0,
+      allow: founderAllow,
+      deny: "0",
+    },
+    {
+      id: chiefExecutiveRoleId,
+      type: 0,
+      allow: founderAllow,
+      deny: "0",
+    },
+    {
       id: botUserId,
       type: 1,
       allow: (BigInt(founderAllow) | BigInt(manageChannelsPermission)).toString(),
@@ -436,7 +499,10 @@ const buildReadmePermissionOverwrites = (
   executiveRoleId: string,
   juniorExecutiveRoleId: string,
   founderRoleId: string,
-  botUserId: string
+  botUserId: string,
+  ceoRoleId: string,
+  cooRoleId: string,
+  chiefExecutiveRoleId: string
 ): DiscordPermissionOverwrite[] => {
   const readOnlyAllow = String(viewChannelPermission | readMessageHistoryPermission);
   const founderAllow = String(
@@ -464,6 +530,24 @@ const buildReadmePermissionOverwrites = (
     },
     {
       id: founderRoleId,
+      type: 0,
+      allow: founderAllow,
+      deny: "0",
+    },
+    {
+      id: ceoRoleId,
+      type: 0,
+      allow: founderAllow,
+      deny: "0",
+    },
+    {
+      id: cooRoleId,
+      type: 0,
+      allow: founderAllow,
+      deny: "0",
+    },
+    {
+      id: chiefExecutiveRoleId,
       type: 0,
       allow: founderAllow,
       deny: "0",
@@ -500,7 +584,10 @@ const buildEveryoneChatPermissionOverwrites = (
   studentRoleId: string,
   executiveRoleId: string,
   founderRoleId: string,
-  botUserId: string
+  botUserId: string,
+  ceoRoleId: string,
+  cooRoleId: string,
+  chiefExecutiveRoleId: string
 ): DiscordPermissionOverwrite[] => {
   const activeAllow = String(
     viewChannelPermission | sendMessagesPermission | readMessageHistoryPermission
@@ -532,6 +619,24 @@ const buildEveryoneChatPermissionOverwrites = (
       deny: "0",
     },
     {
+      id: ceoRoleId,
+      type: 0,
+      allow: activeAllow,
+      deny: "0",
+    },
+    {
+      id: cooRoleId,
+      type: 0,
+      allow: activeAllow,
+      deny: "0",
+    },
+    {
+      id: chiefExecutiveRoleId,
+      type: 0,
+      allow: activeAllow,
+      deny: "0",
+    },
+    {
       id: botUserId,
       type: 1,
       allow: (BigInt(activeAllow) | BigInt(manageChannelsPermission)).toString(),
@@ -547,7 +652,10 @@ const buildEveryoneVoicePermissionOverwrites = (
   executiveRoleId: string,
   juniorExecutiveRoleId: string,
   founderRoleId: string,
-  botUserId: string
+  botUserId: string,
+  ceoRoleId: string,
+  cooRoleId: string,
+  chiefExecutiveRoleId: string
 ): DiscordPermissionOverwrite[] => {
   const activeAllow = String(viewChannelPermission | connectPermission);
 
@@ -583,6 +691,24 @@ const buildEveryoneVoicePermissionOverwrites = (
       deny: "0",
     },
     {
+      id: ceoRoleId,
+      type: 0,
+      allow: activeAllow,
+      deny: "0",
+    },
+    {
+      id: cooRoleId,
+      type: 0,
+      allow: activeAllow,
+      deny: "0",
+    },
+    {
+      id: chiefExecutiveRoleId,
+      type: 0,
+      allow: activeAllow,
+      deny: "0",
+    },
+    {
       id: botUserId,
       type: 1,
       allow: (BigInt(activeAllow) | BigInt(manageChannelsPermission)).toString(),
@@ -596,7 +722,10 @@ const buildCommitsPermissionOverwrites = (
   executiveRoleId: string,
   juniorExecutiveRoleId: string,
   founderRoleId: string,
-  botUserId: string
+  botUserId: string,
+  ceoRoleId: string,
+  cooRoleId: string,
+  chiefExecutiveRoleId: string
 ): DiscordPermissionOverwrite[] => {
   const readOnlyAllow = String(
     viewChannelPermission | readMessageHistoryPermission
@@ -628,6 +757,24 @@ const buildCommitsPermissionOverwrites = (
       deny: String(sendMessagesPermission),
     },
     {
+      id: ceoRoleId,
+      type: 0,
+      allow: readOnlyAllow,
+      deny: String(sendMessagesPermission),
+    },
+    {
+      id: cooRoleId,
+      type: 0,
+      allow: readOnlyAllow,
+      deny: String(sendMessagesPermission),
+    },
+    {
+      id: chiefExecutiveRoleId,
+      type: 0,
+      allow: readOnlyAllow,
+      deny: String(sendMessagesPermission),
+    },
+    {
       id: botUserId,
       type: 1,
       allow: (BigInt(readOnlyAllow) | BigInt(sendMessagesPermission) | BigInt(manageChannelsPermission)).toString(),
@@ -653,7 +800,6 @@ const buildFoundersPermissionOverwrites = (
     { id: founderRoleId, type: 0, allow: activeAllow, deny: "0" },
     { id: cooRoleId, type: 0, allow: activeAllow, deny: "0" },
     { id: ceoRoleId, type: 0, allow: activeAllow, deny: "0" },
-    { id: chiefExecutiveRoleId, type: 0, allow: activeAllow, deny: "0" },
     { id: botUserId, type: 1, allow: activeAllow, deny: "0" },
   ];
 };
@@ -661,7 +807,10 @@ const buildFoundersPermissionOverwrites = (
 const buildExecutivesOnlyPermissionOverwrites = (
   guildId: string,
   executiveRoleId: string,
-  botUserId: string
+  botUserId: string,
+  ceoRoleId: string,
+  cooRoleId: string,
+  chiefExecutiveRoleId: string
 ): DiscordPermissionOverwrite[] => {
   const activeAllow = String(
     viewChannelPermission | sendMessagesPermission | readMessageHistoryPermission
@@ -676,6 +825,24 @@ const buildExecutivesOnlyPermissionOverwrites = (
     },
     {
       id: executiveRoleId,
+      type: 0,
+      allow: activeAllow,
+      deny: "0",
+    },
+    {
+      id: ceoRoleId,
+      type: 0,
+      allow: activeAllow,
+      deny: "0",
+    },
+    {
+      id: cooRoleId,
+      type: 0,
+      allow: activeAllow,
+      deny: "0",
+    },
+    {
+      id: chiefExecutiveRoleId,
       type: 0,
       allow: activeAllow,
       deny: "0",
@@ -1257,7 +1424,7 @@ export const runDiscordSync = async ({
     await Promise.all([
       adminClient
         .from("app_users")
-        .select("id, email, full_name, role, discord_user_id, is_junior, strike_count, custom_roles(role_level)")
+        .select("id, email, full_name, role, discord_user_id, is_junior, strike_count, custom_roles(name, role_level)")
         .not("email_verified_at", "is", null),
       adminClient
         .from("courses")
@@ -1465,27 +1632,46 @@ export const runDiscordSync = async ({
       continue;
     }
 
+    const customRoleName = Array.isArray(websiteUser.custom_roles)
+      ? websiteUser.custom_roles[0]?.name
+      : (websiteUser.custom_roles)?.name;
     const customRoleVal = Array.isArray(websiteUser.custom_roles)
       ? websiteUser.custom_roles[0]?.role_level
       : (websiteUser.custom_roles)?.role_level;
+
     const websiteRole = resolveUserRole(websiteUser.email, websiteUser.role, customRoleVal);
     const isHardcodedFounder = founderDiscordUserIds.has(memberId) && !customRoleVal;
 
-    let targetHierarchyRoleId = studentRole.id;
-    if (isHardcodedFounder || websiteRole === "founder") targetHierarchyRoleId = founderRole.id;
-    else if (websiteRole === "CEO") targetHierarchyRoleId = ceoRole.id;
-    else if (websiteRole === "COO") targetHierarchyRoleId = cooRole.id;
-    else if (websiteRole === "Chief Executive") targetHierarchyRoleId = chiefExecutiveRole.id;
-    else if (websiteRole === "Executive" || websiteRole === "executive") targetHierarchyRoleId = websiteUser.is_junior ? juniorExecutiveRole.id : executiveRole.id;
-    else if (websiteRole === "Junior Executive") targetHierarchyRoleId = juniorExecutiveRole.id;
+    const isChiefExecCategory = ["CEO", "COO", "Chief Executive", "founder"].includes(websiteRole);
+
+    const requiredBaseRoleIds = new Set<string>();
+
+    let primaryHierarchyRoleId = studentRole.id;
+    if (isHardcodedFounder || websiteRole === "founder") primaryHierarchyRoleId = founderRole.id;
+    else if (websiteRole === "CEO") primaryHierarchyRoleId = ceoRole.id;
+    else if (websiteRole === "COO") primaryHierarchyRoleId = cooRole.id;
+    else if (websiteRole === "Chief Executive") primaryHierarchyRoleId = chiefExecutiveRole.id;
+    else if (websiteRole === "Executive" || websiteRole === "executive") primaryHierarchyRoleId = websiteUser.is_junior ? juniorExecutiveRole.id : executiveRole.id;
+    else if (websiteRole === "Junior Executive") primaryHierarchyRoleId = juniorExecutiveRole.id;
+
+    requiredBaseRoleIds.add(primaryHierarchyRoleId);
+
+    if (isChiefExecCategory) {
+      requiredBaseRoleIds.add(chiefExecutiveRole.id);
+    }
+
+    if (customRoleName) {
+      const customRole = await ensureRole(customRoleName, false);
+      requiredBaseRoleIds.add(customRole.id);
+    }
 
     const hierarchyRoleIds = [
       ceoRole.id, cooRole.id, chiefExecutiveRole.id, founderRole.id,
       executiveRole.id, juniorExecutiveRole.id, studentRole.id
     ];
 
-    const isExecTier = [ceoRole.id, cooRole.id, chiefExecutiveRole.id, executiveRole.id, juniorExecutiveRole.id].includes(targetHierarchyRoleId);
-    const expectedNick = targetHierarchyRoleId !== studentRole.id ? null : (websiteUser.full_name || null);
+    const isExecTier = [ceoRole.id, cooRole.id, chiefExecutiveRole.id, executiveRole.id, juniorExecutiveRole.id].some(id => requiredBaseRoleIds.has(id));
+    const expectedNick = primaryHierarchyRoleId !== studentRole.id ? null : (websiteUser.full_name || null);
 
     if (expectedNick !== (member.nick ?? null)) {
       try {
@@ -1501,12 +1687,14 @@ export const runDiscordSync = async ({
       }
     }
 
-    if (!roleSet.has(targetHierarchyRoleId)) {
-      await addRoleToMember(memberId, targetHierarchyRoleId, roleSet, "baseRoleAddedCount");
+    for (const roleId of requiredBaseRoleIds) {
+      if (!roleSet.has(roleId)) {
+        await addRoleToMember(memberId, roleId, roleSet, "baseRoleAddedCount");
+      }
     }
 
     for (const rId of hierarchyRoleIds) {
-      if (rId !== targetHierarchyRoleId && roleSet.has(rId)) {
+      if (!requiredBaseRoleIds.has(rId) && roleSet.has(rId)) {
         await addRoleToMember(memberId, rId, roleSet, "baseRoleRemovedCount", true);
       }
     }
@@ -1933,7 +2121,10 @@ export const runDiscordSync = async ({
       executiveRole.id,
       juniorExecutiveRole.id,
       founderRole.id,
-      botUser.id
+      botUser.id,
+      ceoRole.id,
+      cooRole.id,
+      chiefExecutiveRole.id
     );
 
 
@@ -2094,7 +2285,10 @@ export const runDiscordSync = async ({
     permissionOverwrites: buildInfoPermissionOverwrites(
       discordGuildId,
       founderRole.id,
-      botUser.id
+      botUser.id,
+      ceoRole.id,
+      cooRole.id,
+      chiefExecutiveRole.id
     ),
   });
 
@@ -2108,7 +2302,10 @@ export const runDiscordSync = async ({
       executiveRole.id,
       juniorExecutiveRole.id,
       founderRole.id,
-      botUser.id
+      botUser.id,
+      ceoRole.id,
+      cooRole.id,
+      chiefExecutiveRole.id
     ),
   });
 
@@ -2121,7 +2318,10 @@ export const runDiscordSync = async ({
       executiveRole.id,
       juniorExecutiveRole.id,
       founderRole.id,
-      botUser.id
+      botUser.id,
+      ceoRole.id,
+      cooRole.id,
+      chiefExecutiveRole.id
     ),
   });
 
@@ -2134,7 +2334,10 @@ export const runDiscordSync = async ({
       executiveRole.id,
       juniorExecutiveRole.id,
       founderRole.id,
-      botUser.id
+      botUser.id,
+      ceoRole.id,
+      cooRole.id,
+      chiefExecutiveRole.id
     ),
   });
 
@@ -2245,7 +2448,10 @@ export const runDiscordSync = async ({
       studentRole.id,
       executiveRole.id,
       founderRole.id,
-      botUser.id
+      botUser.id,
+      ceoRole.id,
+      cooRole.id,
+      chiefExecutiveRole.id
     ),
   });
 
@@ -2351,7 +2557,10 @@ export const runDiscordSync = async ({
       executiveRole.id,
       juniorExecutiveRole.id,
       founderRole.id,
-      botUser.id
+      botUser.id,
+      ceoRole.id,
+      cooRole.id,
+      chiefExecutiveRole.id
     ),
   });
 
