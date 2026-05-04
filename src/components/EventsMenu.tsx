@@ -246,7 +246,7 @@ export default function EventsMenu() {
     );
   }
 
-  const isFounderUser = role && isFounder(role as any);
+  const isFounderUser = role ? isFounder(role as any) : false;
 
   return (
     <div className="space-y-8">
@@ -498,7 +498,7 @@ export default function EventsMenu() {
 
                     <div className="space-y-1">
                       <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">
-                        {isFounder ? "Attendance Status per Date" : "Select your availability for each date"}
+                        {isFounderUser ? "Attendance Status per Date" : "Select your availability for each date"}
                       </p>
                       {event.event_dates.length > 1 && !isFounderUser && (
                         <p className="text-[10px] italic text-[var(--muted)] leading-relaxed">

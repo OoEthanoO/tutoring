@@ -169,6 +169,7 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
+  const role = resolveUserRole(user.email, user.role ?? null);
   if (!checkIsExecutive(role)) {
     return NextResponse.json({ error: "Forbidden." }, { status: 403 });
   }

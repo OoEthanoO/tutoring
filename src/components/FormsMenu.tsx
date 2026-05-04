@@ -201,7 +201,7 @@ export default function FormsMenu() {
     );
   }
 
-  const isFounderUser = role && isFounder(role as any);
+  const isFounderUser = role ? isFounder(role as any) : false;
 
   return (
     <div className="space-y-8">
@@ -402,13 +402,13 @@ export default function FormsMenu() {
                     return (
                       <div key={i} className="flex items-center gap-3">
                         <button
-                          disabled={isPastDeadline || isFounder}
+                          disabled={isPastDeadline || isFounderUser}
                           onClick={() => handleRespond(form.id, opt, isSelected)}
                           className={`flex-1 rounded-xl border p-3 text-left transition-all ${
                             isSelected 
                               ? "border-[var(--foreground)] bg-[var(--foreground)] text-[var(--background)] font-bold"
                               : "border-[var(--border)] bg-[var(--background)] text-[var(--foreground)] hover:border-[var(--foreground)]"
-                          } ${(isPastDeadline || isFounder) ? "cursor-not-allowed opacity-80 hover:border-[var(--border)]" : ""}`}
+                          } ${(isPastDeadline || isFounderUser) ? "cursor-not-allowed opacity-80 hover:border-[var(--border)]" : ""}`}
                         >
                           {opt}
                         </button>
