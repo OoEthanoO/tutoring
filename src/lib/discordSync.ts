@@ -1620,6 +1620,7 @@ export const runDiscordSync = async ({
     }
   };
 
+  const customRoleIds = new Set<string>();
   for (const member of humanMembers) {
     const memberId = member.user?.id ?? "";
     if (!memberId || !websiteMemberIds.has(memberId)) {
@@ -1655,14 +1656,16 @@ export const runDiscordSync = async ({
     else if (websiteRole === "Junior Executive") primaryHierarchyRoleId = juniorExecutiveRole.id;
 
     requiredBaseRoleIds.add(primaryHierarchyRoleId);
+    requiredBaseRoleIds.add(studentRole.id);
 
-    if (isChiefExecCategory) {
+    if (websiteRole === "Chief Executive") {
       requiredBaseRoleIds.add(chiefExecutiveRole.id);
     }
 
     if (customRoleName) {
       const customRole = await ensureRole(customRoleName, false);
       requiredBaseRoleIds.add(customRole.id);
+      customRoleIds.add(customRole.id);
     }
 
     const hierarchyRoleIds = [
@@ -1987,7 +1990,7 @@ export const runDiscordSync = async ({
     if (role.managed || role.id === discordGuildId) {
       continue;
     }
-    if (baseRoleIds.has(role.id) || expectedCourseRoleIdSet.has(role.id)) {
+    if (baseRoleIds.has(role.id) || expectedCourseRoleIdSet.has(role.id) || customRoleIds.has(role.id)) {
       continue;
     }
     if (protectedRoleNames.has(role.name.toLowerCase())) {
@@ -1997,7 +2000,7 @@ export const runDiscordSync = async ({
   }
 
   for (const roleId of staleCourseRoleIdCandidates) {
-    if (baseRoleIds.has(roleId) || expectedCourseRoleIdSet.has(roleId)) {
+    if (baseRoleIds.has(roleId) || expectedCourseRoleIdSet.has(roleId) || customRoleIds.has(roleId)) {
       continue;
     }
 

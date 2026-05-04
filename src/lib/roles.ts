@@ -36,6 +36,8 @@ const normalizeRole = (role?: string | null): UserRole | null => {
   if (value === "founder") return "founder";
   if (value === "student") return "student";
   if (value === "tutor") return "executive";
+  if (value === "exec") return "executive";
+  if (value === "junior exec") return "Junior Executive";
 
   return null;
 };
