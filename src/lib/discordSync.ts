@@ -1656,7 +1656,6 @@ export const runDiscordSync = async ({
     else if (websiteRole === "Junior Executive") primaryHierarchyRoleId = juniorExecutiveRole.id;
 
     requiredBaseRoleIds.add(primaryHierarchyRoleId);
-    requiredBaseRoleIds.add(studentRole.id);
 
     if (websiteRole === "Chief Executive") {
       requiredBaseRoleIds.add(chiefExecutiveRole.id);
