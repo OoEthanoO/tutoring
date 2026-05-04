@@ -24,6 +24,16 @@ type RequestRecord = {
 const snapDateTimeLocalToFiveMinutes = (value: string) => value;
 const isFiveMinuteLocal = (value: string) => true;
 
+const dayOrder: Record<string, number> = {
+  Sunday: 0,
+  Monday: 1,
+  Tuesday: 2,
+  Wednesday: 3,
+  Thursday: 4,
+  Friday: 5,
+  Saturday: 6,
+};
+
 export default function CourseRequestsMenu() {
   const [role, setRole] = useState<string | null>(null);
   const [isFounder, setIsFounder] = useState(false);
@@ -374,7 +384,10 @@ export default function CourseRequestsMenu() {
                   <div className="pt-2">
                     <p className="text-[0.65rem] font-bold uppercase tracking-[0.2em] text-[var(--muted)] mb-2">Timeframes</p>
                     <div className="flex flex-wrap gap-2">
-                      {Object.entries(req.timeframes || {}).filter(([_, v]) => v).map(([day, time]) => (
+                      {Object.entries(req.timeframes || {})
+                        .filter(([_, v]) => v)
+                        .sort(([dayA], [dayB]) => (dayOrder[dayA] ?? 7) - (dayOrder[dayB] ?? 7))
+                        .map(([day, time]) => (
                         <div key={day} className="px-3 py-1.5 rounded-lg bg-[var(--background)] border border-[var(--border)] text-xs text-[var(--foreground)]">
                           <span className="font-semibold">{day}:</span> {time}
                         </div>
@@ -564,7 +577,10 @@ export default function CourseRequestsMenu() {
                       <div className="pt-2">
                         <p className="text-[0.65rem] font-bold uppercase tracking-[0.2em] text-[var(--muted)] mb-2">Timeframes</p>
                         <div className="flex flex-wrap gap-2">
-                          {Object.entries(req.timeframes || {}).filter(([_, v]) => v).map(([day, time]) => (
+                          {Object.entries(req.timeframes || {})
+                            .filter(([_, v]) => v)
+                            .sort(([dayA], [dayB]) => (dayOrder[dayA] ?? 7) - (dayOrder[dayB] ?? 7))
+                            .map(([day, time]) => (
                             <div key={day} className="px-3 py-1.5 rounded-lg bg-[var(--background)] border border-[var(--border)] text-xs text-[var(--foreground)]">
                               <span className="font-semibold">{day}:</span> {time}
                             </div>
