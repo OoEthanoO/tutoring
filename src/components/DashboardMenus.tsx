@@ -246,7 +246,7 @@ export default function DashboardMenus() {
   }, [role]);
 
   useEffect(() => {
-    if (!role || !canManageCourses(role)) {
+    if (!role || !canManageCourses(role) || role === "executive") {
       setTrashCount(0);
       return;
     }
@@ -302,7 +302,7 @@ export default function DashboardMenus() {
       items.push({ key: "forms", label: "Forms" });
     }
 
-    if (trashCount > 0) {
+    if (trashCount > 0 && role !== "executive") {
       items.push({ key: "trash", label: "Trash" });
     }
 
