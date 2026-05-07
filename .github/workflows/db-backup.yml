@@ -1,0 +1,61 @@
+name: Database Backup
+
+on:
+  schedule:
+    # Run every day at midnight UTC
+    - cron: '0 0 * * *'
+  # Allow manual triggering
+  workflow_dispatch:
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    env:
+      timestamp: ''
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup PostgreSQL Client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Generate Backup Timestamp
+        id: vars
+        run: echo "timestamp=$(date +'%Y-%m-%d_%H-%M-%S')" >> $GITHUB_ENV
+
+      - name: Run pg_dump
+        env:
+          # Ensure you set this secret in your GitHub repository
+          # Format: postgresql://postgres:[PASSWORD]@[HOST]:[PORT]/postgres
+          DATABASE_URL: ${{ secrets.PROD_DB_URL }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "Error: PROD_DB_URL secret is not set!"
+            exit 1
+          fi
+          
+          # We use --clean to add DROP statements, so restoring is easier
+          # We exclude supabase specific schemas that shouldn't be touched by standard restores
+          pg_dump "$DATABASE_URL" \
+            --clean \
+            --if-exists \
+            --no-owner \
+            --no-privileges \
+            --schema=public \
+            --schema=auth \
+            --schema=storage \
+            -F c > backup_${{ env.timestamp }}.dump
+          
+          echo "Database dump created successfully."
+
+      - name: Upload Backup as GitHub Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: database-backup-${{ env.timestamp }}
+          path: backup_${{ env.timestamp }}.dump
+          retention-days: 90 # Maximum allowed by GitHub for free
+          
+      - name: Cleanup
+        run: echo "Backup uploaded to GitHub Artifacts successfully."
