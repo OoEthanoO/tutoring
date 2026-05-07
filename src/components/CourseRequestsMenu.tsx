@@ -17,6 +17,7 @@ type RequestRecord = {
   start_date: string;
   notes: string;
   status: string;
+  created_by: string;
   created_at: string;
   is_co_taught?: boolean;
   co_tutor_id?: string;
