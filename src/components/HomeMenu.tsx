@@ -107,27 +107,7 @@ export default function HomeMenu({ isSignedIn }: HomeMenuProps) {
       ) : null}
       {tutors.length ? (
         <div className="space-y-4">
-          <div className="space-y-2">
-            <h3 className="text-sm font-semibold text-[var(--foreground)]">
-              Our Core Team
-            </h3>
-            <div className="flex flex-wrap gap-2 transition-all duration-300">
-              {tutors
-                .filter((t) => !t.generation || t.role === "founder")
-                .map((tutor, index) => {
-                  const displayName = tutor.name.replace(/\bExecutive\b/gi, "EXEC");
-                  return (
-                    <span
-                      key={`${tutor.name}-${index}`}
-                      className="inline-flex items-center rounded-full border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-1 text-xs font-medium text-[var(--muted)] hover:border-[var(--foreground)] hover:text-[var(--foreground)] transition-colors"
-                    >
-                      {displayName}
-                    </span>
-                  );
-                })}
-            </div>
-          </div>
-          
+
           {Array.from(new Set(tutors.map((t) => t.generation).filter(Boolean))).sort().reverse().map((generation) => {
             const genTutors = tutors.filter((t) => t.generation === generation);
             if (!genTutors.length) return null;
