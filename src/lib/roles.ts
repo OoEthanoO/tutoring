@@ -86,4 +86,4 @@ export const isFounder = (role: UserRole | null): boolean =>
   role === "founder" || role === "CEO" || role === "COO";
 
 export const canManageCourses = (role: UserRole | null): boolean =>
-  role ? (isFounder(role) || role === "Chief Executive" || role === "Executive" || role === "executive") : false;
+  role ? (isFounder(role) || role === "Chief Executive" || role === "Executive" || role === "executive" || role === "Junior Executive") : false;
