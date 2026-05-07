@@ -40,7 +40,7 @@ export async function POST(
   }
 
   const body = (await request.json().catch(() => null)) as {
-    classes?: { title?: string; startsAt?: string; durationHours?: number }[];
+    classes?: { title?: string; startsAt?: string; durationHours?: number; tutorId?: string }[];
     maxStudents?: number | null;
   } | null;
 
@@ -56,7 +56,7 @@ export async function POST(
 
   const { data: requestRecord, error: reqError } = await adminClient
     .from("course_creation_requests")
-    .select("*, app_users!course_creation_requests_created_by_fkey(full_name, email, discord_user_id)")
+    .select("*, app_users!course_creation_requests_created_by_fkey(full_name, email, discord_user_id), co_tutor:app_users!course_creation_requests_co_tutor_id_fkey(full_name, email)")
     .eq("id", requestId)
     .single();
 
@@ -80,6 +80,11 @@ export async function POST(
 
   const creatorName = creatorUser?.full_name?.trim() || creatorUser?.email || "Unknown tutor";
 
+  const coTutorUser = Array.isArray(requestRecord.co_tutor) 
+    ? requestRecord.co_tutor[0] 
+    : requestRecord.co_tutor;
+  const coTutorName = coTutorUser?.full_name?.trim() || coTutorUser?.email || "Unknown co-tutor";
+
   // Create the course
   const { data: courseData, error: courseError } = await adminClient
     .from("courses")
@@ -91,6 +96,10 @@ export async function POST(
       created_by: requestRecord.created_by,
       created_by_name: creatorName,
       created_by_email: creatorUser?.email ?? null,
+      is_co_taught: requestRecord.is_co_taught,
+      co_tutor_id: requestRecord.co_tutor_id,
+      co_tutor_name: requestRecord.is_co_taught && coTutorUser ? coTutorName : null,
+      co_tutor_email: requestRecord.is_co_taught && coTutorUser ? (coTutorUser.email ?? null) : null,
     })
     .select("id")
     .single();
@@ -108,6 +117,7 @@ export async function POST(
       title: item?.title?.trim() ?? "",
       startsAt: item?.startsAt?.trim() ?? "",
       durationHours: typeof item?.durationHours === "number" ? item.durationHours : 1,
+      tutorId: item?.tutorId || requestRecord.created_by,
     }))
     .filter((item) => item.title && item.startsAt);
 
@@ -120,7 +130,7 @@ export async function POST(
           title: item.title,
           starts_at: item.startsAt,
           duration_hours: item.durationHours,
-          created_by: requestRecord.created_by,
+          created_by: item.tutorId,
         }))
       );
 

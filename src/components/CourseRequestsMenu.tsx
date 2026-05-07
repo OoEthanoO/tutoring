@@ -18,7 +18,10 @@ type RequestRecord = {
   notes: string;
   status: string;
   created_at: string;
+  is_co_taught?: boolean;
+  co_tutor_id?: string;
   app_users: { full_name: string; email: string };
+  co_tutor?: { full_name: string; email: string };
 };
 
 const snapDateTimeLocalToFiveMinutes = (value: string) => value;
@@ -49,7 +52,8 @@ export default function CourseRequestsMenu() {
   const [maxStudents, setMaxStudents] = useState<string>("");
   const [draftClassStartsAt, setDraftClassStartsAt] = useState<Date | null>(new Date());
   const [draftClassDurationMinutes, setDraftClassDurationMinutes] = useState<string>("60");
-  const [draftClasses, setDraftClasses] = useState<{ startsAt: string; durationHours: number }[]>([]);
+  const [draftClassTutorId, setDraftClassTutorId] = useState<string>("");
+  const [draftClasses, setDraftClasses] = useState<{ startsAt: string; durationHours: number; tutorId?: string }[]>([]);
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [rejectNote, setRejectNote] = useState<string>("");
 
@@ -72,6 +76,15 @@ export default function CourseRequestsMenu() {
     load();
     return onAuthChange(load);
   }, []);
+
+  useEffect(() => {
+    if (isCreatorModalOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "unset";
+    }
+    return () => { document.body.style.overflow = "unset"; };
+  }, [isCreatorModalOpen]);
 
   const fetchRequests = async () => {
     setIsLoading(true);
@@ -169,6 +182,7 @@ export default function CourseRequestsMenu() {
             title: `Class ${index + 1}`,
             startsAt: new Date(item.startsAt).toISOString(),
             durationHours: item.durationHours,
+            tutorId: item.tutorId,
           })),
         })
       });
@@ -210,7 +224,7 @@ export default function CourseRequestsMenu() {
     }
   };
 
-  const addDraftClass = () => {
+  const addDraftClass = (tutorId?: string) => {
     if (!draftClassStartsAt) {
       alert("Class date/time is required.");
       return;
@@ -218,6 +232,7 @@ export default function CourseRequestsMenu() {
     const nextEntry = {
       startsAt: draftClassStartsAt ? draftClassStartsAt.toISOString() : new Date().toISOString(),
       durationHours: Number.parseInt(draftClassDurationMinutes) / 60 || 1,
+      tutorId: tutorId || undefined,
     };
     const updatedDrafts = [...draftClasses, nextEntry];
     setDraftClasses(updatedDrafts);
@@ -294,8 +309,8 @@ export default function CourseRequestsMenu() {
       </div>
 
       {isCreatorModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm shadow-xl">
-          <div className="relative w-full max-w-2xl bg-[var(--background)] rounded-2xl border border-[var(--border)] overflow-hidden my-auto max-h-[90vh] flex flex-col">
+        <div className="fixed top-0 left-0 z-50 flex h-[100dvh] w-[100dvw] items-center justify-center p-4 bg-black/50 backdrop-blur-sm shadow-xl">
+          <div className="relative w-full max-w-2xl bg-[var(--background)] rounded-2xl border border-[var(--border)] overflow-hidden my-auto max-h-[90dvh] flex flex-col">
             <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border)] bg-[var(--surface)]">
               <h2 className="text-lg font-bold">{editData ? "Edit course request" : "Submit course request"}</h2>
               <button 
@@ -335,8 +350,22 @@ export default function CourseRequestsMenu() {
               <div key={req.id} className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 space-y-4">
                 <div className="flex items-start justify-between">
                   <div>
-                    <h3 className="font-semibold text-[var(--foreground)]">{req.title}</h3>
-                    <p className="text-sm text-[var(--muted)]">From {req.app_users?.full_name || req.app_users?.email}</p>
+                    <h3 className="font-semibold text-[var(--foreground)]">
+                      {req.title}
+                      {req.is_co_taught && (
+                        <span className="ml-2 text-xs font-medium text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                          Co-taught
+                        </span>
+                      )}
+                    </h3>
+                    <p className="text-sm text-[var(--muted)]">
+                      Primary Tutor: {req.app_users?.full_name || req.app_users?.email}
+                    </p>
+                    {req.is_co_taught && req.co_tutor && (
+                      <p className="text-sm text-[var(--muted)]">
+                        Secondary Tutor: {req.co_tutor?.full_name || req.co_tutor?.email}
+                      </p>
+                    )}
                   </div>
                   {isFounderAccess ? (
                     <select 
@@ -415,7 +444,7 @@ export default function CourseRequestsMenu() {
 
                     <div className="space-y-3 rounded-xl border border-[var(--border)] bg-[var(--background)] p-4">
                       <p className="text-[0.65rem] font-bold uppercase tracking-[0.2em] text-[var(--muted)]">Classes</p>
-                      <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+                      <div className={`grid gap-3 ${req.is_co_taught ? 'sm:grid-cols-[1fr_auto_auto]' : 'sm:grid-cols-[1fr_auto]'}`}>
                         <div className="space-y-1">
                           <label className="text-[0.6rem] font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">Date &amp; time</label>
                           <div className="mt-1">
@@ -437,10 +466,23 @@ export default function CourseRequestsMenu() {
                             className="w-full rounded-xl border border-[var(--border)] px-4 py-3 text-sm"
                           />
                         </div>
+                        {req.is_co_taught && (
+                          <div className="space-y-1">
+                            <label className="text-[0.6rem] font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">Tutor</label>
+                            <select
+                              value={draftClassTutorId || req.created_by}
+                              onChange={(e) => setDraftClassTutorId(e.target.value)}
+                              className="w-full rounded-xl border border-[var(--border)] px-4 py-3 text-sm"
+                            >
+                              <option value={req.created_by}>{req.app_users?.full_name || 'Primary'}</option>
+                              <option value={req.co_tutor_id}>{req.co_tutor?.full_name || 'Secondary'}</option>
+                            </select>
+                          </div>
+                        )}
                         <button
                           type="button"
-                          onClick={addDraftClass}
-                          className="rounded-full border border-[var(--foreground)] px-4 py-3 text-xs font-semibold sm:col-span-2 hover:bg-[var(--border)] transition"
+                          onClick={() => addDraftClass(req.is_co_taught ? (draftClassTutorId || req.created_by) : undefined)}
+                          className={`rounded-full border border-[var(--foreground)] px-4 py-3 text-xs font-semibold hover:bg-[var(--border)] transition ${req.is_co_taught ? 'sm:col-span-3' : 'sm:col-span-2'}`}
                         >
                           Add class
                         </button>
@@ -449,15 +491,31 @@ export default function CourseRequestsMenu() {
                       {draftClasses.length > 0 && (
                         <ul className="space-y-2 text-xs">
                           {draftClasses.map((c, i) => (
-                            <li key={i} className="flex justify-between p-2 border border-[var(--border)] rounded">
+                            <li key={i} className="flex flex-col sm:flex-row sm:items-center justify-between p-2 border border-[var(--border)] rounded gap-2">
                               <span>Class {i + 1} - {new Date(c.startsAt).toLocaleString()} ({Math.round(c.durationHours * 60)}m)</span>
-                              <button
-                                type="button"
-                                onClick={() => setDraftClasses(prev => prev.filter((_, idx) => idx !== i))}
-                                className="text-red-500 hover:underline"
-                              >
-                                Remove
-                              </button>
+                              <div className="flex items-center gap-2">
+                                {req.is_co_taught && (
+                                  <select
+                                    value={c.tutorId || req.created_by}
+                                    onChange={(e) => {
+                                      const newDrafts = [...draftClasses];
+                                      newDrafts[i].tutorId = e.target.value;
+                                      setDraftClasses(newDrafts);
+                                    }}
+                                    className="rounded border border-[var(--border)] px-2 py-1 text-xs bg-[var(--surface)] text-[var(--foreground)]"
+                                  >
+                                    <option value={req.created_by}>{req.app_users?.full_name || 'Primary'}</option>
+                                    <option value={req.co_tutor_id}>{req.co_tutor?.full_name || 'Secondary'}</option>
+                                  </select>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => setDraftClasses(prev => prev.filter((_, idx) => idx !== i))}
+                                  className="text-red-500 hover:underline"
+                                >
+                                  Remove
+                                </button>
+                              </div>
                             </li>
                           ))}
                         </ul>
@@ -526,9 +584,21 @@ export default function CourseRequestsMenu() {
               <div key={req.id} className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 space-y-4">
                 <div className="flex items-start justify-between">
                   <div>
-                    <h3 className="font-semibold text-[var(--foreground)]">{req.title}</h3>
+                    <h3 className="font-semibold text-[var(--foreground)]">
+                      {req.title}
+                      {req.is_co_taught && (
+                        <span className="ml-2 text-xs font-medium text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                          Co-taught
+                        </span>
+                      )}
+                    </h3>
                     {isFounderAccess && (
-                      <p className="text-sm text-[var(--muted)]">From {req.app_users?.full_name || req.app_users?.email}</p>
+                      <>
+                        <p className="text-sm text-[var(--muted)]">Primary Tutor: {req.app_users?.full_name || req.app_users?.email}</p>
+                        {req.is_co_taught && req.co_tutor && (
+                          <p className="text-sm text-[var(--muted)]">Secondary Tutor: {req.co_tutor?.full_name || req.co_tutor?.email}</p>
+                        )}
+                      </>
                     )}
                   </div>
                   {isFounderAccess ? (

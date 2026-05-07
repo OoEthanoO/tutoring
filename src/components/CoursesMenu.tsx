@@ -75,6 +75,8 @@ type Course = {
   course_classes: CourseClass[];
   enrollment_status?: "pending" | "approved" | "rejected" | "enrolled" | null;
   donation_link?: string | null;
+  co_tutor_name?: string | null;
+  co_tutor_email?: string | null;
 };
 
 const formatCompletedDate = (value?: string | null) => {
@@ -192,7 +194,13 @@ export default function CoursesMenu() {
 
   const getTutorDisplayName = (course: Course) => {
     if (isFounder && hideTutorNames) return "Tutor Hidden";
-    return course.created_by_name || course.created_by_email || "Not Determined";
+    
+    const primaryName = course.created_by_name || course.created_by_email || "Not Determined";
+    if (course.co_tutor_name || course.co_tutor_email) {
+      const secondaryName = course.co_tutor_name || course.co_tutor_email;
+      return `${primaryName} and ${secondaryName}`;
+    }
+    return primaryName;
   };
 
   const modalScrollRef = useRef<HTMLDivElement>(null);

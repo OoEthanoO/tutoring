@@ -87,7 +87,7 @@ export async function GET() {
       }
       return a.name.localeCompare(b.name);
     })
-    .map((user) => ({ name: user.name, generation: user.generation, role: user.role }));
+    .map((user) => ({ id: user.id, name: user.name, generation: user.generation, role: user.role }));
 
   if (tutors.length === 0 && founderEmails.length > 0) {
     return NextResponse.json({ tutors: [{ name: "Founder", generation: null, role: "founder" }] });

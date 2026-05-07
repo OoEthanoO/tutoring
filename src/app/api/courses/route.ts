@@ -120,7 +120,7 @@ export async function POST(request: NextRequest) {
       created_by_email: user.email ?? null,
     })
     .select(
-      "id, title, short_name, description, is_completed, completed_start_date, completed_end_date, completed_class_count, max_students, created_by, created_by_name, created_by_email, created_at, deleted_at"
+      "id, title, short_name, description, is_completed, completed_start_date, completed_end_date, completed_class_count, max_students, created_by, created_by_name, created_by_email, is_co_taught, co_tutor_id, co_tutor_name, co_tutor_email, created_at, deleted_at"
     )
     .single();
 
@@ -211,7 +211,7 @@ export async function GET(request: NextRequest) {
   let query = adminClient
     .from("courses")
     .select(
-      "id, title, short_name, description, is_completed, completed_start_date, completed_end_date, completed_class_count, max_students, created_by, created_by_name, created_by_email, created_at, deleted_at, course_classes(id, title, starts_at, duration_hours, created_at), course_enrollments(count)"
+      "id, title, short_name, description, is_completed, completed_start_date, completed_end_date, completed_class_count, max_students, created_by, created_by_name, created_by_email, is_co_taught, co_tutor_id, co_tutor_name, co_tutor_email, created_at, deleted_at, course_classes(id, title, starts_at, duration_hours, created_at), course_enrollments(count)"
     );
 
   if (trash) {
@@ -591,7 +591,7 @@ export async function PATCH(request: NextRequest) {
 
   const { data, error: updateError } = await updateQuery
     .select(
-      "id, title, short_name, description, is_completed, completed_start_date, completed_end_date, completed_class_count, max_students, created_by, created_by_name, created_by_email, created_at, deleted_at"
+      "id, title, short_name, description, is_completed, completed_start_date, completed_end_date, completed_class_count, max_students, created_by, created_by_name, created_by_email, is_co_taught, co_tutor_id, co_tutor_name, co_tutor_email, created_at, deleted_at"
     )
     .single();
 

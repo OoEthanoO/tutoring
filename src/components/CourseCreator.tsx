@@ -33,6 +33,9 @@ export default function CourseCreator({ editData, onSuccess, onCancel }: CourseC
   const initialStartDate = editData?.start_date ? new Date(editData.start_date + 'T12:00:00Z') : new Date();
   const [startDate, setStartDate] = useState<Date | null>(initialStartDate);
   const [notes, setNotes] = useState(editData?.notes || "");
+  const [isCoTaught, setIsCoTaught] = useState<boolean>(editData?.is_co_taught || false);
+  const [coTutorId, setCoTutorId] = useState<string>(editData?.co_tutor_id || "");
+  const [availableTutors, setAvailableTutors] = useState<{ id: string; name: string }[]>([]);
 
   const [status, setStatus] = useState<StatusState>({
     type: "idle",
@@ -54,6 +57,16 @@ export default function CourseCreator({ editData, onSuccess, onCancel }: CourseC
         user.role ?? null
       );
       setCanCreate(canManageCourses(resolvedRole));
+
+      try {
+        const res = await fetch("/api/tutors");
+        if (res.ok) {
+          const data = await res.json();
+          setAvailableTutors(data.tutors || []);
+        }
+      } catch (err) {
+        console.error("Failed to fetch tutors", err);
+      }
     };
 
     load();
@@ -122,6 +135,8 @@ export default function CourseCreator({ editData, onSuccess, onCancel }: CourseC
           totalClasses,
           startDate: startDate?.toISOString().split('T')[0],
           notes: notes.trim(),
+          isCoTaught,
+          coTutorId: isCoTaught ? coTutorId : null,
           status: isEditing && editData?.status === "rejected" ? "draft" : undefined,
         }),
       });
@@ -148,6 +163,8 @@ export default function CourseCreator({ editData, onSuccess, onCancel }: CourseC
         setTotalClasses(1);
         setStartDate(new Date());
         setNotes("");
+        setIsCoTaught(false);
+        setCoTutorId("");
       }
       
       setStatus({ type: "success", message: isEditing ? "Course request updated successfully." : "Course request submitted successfully." });
@@ -342,6 +359,53 @@ export default function CourseCreator({ editData, onSuccess, onCancel }: CourseC
             />
           </div>
 
+          <div className="space-y-4 rounded-xl border border-[var(--border)] px-4 py-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <label className="text-[0.65rem] font-bold uppercase tracking-[0.2em] text-[var(--muted)]">
+                  Co-teach this course
+                </label>
+                <p className="text-xs text-[var(--muted)] mt-1">
+                  Check this box if this course will be co-taught with another tutor.
+                </p>
+              </div>
+              <input
+                type="checkbox"
+                checked={isCoTaught}
+                onChange={(e) => {
+                  if (e.target.checked) {
+                    const confirmed = window.confirm("This is only allowed if you have been given permission to do so as co-taught courses are not conventional.");
+                    if (confirmed) {
+                      setIsCoTaught(true);
+                    }
+                  } else {
+                    setIsCoTaught(false);
+                    setCoTutorId("");
+                  }
+                }}
+                className="h-5 w-5 rounded border-[var(--border)] text-[var(--foreground)] focus:ring-[var(--foreground)]"
+              />
+            </div>
+            {isCoTaught && (
+              <div className="pt-2">
+                <label className="text-[0.65rem] font-bold uppercase tracking-[0.2em] text-[var(--muted)]">
+                  Select Secondary Tutor
+                </label>
+                <select
+                  value={coTutorId}
+                  onChange={(e) => setCoTutorId(e.target.value)}
+                  className="mt-2 w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+                  required={isCoTaught}
+                >
+                  <option value="" disabled>Select a tutor...</option>
+                  {availableTutors.map((t) => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+
           <div className="flex gap-2">
             {onCancel && (
               <button
@@ -365,8 +429,9 @@ export default function CourseCreator({ editData, onSuccess, onCancel }: CourseC
       </div>
 
       {showConfirmModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md animate-in fade-in zoom-in duration-200 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-2xl">
+        <div className="fixed top-0 left-0 z-[60] flex h-[100dvh] w-[100dvw] items-center justify-center p-4">
+          <div className="absolute inset-0 bg-transparent" onClick={() => setShowConfirmModal(false)}></div>
+          <div className="relative w-full max-w-md animate-in fade-in zoom-in duration-200 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-[0_8px_30px_rgb(0,0,0,0.12)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.5)]">
             <h3 className="text-lg font-semibold text-[var(--foreground)]">Important Confirmation</h3>
             <p className="mt-3 text-sm text-[var(--muted)] leading-relaxed">
               Please make sure that the course length (number of classes) is long enough to covering all topics, because extending the course after submitting this request is very unlikely. This is especially important if this course involves a grade-specific curriculum, as you must cover all topics in this curriculum.

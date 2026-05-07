@@ -46,6 +46,10 @@ create table if not exists public.courses (
   created_by uuid references public.app_users(id) on delete set null,
   created_by_name text,
   created_by_email text,
+  is_co_taught boolean not null default false,
+  co_tutor_id uuid references public.app_users(id),
+  co_tutor_name text,
+  co_tutor_email text,
   created_at timestamptz not null default now()
 );
 
@@ -176,7 +180,9 @@ create table if not exists public.course_creation_requests (
   created_by uuid references public.app_users(id) on delete cascade,
   created_at timestamptz not null default now(),
   decided_at timestamptz,
-  decided_by uuid references public.app_users(id) on delete set null
+  decided_by uuid references public.app_users(id) on delete set null,
+  is_co_taught boolean not null default false,
+  co_tutor_id uuid references public.app_users(id)
 );
 
 alter table public.course_creation_requests enable row level security;

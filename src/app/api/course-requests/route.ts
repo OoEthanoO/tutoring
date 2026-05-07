@@ -41,6 +41,8 @@ export async function POST(request: NextRequest) {
     notes?: string;
     totalClasses?: number;
     startDate?: string;
+    isCoTaught?: boolean;
+    coTutorId?: string | null;
   } | null;
 
   const title = body?.title?.trim() ?? "";
@@ -50,6 +52,8 @@ export async function POST(request: NextRequest) {
   const notes = body?.notes?.trim() ?? "";
   const totalClasses = typeof body?.totalClasses === "number" ? body.totalClasses : 1;
   const startDate = body?.startDate?.trim() || new Date().toISOString().split('T')[0];
+  const isCoTaught = !!body?.isCoTaught;
+  const coTutorId = body?.coTutorId || null;
 
   if (!title) {
     return NextResponse.json({ error: "Title is required." }, { status: 400 });
@@ -71,6 +75,8 @@ export async function POST(request: NextRequest) {
       start_date: startDate,
       created_by: user.id,
       status: "in_review",
+      is_co_taught: isCoTaught,
+      co_tutor_id: coTutorId,
     })
     .select("id")
     .single();
@@ -141,7 +147,7 @@ export async function GET(request: NextRequest) {
 
   let query = adminClient
     .from("course_creation_requests")
-    .select("id, title, description, timeframes, frequency, notes, total_classes, start_date, status, created_by, created_at, decided_at, decided_by, app_users!course_creation_requests_created_by_fkey(full_name, email)")
+    .select("id, title, description, timeframes, frequency, notes, total_classes, start_date, status, created_by, created_at, decided_at, decided_by, is_co_taught, co_tutor_id, app_users!course_creation_requests_created_by_fkey(full_name, email), co_tutor:app_users!course_creation_requests_co_tutor_id_fkey(full_name, email)")
     .order("created_at", { ascending: false });
 
   if (!isFounder(role)) {
@@ -190,6 +196,8 @@ export async function PATCH(request: NextRequest) {
     totalClasses?: number;
     startDate?: string;
     status?: string;
+    isCoTaught?: boolean;
+    coTutorId?: string | null;
   } | null;
 
   const requestId = body?.requestId;
@@ -237,6 +245,8 @@ export async function PATCH(request: NextRequest) {
   if (body?.notes !== undefined) updatePayload.notes = body.notes.trim();
   if (body?.totalClasses !== undefined) updatePayload.total_classes = body.totalClasses;
   if (body?.startDate !== undefined) updatePayload.start_date = body.startDate.trim();
+  if (body?.isCoTaught !== undefined) updatePayload.is_co_taught = body.isCoTaught;
+  if (body?.coTutorId !== undefined) updatePayload.co_tutor_id = body.coTutorId;
 
   const { error: updateError } = await adminClient
     .from("course_creation_requests")
