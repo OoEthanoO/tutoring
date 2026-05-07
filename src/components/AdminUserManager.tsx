@@ -26,6 +26,7 @@ type AdminUser = {
   strikeCount?: number;
   legalName?: string | null;
   customRole?: string | null;
+  generation?: string | null;
 };
 
 type StatusState = {
@@ -1179,6 +1180,33 @@ export default function AdminUserManager() {
                             </select>
                           </div>
                         )}
+                      </div>
+
+                      <div className="flex flex-col gap-1">
+                        <label className="text-xs font-semibold uppercase text-[var(--muted)] tracking-wider">
+                          Generation
+                        </label>
+                        <input
+                          type="text"
+                          value={user.generation || ""}
+                          onChange={async (e) => {
+                            const val = e.target.value.trim() || null;
+                            const previous = [...users];
+                            setUsers((current) => current.map((u) => u.id === user.id ? { ...u, generation: val } : u));
+                            const response = await fetch("/api/admin/users", {
+                              method: "PATCH",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ userId: user.id, generation: val }),
+                            });
+                            if (!response.ok) {
+                              setUsers(previous);
+                              setStatus({ type: "error", message: "Failed to update generation" });
+                            }
+                          }}
+                          placeholder="e.g. 25-26"
+                          disabled={isPending}
+                          className="rounded-lg border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-xs text-[var(--foreground)] w-24 focus:border-[var(--foreground)] focus:outline-none"
+                        />
                       </div>
                       
                       {user.role !== "founder" ? (

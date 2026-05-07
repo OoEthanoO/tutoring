@@ -1659,6 +1659,7 @@ export const runDiscordSync = async ({
 
     if (websiteRole === "Chief Executive") {
       requiredBaseRoleIds.add(chiefExecutiveRole.id);
+      requiredBaseRoleIds.add(executiveRole.id);
     }
 
     if (customRoleName) {

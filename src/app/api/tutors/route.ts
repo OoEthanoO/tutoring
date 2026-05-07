@@ -27,7 +27,7 @@ export async function GET() {
 
   const { data, error } = await adminClient
     .from("app_users")
-    .select("id, email, full_name, role, created_at, tutor_promoted_at, is_junior");
+    .select("id, email, full_name, role, created_at, tutor_promoted_at, is_junior, executive_generation");
 
   if (error || !data) {
     return NextResponse.json(
@@ -63,6 +63,7 @@ export async function GET() {
         email: user.email ?? "",
         promotedAt: user.tutor_promoted_at ?? user.created_at,
         isJunior: user.is_junior,
+        generation: user.executive_generation ?? null,
       };
     })
     .filter(
@@ -85,10 +86,10 @@ export async function GET() {
       }
       return a.name.localeCompare(b.name);
     })
-    .map((user) => user.name);
+    .map((user) => ({ name: user.name, generation: user.generation, role: user.role }));
 
   if (tutors.length === 0 && founderEmails.length > 0) {
-    return NextResponse.json({ tutors: ["Founder"] });
+    return NextResponse.json({ tutors: [{ name: "Founder", generation: null, role: "founder" }] });
   }
 
   return NextResponse.json({ tutors });

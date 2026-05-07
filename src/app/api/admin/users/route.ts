@@ -140,7 +140,7 @@ export async function GET(request: NextRequest) {
   let query = adminClient
     .from("app_users")
     .select(
-      "id, email, full_name, legal_name, role, created_at, tutor_promoted_at, discord_user_id, discord_username, discord_connected_at, is_junior, grade, school, strike_count, custom_role"
+      "id, email, full_name, legal_name, role, created_at, tutor_promoted_at, discord_user_id, discord_username, discord_connected_at, is_junior, grade, school, strike_count, custom_role, executive_generation"
     )
     .ilike("email", search ? `%${search}%` : "%")
     .order("created_at", { ascending: false });
@@ -178,6 +178,7 @@ export async function GET(request: NextRequest) {
     strikeCount: item.strike_count || 0,
     legalName: item.legal_name ?? null,
     customRole: item.custom_role ?? null,
+    generation: item.executive_generation ?? null,
   }));
 
   const userIds = users.map((user) => user.id);
@@ -235,6 +236,7 @@ export async function PATCH(request: NextRequest) {
       strikeCount?: number;
       transferDiscordFromEmail?: string;
       customRole?: string | null;
+      generation?: string | null;
     }
     | null;
 
@@ -248,6 +250,7 @@ export async function PATCH(request: NextRequest) {
       body.school === undefined &&
       body.strikeCount === undefined &&
       body.customRole === undefined &&
+      body.generation === undefined &&
       body.transferDiscordFromEmail === undefined)
   ) {
     return NextResponse.json(
@@ -305,7 +308,7 @@ export async function PATCH(request: NextRequest) {
         discord_connected_at: sourceUser.discord_connected_at,
       })
       .eq("id", body.userId)
-      .select("id, email, full_name, legal_name, role, created_at, tutor_promoted_at, discord_user_id, discord_username, discord_connected_at, is_junior, grade, school, strike_count, custom_role")
+      .select("id, email, full_name, legal_name, role, created_at, tutor_promoted_at, discord_user_id, discord_username, discord_connected_at, is_junior, grade, school, strike_count, custom_role, executive_generation")
       .single();
 
     if (linkError || !updatedTarget) {
@@ -330,6 +333,7 @@ export async function PATCH(request: NextRequest) {
       strikeCount: updatedTarget.strike_count || 0,
       legalName: updatedTarget.legal_name ?? null,
       customRole: updatedTarget.custom_role ?? null,
+      generation: updatedTarget.executive_generation ?? null,
     };
 
     return NextResponse.json({ user: responseUser });
@@ -362,7 +366,7 @@ export async function PATCH(request: NextRequest) {
     body.tutorPromotedAt === null ? null : body.tutorPromotedAt;
 
   const updatePayload =
-    body.role || shouldUpdatePromotedAt || body.isJunior !== undefined || body.grade !== undefined || body.school !== undefined || body.strikeCount !== undefined || body.customRole !== undefined
+    body.role || shouldUpdatePromotedAt || body.isJunior !== undefined || body.grade !== undefined || body.school !== undefined || body.strikeCount !== undefined || body.customRole !== undefined || body.generation !== undefined
       ? {
         role: isExecutive(body.role as any) ? "tutor" : (body.role ?? existingRole ?? "student"),
         tutor_promoted_at: isPromotingToTutor
@@ -376,6 +380,7 @@ export async function PATCH(request: NextRequest) {
         strike_count: body.strikeCount !== undefined ? body.strikeCount : undefined,
         last_strike_at: body.strikeCount === 0 ? null : (body.strikeCount !== undefined && body.strikeCount > 0 ? new Date().toISOString() : undefined),
         custom_role: body.customRole !== undefined ? body.customRole : undefined,
+        executive_generation: body.generation !== undefined ? body.generation : undefined,
       }
       : null;
   const updateResult = updatePayload
@@ -384,13 +389,13 @@ export async function PATCH(request: NextRequest) {
       .update(updatePayload)
       .eq("id", body.userId)
       .select(
-        "id, email, full_name, legal_name, role, created_at, tutor_promoted_at, discord_user_id, discord_username, discord_connected_at, is_junior, grade, school, strike_count, custom_role"
+        "id, email, full_name, legal_name, role, created_at, tutor_promoted_at, discord_user_id, discord_username, discord_connected_at, is_junior, grade, school, strike_count, custom_role, executive_generation"
       )
       .single()
     : await adminClient
       .from("app_users")
       .select(
-        "id, email, full_name, legal_name, role, created_at, tutor_promoted_at, discord_user_id, discord_username, discord_connected_at, is_junior, grade, school, strike_count, custom_role"
+        "id, email, full_name, legal_name, role, created_at, tutor_promoted_at, discord_user_id, discord_username, discord_connected_at, is_junior, grade, school, strike_count, custom_role, executive_generation"
       )
       .eq("id", body.userId)
       .single();
@@ -476,6 +481,7 @@ export async function PATCH(request: NextRequest) {
     strikeCount: updatedUser.strike_count || 0,
     legalName: updatedUser.legal_name ?? null,
     customRole: updatedUser.custom_role ?? null,
+    generation: updatedUser.executive_generation ?? null,
   };
 
   return NextResponse.json({ user: responseUser });
