@@ -1633,15 +1633,15 @@ export const runDiscordSync = async ({
       continue;
     }
 
-    const customRoleName = Array.isArray(websiteUser.custom_roles)
-      ? websiteUser.custom_roles[0]?.name
-      : (websiteUser.custom_roles)?.name;
-    const customRoleVal = Array.isArray(websiteUser.custom_roles)
-      ? websiteUser.custom_roles[0]?.role_level
-      : (websiteUser.custom_roles)?.role_level;
+    const customRoleNames = Array.isArray(websiteUser.custom_roles)
+      ? websiteUser.custom_roles.map((r: any) => r.name).filter(Boolean)
+      : [websiteUser.custom_roles?.name].filter(Boolean);
+    const customRoleLevels = Array.isArray(websiteUser.custom_roles)
+      ? websiteUser.custom_roles.map((r: any) => r.role_level).filter(Boolean)
+      : [websiteUser.custom_roles?.role_level].filter(Boolean);
 
-    const websiteRole = resolveUserRole(websiteUser.email, websiteUser.role, customRoleVal);
-    const isHardcodedFounder = founderDiscordUserIds.has(memberId) && !customRoleVal;
+    const websiteRole = resolveUserRole(websiteUser.email, websiteUser.role, customRoleLevels);
+    const isHardcodedFounder = founderDiscordUserIds.has(memberId) && customRoleLevels.length === 0;
 
     const isChiefExecCategory = ["CEO", "COO", "Chief Executive", "founder"].includes(websiteRole);
 
@@ -1662,8 +1662,8 @@ export const runDiscordSync = async ({
       requiredBaseRoleIds.add(executiveRole.id);
     }
 
-    if (customRoleName) {
-      const customRole = await ensureRole(customRoleName, false);
+    for (const name of customRoleNames) {
+      const customRole = await ensureRole(name, false);
       requiredBaseRoleIds.add(customRole.id);
       customRoleIds.add(customRole.id);
     }

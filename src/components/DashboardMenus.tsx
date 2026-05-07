@@ -91,10 +91,14 @@ export default function DashboardMenus() {
         return;
       }
 
+      const customRoleLevels = Array.isArray(user.custom_roles)
+        ? user.custom_roles.map((r: any) => r.role_level).filter(Boolean)
+        : [user.custom_roles?.role_level].filter(Boolean);
+
       const resolvedRole = resolveUserRole(
         user.email,
         user.role ?? null,
-        Array.isArray(user.custom_roles) ? user.custom_roles[0]?.role_level : user.custom_roles?.role_level ?? null
+        customRoleLevels
       );
       setRole(resolvedRole);
       setIsAuthResolved(true);

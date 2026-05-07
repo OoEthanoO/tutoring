@@ -70,7 +70,8 @@ export async function GET() {
       (user) =>
         isExecutive(user.role as any) &&
         (!user.isJunior || activeCreatorIds.has(user.id)) &&
-        user.email !== "jingqu2018@gmail.com"
+        user.email !== "jingqu2018@gmail.com" &&
+        user.email !== "ethanyanxu@icloud.com"
     )
     .sort((a, b) => {
       if (isFounder(a.role as any) && !isFounder(b.role as any)) {

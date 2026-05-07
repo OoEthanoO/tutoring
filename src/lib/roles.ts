@@ -45,19 +45,38 @@ const normalizeRole = (role?: string | null): UserRole | null => {
 export const resolveUserRole = (
   email?: string | null,
   roleValue?: string | null,
-  customRoleLevel?: string | null
+  customRoleLevel?: string | string[] | null
 ): UserRole => {
-  if (customRoleLevel) {
-    const matched = normalizeRole(customRoleLevel);
+  const customLevels = Array.isArray(customRoleLevel) ? customRoleLevel : (customRoleLevel ? [customRoleLevel] : []);
+  
+  let bestCustomMatch: UserRole | null = null;
+  const rolePriority: Record<UserRole, number> = {
+    founder: 100,
+    CEO: 90,
+    COO: 80,
+    "Chief Executive": 70,
+    Executive: 60,
+    executive: 60,
+    "Junior Executive": 50,
+    Student: 10,
+    student: 10,
+  };
+
+  for (const level of customLevels) {
+    const matched = normalizeRole(level);
     if (matched) {
-       // if it's a valid level, we might just return it, though we need to make sure ethanyanxu still has founder access implicitly or CEO access
-       // let's just return the custom level
-       const emailRole = resolveRoleByEmail(email);
-       if (emailRole === 'founder' && (matched === 'Student' || matched === 'student' || matched === 'executive' || matched === 'Executive' || matched === 'Junior Executive')) {
-         return 'founder'; // Don't downgrade hardcoded founders!
-       }
-       return matched;
+      if (!bestCustomMatch || rolePriority[matched] > rolePriority[bestCustomMatch]) {
+        bestCustomMatch = matched;
+      }
     }
+  }
+
+  if (bestCustomMatch) {
+     const emailRole = resolveRoleByEmail(email);
+     if (emailRole === 'founder' && rolePriority[bestCustomMatch] < rolePriority['founder']) {
+       return 'founder'; // Don't downgrade hardcoded founders!
+     }
+     return bestCustomMatch;
   }
 
   const emailRole = resolveRoleByEmail(email);
