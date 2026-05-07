@@ -264,8 +264,8 @@ export async function PATCH(request: NextRequest) {
   if (newStatus === "in_review" && existing.status !== "in_review") {
     const courseTitle = body?.title || existing.title || "Unknown Course";
     
-    const founderRoleId = await getDiscordRoleIdByName("Founder");
-    const founderMention = founderRoleId ? `<@&${founderRoleId}>` : "@Founder";
+    const cooRoleId = await getDiscordRoleIdByName("COO");
+    const founderMention = cooRoleId ? `<@&${cooRoleId}>` : "@COO";
     const discordMessage = `${founderMention} Course request resubmitted: **${courseTitle}** by ${user.full_name} (${user.email})`;
     sendDiscordMessageByChannelName("founders", discordMessage).catch((err) => {
       console.error("Failed to send Discord message:", err);

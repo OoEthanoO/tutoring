@@ -368,7 +368,7 @@ export async function PATCH(request: NextRequest) {
   const updatePayload =
     body.role || shouldUpdatePromotedAt || body.isJunior !== undefined || body.grade !== undefined || body.school !== undefined || body.strikeCount !== undefined || body.customRole !== undefined || body.generation !== undefined
       ? {
-        role: isExecutive(body.role as any) ? "tutor" : (body.role ?? existingRole ?? "student"),
+        role: body.role !== undefined ? (isExecutive(body.role as any) ? "tutor" : body.role) : undefined,
         tutor_promoted_at: isPromotingToTutor
           ? new Date().toISOString()
           : shouldUpdatePromotedAt
