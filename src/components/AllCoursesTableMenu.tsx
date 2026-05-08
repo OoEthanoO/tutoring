@@ -37,10 +37,11 @@ const DAYS_OF_WEEK = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "S
 const formatTime = (date: Date): string => {
   const hours = date.getHours();
   const minutes = date.getMinutes();
-  const ampm = hours >= 12 ? "pm" : "am";
+  const ampm = hours >= 12 ? "PM" : "AM";
   const displayHours = hours % 12 || 12;
-  const displayMinutes = minutes === 0 ? "" : minutes.toString().padStart(2, "0");
-  return `${displayHours}${displayMinutes}${ampm}`;
+  if (minutes === 0) return `${displayHours} ${ampm}`;
+  const displayMinutes = minutes.toString().padStart(2, "0");
+  return `${displayHours}:${displayMinutes} ${ampm}`;
 };
 
 const getScheduleData = (classes: CourseClass[] | undefined): ScheduleData => {
@@ -102,16 +103,17 @@ const getScheduleData = (classes: CourseClass[] | undefined): ScheduleData => {
       totalHours += cls.duration_hours;
     });
 
-    // Format as: "HH-HHpm, HH-HHpm, ... N classes, M hours. Date1, Date2, ..."
-    const timeStrings: string[] = [];
+    // Build a list of unique time ranges so we don't repeat the same time many times
+    const uniqueTimeSet = new Set<string>();
     byDate.forEach((times) => {
       times.forEach((t) => {
-        timeStrings.push(`${t.start}-${t.end}`);
+        uniqueTimeSet.add(`${t.start}-${t.end}`);
       });
     });
+    const timeStrings = Array.from(uniqueTimeSet.values());
     const dateStrings = Array.from(byDate.keys());
 
-    summary = `${timeStrings.join(", ")} ${classes.length} classes, ${totalHours} hours. ${dateStrings.join(", ")}`;
+    summary = `${timeStrings.join(", ")} — ${classes.length} classes, ${totalHours} hours. ${dateStrings.join(", ")}`;
   }
 
   // Convert sets to sorted arrays
@@ -218,16 +220,22 @@ export default function AllCoursesTableMenu() {
           {visibleCourses.map((course) => {
             const schedule = formatScheduleCell(course.course_classes);
             const classCount = course.completed_class_count ?? course.course_classes?.length ?? 0;
-            const periodLabel =
-              course.completed_start_date && course.completed_end_date
-                ? `${new Date(course.completed_start_date).toLocaleDateString("en-US", {
-                    month: "short",
-                    day: "numeric",
-                  })} - ${new Date(course.completed_end_date).toLocaleDateString("en-US", {
-                    month: "short",
-                    day: "numeric",
-                  })}`
-                : "N/A";
+            // Compute period from course classes when available, otherwise fall back to completed_* fields
+            let periodLabel = "N/A";
+            const cls = course.course_classes ?? [];
+            if (cls.length > 0) {
+              const starts = cls
+                .map((c) => new Date(c.starts_at).getTime())
+                .filter(Number.isFinite)
+                .sort((a, b) => a - b);
+              if (starts.length > 0) {
+                const first = new Date(starts[0]).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+                const last = new Date(starts[starts.length - 1]).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+                periodLabel = `${first} - ${last}`;
+              }
+            } else if (course.completed_start_date && course.completed_end_date) {
+              periodLabel = `${new Date(course.completed_start_date).toLocaleDateString("en-US", { month: "short", day: "numeric" })} - ${new Date(course.completed_end_date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
+            }
 
             // Determine if we should use expanded or compact view
             if (schedule.isIrregular) {
