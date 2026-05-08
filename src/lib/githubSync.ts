@@ -235,7 +235,7 @@ export const runGithubSync = async (): Promise<GithubSyncResult> => {
     const shortId = commit.sha.substring(0, 7);
     const messageLines = commit.commit.message.split("\n").filter((l) => l.trim().length > 0);
     const title = messageLines[0] ?? commit.commit.message;
-    const authorName = commit.commit.author.name || commit.author?.login || "Unknown";
+    const authorName = commit.author?.login || commit.commit.author.name || "Unknown";
 
     const commitDate = commit.commit.author.date
       ? new Date(commit.commit.author.date).toLocaleString("en-US", {
