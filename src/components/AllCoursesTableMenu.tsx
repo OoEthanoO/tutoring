@@ -30,6 +30,7 @@ interface ScheduleData {
   byDay: ClassesByDay;
   isIrregular: boolean;
   summary: string;
+  specialDates: string[];
 }
 
 const DAYS_OF_WEEK = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
@@ -46,7 +47,7 @@ const formatTime = (date: Date): string => {
 
 const getScheduleData = (classes: CourseClass[] | undefined): ScheduleData => {
   if (!classes || classes.length === 0) {
-    return { byDay: {}, isIrregular: false, summary: "No classes" };
+    return { byDay: {}, isIrregular: false, summary: "No classes", specialDates: [] };
   }
 
   const classMap = new Map<string, Set<string>>();
@@ -73,9 +74,9 @@ const getScheduleData = (classes: CourseClass[] | undefined): ScheduleData => {
   // Check if schedule is irregular (has very few classes or many one-off dates)
   const daysWithClasses = classMap.size;
   const totalUniqueTimes = Array.from(classMap.values()).reduce((sum, set) => sum + set.size, 0);
-  // Irregular if: spans too many weeks, has very few consistent slots, or too many classes
+  // Irregular if: spans too many weeks, has very few consistent slots, or way too many unique times
   const isIrregular =
-    classes.length > 15 || (totalUniqueTimes === classes.length && classes.length < 5) || daysWithClasses > 5;
+    classes.length > 15 || (totalUniqueTimes === classes.length && classes.length < 5) || daysWithClasses > 5 || totalUniqueTimes > 7;
 
   // Build summary for irregular schedules
   let summary = "";
@@ -122,7 +123,36 @@ const getScheduleData = (classes: CourseClass[] | undefined): ScheduleData => {
     byDay[day] = Array.from(timeSet).sort();
   });
 
-  return { byDay, isIrregular, summary };
+  // Extract special dates (dates with unique times that deviate from the main pattern)
+  const specialDates: string[] = [];
+  if (!isIrregular && classes.length > 5) {
+    // Find the most common time slot
+    const timeFrequency = new Map<string, number>();
+    Array.from(classMap.values()).forEach((timeSet) => {
+      timeSet.forEach((time) => {
+        timeFrequency.set(time, (timeFrequency.get(time) || 0) + 1);
+      });
+    });
+    const sortedTimes = Array.from(timeFrequency.entries()).sort((a, b) => b[1] - a[1]);
+    const mostCommonTime = sortedTimes[0]?.[0];
+    
+    // Collect dates with non-common times
+    const dateSet = new Set<string>();
+    classes.forEach((cls) => {
+      const date = new Date(cls.starts_at);
+      const start = formatTime(date);
+      const endDate = new Date(date.getTime() + cls.duration_hours * 60 * 60 * 1000);
+      const end = formatTime(endDate);
+      const timeRange = `${start}-${end}`;
+      if (timeRange !== mostCommonTime) {
+        const dateStr = date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+        dateSet.add(dateStr);
+      }
+    });
+    specialDates.push(...Array.from(dateSet).sort());
+  }
+
+  return { byDay, isIrregular, summary, specialDates };
 };
 
 const formatScheduleCell = (classes: CourseClass[] | undefined) => {
@@ -185,19 +215,19 @@ export default function AllCoursesTableMenu() {
     <div className="w-full overflow-x-auto">
       <table className="w-full border-collapse table-fixed text-[12px]">
         <colgroup>
-          <col style={{ width: '28%' }} />
-          <col style={{ width: '12%' }} />
+          <col style={{ width: '22%' }} />
+          <col style={{ width: '11%' }} />
           <col style={{ width: '5%' }} />
           <col style={{ width: '4%' }} />
           <col style={{ width: '8%' }} />
-          <col style={{ width: '4%' }} />
-          <col style={{ width: '4%' }} />
-          <col style={{ width: '4%' }} />
-          <col style={{ width: '4%' }} />
-          <col style={{ width: '4%' }} />
-          <col style={{ width: '4%' }} />
-          <col style={{ width: '4%' }} />
-          <col style={{ width: '5%' }} />
+          <col style={{ width: '6.5%' }} />
+          <col style={{ width: '6.5%' }} />
+          <col style={{ width: '6.5%' }} />
+          <col style={{ width: '6.5%' }} />
+          <col style={{ width: '6.5%' }} />
+          <col style={{ width: '6.5%' }} />
+          <col style={{ width: '6.5%' }} />
+          <col style={{ width: '6%' }} />
         </colgroup>
         <thead>
           <tr className="border-b border-[var(--border)] bg-[var(--background-secondary)]">
@@ -206,13 +236,13 @@ export default function AllCoursesTableMenu() {
             <th className="border border-[var(--border)] px-2 py-1 text-center font-semibold leading-tight">Classes</th>
             <th className="border border-[var(--border)] px-2 py-1 text-center font-semibold leading-tight">Fee</th>
             <th className="border border-[var(--border)] px-2 py-1 text-left font-semibold leading-tight">Period</th>
-            <th className="border border-[var(--border)] px-1 py-1 text-left font-semibold leading-tight">Mon</th>
-            <th className="border border-[var(--border)] px-1 py-1 text-left font-semibold leading-tight">Tue</th>
-            <th className="border border-[var(--border)] px-1 py-1 text-left font-semibold leading-tight">Wed</th>
-            <th className="border border-[var(--border)] px-1 py-1 text-left font-semibold leading-tight">Thu</th>
-            <th className="border border-[var(--border)] px-1 py-1 text-left font-semibold leading-tight">Fri</th>
-            <th className="border border-[var(--border)] px-1 py-1 text-left font-semibold leading-tight">Sat</th>
-            <th className="border border-[var(--border)] px-1 py-1 text-left font-semibold leading-tight">Sun</th>
+            <th className="border border-[var(--border)] px-1 py-1 text-left font-semibold leading-tight whitespace-nowrap">Mon</th>
+            <th className="border border-[var(--border)] px-1 py-1 text-left font-semibold leading-tight whitespace-nowrap">Tue</th>
+            <th className="border border-[var(--border)] px-1 py-1 text-left font-semibold leading-tight whitespace-nowrap">Wed</th>
+            <th className="border border-[var(--border)] px-1 py-1 text-left font-semibold leading-tight whitespace-nowrap">Thu</th>
+            <th className="border border-[var(--border)] px-1 py-1 text-left font-semibold leading-tight whitespace-nowrap">Fri</th>
+            <th className="border border-[var(--border)] px-1 py-1 text-left font-semibold leading-tight whitespace-nowrap">Sat</th>
+            <th className="border border-[var(--border)] px-1 py-1 text-left font-semibold leading-tight whitespace-nowrap">Sun</th>
             <th className="border border-[var(--border)] px-2 py-1 text-left font-semibold leading-tight">Special</th>
           </tr>
         </thead>
@@ -266,11 +296,11 @@ export default function AllCoursesTableMenu() {
                 <td className="border border-[var(--border)] px-2 py-1 text-center leading-tight">${course.donation_fee || 0}</td>
                 <td className="border border-[var(--border)] px-2 py-1 text-xs leading-tight">{periodLabel}</td>
                 {DAYS_OF_WEEK.map((day) => (
-                  <td key={day} className="border border-[var(--border)] px-1 py-1 text-xs leading-tight">
+                  <td key={day} className="border border-[var(--border)] px-1 py-1 text-xs leading-tight whitespace-nowrap overflow-hidden text-ellipsis">
                     {schedule.byDay[day] && schedule.byDay[day].length > 0 ? schedule.byDay[day].join(" ") : ""}
                   </td>
                 ))}
-                <td className="border border-[var(--border)] px-2 py-1 text-xs text-[var(--muted)] leading-tight">{/* Special dates would go here if available */}</td>
+                <td className="border border-[var(--border)] px-2 py-1 text-xs text-[var(--muted)] leading-tight whitespace-nowrap overflow-hidden text-ellipsis">{schedule.specialDates.length > 0 ? schedule.specialDates.join(", ") : ""}</td>
               </tr>
             );
           })}
