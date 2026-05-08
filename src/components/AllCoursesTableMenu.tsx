@@ -132,6 +132,15 @@ export default function AllCoursesTableMenu() {
   const [courses, setCourses] = useState<Course[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const { showNotification } = useNotification();
+  const visibleCourses = useMemo(() => {
+    const now = Date.now();
+    return courses.filter((course) => {
+      return !(course.course_classes ?? []).some((courseClass) => {
+        const startsAt = new Date(courseClass.starts_at).getTime();
+        return Number.isFinite(startsAt) && startsAt <= now;
+      });
+    });
+  }, [courses]);
 
   useEffect(() => {
     const fetchCourses = async () => {
@@ -183,7 +192,7 @@ export default function AllCoursesTableMenu() {
           </tr>
         </thead>
         <tbody>
-          {courses.map((course) => {
+          {visibleCourses.map((course) => {
             const schedule = formatScheduleCell(course.course_classes);
             const classCount = course.completed_class_count ?? course.course_classes?.length ?? 0;
             const periodLabel =
@@ -250,7 +259,7 @@ export default function AllCoursesTableMenu() {
         </tbody>
       </table>
 
-      {courses.length === 0 && (
+      {visibleCourses.length === 0 && (
         <div className="py-8 text-center text-[var(--muted)]">No courses found</div>
       )}
     </div>
