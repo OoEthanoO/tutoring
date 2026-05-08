@@ -50,11 +50,54 @@ const getScheduleData = (classes: CourseClass[] | undefined): ScheduleData => {
     return { byDay: {}, isIrregular: false, summary: "No classes", specialDates: [] };
   }
 
+  // First, identify which dates are special (on outlier days)
+  const specialDateSet = new Set<string>();
+  if (classes.length > 5) {
+    const dayFrequency = new Map<string, number>();
+    const datesByDay = new Map<string, Set<string>>();
+    
+    classes.forEach((cls) => {
+      const date = new Date(cls.starts_at);
+      const jsDay = date.getDay();
+      const dayIndex = jsDay === 0 ? 6 : jsDay - 1;
+      const dayName = DAYS_OF_WEEK[dayIndex];
+      const dateStr = date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      
+      dayFrequency.set(dayName, (dayFrequency.get(dayName) || 0) + 1);
+      if (!datesByDay.has(dayName)) {
+        datesByDay.set(dayName, new Set());
+      }
+      datesByDay.get(dayName)!.add(dateStr);
+    });
+    
+    // Find days with lower frequency (outliers)
+    const frequencies = Array.from(dayFrequency.values());
+    const maxFreq = Math.max(...frequencies);
+    const outlierThreshold = Math.ceil(maxFreq * 0.5);
+    
+    // Mark dates from outlier days as special
+    dayFrequency.forEach((freq, day) => {
+      if (freq < outlierThreshold && freq < 3) {
+        const dates = datesByDay.get(day);
+        if (dates) {
+          dates.forEach(d => specialDateSet.add(d));
+        }
+      }
+    });
+  }
+
   const classMap = new Map<string, Set<string>>();
 
-  // Group classes by day of week
+  // Group classes by day of week, but exclude special dates
   classes.forEach((cls) => {
     const date = new Date(cls.starts_at);
+    const dateStr = date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    
+    // Skip special dates - they'll only appear in Special Dates column
+    if (specialDateSet.has(dateStr)) {
+      return;
+    }
+
     // Convert JS day (0=Sunday) to our DAYS_OF_WEEK (0=Monday)
     const jsDay = date.getDay();
     const dayIndex = jsDay === 0 ? 6 : jsDay - 1;
@@ -123,55 +166,8 @@ const getScheduleData = (classes: CourseClass[] | undefined): ScheduleData => {
     byDay[day] = Array.from(timeSet).sort();
   });
 
-  // Extract special dates (classes that fall on less-frequently occurring days)
-  const specialDates: string[] = [];
-  if (!isIrregular && classes.length > 5) {
-    // Count how many classes occur on each day of the week
-    const dayFrequency = new Map<string, number>();
-    const datesByDay = new Map<string, Set<string>>();
-    
-    classes.forEach((cls) => {
-      const date = new Date(cls.starts_at);
-      const jsDay = date.getDay();
-      const dayIndex = jsDay === 0 ? 6 : jsDay - 1;
-      const dayName = DAYS_OF_WEEK[dayIndex];
-      const dateStr = date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-      
-      dayFrequency.set(dayName, (dayFrequency.get(dayName) || 0) + 1);
-      if (!datesByDay.has(dayName)) {
-        datesByDay.set(dayName, new Set());
-      }
-      datesByDay.get(dayName)!.add(dateStr);
-    });
-    
-    // Find days with lower frequency (potential outliers)
-    const frequencies = Array.from(dayFrequency.values());
-    const maxFreq = Math.max(...frequencies);
-    const outlierThreshold = Math.ceil(maxFreq * 0.5); // Days with < 50% of max frequency
-    
-    // Collect dates from outlier days
-    dayFrequency.forEach((freq, day) => {
-      if (freq < outlierThreshold && freq < 3) {
-        const dates = datesByDay.get(day);
-        if (dates) {
-          specialDates.push(...Array.from(dates).sort());
-        }
-      }
-    });
-    
-    // Remove duplicates and sort
-    specialDates.length = 0;
-    const uniqueDates = new Set(specialDates);
-    dayFrequency.forEach((freq, day) => {
-      if (freq < outlierThreshold && freq < 3) {
-        const dates = datesByDay.get(day);
-        if (dates) {
-          dates.forEach(d => uniqueDates.add(d));
-        }
-      }
-    });
-    specialDates.push(...Array.from(uniqueDates).sort());
-  }
+  // Convert special date set to sorted array
+  const specialDates = Array.from(specialDateSet).sort();
 
   return { byDay, isIrregular, summary, specialDates };
 };
@@ -293,14 +289,14 @@ export default function AllCoursesTableMenu() {
               // Irregular schedule - collapse columns 6-13 into one
               return (
                 <tr key={course.id} className="border-b border-[var(--border)] hover:bg-[var(--background-secondary)]">
-                  <td className="border border-[var(--border)] px-2 py-1 truncate leading-tight" title={course.title}>{course.title}</td>
-                  <td className="border border-[var(--border)] px-2 py-1 truncate leading-tight" title={course.created_by_name || ""}>{course.created_by_name || "N/A"}</td>
+                  <td className="border border-[var(--border)] px-2 py-1 truncate leading-tight text-center" title={course.title}>{course.title}</td>
+                  <td className="border border-[var(--border)] px-2 py-1 truncate leading-tight text-center" title={course.created_by_name || ""}>{course.created_by_name || "N/A"}</td>
                   <td className="border border-[var(--border)] px-2 py-1 text-center leading-tight">{classCount}</td>
                   <td className="border border-[var(--border)] px-2 py-1 text-center leading-tight">${course.donation_fee || 0}</td>
-                  <td className="border border-[var(--border)] px-2 py-1 text-xs leading-tight">{periodLabel}</td>
+                  <td className="border border-[var(--border)] px-2 py-1 text-xs leading-tight text-center">{periodLabel}</td>
                   <td
                     colSpan={8}
-                    className="border border-[var(--border)] px-2 py-1 text-xs italic text-[var(--muted)] leading-tight"
+                    className="border border-[var(--border)] px-2 py-1 text-xs italic text-[var(--muted)] leading-tight text-center"
                   >
                     {schedule.summary}
                   </td>
@@ -311,17 +307,17 @@ export default function AllCoursesTableMenu() {
             // Regular schedule - show by day
             return (
               <tr key={course.id} className="border-b border-[var(--border)] hover:bg-[var(--background-secondary)]">
-                <td className="border border-[var(--border)] px-2 py-1 truncate leading-tight" title={course.title}>{course.title}</td>
-                <td className="border border-[var(--border)] px-2 py-1 truncate leading-tight" title={course.created_by_name || ""}>{course.created_by_name || "N/A"}</td>
+                <td className="border border-[var(--border)] px-2 py-1 truncate leading-tight text-center" title={course.title}>{course.title}</td>
+                <td className="border border-[var(--border)] px-2 py-1 truncate leading-tight text-center" title={course.created_by_name || ""}>{course.created_by_name || "N/A"}</td>
                 <td className="border border-[var(--border)] px-2 py-1 text-center leading-tight">{classCount}</td>
                 <td className="border border-[var(--border)] px-2 py-1 text-center leading-tight">${course.donation_fee || 0}</td>
-                <td className="border border-[var(--border)] px-2 py-1 text-xs leading-tight">{periodLabel}</td>
+                <td className="border border-[var(--border)] px-2 py-1 text-xs leading-tight text-center">{periodLabel}</td>
                 {DAYS_OF_WEEK.map((day) => (
-                  <td key={day} className="border border-[var(--border)] px-1 py-1 text-xs leading-tight whitespace-nowrap">
+                  <td key={day} className="border border-[var(--border)] px-1 py-1 text-xs leading-tight whitespace-nowrap text-center">
                     {schedule.byDay[day] && schedule.byDay[day].length > 0 ? schedule.byDay[day].join(" ") : ""}
                   </td>
                 ))}
-                <td className="border border-[var(--border)] px-2 py-1 text-xs text-[var(--muted)] leading-tight whitespace-nowrap">{schedule.specialDates.length > 0 ? schedule.specialDates.join(", ") : ""}</td>
+                <td className="border border-[var(--border)] px-2 py-1 text-xs text-[var(--muted)] leading-tight whitespace-nowrap text-center">{schedule.specialDates.length > 0 ? schedule.specialDates.join(", ") : ""}</td>
               </tr>
             );
           })}
