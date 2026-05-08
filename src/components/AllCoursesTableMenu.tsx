@@ -135,6 +135,14 @@ export default function AllCoursesTableMenu() {
   const visibleCourses = useMemo(() => {
     const now = Date.now();
     return courses.filter((course) => {
+      const isLegacyCompletedCourse =
+        Boolean(course.is_completed) ||
+        Boolean(course.completed_start_date && course.completed_end_date);
+
+      if (isLegacyCompletedCourse) {
+        return false;
+      }
+
       return !(course.course_classes ?? []).some((courseClass) => {
         const startsAt = new Date(courseClass.starts_at).getTime();
         return Number.isFinite(startsAt) && startsAt <= now;

@@ -151,14 +151,14 @@ export default function Footer() {
               <button
                 type="button"
                 onClick={handleDismissUpdate}
-                className="rounded-full border border-[var(--border)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] transition hover:bg-[var(--border)]"
+                className="inline-flex h-8 items-center rounded-full border border-[var(--border)] px-3 text-xs font-medium leading-none text-[var(--foreground)] transition hover:bg-[var(--border)]"
               >
                 Not now
               </button>
               <button
                 type="button"
                 onClick={handleReloadNow}
-                className="rounded-full bg-[var(--foreground)] px-3 py-1.5 text-xs font-semibold text-[var(--background)] transition hover:opacity-90"
+                className="inline-flex h-8 items-center rounded-full bg-[var(--foreground)] px-3 text-xs font-semibold leading-none text-[var(--background)] transition hover:opacity-90"
               >
                 Reload
               </button>
