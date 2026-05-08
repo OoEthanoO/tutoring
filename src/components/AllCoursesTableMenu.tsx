@@ -181,37 +181,37 @@ export default function AllCoursesTableMenu() {
 
   return (
     <div className="w-full overflow-x-auto">
-      <table className="w-full border-collapse table-fixed text-xs">
+      <table className="w-full border-collapse table-fixed text-[12px]">
         <colgroup>
-          <col style={{ width: '30%' }} />
+          <col style={{ width: '28%' }} />
           <col style={{ width: '12%' }} />
-          <col style={{ width: '6%' }} />
-          <col style={{ width: '6%' }} />
+          <col style={{ width: '5%' }} />
+          <col style={{ width: '4%' }} />
           <col style={{ width: '8%' }} />
-          <col style={{ width: '4.5%' }} />
-          <col style={{ width: '4.5%' }} />
-          <col style={{ width: '4.5%' }} />
-          <col style={{ width: '4.5%' }} />
-          <col style={{ width: '4.5%' }} />
-          <col style={{ width: '4.5%' }} />
-          <col style={{ width: '4.5%' }} />
-          <col style={{ width: '6%' }} />
+          <col style={{ width: '4%' }} />
+          <col style={{ width: '4%' }} />
+          <col style={{ width: '4%' }} />
+          <col style={{ width: '4%' }} />
+          <col style={{ width: '4%' }} />
+          <col style={{ width: '4%' }} />
+          <col style={{ width: '4%' }} />
+          <col style={{ width: '5%' }} />
         </colgroup>
         <thead>
           <tr className="border-b border-[var(--border)] bg-[var(--background-secondary)]">
-            <th className="border border-[var(--border)] px-3 py-2 text-left font-semibold">Course</th>
-            <th className="border border-[var(--border)] px-3 py-2 text-left font-semibold">Tutor</th>
-            <th className="border border-[var(--border)] px-3 py-2 text-center font-semibold">Classes</th>
-            <th className="border border-[var(--border)] px-3 py-2 text-center font-semibold">Fee</th>
-            <th className="border border-[var(--border)] px-3 py-2 text-left font-semibold">Period</th>
-            <th className="border border-[var(--border)] px-2 py-2 text-left font-semibold">Mon</th>
-            <th className="border border-[var(--border)] px-2 py-2 text-left font-semibold">Tue</th>
-            <th className="border border-[var(--border)] px-2 py-2 text-left font-semibold">Wed</th>
-            <th className="border border-[var(--border)] px-2 py-2 text-left font-semibold">Thu</th>
-            <th className="border border-[var(--border)] px-2 py-2 text-left font-semibold">Fri</th>
-            <th className="border border-[var(--border)] px-2 py-2 text-left font-semibold">Sat</th>
-            <th className="border border-[var(--border)] px-2 py-2 text-left font-semibold">Sun</th>
-            <th className="border border-[var(--border)] px-3 py-2 text-left font-semibold">Special</th>
+            <th className="border border-[var(--border)] px-2 py-1 text-left font-semibold leading-tight">Course</th>
+            <th className="border border-[var(--border)] px-2 py-1 text-left font-semibold leading-tight">Tutor</th>
+            <th className="border border-[var(--border)] px-2 py-1 text-center font-semibold leading-tight">Classes</th>
+            <th className="border border-[var(--border)] px-2 py-1 text-center font-semibold leading-tight">Fee</th>
+            <th className="border border-[var(--border)] px-2 py-1 text-left font-semibold leading-tight">Period</th>
+            <th className="border border-[var(--border)] px-1 py-1 text-left font-semibold leading-tight">Mon</th>
+            <th className="border border-[var(--border)] px-1 py-1 text-left font-semibold leading-tight">Tue</th>
+            <th className="border border-[var(--border)] px-1 py-1 text-left font-semibold leading-tight">Wed</th>
+            <th className="border border-[var(--border)] px-1 py-1 text-left font-semibold leading-tight">Thu</th>
+            <th className="border border-[var(--border)] px-1 py-1 text-left font-semibold leading-tight">Fri</th>
+            <th className="border border-[var(--border)] px-1 py-1 text-left font-semibold leading-tight">Sat</th>
+            <th className="border border-[var(--border)] px-1 py-1 text-left font-semibold leading-tight">Sun</th>
+            <th className="border border-[var(--border)] px-2 py-1 text-left font-semibold leading-tight">Special</th>
           </tr>
         </thead>
         <tbody>
@@ -234,14 +234,14 @@ export default function AllCoursesTableMenu() {
               // Irregular schedule - collapse columns 6-13 into one
               return (
                 <tr key={course.id} className="border-b border-[var(--border)] hover:bg-[var(--background-secondary)]">
-                  <td className="border border-[var(--border)] px-3 py-2 truncate" title={course.title}>{course.title}</td>
-                  <td className="border border-[var(--border)] px-3 py-2 truncate" title={course.created_by_name || ""}>{course.created_by_name || "N/A"}</td>
-                  <td className="border border-[var(--border)] px-3 py-2 text-center">{classCount}</td>
-                  <td className="border border-[var(--border)] px-3 py-2 text-center">${course.donation_fee || 0}</td>
-                  <td className="border border-[var(--border)] px-3 py-2 text-xs">{periodLabel}</td>
+                  <td className="border border-[var(--border)] px-2 py-1 truncate leading-tight" title={course.title}>{course.title}</td>
+                  <td className="border border-[var(--border)] px-2 py-1 truncate leading-tight" title={course.created_by_name || ""}>{course.created_by_name || "N/A"}</td>
+                  <td className="border border-[var(--border)] px-2 py-1 text-center leading-tight">{classCount}</td>
+                  <td className="border border-[var(--border)] px-2 py-1 text-center leading-tight">${course.donation_fee || 0}</td>
+                  <td className="border border-[var(--border)] px-2 py-1 text-xs leading-tight">{periodLabel}</td>
                   <td
                     colSpan={8}
-                    className="border border-[var(--border)] px-3 py-2 text-xs italic text-[var(--muted)]"
+                    className="border border-[var(--border)] px-2 py-1 text-xs italic text-[var(--muted)] leading-tight"
                   >
                     {schedule.summary}
                   </td>
@@ -252,17 +252,17 @@ export default function AllCoursesTableMenu() {
             // Regular schedule - show by day
             return (
               <tr key={course.id} className="border-b border-[var(--border)] hover:bg-[var(--background-secondary)]">
-                <td className="border border-[var(--border)] px-3 py-2 truncate" title={course.title}>{course.title}</td>
-                <td className="border border-[var(--border)] px-3 py-2 truncate" title={course.created_by_name || ""}>{course.created_by_name || "N/A"}</td>
-                <td className="border border-[var(--border)] px-3 py-2 text-center">{classCount}</td>
-                <td className="border border-[var(--border)] px-3 py-2 text-center">${course.donation_fee || 0}</td>
-                <td className="border border-[var(--border)] px-3 py-2 text-xs">{periodLabel}</td>
+                <td className="border border-[var(--border)] px-2 py-1 truncate leading-tight" title={course.title}>{course.title}</td>
+                <td className="border border-[var(--border)] px-2 py-1 truncate leading-tight" title={course.created_by_name || ""}>{course.created_by_name || "N/A"}</td>
+                <td className="border border-[var(--border)] px-2 py-1 text-center leading-tight">{classCount}</td>
+                <td className="border border-[var(--border)] px-2 py-1 text-center leading-tight">${course.donation_fee || 0}</td>
+                <td className="border border-[var(--border)] px-2 py-1 text-xs leading-tight">{periodLabel}</td>
                 {DAYS_OF_WEEK.map((day) => (
-                  <td key={day} className="border border-[var(--border)] px-2 py-2 text-xs">
+                  <td key={day} className="border border-[var(--border)] px-1 py-1 text-xs leading-tight">
                     {schedule.byDay[day] && schedule.byDay[day].length > 0 ? schedule.byDay[day].join(" ") : ""}
                   </td>
                 ))}
-                <td className="border border-[var(--border)] px-3 py-2 text-xs text-[var(--muted)]">{/* Special dates would go here if available */}</td>
+                <td className="border border-[var(--border)] px-2 py-1 text-xs text-[var(--muted)] leading-tight">{/* Special dates would go here if available */}</td>
               </tr>
             );
           })}

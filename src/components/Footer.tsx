@@ -140,25 +140,25 @@ export default function Footer() {
     <footer className="mt-auto border-t border-[var(--border)] pt-6 text-center text-xs text-[var(--muted)]">
       {pendingCommitCount !== null ? (
         <div className="fixed bottom-4 left-1/2 z-[100] w-[min(92vw,34rem)] -translate-x-1/2 rounded-2xl border border-[var(--border)] bg-[var(--surface-raised)] px-4 py-3 shadow-xl backdrop-blur-md">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-row items-center justify-between gap-3">
             <div className="text-left">
               <p className="text-sm font-semibold text-[var(--foreground)]">A newer version is available</p>
               <p className="text-xs text-[var(--muted)]">
                 You can reload now, or keep working and reload later when it is convenient.
               </p>
             </div>
-            <div className="flex items-center gap-2 self-end sm:self-auto">
+            <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={handleDismissUpdate}
-                className="inline-flex h-8 items-center rounded-full border border-[var(--border)] px-3 text-xs font-medium leading-none text-[var(--foreground)] transition hover:bg-[var(--border)]"
+                className="inline-flex h-8 items-center rounded-full border border-[var(--border)] px-3 text-xs font-medium leading-none text-[var(--foreground)] transition hover:bg-[var(--border)] whitespace-nowrap"
               >
                 Not now
               </button>
               <button
                 type="button"
                 onClick={handleReloadNow}
-                className="inline-flex h-8 items-center rounded-full bg-[var(--foreground)] px-3 text-xs font-semibold leading-none text-[var(--background)] transition hover:opacity-90"
+                className="inline-flex h-8 items-center rounded-full bg-[var(--foreground)] px-3 text-xs font-semibold leading-none text-[var(--background)] transition hover:opacity-90 whitespace-nowrap"
               >
                 Reload
               </button>
