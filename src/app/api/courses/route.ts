@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { canManageCourses, isExecutive, isFounder, resolveUserRole } from "@/lib/roles";
+import { canManageCourses, isExecutive, isFounder, isHighRankingChiefExecutive, resolveUserRole } from "@/lib/roles";
 import { getRequestUser } from "@/lib/authServer";
 import { relabelClassesForCourse } from "@/lib/classTools";
 
@@ -120,7 +120,7 @@ export async function POST(request: NextRequest) {
       created_by_email: user.email ?? null,
     })
     .select(
-      "id, title, short_name, description, is_completed, completed_start_date, completed_end_date, completed_class_count, max_students, created_by, created_by_name, created_by_email, is_co_taught, co_tutor_id, co_tutor_name, co_tutor_email, created_at, deleted_at"
+      "id, title, short_name, description, is_completed, completed_start_date, completed_end_date, completed_class_count, max_students, donation_fee, created_by, created_by_name, created_by_email, is_co_taught, co_tutor_id, co_tutor_name, co_tutor_email, created_at, deleted_at"
     )
     .single();
 
@@ -211,7 +211,7 @@ export async function GET(request: NextRequest) {
   let query = adminClient
     .from("courses")
     .select(
-      "id, title, short_name, description, is_completed, completed_start_date, completed_end_date, completed_class_count, max_students, created_by, created_by_name, created_by_email, is_co_taught, co_tutor_id, co_tutor_name, co_tutor_email, created_at, deleted_at, course_classes(id, title, starts_at, duration_hours, created_at), course_enrollments(count)"
+      "id, title, short_name, description, is_completed, completed_start_date, completed_end_date, completed_class_count, max_students, donation_fee, created_by, created_by_name, created_by_email, is_co_taught, co_tutor_id, co_tutor_name, co_tutor_email, created_at, deleted_at, course_classes(id, title, starts_at, duration_hours, created_at), course_enrollments(count)"
     );
 
   if (trash) {
@@ -428,6 +428,7 @@ export async function PATCH(request: NextRequest) {
       description?: string | null;
       createdBy?: string | null;
       maxStudents?: number | null;
+      donationFee?: number | null;
       completedStartDate?: string | null;
       completedEndDate?: string | null;
       completedClassCount?: number | null;
@@ -461,6 +462,12 @@ export async function PATCH(request: NextRequest) {
       : typeof body.maxStudents === "number" && body.maxStudents > 0
         ? Math.floor(body.maxStudents)
         : undefined;
+  const donationFee =
+    body.donationFee === null
+      ? null
+      : typeof body.donationFee === "number" && body.donationFee >= 0
+        ? body.donationFee
+        : undefined;
   const completedStartDate =
     typeof body.completedStartDate === "string" ? body.completedStartDate.trim() : undefined;
   const completedEndDate =
@@ -478,6 +485,7 @@ export async function PATCH(request: NextRequest) {
     shortName === undefined &&
     createdBy === undefined &&
     maxStudents === undefined &&
+    donationFee === undefined &&
     body.restore !== true
   ) {
     return NextResponse.json(
@@ -495,6 +503,7 @@ export async function PATCH(request: NextRequest) {
     short_name?: string | null;
     description?: string | null;
     max_students?: number | null;
+    donation_fee?: number | null;
     created_by?: string | null;
     created_by_name?: string | null;
     created_by_email?: string | null;
@@ -529,6 +538,15 @@ export async function PATCH(request: NextRequest) {
       );
     }
     updatePayload.max_students = maxStudents;
+  }
+  if (donationFee !== undefined) {
+    if (!isHighRankingChiefExecutive(role)) {
+      return NextResponse.json(
+        { error: "Only CEO, COO, or founder can set donation fee." },
+        { status: 403 }
+      );
+    }
+    updatePayload.donation_fee = donationFee;
   }
   if (completedStartDate !== undefined || completedEndDate !== undefined || completedClassCount !== undefined) {
     if (!isFounder(role)) {
@@ -591,7 +609,7 @@ export async function PATCH(request: NextRequest) {
 
   const { data, error: updateError } = await updateQuery
     .select(
-      "id, title, short_name, description, is_completed, completed_start_date, completed_end_date, completed_class_count, max_students, created_by, created_by_name, created_by_email, is_co_taught, co_tutor_id, co_tutor_name, co_tutor_email, created_at, deleted_at"
+      "id, title, short_name, description, is_completed, completed_start_date, completed_end_date, completed_class_count, max_students, donation_fee, created_by, created_by_name, created_by_email, is_co_taught, co_tutor_id, co_tutor_name, co_tutor_email, created_at, deleted_at"
     )
     .single();
 

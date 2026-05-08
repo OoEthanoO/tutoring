@@ -51,6 +51,7 @@ export default function CourseRequestsMenu() {
   // Approval state for a specific request
   const [approvingId, setApprovingId] = useState<string | null>(null);
   const [maxStudents, setMaxStudents] = useState<string>("");
+  const [donationFee, setDonationFee] = useState<string>("");
   const [draftClassStartsAt, setDraftClassStartsAt] = useState<Date | null>(new Date());
   const [draftClassDurationMinutes, setDraftClassDurationMinutes] = useState<string>("60");
   const [draftClassTutorId, setDraftClassTutorId] = useState<string>("");
@@ -179,6 +180,7 @@ export default function CourseRequestsMenu() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           maxStudents: maxStudents ? parseInt(maxStudents) : null,
+          donationFee: donationFee ? parseInt(donationFee) : null,
           classes: draftClasses.map((item, index) => ({
             title: `Class ${index + 1}`,
             startsAt: new Date(item.startsAt).toISOString(),
@@ -193,6 +195,7 @@ export default function CourseRequestsMenu() {
         setApprovingId(null);
         setDraftClasses([]);
         setMaxStudents("");
+        setDonationFee("");
       } else {
         const err = await res.json();
         alert(err.error || "Failed to approve request.");
@@ -443,6 +446,11 @@ export default function CourseRequestsMenu() {
                       <input type="number" min="1" value={maxStudents} onChange={(e) => setMaxStudents(e.target.value)} placeholder="Leave blank for unlimited" className="mt-2 w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-4 py-3 text-sm text-[var(--foreground)] outline-none" />
                     </div>
 
+                    <div>
+                      <label className="text-[0.65rem] font-bold uppercase tracking-[0.2em] text-[var(--muted)]">Donation Fee</label>
+                      <input type="number" min="0" value={donationFee} onChange={(e) => setDonationFee(e.target.value)} placeholder="0 or leave blank for none" className="mt-2 w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-4 py-3 text-sm text-[var(--foreground)] outline-none" />
+                    </div>
+
                     <div className="space-y-3 rounded-xl border border-[var(--border)] bg-[var(--background)] p-4">
                       <p className="text-[0.65rem] font-bold uppercase tracking-[0.2em] text-[var(--muted)]">Classes</p>
                       <div className={`grid gap-3 ${req.is_co_taught ? 'sm:grid-cols-[1fr_auto_auto]' : 'sm:grid-cols-[1fr_auto]'}`}>
@@ -546,7 +554,7 @@ export default function CourseRequestsMenu() {
                   isFounderAccess && (
                     <div className="flex flex-col gap-2">
                       <div className="flex gap-2">
-                        <button onClick={() => setApprovingId(req.id)} disabled={actioningId === req.id} className="flex-1 rounded-full border border-emerald-600 px-4 py-2 text-sm font-semibold text-emerald-600 transition hover:bg-emerald-50 disabled:opacity-70">
+                        <button onClick={() => { setApprovingId(req.id); setMaxStudents(""); setDonationFee(""); setDraftClasses([]); }} disabled={actioningId === req.id} className="flex-1 rounded-full border border-emerald-600 px-4 py-2 text-sm font-semibold text-emerald-600 transition hover:bg-emerald-50 disabled:opacity-70">
                           Approve
                         </button>
                         <button onClick={() => handleReject(req.id)} disabled={actioningId === req.id} className="flex-1 rounded-full border border-red-600 px-4 py-2 text-sm font-semibold text-red-600 transition hover:bg-red-50 disabled:opacity-70">

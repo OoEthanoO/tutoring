@@ -67,6 +67,7 @@ type Course = {
   completed_end_date?: string | null;
   completed_class_count?: number | null;
   max_students?: number | null;
+  donation_fee: number | null;
   enrollment_count?: number;
   created_by_name?: string | null;
   created_by_email?: string | null;
@@ -706,6 +707,12 @@ export default function CoursesMenu() {
                   <MarkdownText text={selectedCourse.description} />
                 </div>
               ) : null}
+
+              {selectedCourse.donation_fee != null && selectedCourse.donation_fee > 0 && (
+                <div className="text-sm text-[var(--muted)]">
+                  Donation Fee: ${selectedCourse.donation_fee}
+                </div>
+              )}
 
               <div className="space-y-2">
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">

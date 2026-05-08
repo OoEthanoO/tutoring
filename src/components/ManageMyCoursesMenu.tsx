@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { getCurrentUser, onAuthChange } from "@/lib/authClient";
-import { canManageCourses, isExecutive, isFounder, resolveUserRole, type UserRole } from "@/lib/roles";
+import { canManageCourses, isExecutive, isFounder, isHighRankingChiefExecutive, resolveUserRole, type UserRole } from "@/lib/roles";
 import { setHasUnsavedData } from "@/lib/unsavedData";
 import { MarkdownText } from "@/lib/parseMarkdown";
 
@@ -34,6 +34,7 @@ type Course = {
   completed_end_date?: string | null;
   completed_class_count?: number | null;
   max_students?: number | null;
+  donation_fee?: number | null;
   created_by?: string | null;
   created_by_name?: string | null;
   created_by_email?: string | null;
@@ -139,6 +140,7 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
   const [editCourseShortName, setEditCourseShortName] = useState("");
   const [editCourseDescription, setEditCourseDescription] = useState("");
   const [editCourseMaxStudents, setEditCourseMaxStudents] = useState<string>("");
+  const [editCourseDonationFee, setEditCourseDonationFee] = useState<string>("");
   const [editCompletedStartDate, setEditCompletedStartDate] = useState("");
   const [editCompletedEndDate, setEditCompletedEndDate] = useState("");
   const [editCompletedClassCount, setEditCompletedClassCount] = useState("");
@@ -822,6 +824,7 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
     setEditCourseShortName(course.short_name ?? "");
     setEditCourseDescription(course.description ?? "");
     setEditCourseMaxStudents(course.max_students ? String(course.max_students) : "");
+    setEditCourseDonationFee(course.donation_fee ? String(course.donation_fee) : "");
     setEditCompletedStartDate(course.completed_start_date ?? "");
     setEditCompletedEndDate(course.completed_end_date ?? "");
     setEditCompletedClassCount(course.completed_class_count ? String(course.completed_class_count) : "");
@@ -833,6 +836,7 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
     setEditCourseShortName("");
     setEditCourseDescription("");
     setEditCourseMaxStudents("");
+    setEditCourseDonationFee("");
     setEditCompletedStartDate("");
     setEditCompletedEndDate("");
     setEditCompletedClassCount("");
@@ -859,6 +863,7 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
         shortName: isFounder(role) ? editCourseShortName.trim() : undefined,
         description: editCourseDescription.trim(),
         maxStudents: isFounder(role) ? (editCourseMaxStudents ? Number(editCourseMaxStudents) : null) : undefined,
+        donationFee: isHighRankingChiefExecutive(role) ? (editCourseDonationFee ? Number(editCourseDonationFee) : null) : undefined,
         completedStartDate: isFounder(role) ? (editCompletedStartDate || null) : undefined,
         completedEndDate: isFounder(role) ? (editCompletedEndDate || null) : undefined,
         completedClassCount: isFounder(role) ? (editCompletedClassCount ? Number(editCompletedClassCount) : null) : undefined,
@@ -1316,6 +1321,17 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
                           setEditCourseMaxStudents(event.target.value)
                         }
                         placeholder="Max Students (Leave blank for unlimited)"
+                        className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+                      />
+                    ) : null}
+                    {isHighRankingChiefExecutive(role) ? (
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={editCourseDonationFee}
+                        onChange={(event) => setEditCourseDonationFee(event.target.value)}
+                        placeholder="Donation Fee (Leave blank for none)"
                         className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
                       />
                     ) : null}

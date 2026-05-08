@@ -42,6 +42,7 @@ export async function POST(
   const body = (await request.json().catch(() => null)) as {
     classes?: { title?: string; startsAt?: string; durationHours?: number; tutorId?: string }[];
     maxStudents?: number | null;
+    donationFee?: number | null;
   } | null;
 
   const classes = Array.isArray(body?.classes) ? body?.classes ?? [] : [];
@@ -49,6 +50,7 @@ export async function POST(
     typeof body?.maxStudents === "number" && body.maxStudents > 0
       ? Math.floor(body.maxStudents)
       : null;
+  const donationFee = typeof body?.donationFee === "number" && body.donationFee >= 0 ? body.donationFee : null;
 
   const adminClient = createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false },
@@ -93,6 +95,7 @@ export async function POST(
       description: requestRecord.description,
       is_completed: false,
       max_students: maxStudents,
+      donation_fee: donationFee,
       created_by: requestRecord.created_by,
       created_by_name: creatorName,
       created_by_email: creatorUser?.email ?? null,
