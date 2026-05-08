@@ -76,7 +76,7 @@ export default function PublicHome() {
         </p>
         <p className="text-sm text-[var(--muted)]">
           In addition, The &quot;Coding for SickKids&quot; fundraising campaign
-          initiated by Ethan is operated by the SickKids Fundraise platform
+          initiated by Yan is operated by the SickKids Fundraise platform
           where any donations are paid directly to hospitals. Everyone is
           welcomed to donate to help sick kids in need.
         </p>

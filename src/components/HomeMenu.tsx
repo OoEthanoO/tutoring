@@ -71,7 +71,7 @@ export default function HomeMenu({ isSignedIn }: HomeMenuProps) {
         </p>
         <p className="text-sm text-[var(--muted)]">
           In addition, the &quot;Coding for SickKids&quot; fundraising campaign
-          initiated by Ethan is operated by the SickKids Fundraising platform,
+          initiated by Yan is operated by the SickKids Fundraising platform,
           where any donations are paid directly to hospitals.
         </p>
       </div>

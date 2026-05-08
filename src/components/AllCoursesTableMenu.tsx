@@ -123,32 +123,54 @@ const getScheduleData = (classes: CourseClass[] | undefined): ScheduleData => {
     byDay[day] = Array.from(timeSet).sort();
   });
 
-  // Extract special dates (classes that fall on non-recurring days)
+  // Extract special dates (classes that fall on less-frequently occurring days)
   const specialDates: string[] = [];
   if (!isIrregular && classes.length > 5) {
-    // Find the "main" recurring days of the week (those that appear most consistently)
+    // Count how many classes occur on each day of the week
     const dayFrequency = new Map<string, number>();
-    classMap.forEach((timeSet, day) => {
-      dayFrequency.set(day, timeSet.size);
-    });
-    const mainDaysArray = Array.from(dayFrequency.entries())
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, Math.max(4, Math.ceil(dayFrequency.size * 0.7)));
-    const mainDays = new Set(mainDaysArray.map(([day]) => day));
+    const datesByDay = new Map<string, Set<string>>();
     
-    // Collect dates that fall on non-main days
-    const dateSet = new Set<string>();
     classes.forEach((cls) => {
       const date = new Date(cls.starts_at);
       const jsDay = date.getDay();
       const dayIndex = jsDay === 0 ? 6 : jsDay - 1;
       const dayName = DAYS_OF_WEEK[dayIndex];
-      if (!mainDays.has(dayName)) {
-        const dateStr = date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-        dateSet.add(dateStr);
+      const dateStr = date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      
+      dayFrequency.set(dayName, (dayFrequency.get(dayName) || 0) + 1);
+      if (!datesByDay.has(dayName)) {
+        datesByDay.set(dayName, new Set());
+      }
+      datesByDay.get(dayName)!.add(dateStr);
+    });
+    
+    // Find days with lower frequency (potential outliers)
+    const frequencies = Array.from(dayFrequency.values());
+    const maxFreq = Math.max(...frequencies);
+    const outlierThreshold = Math.ceil(maxFreq * 0.5); // Days with < 50% of max frequency
+    
+    // Collect dates from outlier days
+    dayFrequency.forEach((freq, day) => {
+      if (freq < outlierThreshold && freq < 3) {
+        const dates = datesByDay.get(day);
+        if (dates) {
+          specialDates.push(...Array.from(dates).sort());
+        }
       }
     });
-    specialDates.push(...Array.from(dateSet).sort());
+    
+    // Remove duplicates and sort
+    specialDates.length = 0;
+    const uniqueDates = new Set(specialDates);
+    dayFrequency.forEach((freq, day) => {
+      if (freq < outlierThreshold && freq < 3) {
+        const dates = datesByDay.get(day);
+        if (dates) {
+          dates.forEach(d => uniqueDates.add(d));
+        }
+      }
+    });
+    specialDates.push(...Array.from(uniqueDates).sort());
   }
 
   return { byDay, isIrregular, summary, specialDates };
@@ -211,8 +233,8 @@ export default function AllCoursesTableMenu() {
   }
 
   return (
-    <div className="w-full overflow-x-auto">
-      <table className="w-full border-collapse table-fixed text-[12px]">
+    <div className="overflow-x-auto">
+      <table className="border-collapse table-fixed text-[12px]">
         <colgroup>
           <col style={{ width: '22%' }} />
           <col style={{ width: '11%' }} />
