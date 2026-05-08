@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { getCurrentUser, onAuthChange } from "@/lib/authClient";
 import { setHasUnsavedData, hasAnyUnsavedData } from "@/lib/unsavedData";
 
@@ -17,9 +17,15 @@ export default function Footer() {
   }>({ type: "idle", message: "" });
 
   const [totalCommits, setTotalCommits] = useState<number | null>(null);
+  const [pendingCommitCount, setPendingCommitCount] = useState<number | null>(null);
   const [isCommitHovered, setIsCommitHovered] = useState(false);
+  const lastDismissedCommitCountRef = useRef<number | null>(null);
 
   useEffect(() => {
+    lastDismissedCommitCountRef.current = Number(
+      window.localStorage.getItem("yanlearn_version_prompt_dismissed_commit_count") || ""
+    ) || null;
+
     const checkCommits = async () => {
       try {
         const response = await fetch(
@@ -34,8 +40,8 @@ export default function Footer() {
 
         setTotalCommits((prev) => {
           if (prev !== null && data.total !== prev) {
-            if (!hasAnyUnsavedData()) {
-              window.location.reload();
+            if (lastDismissedCommitCountRef.current !== data.total) {
+              setPendingCommitCount(data.total);
             }
           }
           return data.total;
@@ -49,6 +55,29 @@ export default function Footer() {
     const interval = window.setInterval(checkCommits, 15000);
     return () => window.clearInterval(interval);
   }, []);
+
+  const handleReloadNow = () => {
+    if (hasAnyUnsavedData()) {
+      setFeedbackStatus({
+        type: "error",
+        message: "You have unsaved work. Finish that first, then reload when ready.",
+      });
+      return;
+    }
+
+    window.location.reload();
+  };
+
+  const handleDismissUpdate = () => {
+    if (pendingCommitCount !== null) {
+      window.localStorage.setItem(
+        "yanlearn_version_prompt_dismissed_commit_count",
+        String(pendingCommitCount)
+      );
+      lastDismissedCommitCountRef.current = pendingCommitCount;
+    }
+    setPendingCommitCount(null);
+  };
 
   useEffect(() => {
     const load = async () => {
@@ -109,6 +138,34 @@ export default function Footer() {
 
   return (
     <footer className="mt-auto border-t border-[var(--border)] pt-6 text-center text-xs text-[var(--muted)]">
+      {pendingCommitCount !== null ? (
+        <div className="fixed bottom-4 left-1/2 z-[100] w-[min(92vw,34rem)] -translate-x-1/2 rounded-2xl border border-[var(--border)] bg-[var(--surface-raised)] px-4 py-3 shadow-xl backdrop-blur-md">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="text-left">
+              <p className="text-sm font-semibold text-[var(--foreground)]">A newer version is available</p>
+              <p className="text-xs text-[var(--muted)]">
+                You can reload now, or keep working and reload later when it is convenient.
+              </p>
+            </div>
+            <div className="flex items-center gap-2 self-end sm:self-auto">
+              <button
+                type="button"
+                onClick={handleDismissUpdate}
+                className="rounded-full border border-[var(--border)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] transition hover:bg-[var(--border)]"
+              >
+                Not now
+              </button>
+              <button
+                type="button"
+                onClick={handleReloadNow}
+                className="rounded-full bg-[var(--foreground)] px-3 py-1.5 text-xs font-semibold text-[var(--background)] transition hover:opacity-90"
+              >
+                Reload
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 px-4">
         <a
           href="https://ethanyanxu.com"
