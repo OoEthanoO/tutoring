@@ -1,18 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
 import { useNotification } from "./Notification";
 
 interface Course {
   id: string;
   title: string;
-  created_by_name: string;
+  created_by_name?: string | null;
   donation_fee?: number;
-  completed_class_count: number;
-  is_completed: boolean;
-  completed_start_date: string;
-  completed_end_date: string;
+  completed_class_count?: number | null;
+  is_completed?: boolean;
+  completed_start_date?: string | null;
+  completed_end_date?: string | null;
   course_classes?: CourseClass[];
 }
 
@@ -138,49 +137,15 @@ export default function AllCoursesTableMenu() {
     const fetchCourses = async () => {
       try {
         setIsLoading(true);
-        const { data, error } = await supabase.from("courses").select(`
-          id,
-          title,
-          created_by_name,
-          completed_class_count,
-          is_completed,
-          completed_start_date,
-          completed_end_date,
-          donation_fee
-        `);
+        const response = await fetch("/api/courses");
 
-        if (error) {
-          throw new Error(error.message || "Failed to fetch courses");
+        if (!response.ok) {
+          const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+          throw new Error(payload?.error ?? "Failed to fetch courses");
         }
 
-        // Fetch classes for each course
-        const coursesWithClasses = await Promise.all(
-          (data || []).map(async (course) => {
-            try {
-              const { data: classes, error: classError } = await supabase
-                .from("course_classes")
-                .select("id, title, starts_at, duration_hours")
-                .eq("course_id", course.id);
-
-              if (classError) {
-                console.warn(`Failed to fetch classes for course ${course.id}:`, classError.message);
-              }
-
-              return {
-                ...course,
-                course_classes: classes || [],
-              };
-            } catch (err) {
-              console.warn(`Error fetching classes for course ${course.id}:`, err);
-              return {
-                ...course,
-                course_classes: [],
-              };
-            }
-          })
-        );
-
-        setCourses(coursesWithClasses as Course[]);
+        const payload = (await response.json()) as { courses?: Course[] };
+        setCourses(payload.courses ?? []);
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         console.error("Error fetching courses:", errorMessage);
@@ -220,6 +185,17 @@ export default function AllCoursesTableMenu() {
         <tbody>
           {courses.map((course) => {
             const schedule = formatScheduleCell(course.course_classes);
+            const classCount = course.completed_class_count ?? course.course_classes?.length ?? 0;
+            const periodLabel =
+              course.completed_start_date && course.completed_end_date
+                ? `${new Date(course.completed_start_date).toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                  })} - ${new Date(course.completed_end_date).toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                  })}`
+                : "N/A";
 
             // Determine if we should use expanded or compact view
             if (schedule.isIrregular) {
@@ -229,22 +205,12 @@ export default function AllCoursesTableMenu() {
                   <td className="border border-[var(--border)] px-4 py-3">{course.title}</td>
                   <td className="border border-[var(--border)] px-4 py-3">{course.created_by_name || "N/A"}</td>
                   <td className="border border-[var(--border)] px-4 py-3 text-center">
-                    {course.completed_class_count || 0}
+                    {classCount}
                   </td>
                   <td className="border border-[var(--border)] px-4 py-3 text-center">
                     ${course.donation_fee || 0}
                   </td>
-                  <td className="border border-[var(--border)] px-4 py-3 text-xs">
-                    {course.completed_start_date && course.completed_end_date
-                      ? `${new Date(course.completed_start_date).toLocaleDateString("en-US", {
-                          month: "short",
-                          day: "numeric",
-                        })} - ${new Date(course.completed_end_date).toLocaleDateString("en-US", {
-                          month: "short",
-                          day: "numeric",
-                        })}`
-                      : "N/A"}
-                  </td>
+                  <td className="border border-[var(--border)] px-4 py-3 text-xs">{periodLabel}</td>
                   <td
                     colSpan={8}
                     className="border border-[var(--border)] px-4 py-3 text-xs italic text-[var(--muted)]"
@@ -261,22 +227,12 @@ export default function AllCoursesTableMenu() {
                 <td className="border border-[var(--border)] px-4 py-3">{course.title}</td>
                 <td className="border border-[var(--border)] px-4 py-3">{course.created_by_name || "N/A"}</td>
                 <td className="border border-[var(--border)] px-4 py-3 text-center">
-                  {course.completed_class_count || 0}
+                  {classCount}
                 </td>
                 <td className="border border-[var(--border)] px-4 py-3 text-center">
                   ${course.donation_fee || 0}
                 </td>
-                <td className="border border-[var(--border)] px-4 py-3 text-xs">
-                  {course.completed_start_date && course.completed_end_date
-                    ? `${new Date(course.completed_start_date).toLocaleDateString("en-US", {
-                        month: "short",
-                        day: "numeric",
-                      })} - ${new Date(course.completed_end_date).toLocaleDateString("en-US", {
-                        month: "short",
-                        day: "numeric",
-                      })}`
-                    : "N/A"}
-                </td>
+                <td className="border border-[var(--border)] px-4 py-3 text-xs">{periodLabel}</td>
                 {DAYS_OF_WEEK.map((day) => (
                   <td key={day} className="border border-[var(--border)] px-4 py-3 text-xs">
                     {schedule.byDay[day] && schedule.byDay[day].length > 0
