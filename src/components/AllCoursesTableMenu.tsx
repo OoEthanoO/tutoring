@@ -114,7 +114,7 @@ const getScheduleData = (classes: CourseClass[] | undefined): ScheduleData => {
     const timeStrings = Array.from(uniqueTimeSet.values());
     const dateStrings = Array.from(byDate.keys());
 
-    summary = `${timeStrings.join(", ")} — ${classes.length} classes, ${totalHours} hours. ${dateStrings.join(", ")}`;
+    summary = `${timeStrings.join(", ")} — ${classes.length} classes, ${Math.round(totalHours)} hours. ${dateStrings.join(", ")}`;
   }
 
   // Convert sets to sorted arrays
@@ -123,28 +123,27 @@ const getScheduleData = (classes: CourseClass[] | undefined): ScheduleData => {
     byDay[day] = Array.from(timeSet).sort();
   });
 
-  // Extract special dates (dates with unique times that deviate from the main pattern)
+  // Extract special dates (classes that fall on non-recurring days)
   const specialDates: string[] = [];
   if (!isIrregular && classes.length > 5) {
-    // Find the most common time slot
-    const timeFrequency = new Map<string, number>();
-    Array.from(classMap.values()).forEach((timeSet) => {
-      timeSet.forEach((time) => {
-        timeFrequency.set(time, (timeFrequency.get(time) || 0) + 1);
-      });
+    // Find the "main" recurring days of the week (those that appear most consistently)
+    const dayFrequency = new Map<string, number>();
+    classMap.forEach((timeSet, day) => {
+      dayFrequency.set(day, timeSet.size);
     });
-    const sortedTimes = Array.from(timeFrequency.entries()).sort((a, b) => b[1] - a[1]);
-    const mostCommonTime = sortedTimes[0]?.[0];
+    const mainDaysArray = Array.from(dayFrequency.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, Math.max(4, Math.ceil(dayFrequency.size * 0.7)));
+    const mainDays = new Set(mainDaysArray.map(([day]) => day));
     
-    // Collect dates with non-common times
+    // Collect dates that fall on non-main days
     const dateSet = new Set<string>();
     classes.forEach((cls) => {
       const date = new Date(cls.starts_at);
-      const start = formatTime(date);
-      const endDate = new Date(date.getTime() + cls.duration_hours * 60 * 60 * 1000);
-      const end = formatTime(endDate);
-      const timeRange = `${start}-${end}`;
-      if (timeRange !== mostCommonTime) {
+      const jsDay = date.getDay();
+      const dayIndex = jsDay === 0 ? 6 : jsDay - 1;
+      const dayName = DAYS_OF_WEEK[dayIndex];
+      if (!mainDays.has(dayName)) {
         const dateStr = date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
         dateSet.add(dateStr);
       }
@@ -296,11 +295,11 @@ export default function AllCoursesTableMenu() {
                 <td className="border border-[var(--border)] px-2 py-1 text-center leading-tight">${course.donation_fee || 0}</td>
                 <td className="border border-[var(--border)] px-2 py-1 text-xs leading-tight">{periodLabel}</td>
                 {DAYS_OF_WEEK.map((day) => (
-                  <td key={day} className="border border-[var(--border)] px-1 py-1 text-xs leading-tight whitespace-nowrap overflow-hidden text-ellipsis">
+                  <td key={day} className="border border-[var(--border)] px-1 py-1 text-xs leading-tight whitespace-nowrap">
                     {schedule.byDay[day] && schedule.byDay[day].length > 0 ? schedule.byDay[day].join(" ") : ""}
                   </td>
                 ))}
-                <td className="border border-[var(--border)] px-2 py-1 text-xs text-[var(--muted)] leading-tight whitespace-nowrap overflow-hidden text-ellipsis">{schedule.specialDates.length > 0 ? schedule.specialDates.join(", ") : ""}</td>
+                <td className="border border-[var(--border)] px-2 py-1 text-xs text-[var(--muted)] leading-tight whitespace-nowrap">{schedule.specialDates.length > 0 ? schedule.specialDates.join(", ") : ""}</td>
               </tr>
             );
           })}
