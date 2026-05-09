@@ -32,19 +32,73 @@ export default function HomeMenu({ isSignedIn, onOpenTeamTab }: HomeMenuProps) {
         return;
       }
 
-      const response = await fetch("/api/admin/users?all=true");
-      if (!response.ok) {
+      // Fetch users and courses and apply the same visibility rules as OurTeamMenu
+      const [usersResponse, coursesResponse] = await Promise.all([
+        fetch("/api/admin/users?all=true"),
+        fetch("/api/courses"),
+      ]);
+      if (!usersResponse.ok || !coursesResponse.ok) {
         setTeamCount(null);
         return;
       }
 
-      const data = (await response.json()) as { users?: Array<{ email?: string; customRole?: string | null; role?: string }> };
-      const count = (data.users ?? []).filter((user) => {
-        const role = String(user.customRole ?? user.role ?? "").trim();
-        return ["founder", "CEO", "COO", "Chief Executive", "Executive", "executive", "Junior Executive"].includes(role);
-      }).length;
+      const usersData = (await usersResponse.json()) as { users?: any[] };
+      const coursesData = (await coursesResponse.json()) as { courses?: Array<{ created_by?: string | null }> };
 
-      setTeamCount(count);
+      const activeCreatorIds = new Set(
+        (coursesData.courses ?? [])
+          .map((course) => course.created_by)
+          .filter((id): id is string => typeof id === "string" && id.length > 0)
+      );
+
+      const normalizeStandardRole = (role: string | null | undefined) => {
+        const value = String(role ?? "").trim().toLowerCase();
+        if (!value) return null;
+        if (value === "founder") return "founder";
+        if (value === "ceo") return "CEO";
+        if (value === "coo") return "COO";
+        if (value === "chief executive") return "Chief Executive";
+        if (value === "executive" || value === "exec" || value === "tutor") return "Executive";
+        if (value === "junior executive" || value === "junior exec") return "Junior Executive";
+        return null;
+      };
+
+      const formatCustomRoleLabel = (role: string | null | undefined) => {
+        const value = String(role ?? "").trim();
+        return value.length > 0 ? value : null;
+      };
+
+      const isCustomOnlyRole = (role: string | null | undefined) => {
+        const label = formatCustomRoleLabel(role);
+        return Boolean(label && !normalizeStandardRole(label));
+      };
+
+      const users = (usersData.users ?? [])
+        .map((u: any) => {
+          const rawCustomRoleLabel = formatCustomRoleLabel(u.customRole ?? u.custom_role ?? null);
+          const customRoleLabel = isCustomOnlyRole(rawCustomRoleLabel) ? rawCustomRoleLabel : null;
+          const customRole = normalizeStandardRole(rawCustomRoleLabel);
+          const role = normalizeStandardRole(u.role) ?? null;
+          return {
+            id: u.id,
+            role: role ?? "student",
+            customRole,
+            customRoleLabel,
+            isJunior: Boolean(u.isJunior ?? u.is_junior),
+          };
+        })
+        .filter((u: any) => {
+          const effectiveRole = u.customRole ?? u.role;
+          if (u.isJunior) {
+            return activeCreatorIds.has(u.id);
+          }
+          if (effectiveRole === "COO") {
+            return false;
+          }
+          return Boolean(effectiveRole && effectiveRole !== "student");
+        });
+
+      setTeamCount(users.length);
     };
 
     loadTeamCount();
