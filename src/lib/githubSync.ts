@@ -21,6 +21,11 @@ interface GithubCommitNode {
   } | null;
 }
 
+interface GithubUserProfile {
+  login: string;
+  name: string | null;
+}
+
 const listDiscordGuildChannels = async () => {
   const maxAttempts = 3;
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
@@ -115,6 +120,44 @@ const fetchRecentCommits = async (repo: string) => {
     return (await response.json()) as GithubCommitNode[];
   } catch (err) {
     return [];
+  }
+};
+
+const githubDisplayNameCache = new Map<string, string>();
+
+const fetchGithubDisplayName = async (login?: string | null) => {
+  if (!login) {
+    return null;
+  }
+
+  const cached = githubDisplayNameCache.get(login.toLowerCase());
+  if (cached) {
+    return cached;
+  }
+
+  if (!githubToken) {
+    return login;
+  }
+
+  try {
+    const response = await fetch(`https://api.github.com/users/${login}`, {
+      headers: {
+        Authorization: `Bearer ${githubToken}`,
+        Accept: "application/vnd.github.v3+json",
+      },
+      cache: "no-store",
+    });
+
+    if (!response.ok) {
+      return login;
+    }
+
+    const profile = (await response.json()) as GithubUserProfile;
+    const displayName = profile.name?.trim() || profile.login || login;
+    githubDisplayNameCache.set(login.toLowerCase(), displayName);
+    return displayName;
+  } catch {
+    return login;
   }
 };
 
@@ -235,7 +278,7 @@ export const runGithubSync = async (): Promise<GithubSyncResult> => {
     const shortId = commit.sha.substring(0, 7);
     const messageLines = commit.commit.message.split("\n").filter((l) => l.trim().length > 0);
     const title = messageLines[0] ?? commit.commit.message;
-    const authorName = commit.author?.login || commit.commit.author.name || "Unknown";
+    const authorName = (await fetchGithubDisplayName(commit.author?.login)) || commit.commit.author.name || "Unknown";
 
     const commitDate = commit.commit.author.date
       ? new Date(commit.commit.author.date).toLocaleString("en-US", {
