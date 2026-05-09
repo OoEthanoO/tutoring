@@ -9,6 +9,7 @@ import CoursesMenu from "@/components/CoursesMenu";
 import EnrolledCoursesMenu from "@/components/EnrolledCoursesMenu";
 import AllCoursesTableMenu from "@/components/AllCoursesTableMenu";
 import HomeMenu from "@/components/HomeMenu";
+import OurTeamMenu from "@/components/OurTeamMenu";
 import ManageEnrollmentsMenu from "@/components/ManageEnrollmentsMenu";
 import ManageMyCoursesMenu from "@/components/ManageMyCoursesMenu";
 import RolesManagerMenu from "@/components/RolesManagerMenu";
@@ -25,6 +26,7 @@ type MenuKey =
   | "home"
   | "all_courses"
   | "all_courses_table"
+  | "our_team"
   | "enrolled_courses"
   | "my_classes"
 
@@ -288,6 +290,7 @@ export default function DashboardMenus() {
       { key: "home", label: "Home" },
       { key: "all_courses", label: "All courses" },
       { key: "all_courses_table", label: "Courses table" },
+      { key: "our_team", label: "Our team" },
     ];
 
     if (role) {
@@ -395,9 +398,10 @@ export default function DashboardMenus() {
           </nav>
       </div>
 
-      {activeMenu === "home" ? <HomeMenu isSignedIn={Boolean(role)} /> : null}
+      {activeMenu === "home" ? <HomeMenu isSignedIn={Boolean(role)} onOpenTeamTab={() => setActive("our_team")} /> : null}
       {activeMenu === "all_courses" ? <CoursesMenu /> : null}
       {activeMenu === "all_courses_table" ? <AllCoursesTableMenu /> : null}
+      {activeMenu === "our_team" ? <OurTeamMenu /> : null}
       {activeMenu === "enrolled_courses" ? <EnrolledCoursesMenu /> : null}
       {activeMenu === "my_classes" ? <MyClassesMenu /> : null}
       {activeMenu === "manage_course_requests" ? <CourseRequestsMenu /> : null}

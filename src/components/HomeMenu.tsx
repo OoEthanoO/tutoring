@@ -1,14 +1,56 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { getCurrentUser, onAuthChange } from "@/lib/authClient";
+import { isFounder, resolveUserRole } from "@/lib/roles";
 
 type HomeMenuProps = {
   isSignedIn: boolean;
+  onOpenTeamTab: () => void;
 };
 
-export default function HomeMenu({ isSignedIn }: HomeMenuProps) {
+export default function HomeMenu({ isSignedIn, onOpenTeamTab }: HomeMenuProps) {
   const [tutors, setTutors] = useState<{ name: string; generation: string | null; role: string }[]>([]);
+  const [teamCount, setTeamCount] = useState<number | null>(null);
   const [raised, setRaised] = useState<number | null>(null);
+
+  useEffect(() => {
+    const loadTeamCount = async () => {
+      const currentUser = await getCurrentUser();
+      if (!currentUser) {
+        setTeamCount(null);
+        return;
+      }
+
+      const customRoleLevels = Array.isArray(currentUser.custom_roles)
+        ? currentUser.custom_roles.map((r: any) => r.role_level).filter(Boolean)
+        : [currentUser.custom_roles?.role_level].filter(Boolean);
+      const resolvedRole = resolveUserRole(currentUser.email, currentUser.role ?? null, customRoleLevels);
+
+      if (!isFounder(resolvedRole)) {
+        setTeamCount(null);
+        return;
+      }
+
+      const response = await fetch("/api/admin/users?all=true");
+      if (!response.ok) {
+        setTeamCount(null);
+        return;
+      }
+
+      const data = (await response.json()) as { users?: Array<{ email?: string; customRole?: string | null; role?: string }> };
+      const count = (data.users ?? []).filter((user) => {
+        const role = String(user.customRole ?? user.role ?? "").trim();
+        return ["founder", "CEO", "COO", "Chief Executive", "Executive", "executive", "Junior Executive"].includes(role);
+      }).length;
+
+      setTeamCount(count);
+    };
+
+    loadTeamCount();
+
+    return onAuthChange(loadTeamCount);
+  }, []);
 
   useEffect(() => {
     const loadTutors = async () => {
@@ -78,12 +120,10 @@ export default function HomeMenu({ isSignedIn }: HomeMenuProps) {
 
       <div className="space-y-2">
         <h3 className="text-sm font-semibold text-[var(--foreground)]">
-          About the Founder
+          Our Team
         </h3>
         <p className="text-sm text-[var(--muted)]">
-          Yan Xu, IB program, G11, programming and computer science
-          enthusiast, 7 years of coding experience, fluent in Java, C++, and
-          Python. He has been a programming tutor for three years.
+          YanLearn was founded by passionate high school students dedicated to making quality education accessible to everyone. Our team includes talented tutors and executives across various subjects and skill levels. Open the <button type="button" onClick={onOpenTeamTab} className="underline hover:text-[var(--foreground)] transition-colors">Our team</button> tab to meet the full roster and read the mission.
         </p>
       </div>
       {raised !== null ? (
@@ -105,33 +145,14 @@ export default function HomeMenu({ isSignedIn }: HomeMenuProps) {
           )}
         </p>
       ) : null}
-      {tutors.length ? (
-        <div className="space-y-4">
-
-          {Array.from(new Set(tutors.map((t) => t.generation).filter(Boolean))).sort().reverse().map((generation) => {
-            const genTutors = tutors.filter((t) => t.generation === generation);
-            if (!genTutors.length) return null;
-            return (
-              <div key={generation} className="space-y-2">
-                <h3 className="text-sm font-semibold text-[var(--foreground)]">
-                  {generation} Executives
-                </h3>
-                <div className="flex flex-wrap gap-2 transition-all duration-300">
-                  {genTutors.map((tutor, index) => {
-                    const displayName = tutor.name.replace(/\bExecutive\b/gi, "EXEC");
-                    return (
-                      <span
-                        key={`${tutor.name}-${index}`}
-                        className="inline-flex items-center rounded-full border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-1 text-xs font-medium text-[var(--muted)] hover:border-[var(--foreground)] hover:text-[var(--foreground)] transition-colors"
-                      >
-                        {displayName}
-                      </span>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })}
+      {teamCount !== null || tutors.length ? (
+        <div className="space-y-2">
+          <h3 className="text-sm font-semibold text-[var(--foreground)]">
+            Team Count
+          </h3>
+          <p className="text-sm text-[var(--muted)]">
+            We have {teamCount ?? tutors.length} dedicated team members across different roles and generations. Open the <button type="button" onClick={onOpenTeamTab} className="underline hover:text-[var(--foreground)] transition-colors">Our team</button> tab to meet everyone.
+          </p>
         </div>
       ) : null}
     </section>
