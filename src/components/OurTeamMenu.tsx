@@ -8,6 +8,7 @@ interface TeamMember {
   email: string;
   role: string;
   customRole: string | null;
+  customRoleLabel: string | null;
   isJunior: boolean;
   generation: number | null;
 }
@@ -15,14 +16,13 @@ interface TeamMember {
 const roleOrder: { [key: string]: number } = {
   founder: 0,
   CEO: 1,
-  COO: 2,
-  "Chief Executive": 3,
-  Executive: 4,
-  executive: 4,
-  "Junior Executive": 5,
+  "Chief Executive": 2,
+  Executive: 3,
+  executive: 3,
+  "Junior Executive": 4,
 };
 
-const normalizeRole = (role: string | null | undefined) => {
+const normalizeStandardRole = (role: string | null | undefined) => {
   const value = String(role ?? "").trim().toLowerCase();
   if (!value) return null;
   if (value === "founder") return "founder";
@@ -34,9 +34,29 @@ const normalizeRole = (role: string | null | undefined) => {
   return null;
 };
 
+const formatCustomRoleLabel = (role: string | null | undefined) => {
+  const value = String(role ?? "").trim();
+  return value.length > 0 ? value : null;
+};
+
+const isCustomOnlyRole = (role: string | null | undefined) => {
+  const label = formatCustomRoleLabel(role);
+  return Boolean(label && !normalizeStandardRole(label));
+};
+
+const standardRoleLabels = new Set([
+  "founder",
+  "CEO",
+  "COO",
+  "Chief Executive",
+  "Executive",
+  "Junior Executive",
+]);
+
 export default function OurTeamMenu() {
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchTeam = async () => {
@@ -60,14 +80,17 @@ export default function OurTeamMenu() {
 
         const users = (data.users ?? [])
           .map((u: any) => {
-            const customRole = normalizeRole(u.customRole ?? u.custom_role ?? null);
-            const role = normalizeRole(u.role) ?? null;
+            const rawCustomRoleLabel = formatCustomRoleLabel(u.customRole ?? u.custom_role ?? null);
+            const customRoleLabel = isCustomOnlyRole(rawCustomRoleLabel) ? rawCustomRoleLabel : null;
+            const customRole = normalizeStandardRole(rawCustomRoleLabel);
+            const role = normalizeStandardRole(u.role) ?? null;
             return {
               id: u.id,
               name: String(u.fullName ?? u.full_name ?? u.email ?? "").trim() || "Team member",
               email: String(u.email ?? ""),
               role: role ?? "student",
               customRole,
+              customRoleLabel,
               isJunior: Boolean(u.isJunior ?? u.is_junior),
               generation: typeof u.generation === "string" && u.generation.trim()
                 ? Number.parseInt(u.generation, 10)
@@ -80,6 +103,9 @@ export default function OurTeamMenu() {
             const effectiveRole = u.customRole ?? u.role;
             if (u.isJunior) {
               return activeCreatorIds.has(u.id);
+            }
+            if (effectiveRole === "COO") {
+              return false;
             }
             return Boolean(effectiveRole && effectiveRole !== "student");
           })
@@ -106,14 +132,35 @@ export default function OurTeamMenu() {
     fetchTeam();
   }, []);
 
+  useEffect(() => {
+    if (!selectedImage) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setSelectedImage(null);
+    };
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [selectedImage]);
+
   const groupedMembers = {
-    founder: teamMembers.filter((m) => (m.customRole ?? m.role) === "founder"),
-    ceo: teamMembers.filter((m) => (m.customRole ?? m.role) === "CEO"),
-    coo: teamMembers.filter((m) => (m.customRole ?? m.role) === "COO"),
-    chief_executive: teamMembers.filter((m) => (m.customRole ?? m.role) === "Chief Executive"),
-    executive: teamMembers.filter((m) => (m.customRole ?? m.role) === "Executive"),
-    junior_executive: teamMembers.filter((m) => (m.customRole ?? m.role) === "Junior Executive"),
+    founder: teamMembers.filter((m) => !m.customRoleLabel && (m.customRole ?? m.role) === "founder"),
+    ceo: teamMembers.filter((m) => !m.customRoleLabel && (m.customRole ?? m.role) === "CEO"),
+    chief_executive: teamMembers.filter((m) => !m.customRoleLabel && (m.customRole ?? m.role) === "Chief Executive"),
+    executive: teamMembers.filter((m) => !m.customRoleLabel && (m.customRole ?? m.role) === "Executive"),
+    junior_executive: teamMembers.filter((m) => !m.customRoleLabel && (m.customRole ?? m.role) === "Junior Executive"),
   };
+
+  const customRoleGroups = Array.from(
+    new Map(
+      teamMembers
+        .filter((member) => member.customRoleLabel && !standardRoleLabels.has(member.customRoleLabel))
+        .map((member) => [member.customRoleLabel as string, teamMembers.filter((candidate) => candidate.customRoleLabel === member.customRoleLabel)])
+    )
+  ).sort(([a], [b]) => a.localeCompare(b));
 
   const roleLabels: { [key: string]: string } = {
     founder: "Founders",
@@ -126,9 +173,8 @@ export default function OurTeamMenu() {
 
   const images = [
     "IMG_0009.jpeg",
-    "IMG_0018.HEIC",
+    "IMG_0018.jpeg",
     "IMG_0040.JPG",
-    "IMG_0044.JPG",
     "IMG_0047.JPG",
   ];
 
@@ -137,11 +183,11 @@ export default function OurTeamMenu() {
   }
 
   return (
-    <div className="space-y-8">
+    <section className="space-y-6 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6">
       {/* Mission Section */}
-      <section className="space-y-4">
-        <h2 className="text-2xl font-bold text-[var(--foreground)]">Our Mission</h2>
-        <div className="space-y-3 text-sm text-[var(--foreground)]">
+      <section className="space-y-1">
+        <h2 className="text-lg font-semibold text-[var(--foreground)]">Our Mission</h2>
+        <div className="space-y-2 text-sm text-[var(--foreground)]">
           <p>
             YanLearn is a platform built by high school students, for students. We bring together talented high schoolers across the Toronto area and give them a stage to share their academic strengths — providing high-quality extracurricular tutoring and mentorship to younger students in grades 6-12.
           </p>
@@ -153,59 +199,63 @@ export default function OurTeamMenu() {
       </section>
 
       {/* Team Section */}
-      <section className="space-y-6">
-        <h2 className="text-2xl font-bold text-[var(--foreground)]">Our Team</h2>
-        <div className="space-y-6">
-          {groupedMembers.founder.length > 0 && (
-            <div>
-              <h3 className="mb-3 text-lg font-semibold text-[var(--foreground)]">{roleLabels.founder}</h3>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {groupedMembers.founder.map((member) => (
-                  <div key={member.id} className="rounded-lg border border-[var(--border)] bg-[var(--background-secondary)] p-3">
-                    <p className="font-semibold text-[var(--foreground)]">{member.name}</p>
-                    <p className="text-xs text-[var(--muted)]">{member.email}</p>
-                  </div>
-                ))}
+      <section className="space-y-1">
+        <h2 className="text-lg font-semibold text-[var(--foreground)]">Our Team</h2>
+        <div className="space-y-2">
+          <div className="flex items-start gap-6 flex-wrap lg:flex-nowrap">
+            {groupedMembers.founder.length > 0 && (
+              <div className="space-y-2">
+                <h3 className="text-sm font-semibold uppercase tracking-wide text-[var(--foreground)]">{roleLabels.founder}</h3>
+                <div className="flex flex-wrap gap-2">
+                  {groupedMembers.founder.map((member) => (
+                      <div key={member.id} className="group inline-flex items-center rounded-full border border-[var(--border)] bg-[var(--background-secondary)] px-3 py-1 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-[var(--background-tertiary)] hover:shadow-md">
+                        <p className="whitespace-nowrap text-sm font-medium text-[var(--foreground)]">{member.name}</p>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
 
-          {groupedMembers.ceo.length > 0 && (
-            <div>
-              <h3 className="mb-3 text-lg font-semibold text-[var(--foreground)]">{roleLabels.ceo}</h3>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {groupedMembers.ceo.map((member) => (
-                  <div key={member.id} className="rounded-lg border border-[var(--border)] bg-[var(--background-secondary)] p-3">
-                    <p className="font-semibold text-[var(--foreground)]">{member.name}</p>
-                    <p className="text-xs text-[var(--muted)]">{member.email}</p>
-                  </div>
-                ))}
+          <div className="flex items-center gap-8 flex-wrap lg:flex-nowrap">
+            {groupedMembers.ceo.length > 0 && (
+              <div className="flex-shrink-0">
+                <h3 className="text-sm font-semibold uppercase tracking-wide text-[var(--foreground)] mb-0">{roleLabels.ceo}</h3>
+                <div className="flex gap-2 flex-wrap items-center">
+                  {groupedMembers.ceo.map((member) => (
+                    <div key={member.id} className="group inline-flex items-center rounded-full border border-[var(--border)] bg-[var(--background-secondary)] px-3 py-1 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-[var(--background-tertiary)] hover:shadow-md">
+                      <p className="whitespace-nowrap text-sm font-medium text-[var(--foreground)]">{member.name}</p>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {groupedMembers.coo.length > 0 && (
-            <div>
-              <h3 className="mb-3 text-lg font-semibold text-[var(--foreground)]">{roleLabels.coo}</h3>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {groupedMembers.coo.map((member) => (
-                  <div key={member.id} className="rounded-lg border border-[var(--border)] bg-[var(--background-secondary)] p-3">
-                    <p className="font-semibold text-[var(--foreground)]">{member.name}</p>
-                    <p className="text-xs text-[var(--muted)]">{member.email}</p>
+            {customRoleGroups.length > 0 && (
+              <div className="flex-shrink-0 space-y-3">
+                {customRoleGroups.map(([roleName, members]) => (
+                  <div key={roleName} className="space-y-1">
+                    <h3 className="text-sm font-semibold uppercase tracking-wide text-[var(--foreground)] mb-0">{roleName}</h3>
+                    <div className="flex gap-2 flex-wrap items-center">
+                      {members.map((member) => (
+                        <div key={member.id} className="group inline-flex items-center rounded-full border border-[var(--border)] bg-[var(--background-secondary)] px-3 py-1 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-[var(--background-tertiary)] hover:shadow-md">
+                          <p className="whitespace-nowrap text-sm font-medium text-[var(--foreground)]">{member.name}</p>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 ))}
               </div>
-            </div>
-          )}
+            )}
+          </div>
 
           {groupedMembers.chief_executive.length > 0 && (
             <div>
-              <h3 className="mb-3 text-lg font-semibold text-[var(--foreground)]">{roleLabels.chief_executive}</h3>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <h3 className="text-sm font-semibold uppercase tracking-wide text-[var(--foreground)]">{roleLabels.chief_executive}</h3>
+              <div className="flex flex-wrap gap-2">
                 {groupedMembers.chief_executive.map((member) => (
-                  <div key={member.id} className="rounded-lg border border-[var(--border)] bg-[var(--background-secondary)] p-3">
-                    <p className="font-semibold text-[var(--foreground)]">{member.name}</p>
-                    <p className="text-xs text-[var(--muted)]">{member.email}</p>
+                  <div key={member.id} className="group inline-flex items-center rounded-full border border-[var(--border)] bg-[var(--background-secondary)] px-3 py-1 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-[var(--background-tertiary)] hover:shadow-md">
+                    <p className="whitespace-nowrap text-sm font-medium text-[var(--foreground)]">{member.name}</p>
                   </div>
                 ))}
               </div>
@@ -214,12 +264,11 @@ export default function OurTeamMenu() {
 
           {groupedMembers.executive.length > 0 && (
             <div>
-              <h3 className="mb-3 text-lg font-semibold text-[var(--foreground)]">{roleLabels.executive}</h3>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <h3 className="text-sm font-semibold uppercase tracking-wide text-[var(--foreground)]">{roleLabels.executive}</h3>
+              <div className="flex flex-wrap gap-2">
                 {groupedMembers.executive.map((member) => (
-                  <div key={member.id} className="rounded-lg border border-[var(--border)] bg-[var(--background-secondary)] p-3">
-                    <p className="font-semibold text-[var(--foreground)]">{member.name}</p>
-                    <p className="text-xs text-[var(--muted)]">{member.email}</p>
+                  <div key={member.id} className="group inline-flex items-center rounded-full border border-[var(--border)] bg-[var(--background-secondary)] px-3 py-1 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-[var(--background-tertiary)] hover:shadow-md">
+                    <p className="whitespace-nowrap text-sm font-medium text-[var(--foreground)]">{member.name}</p>
                   </div>
                 ))}
               </div>
@@ -228,12 +277,11 @@ export default function OurTeamMenu() {
 
           {groupedMembers.junior_executive.length > 0 && (
             <div>
-              <h3 className="mb-3 text-lg font-semibold text-[var(--foreground)]">{roleLabels.junior_executive}</h3>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <h3 className="text-sm font-semibold uppercase tracking-wide text-[var(--foreground)]">{roleLabels.junior_executive}</h3>
+              <div className="flex flex-wrap gap-2">
                 {groupedMembers.junior_executive.map((member) => (
-                  <div key={member.id} className="rounded-lg border border-[var(--border)] bg-[var(--background-secondary)] p-3">
-                    <p className="font-semibold text-[var(--foreground)]">{member.name}</p>
-                    <p className="text-xs text-[var(--muted)]">{member.email}</p>
+                  <div key={member.id} className="group inline-flex items-center rounded-full border border-[var(--border)] bg-[var(--background-secondary)] px-3 py-1 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-[var(--background-tertiary)] hover:shadow-md">
+                    <p className="whitespace-nowrap text-sm font-medium text-[var(--foreground)]">{member.name}</p>
                   </div>
                 ))}
               </div>
@@ -242,21 +290,58 @@ export default function OurTeamMenu() {
         </div>
       </section>
 
-      {/* Images Gallery */}
-      <section className="space-y-4">
-        <h2 className="text-2xl font-bold text-[var(--foreground)]">Moments</h2>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {/* Images Gallery: grouped by event/date */}
+      <section className="space-y-1">
+        <h2 className="text-lg font-semibold text-[var(--foreground)]">May 4th, 2026: SickKids Foundation Hospital</h2>
+        <div className="grid gap-4 grid-cols-2 sm:grid-cols-2 md:grid-cols-4">
           {images.map((image, idx) => (
-            <div key={idx} className="relative aspect-square overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--background-secondary)]">
+            <div
+              key={idx}
+              role="button"
+              tabIndex={0}
+              onClick={() => setSelectedImage(image)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") setSelectedImage(image);
+              }}
+              className="group cursor-zoom-in overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--background-secondary)] shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-lg"
+            >
+              <div className="relative">
               <img
                 src={`/images/${image}`}
-                alt={`Team moment ${idx + 1}`}
-                className="h-full w-full object-cover"
+                alt={`SickKids moment ${idx + 1}`}
+                className="h-40 w-full object-cover transition-transform duration-300 group-hover:scale-[1.04] group-hover:brightness-95"
               />
+                <div className="pointer-events-none absolute inset-0 flex items-end justify-end bg-gradient-to-t from-black/30 via-transparent to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100">
+                  <span className="m-2 rounded-full bg-white/90 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-black shadow-sm">
+                    Click to enlarge
+                  </span>
+                </div>
+              </div>
             </div>
           ))}
         </div>
+        {selectedImage && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+            onClick={() => setSelectedImage(null)}
+          >
+            <div className="relative max-h-full max-w-full" onClick={(e) => e.stopPropagation()}>
+              <button
+                aria-label="Close"
+                onClick={() => setSelectedImage(null)}
+                className="absolute -right-2 -top-2 z-60 rounded-full bg-black/70 p-2 text-white shadow-lg transition-colors hover:bg-black"
+              >
+                ✕
+              </button>
+              <img
+                src={`/images/${selectedImage}`}
+                alt="Enlarged team moment"
+                className="max-h-[90vh] max-w-[90vw] rounded-xl object-contain shadow-2xl"
+              />
+            </div>
+          </div>
+        )}
       </section>
-    </div>
+    </section>
   );
 }
