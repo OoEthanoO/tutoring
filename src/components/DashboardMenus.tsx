@@ -352,6 +352,7 @@ export default function DashboardMenus() {
         </div>
       )}
       <div className="sticky top-0 z-20 -mx-6 border-b border-[var(--border)] bg-[var(--background)]/90 px-6 backdrop-blur">
+        <div className="relative">
           <nav
             ref={navRef}
             className="scrollbar-hide flex overflow-x-auto"
@@ -396,6 +397,25 @@ export default function DashboardMenus() {
               </button>
             ))}
           </nav>
+          {canScrollLeft && (
+            <button
+              aria-label="Scroll tabs left"
+              onClick={() => navRef.current?.scrollBy({ left: -360, behavior: "smooth" })}
+              className="pointer-events-auto absolute left-2 top-1/2 -translate-y-1/2 z-30 hidden h-8 w-8 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)] shadow-sm hover:bg-[var(--background-secondary)] md:flex"
+            >
+              ‹
+            </button>
+          )}
+          {canScrollRight && (
+            <button
+              aria-label="Scroll tabs right"
+              onClick={() => navRef.current?.scrollBy({ left: 360, behavior: "smooth" })}
+              className="pointer-events-auto absolute right-2 top-1/2 -translate-y-1/2 z-30 hidden h-8 w-8 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)] shadow-sm hover:bg-[var(--background-secondary)] md:flex"
+            >
+              ›
+            </button>
+          )}
+        </div>
       </div>
 
       {activeMenu === "home" ? <HomeMenu isSignedIn={Boolean(role)} onOpenTeamTab={() => setActive("our_team")} /> : null}
