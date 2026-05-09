@@ -248,19 +248,19 @@ export default function AllCoursesTableMenu() {
         </colgroup>
         <thead>
           <tr className="border-b border-[var(--border)] bg-[var(--background-secondary)]">
-            <th className="border border-[var(--border)] px-2 py-1 text-left font-semibold leading-tight">Course</th>
-            <th className="border border-[var(--border)] px-2 py-1 text-left font-semibold leading-tight">Tutor</th>
+            <th className="border border-[var(--border)] px-2 py-1 text-center font-semibold leading-tight">Course</th>
+            <th className="border border-[var(--border)] px-2 py-1 text-center font-semibold leading-tight">Tutor</th>
             <th className="border border-[var(--border)] px-2 py-1 text-center font-semibold leading-tight">Classes</th>
             <th className="border border-[var(--border)] px-2 py-1 text-center font-semibold leading-tight">Fee</th>
-            <th className="border border-[var(--border)] px-2 py-1 text-left font-semibold leading-tight">Period</th>
-            <th className="border border-[var(--border)] px-1 py-1 text-left font-semibold leading-tight whitespace-nowrap">Mon</th>
-            <th className="border border-[var(--border)] px-1 py-1 text-left font-semibold leading-tight whitespace-nowrap">Tue</th>
-            <th className="border border-[var(--border)] px-1 py-1 text-left font-semibold leading-tight whitespace-nowrap">Wed</th>
-            <th className="border border-[var(--border)] px-1 py-1 text-left font-semibold leading-tight whitespace-nowrap">Thu</th>
-            <th className="border border-[var(--border)] px-1 py-1 text-left font-semibold leading-tight whitespace-nowrap">Fri</th>
-            <th className="border border-[var(--border)] px-1 py-1 text-left font-semibold leading-tight whitespace-nowrap">Sat</th>
-            <th className="border border-[var(--border)] px-1 py-1 text-left font-semibold leading-tight whitespace-nowrap">Sun</th>
-            <th className="border border-[var(--border)] px-2 py-1 text-left font-semibold leading-tight">Special</th>
+            <th className="border border-[var(--border)] px-2 py-1 text-center font-semibold leading-tight">Period</th>
+            <th className="border border-[var(--border)] px-1 py-1 text-center font-semibold leading-tight whitespace-nowrap">Mon</th>
+            <th className="border border-[var(--border)] px-1 py-1 text-center font-semibold leading-tight whitespace-nowrap">Tue</th>
+            <th className="border border-[var(--border)] px-1 py-1 text-center font-semibold leading-tight whitespace-nowrap">Wed</th>
+            <th className="border border-[var(--border)] px-1 py-1 text-center font-semibold leading-tight whitespace-nowrap">Thu</th>
+            <th className="border border-[var(--border)] px-1 py-1 text-center font-semibold leading-tight whitespace-nowrap">Fri</th>
+            <th className="border border-[var(--border)] px-1 py-1 text-center font-semibold leading-tight whitespace-nowrap">Sat</th>
+            <th className="border border-[var(--border)] px-1 py-1 text-center font-semibold leading-tight whitespace-nowrap">Sun</th>
+            <th className="border border-[var(--border)] px-2 py-1 text-center font-semibold leading-tight">Special</th>
           </tr>
         </thead>
         <tbody>
