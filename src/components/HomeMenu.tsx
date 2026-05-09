@@ -161,8 +161,8 @@ export default function HomeMenu({ isSignedIn, onOpenTeamTab }: HomeMenuProps) {
           All YanLearn tutors are current IB/AP high school students with
           excellent grades in their respective subjects. We run our classes by
           hosting online Zoom meetings with a requirement of a $50 donation fee
-          to enjoy 10 lessons per term. As of February 2026, more than 290 classes
-          have been taught, and more than 260 students are participating in our
+          to enjoy 10 lessons per term. As of April 2026, more than 300 classes
+          have been taught, and more than 350 students are participating in our
           program.
         </p>
         <p className="text-sm text-[var(--muted)]">
