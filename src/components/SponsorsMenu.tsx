@@ -83,10 +83,10 @@ export default function SponsorsMenu() {
         <p className="text-sm text-[var(--muted)]">
           Interested in sponsoring?{" "}
           <a
-            href="mailto:ethanyanxu@icloud.com"
+            href="mailto:ethanxucoder@gmail.com"
             className="font-semibold text-[var(--foreground)] underline transition-colors hover:text-[var(--muted)]"
           >
-            ethanyanxu@icloud.com
+            ethanxucoder@gmail.com
           </a>
         </p>
       </div>

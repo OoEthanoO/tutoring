@@ -1,7 +1,7 @@
 export type UserRole = "CEO" | "COO" | "Chief Executive" | "founder" | "Executive" | "executive" | "Junior Executive" | "Student" | "student";
 
 const fallbackFounderEmails = [
-  "ethanyanxu@icloud.com",
+  "ethanxucoder@gmail.com",
   "jingqu2018@gmail.com",
 ];
 

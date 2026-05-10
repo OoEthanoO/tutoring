@@ -4,7 +4,7 @@ import { getAdminClient } from "@/lib/authServer";
 
 export async function GET(request: Request) {
   const user = await getRequestUser(request as any);
-  if (!user || user.email !== "ethanyanxu@icloud.com") {
+  if (!user || user.email !== "ethanxucoder@gmail.com") {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -19,7 +19,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   const user = await getRequestUser(request as any);
-  if (!user || user.email !== "ethanyanxu@icloud.com") {
+  if (!user || user.email !== "ethanxucoder@gmail.com") {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
