@@ -325,7 +325,7 @@ export default function DashboardMenus() {
       items.push({ key: "trash", label: "Trash" });
     }
 
-    if (currentUser?.email === "ethanxucoder@gmail.com") {
+    if (currentUser?.email === "ethanyanxu@icloud.com") {
       items.push({ key: "roles_manager", label: "Roles" });
     }
 
