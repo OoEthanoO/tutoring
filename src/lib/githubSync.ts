@@ -180,7 +180,11 @@ const fetchCommitStats = async (repo: string, sha: string) => {
       return null;
     }
     const data = await response.json();
-    return data?.stats as { additions?: number; deletions?: number } | undefined;
+    return {
+      additions: data?.stats?.additions,
+      deletions: data?.stats?.deletions,
+      files: Array.isArray(data?.files) ? data.files.length : undefined
+    };
   } catch (err) {
     return null;
   }
@@ -298,7 +302,9 @@ export const runGithubSync = async (): Promise<GithubSyncResult> => {
     if (stats) {
       const added = stats.additions ?? 0;
       const removed = stats.deletions ?? 0;
-      text += `\nLines: **+${added}** / **-${removed}**`;
+      const filesChanged = stats.files ?? 0;
+      // "[files changed] files changed, [lines added] insertions(+), [lines removed] deletions(-)"
+      text += `\n**${filesChanged}** files changed, **${added}** insertions(+), **${removed}** deletions(-)`;
     }
 
     try {
