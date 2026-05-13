@@ -62,8 +62,8 @@ export default function DonationHistoryMenu() {
             <AreaChart data={displayData} margin={{ top: 5, right: 30, left: 10, bottom: 0 }}>
               <defs>
                 <linearGradient id="colorAmountHistoric" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="var(--primary)" stopOpacity={0.8}/>
-                  <stop offset="95%" stopColor="var(--primary)" stopOpacity={0}/>
+                  <stop offset="5%" stopColor="var(--foreground)" stopOpacity={0.2}/>
+                  <stop offset="95%" stopColor="var(--foreground)" stopOpacity={0}/>
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
@@ -95,7 +95,15 @@ export default function DonationHistoryMenu() {
                   return d.toLocaleDateString();
                 }}
               />
-              <Area type="monotone" dataKey="amount" stroke="var(--primary)" fillOpacity={1} fill="url(#colorAmountHistoric)" />
+              <Area 
+                type="monotone" 
+                dataKey="amount" 
+                stroke="var(--foreground)" 
+                strokeWidth={2}
+                fillOpacity={1} 
+                fill="url(#colorAmountHistoric)" 
+                activeDot={{ r: 5, fill: "var(--foreground)", stroke: "var(--surface)", strokeWidth: 2 }}
+              />
             </AreaChart>
           </ResponsiveContainer>
         ) : (
