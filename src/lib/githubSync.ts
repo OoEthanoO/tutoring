@@ -244,7 +244,7 @@ export const runGithubSync = async (): Promise<GithubSyncResult> => {
   
   for (const msg of recentMessages) {
     // Robust regex to find the commit SHA (7-40 hex chars) in various bolding formats
-    const match = msg.content.match(/(?:New Commit:|\*\*New Commit:\*\*)\s*`([a-f0-9]{7,40})`/i);
+    const match = msg.content.match(/(?:New Commit:|Commit #\d+:|\*\*New Commit:\*\*|\*\*Commit #\d+:\*\*)\s*\`([a-f0-9]{7,40})\`/i);
     if (match && match[1]) {
       syncedShas.add(match[1].toLowerCase());
     }
