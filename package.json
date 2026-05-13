@@ -23,6 +23,7 @@
     "react": "19.2.3",
     "react-datepicker": "^9.1.0",
     "react-dom": "19.2.3",
+    "recharts": "^3.8.1",
     "xlsx": "https://cdn.sheetjs.com/xlsx-latest/xlsx-latest.tgz"
   },
   "devDependencies": {

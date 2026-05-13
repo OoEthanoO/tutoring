@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { runDiscordSync, type DiscordSyncResult } from "@/lib/discordSync";
 import { runGithubSync, type GithubSyncResult } from "@/lib/githubSync";
+import { fetchFundraisingRaisedAmount } from "@/lib/fundraising";
 import { resolveRoleByEmail } from "@/lib/roles";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
@@ -624,6 +625,21 @@ export async function POST(request: NextRequest) {
     let githubSync: GithubSyncResult | null = null;
     try {
       githubSync = await runGithubSync();
+      
+      // Update daily fundraising total
+      const raised = await fetchFundraisingRaisedAmount();
+      if (raised !== null) {
+        const nowStr = new Date().toLocaleString("en-US", {
+          timeZone: "America/Toronto",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        });
+        const [month, day, year] = nowStr.split("/");
+        const today = `${year}-${month}-${day}`;
+        await adminClient.from("daily_donations").upsert({ date: today, amount: raised }, { onConflict: "date" });
+      }
+
     } catch (error) {
       console.error("Failed to run Github sync from cron:", error);
       githubSync = {
@@ -1182,6 +1198,21 @@ export async function POST(request: NextRequest) {
   let githubSync: GithubSyncResult | null = null;
   try {
     githubSync = await runGithubSync();
+      
+      // Update daily fundraising total
+      const raised = await fetchFundraisingRaisedAmount();
+      if (raised !== null) {
+        const nowStr = new Date().toLocaleString("en-US", {
+          timeZone: "America/Toronto",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        });
+        const [month, day, year] = nowStr.split("/");
+        const today = `${year}-${month}-${day}`;
+        await adminClient.from("daily_donations").upsert({ date: today, amount: raised }, { onConflict: "date" });
+      }
+
   } catch (error) {
     console.error("Failed to run Github sync from cron:", error);
     githubSync = {
@@ -1209,3 +1240,5 @@ export async function POST(request: NextRequest) {
     githubSync,
   });
 }
+
+// I will patch the bottom of the file

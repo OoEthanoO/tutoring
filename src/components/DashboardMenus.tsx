@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import DonationHistoryMenu from "./DonationHistoryMenu";
 import { getCurrentUser, onAuthChange } from "@/lib/authClient";
 import { canManageCourses, isExecutive, isFounder, resolveUserRole, type UserRole } from "@/lib/roles";
 import AdminUserManager from "@/components/AdminUserManager";
@@ -26,7 +27,7 @@ type MenuKey =
   | "home"
   | "all_courses"
   | "all_courses_table"
-  | "our_team"
+  | "our_team" | "donation_history"
   | "enrolled_courses"
   | "my_classes"
 
@@ -291,6 +292,7 @@ export default function DashboardMenus() {
       { key: "all_courses", label: "All courses" },
       { key: "all_courses_table", label: "Courses table" },
       { key: "our_team", label: "Our team" },
+        { key: "donation_history", label: "Donation history" },
     ];
 
     if (role) {
@@ -422,6 +424,7 @@ export default function DashboardMenus() {
       {activeMenu === "all_courses" ? <CoursesMenu /> : null}
       {activeMenu === "all_courses_table" ? <AllCoursesTableMenu /> : null}
       {activeMenu === "our_team" ? <OurTeamMenu /> : null}
+      {activeMenu === "donation_history" ? <DonationHistoryMenu /> : null}
       {activeMenu === "enrolled_courses" ? <EnrolledCoursesMenu /> : null}
       {activeMenu === "my_classes" ? <MyClassesMenu /> : null}
       {activeMenu === "manage_course_requests" ? <CourseRequestsMenu /> : null}

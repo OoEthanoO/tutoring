@@ -16,6 +16,7 @@ interface TeamMember {
 const roleOrder: { [key: string]: number } = {
   founder: 0,
   CEO: 1,
+  COO: 1.5,
   "Chief Executive": 2,
   Executive: 3,
   executive: 3,
@@ -104,9 +105,6 @@ export default function OurTeamMenu() {
             if (u.isJunior) {
               return activeCreatorIds.has(u.id);
             }
-            if (effectiveRole === "COO") {
-              return false;
-            }
             return Boolean(effectiveRole && effectiveRole !== "student");
           })
           .sort((a: TeamMember, b: TeamMember) => {
@@ -149,6 +147,7 @@ export default function OurTeamMenu() {
   const groupedMembers = {
     founder: teamMembers.filter((m) => !m.customRoleLabel && (m.customRole ?? m.role) === "founder"),
     ceo: teamMembers.filter((m) => !m.customRoleLabel && (m.customRole ?? m.role) === "CEO"),
+    coo: teamMembers.filter((m) => !m.customRoleLabel && (m.customRole ?? m.role) === "COO"),
     chief_executive: teamMembers.filter((m) => !m.customRoleLabel && (m.customRole ?? m.role) === "Chief Executive"),
     executive: teamMembers.filter((m) => !m.customRoleLabel && (m.customRole ?? m.role) === "Executive"),
     junior_executive: teamMembers.filter((m) => !m.customRoleLabel && (m.customRole ?? m.role) === "Junior Executive"),
@@ -231,23 +230,36 @@ export default function OurTeamMenu() {
               </div>
             )}
 
-            {customRoleGroups.length > 0 && (
-              <div className="flex-shrink-0 space-y-3">
-                {customRoleGroups.map(([roleName, members]) => (
-                  <div key={roleName} className="space-y-1">
-                    <h3 className="text-sm font-semibold uppercase tracking-wide text-[var(--foreground)] mb-0">{roleName}</h3>
-                    <div className="flex gap-2 flex-wrap items-center">
-                      {members.map((member) => (
-                        <div key={member.id} className="group inline-flex items-center rounded-full border border-[var(--border)] bg-[var(--background-secondary)] px-3 py-1 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-[var(--background-tertiary)] hover:shadow-md">
-                          <p className="whitespace-nowrap text-sm font-medium text-[var(--foreground)]">{member.name}</p>
-                        </div>
-                      ))}
+            {groupedMembers.coo.length > 0 && (
+              <div className="flex-shrink-0">
+                <h3 className="text-sm font-semibold uppercase tracking-wide text-[var(--foreground)] mb-0">{roleLabels.coo}</h3>
+                <div className="flex gap-2 flex-wrap items-center">
+                  {groupedMembers.coo.map((member) => (
+                    <div key={member.id} className="group inline-flex items-center rounded-full border border-[var(--border)] bg-[var(--background-secondary)] px-3 py-1 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-[var(--background-tertiary)] hover:shadow-md">
+                      <p className="whitespace-nowrap text-sm font-medium text-[var(--foreground)]">{member.name}</p>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
             )}
           </div>
+
+          {customRoleGroups.length > 0 && (
+            <div className="flex-shrink-0 space-y-3">
+              {customRoleGroups.map(([roleName, members]) => (
+                <div key={roleName} className="space-y-1">
+                  <h3 className="text-sm font-semibold uppercase tracking-wide text-[var(--foreground)] mb-0">{roleName}</h3>
+                  <div className="flex gap-2 flex-wrap items-center">
+                    {members.map((member) => (
+                      <div key={member.id} className="group inline-flex items-center rounded-full border border-[var(--border)] bg-[var(--background-secondary)] px-3 py-1 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-[var(--background-tertiary)] hover:shadow-md">
+                        <p className="whitespace-nowrap text-sm font-medium text-[var(--foreground)]">{member.name}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
 
           {groupedMembers.chief_executive.length > 0 && (
             <div>
