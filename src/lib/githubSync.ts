@@ -325,13 +325,17 @@ export const runGithubSync = async (): Promise<GithubSyncResult> => {
       const added = stats.additions ?? 0;
       const removed = stats.deletions ?? 0;
       const filesChanged = stats.files ?? 0;
-      // "[files changed] files changed, [lines added] insertions(+), [lines removed] deletions(-)"
-      text += `\n**${filesChanged}** files changed, **${added}** insertions(+), **${removed}** deletions(-)`;
-    }
+        
+        const filesText = filesChanged === 1 ? "file" : "files";
+        const insertionsText = added === 1 ? "insertion" : "insertions";
+        const deletionsText = removed === 1 ? "deletion" : "deletions";
+        
+        text += `\n**${filesChanged}** ${filesText} changed, **${added}** ${insertionsText}(+), **${removed}** ${deletionsText}(-)`;
+      }
 
-    try {
-      await sendDiscordMessage(commitsChannel.id, text);
-      successfulPushes += 1;
+      try {
+        await sendDiscordMessage(commitsChannel.id, text);
+        successfulPushes += 1;
       // Sleep slightly longer inside background sync
       await new Promise((resolve) => setTimeout(resolve, 1000));
     } catch (err: any) {
