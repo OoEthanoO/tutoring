@@ -1,3 +1,4 @@
+import commitsData from "@/generated/commits.json";
 const discordBotToken = process.env.DISCORD_BOT_TOKEN ?? "";
 const discordGuildId = process.env.DISCORD_GUILD_ID ?? "";
 const githubToken = process.env.GITHUB_TOKEN ?? "";
@@ -277,7 +278,26 @@ export const runGithubSync = async (): Promise<GithubSyncResult> => {
   }
 
   let successfulPushes = 0;
-  for (const commit of commitsToProcess) {
+  
+    const getCommitNumber = (sha: string) => {
+      const foundIdx = commitsData.commits.findIndex(c => c.hash === sha);
+      if (foundIdx !== -1) {
+        return commitsData.total - foundIdx;
+      }
+      const githubIdx = githubCommits.findIndex(c => c.sha === sha);
+      if (githubIdx !== -1) {
+        for (let i = githubIdx + 1; i < githubCommits.length; i++) {
+          const knownIdx = commitsData.commits.findIndex(c => c.hash === githubCommits[i].sha);
+          if (knownIdx !== -1) {
+            return commitsData.total - knownIdx + (i - githubIdx);
+          }
+        }
+        return commitsData.total + (githubCommits.length - githubIdx);
+      }
+      return "?";
+    };
+
+    for (const commit of commitsToProcess) {
     const stats = await fetchCommitStats(repoFullName, commit.sha);
     const shortId = commit.sha.substring(0, 7);
     const messageLines = commit.commit.message.split("\n").filter((l) => l.trim().length > 0);
@@ -295,7 +315,9 @@ export const runGithubSync = async (): Promise<GithubSyncResult> => {
         })
       : null;
 
-    let text = `**New Commit:** \`${shortId}\` by ${authorName}\n> ${title}`;
+    const commitNumber = getCommitNumber(commit.sha);
+      const fullMessage = commit.commit.message.trim();
+      let text = `**Commit #${commitNumber}:** \`${shortId}\` by ${authorName}\n${fullMessage}`;
     if (commitDate) {
       text += `\n${commitDate}`;
     }
