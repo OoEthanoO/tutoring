@@ -156,6 +156,22 @@ export default function PublicHome() {
           })}
         </div>
       ) : null}
+
+      <div className="space-y-2">
+        <h3 className="text-sm font-semibold text-[var(--foreground)]">
+          Letter of Support
+        </h3>
+        <p className="text-sm text-[var(--muted)]">
+          You can view our Letter of Support from SickKids Foundation below.
+        </p>
+        <div className="mt-4 w-full h-[600px] rounded border border-[var(--border)] overflow-hidden">
+          <iframe
+            src="/Letter%20of%20Support%20from%20SickKids%20Foundation.pdf"
+            className="w-full h-full"
+            title="Letter of Support from SickKids Foundation"
+          />
+        </div>
+      </div>
     </section>
   );
 }
