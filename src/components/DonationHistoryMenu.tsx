@@ -71,6 +71,7 @@ export default function DonationHistoryMenu() {
                 dataKey="date" 
                 tickFormatter={(tick) => {
                   const d = new Date(tick);
+                  d.setDate(d.getDate() + 1);
                   return `${d.getMonth() + 1}/${d.getDate()}`;
                 }}
                 stroke="var(--muted)" 
@@ -92,6 +93,7 @@ export default function DonationHistoryMenu() {
                 formatter={(value: any) => [`$${Number(value)}`, 'Amount']}
                 labelFormatter={(label) => {
                   const d = new Date(label);
+                  d.setDate(d.getDate() + 1);
                   return d.toLocaleDateString();
                 }}
               />
