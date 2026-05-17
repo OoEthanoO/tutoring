@@ -4,6 +4,7 @@ import { runDiscordSync, type DiscordSyncResult } from "@/lib/discordSync";
 import { runGithubSync, type GithubSyncResult } from "@/lib/githubSync";
 import { fetchFundraisingRaisedAmount } from "@/lib/fundraising";
 import { resolveRoleByEmail } from "@/lib/roles";
+import { deleteZoomMeeting } from "@/lib/zoom";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
@@ -81,6 +82,7 @@ type CourseRow = {
   created_by?: string | null;
   created_by_name?: string | null;
   created_by_email?: string | null;
+  first_class_date?: string | null;
 };
 
 type ClassRow = {
@@ -145,6 +147,57 @@ const readCourse = (value: ClassRow["course"]): CourseRow | null => {
     return value[0] ?? null;
   }
   return value ?? null;
+};
+
+/**
+ * Determine if a course should use the new Zoom system
+ * Criteria:
+ * - Tutor is NOT the CEO (founder)
+ * - First class date is on or before June 24, 2026
+ */
+const shouldUseZoomSystem = (
+  tutorEmail: string,
+  firstClassDate: Date | null
+): boolean => {
+  const ceoEmails = (process.env.NEXT_PUBLIC_FOUNDER_EMAIL || "").split(",").map(e => e.trim());
+  const isCEOTutor = ceoEmails.includes(tutorEmail);
+  
+  if (isCEOTutor) {
+    return false;
+  }
+  
+  const june24_2026 = new Date("2026-06-24T00:00:00Z");
+  return firstClassDate !== null && firstClassDate <= june24_2026;
+};
+
+/**
+ * Build a map of course IDs to their first class date
+ */
+const buildFirstClassDateMap = async (
+  adminClient: any,
+  courseIds: string[]
+): Promise<Map<string, Date>> => {
+  const map = new Map<string, Date>();
+  
+  if (courseIds.length === 0) {
+    return map;
+  }
+
+  const { data: classes } = await adminClient
+    .from("course_classes")
+    .select("course_id, starts_at")
+    .in("course_id", courseIds)
+    .order("starts_at", { ascending: true });
+
+  if (classes) {
+    for (const cls of classes) {
+      if (!map.has(cls.course_id)) {
+        map.set(cls.course_id, new Date(cls.starts_at));
+      }
+    }
+  }
+
+  return map;
 };
 
 const floorToMinuteBoundary = (value: Date) => {
@@ -399,6 +452,104 @@ const sendEmail = async (to: string, subject: string, html: string) => {
   }
 };
 
+const runAutoCloseMeetings = async (
+  adminClient: any
+): Promise<{ closedCount: number; errors: string[] }> => {
+  const errors: string[] = [];
+  const now = new Date();
+  let closedCount = 0;
+
+  const { data: activeSessions, error: sessionsError } = await adminClient
+    .from("zoom_meeting_sessions")
+    .select(
+      `
+      id,
+      course_class_id,
+      zoom_meeting_id,
+      course_class:course_classes(starts_at, duration_hours)
+    `
+    )
+    .is("ended_at", null);
+
+  if (sessionsError) {
+    return {
+      closedCount,
+      errors: [`Failed to load meetings for auto-close: ${sessionsError.message}`],
+    };
+  }
+
+  for (const session of activeSessions ?? []) {
+    const courseClass = Array.isArray(session.course_class)
+      ? session.course_class[0]
+      : session.course_class;
+
+    if (!courseClass) {
+      continue;
+    }
+
+    const startsAt = new Date(String(courseClass.starts_at));
+    const durationHoursRaw =
+      typeof courseClass.duration_hours === "number"
+        ? courseClass.duration_hours
+        : Number.parseFloat(String(courseClass.duration_hours || 1));
+    const durationHours = Number.isFinite(durationHoursRaw)
+      ? durationHoursRaw
+      : 1;
+    const endsAt = new Date(startsAt.getTime() + durationHours * 60 * 60 * 1000);
+
+    if (now <= endsAt) {
+      continue;
+    }
+
+    try {
+      await deleteZoomMeeting(String(session.zoom_meeting_id));
+    } catch (error) {
+      errors.push(
+        `Failed to delete Zoom meeting ${String(session.zoom_meeting_id)}: ${
+          error instanceof Error ? error.message : "Unknown Zoom delete error"
+        }`
+      );
+    }
+
+    const endedAt = now.toISOString();
+    const { error: markEndedError } = await adminClient
+      .from("zoom_meeting_sessions")
+      .update({ ended_at: endedAt })
+      .eq("id", String(session.id));
+
+    if (markEndedError) {
+      errors.push(
+        `Failed to mark meeting session ended (${String(session.id)}): ${
+          markEndedError.message
+        }`
+      );
+      continue;
+    }
+
+    const { error: clearClassError } = await adminClient
+      .from("course_classes")
+      .update({
+        zoom_meeting_id: null,
+        zoom_start_url: null,
+        zoom_join_url: null,
+      })
+      .eq("id", String(session.course_class_id));
+
+    if (clearClassError) {
+      errors.push(
+        `Failed to clear class Zoom fields (${String(session.course_class_id)}): ${
+          clearClassError.message
+        }`
+      );
+      continue;
+    }
+
+    closedCount += 1;
+  }
+
+  return { closedCount, errors };
+};
+
 export async function POST(request: NextRequest) {
   if (!cronSecret) {
     return NextResponse.json(
@@ -428,6 +579,8 @@ export async function POST(request: NextRequest) {
   const adminClient = createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false },
   });
+
+  const autoCloseResult = await runAutoCloseMeetings(adminClient);
 
   let discordSync: DiscordSyncResult;
   try {
@@ -620,6 +773,15 @@ export async function POST(request: NextRequest) {
       );
     }
   }
+
+  // Build first class date map for all courses in candidates
+  const courseIdsInCandidates = Array.from(
+    new Set(candidates.map((c) => c.classRow.course_id))
+  );
+  const firstClassDateByCourseId = await buildFirstClassDateMap(
+    adminClient,
+    courseIdsInCandidates
+  );
 
   if (candidates.length === 0) {
     let githubSync: GithubSyncResult | null = null;
@@ -938,9 +1100,36 @@ export async function POST(request: NextRequest) {
         ].join("\n");
       }
     } else {
+      // Check if this course should use the new Zoom system
+      const firstClassDate = firstClassDateByCourseId.get(classRow.course_id) || null;
+      const usesNewZoomSystem = shouldUseZoomSystem(tutorEmail, firstClassDate);
+      
       if (isStandardReminder) {
         subject = `Class reminder: starts in ${reminderLabel} (${course.title})`;
-        html = `
+        
+        // For new Zoom system, don't include Zoom details in non-5-minute reminders
+        if (usesNewZoomSystem) {
+          html = `
+        <p>Your class starts in <strong>${escapeHtml(reminderLabel)}</strong>.</p>
+        <p><strong>Course:</strong> ${courseTitle}</p>
+        <p><strong>${isStandardClassTitle ? classTitle : `Class: ${classTitle}`}</strong></p>
+        <p><strong>Tutor:</strong> ${tutorName}</p>
+        <p><strong>Start time (${torontoTimeZone}):</strong> ${startLabel}</p>
+        <p>Please join 5 minutes before the class starts.</p>
+      `;
+          discordContent = [
+            `Your class starts in **${escapeDiscordText(reminderLabel)}**.`,
+            `**Course:** ${escapeDiscordText(courseTitleRaw)}`,
+            isStandardClassTitle ? `**${escapeDiscordText(classTitleRaw)}**` : `**Class:** ${escapeDiscordText(classTitleRaw)}`,
+            `**Tutor:** ${escapeDiscordText(tutorNameRaw)}`,
+            `**Start time (${torontoTimeZone}):** ${escapeDiscordText(
+              formatTorontoDateTime(classRow.starts_at)
+            )}`,
+            "Please join 5 minutes before the class starts.",
+          ].join("\n");
+        } else {
+          // Legacy system (Schoolhouse or CEO tutors)
+          html = `
         <p>Your class starts in <strong>${escapeHtml(reminderLabel)}</strong>.</p>
         <p><strong>Course:</strong> ${courseTitle}</p>
         <p><strong>${isStandardClassTitle ? classTitle : `Class: ${classTitle}`}</strong></p>
@@ -957,59 +1146,86 @@ export async function POST(request: NextRequest) {
               }</p>\n        <p><strong>Please join the breakout room immediately after joining the meeting. Do not stay in the main meeting room.</strong></p>\n        <p><strong>Please use your registered student name to log into Zoom, otherwise you may be removed by the administrator and bear the consequences of not being able to attend the class.</strong></p>`
         }
       `;
-        const nonFounderDiscordInstruction = [
-          "Please attend the class 5 minutes before the start time:",
-          `Zoom ID: ${escapeDiscordText(defaultZoomId)}`,
-          `Password: ${escapeDiscordText(defaultZoomPassword)}`,
-          breakoutRoomName
-            ? `Breakout room: "${escapeDiscordText(breakoutRoomName)}"`
-            : `Please join the breakout room that starts with "${escapeDiscordText(
-              `${tutorFirstName}${tutorLastInitial ? ` ${tutorLastInitial}` : ""}`
-            )}" followed by the name of the course.`,
-          "**Please join the breakout room immediately after joining the meeting. Do not stay in the main meeting room.**",
-          "**Please use your registered student name to log into Zoom, otherwise you may be removed by the administrator and bear the consequences of not being able to attend the class.**",
-        ].join("\n");
+          const nonFounderDiscordInstruction = [
+            "Please attend the class 5 minutes before the start time:",
+            `Zoom ID: ${escapeDiscordText(defaultZoomId)}`,
+            `Password: ${escapeDiscordText(defaultZoomPassword)}`,
+            breakoutRoomName
+              ? `Breakout room: "${escapeDiscordText(breakoutRoomName)}"`
+              : `Please join the breakout room that starts with "${escapeDiscordText(
+                `${tutorFirstName}${tutorLastInitial ? ` ${tutorLastInitial}` : ""}`
+              )}" followed by the name of the course.`,
+            "**Please join the breakout room immediately after joining the meeting. Do not stay in the main meeting room.**",
+            "**Please use your registered student name to log into Zoom, otherwise you may be removed by the administrator and bear the consequences of not being able to attend the class.**",
+          ].join("\n");
 
-        discordContent = [
-          `Your class starts in **${escapeDiscordText(reminderLabel)}**.`,
-          `**Course:** ${escapeDiscordText(courseTitleRaw)}`,
-          isStandardClassTitle ? `**${escapeDiscordText(classTitleRaw)}**` : `**Class:** ${escapeDiscordText(classTitleRaw)}`,
-          `**Tutor:** ${escapeDiscordText(tutorNameRaw)}`,
-          `**Start time (${torontoTimeZone}):** ${escapeDiscordText(
-            formatTorontoDateTime(classRow.starts_at)
-          )}`,
-          isFounder
-            ? "Please attend the class 5 minutes before the start time on the Schoolhouse platform."
-            : nonFounderDiscordInstruction,
-        ].join("\n");
+          discordContent = [
+            `Your class starts in **${escapeDiscordText(reminderLabel)}**.`,
+            `**Course:** ${escapeDiscordText(courseTitleRaw)}`,
+            isStandardClassTitle ? `**${escapeDiscordText(classTitleRaw)}**` : `**Class:** ${escapeDiscordText(classTitleRaw)}`,
+            `**Tutor:** ${escapeDiscordText(tutorNameRaw)}`,
+            `**Start time (${torontoTimeZone}):** ${escapeDiscordText(
+              formatTorontoDateTime(classRow.starts_at)
+            )}`,
+            isFounder
+              ? "Please attend the class 5 minutes before the start time on the Schoolhouse platform."
+              : nonFounderDiscordInstruction,
+          ].join("\n");
+        }
       }
 
       if (reminderType === "five_minutes" && !isStandardReminder) {
-        const fiveMinBreakoutInstruction = breakoutRoomName
-          ? `\nBreakout room: "${escapeDiscordText(breakoutRoomName)}"`
-          : `\nPlease join the breakout room that starts with "${escapeDiscordText(
-              `${tutorFirstName}${tutorLastInitial ? ` ${tutorLastInitial}` : ""}`
-            )}" followed by the name of the course.`;
-        const nonFounderFiveMinInstruction = [
-          `Please join the meeting immediately:`,
-          `Zoom ID: ${escapeDiscordText(defaultZoomId)}`,
-          `Password: ${escapeDiscordText(defaultZoomPassword)}${fiveMinBreakoutInstruction}`,
-          `**Please join the breakout room immediately after joining the meeting. Do not stay in the main meeting room.**`,
-          `**Please use your registered student name to log into Zoom, otherwise you may be removed by the administrator and bear the consequences of not being able to attend the class.**`,
-        ].join("\n");
+        // For new Zoom system, show YanLearn join link; for legacy, show Zoom details
+        if (usesNewZoomSystem) {
+          const siteBase = (process.env.NEXT_PUBLIC_SITE_URL ?? "").replace(/\/+$/, "");
+          const joinUrl = siteBase ? `${siteBase}/api/courses/${classRow.course_id}/join?classId=${classRow.id}` : "#";
+          
+          const nonFounderFiveMinInstruction = [
+            `Please join the meeting immediately:`,
+            `<a href="${joinUrl}"><strong>Click here to join</strong></a>`,
+            `Your name will be set to your registered YanLearn name.`,
+          ].join("\n");
 
-        discordContent = [
-          `Your class starts in **${escapeDiscordText(reminderLabel)}**.`,
-          `**Course:** ${escapeDiscordText(courseTitleRaw)}`,
-          isStandardClassTitle ? `**${escapeDiscordText(classTitleRaw)}**` : `**Class:** ${escapeDiscordText(classTitleRaw)}`,
-          `**Tutor:** ${escapeDiscordText(tutorNameRaw)}`,
-          `**Start time (${torontoTimeZone}):** ${escapeDiscordText(
-            formatTorontoDateTime(classRow.starts_at)
-          )}`,
-          isFounder
-            ? "Please join the meeting on the Schoolhouse platform immediately!"
-            : nonFounderFiveMinInstruction,
-        ].join("\n");
+          discordContent = [
+            `Your class starts in **${escapeDiscordText(reminderLabel)}**.`,
+            `**Course:** ${escapeDiscordText(courseTitleRaw)}`,
+            isStandardClassTitle ? `**${escapeDiscordText(classTitleRaw)}**` : `**Class:** ${escapeDiscordText(classTitleRaw)}`,
+            `**Tutor:** ${escapeDiscordText(tutorNameRaw)}`,
+            `**Start time (${torontoTimeZone}):** ${escapeDiscordText(
+              formatTorontoDateTime(classRow.starts_at)
+            )}`,
+            isFounder
+              ? "Please join the meeting immediately on YanLearn!"
+              : `Please join the meeting immediately:\n${joinUrl}\nYour name will be set to your registered YanLearn name.`,
+          ].join("\n");
+        } else {
+          // Legacy system
+          const fiveMinBreakoutInstruction = breakoutRoomName
+            ? `\nBreakout room: "${escapeDiscordText(breakoutRoomName)}"`
+            : `\nPlease join the breakout room that starts with "${escapeDiscordText(
+                `${tutorFirstName}${tutorLastInitial ? ` ${tutorLastInitial}` : ""}`
+              )}" followed by the name of the course.`;
+          const nonFounderFiveMinInstruction = [
+            `Please join the meeting immediately:`,
+            `Zoom ID: ${escapeDiscordText(defaultZoomId)}`,
+            `Password: ${escapeDiscordText(defaultZoomPassword)}${fiveMinBreakoutInstruction}`,
+            `**Please join the breakout room immediately after joining the meeting. Do not stay in the main meeting room.**`,
+            `**Please use your registered student name to log into Zoom, otherwise you may be removed by the administrator and bear the consequences of not being able to attend the class.**`,
+          ].join("\n");
+
+          discordContent = [
+            `Your class starts in **${escapeDiscordText(reminderLabel)}**.`,
+            `**Course:** ${escapeDiscordText(courseTitleRaw)}`,
+            isStandardClassTitle ? `**${escapeDiscordText(classTitleRaw)}**` : `**Class:** ${escapeDiscordText(classTitleRaw)}`,
+            `**Tutor:** ${escapeDiscordText(tutorNameRaw)}`,
+            `**Start time (${torontoTimeZone}):** ${escapeDiscordText(
+              formatTorontoDateTime(classRow.starts_at)
+            )}`,
+            isFounder
+              ? "Please join the meeting on the Schoolhouse platform immediately!"
+              : nonFounderFiveMinInstruction,
+          ].join("\n");
+        }
       }
 
       const tutorDiscordId = course.created_by
@@ -1232,6 +1448,8 @@ export async function POST(request: NextRequest) {
     sentEmailCount,
     sentDiscordReminderCount,
     sentDiscordFollowUpCount,
+    autoClosedMeetingsCount: autoCloseResult.closedCount,
+    autoCloseErrors: autoCloseResult.errors,
     failedClasses,
     timezone: torontoTimeZone,
     reminderSkippedReason,
