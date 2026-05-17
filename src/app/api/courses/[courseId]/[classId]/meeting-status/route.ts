@@ -40,7 +40,7 @@ function getUserIdFromRequest(req: NextRequest): string | null {
  */
 export async function POST(
   req: NextRequest,
-  { params }: { params: { courseId: string; classId: string } }
+  { params }: { params: Promise<{ courseId: string; classId: string }> }
 ) {
   try {
     const userId = getUserIdFromRequest(req);
@@ -48,7 +48,7 @@ export async function POST(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { courseId, classId } = params;
+    const { courseId, classId } = await params;
 
     // Get user info
     const { data: user } = await supabase
@@ -137,8 +137,9 @@ export async function POST(
       },
     });
 
-    // Store meeting info in database
-    const { error: updateError } = await supabase
+    // Store meeting info in database only if this class still has no meeting.
+    // This prevents duplicate meetings if two requests race.
+    const { data: claimedRows, error: updateError } = await supabase
       .from("course_classes")
       .update({
         zoom_meeting_id: meeting.meetingId,
@@ -146,10 +147,46 @@ export async function POST(
         zoom_join_url: meeting.joinUrl,
         zoom_created_at: new Date().toISOString(),
       })
-      .eq("id", classId);
+      .eq("id", classId)
+      .is("zoom_meeting_id", null)
+      .select("id");
 
     if (updateError) {
       throw new Error(`Failed to save meeting info: ${updateError.message}`);
+    }
+
+    if (!claimedRows || claimedRows.length === 0) {
+      // Another request already created/claimed a meeting for this class.
+      // Best effort cleanup of this newly-created extra meeting.
+      try {
+        await deleteZoomMeeting(meeting.meetingId);
+      } catch (cleanupError) {
+        console.error("Failed to cleanup duplicate Zoom meeting:", cleanupError);
+      }
+
+      const { data: existingClass } = await supabase
+        .from("course_classes")
+        .select("zoom_meeting_id, zoom_start_url, zoom_join_url")
+        .eq("id", classId)
+        .single();
+
+      if (!existingClass?.zoom_meeting_id) {
+        throw new Error("Meeting claim race detected, but no existing meeting found.");
+      }
+
+      await supabase.from("zoom_meeting_sessions").insert({
+        course_class_id: classId,
+        zoom_meeting_id: existingClass.zoom_meeting_id,
+        host_user_id: userId,
+        started_at: new Date().toISOString(),
+      });
+
+      return NextResponse.json({
+        meetingId: existingClass.zoom_meeting_id,
+        startUrl: existingClass.zoom_start_url,
+        joinUrl: existingClass.zoom_join_url,
+        status: "already_created",
+      });
     }
 
     // Create meeting session record
@@ -183,10 +220,10 @@ export async function POST(
  */
 export async function GET(
   req: NextRequest,
-  { params }: { params: { courseId: string; classId: string } }
+  { params }: { params: Promise<{ courseId: string; classId: string }> }
 ) {
   try {
-    const { classId } = params;
+    const { classId } = await params;
 
     // Get class and meeting info
     const { data: courseClass } = await supabase
@@ -260,7 +297,7 @@ export async function GET(
  */
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { courseId: string; classId: string } }
+  { params }: { params: Promise<{ courseId: string; classId: string }> }
 ) {
   try {
     const userId = getUserIdFromRequest(req);
@@ -268,7 +305,7 @@ export async function DELETE(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { classId } = params;
+    const { classId } = await params;
 
     // Get class and meeting info
     const { data: courseClass } = await supabase

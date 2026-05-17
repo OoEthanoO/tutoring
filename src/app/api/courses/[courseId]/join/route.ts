@@ -42,7 +42,7 @@ function getUserIdFromRequest(req: NextRequest): string | null {
  */
 export async function GET(
   req: NextRequest,
-  { params }: { params: { courseId: string } }
+  { params }: { params: Promise<{ courseId: string }> }
 ) {
   try {
     const userId = getUserIdFromRequest(req);
@@ -50,7 +50,7 @@ export async function GET(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const courseId = params.courseId;
+    const { courseId } = await params;
     const classIdParam = req.nextUrl.searchParams.get("classId");
 
     if (!classIdParam) {
