@@ -216,12 +216,8 @@ export async function PATCH(
            ${isFounderCourse ? 
              `<p>This course is hosted on Schoolhouse! Please join the session via the Schoolhouse platform. If you don't have a Schoolhouse account yet, please create one using this link: <a href="https://schoolhouse.world/?ref=u-mx1o1c1hti">https://schoolhouse.world/?ref=u-mx1o1c1hti</a></p>` 
              : 
-             `<p>Zoom ID: ${defaultZoomId}<br/>Password: ${defaultZoomPassword}<br/>${
-               breakoutRoomName
-                 ? `Breakout room: "${breakoutRoomName}"`
-                 : `Please join the breakout room that starts with "${tutorFirstName}${tutorLastInitial ? ` ${tutorLastInitial}` : ""}" followed by the name of the course.`
-             }</p>
-             <p><strong>Please use your registered student name to log into Zoom, otherwise you may be removed by the administrator and bear the consequences of not being able to attend the class.</strong></p>`
+             `<p>This class will be held on <strong>Discord</strong>. Please make sure you have connected your Discord account in your profile and joined our Discord server.</p>
+              <p>You will receive a notification in the Discord server with a link to the voice channel 5 minutes before the class starts. Please make sure to join the server if you haven't already.</p>`
            }`
         : `<p>Your enrollment request for <strong>${courseTitle}</strong> has been rejected.</p>`;
 
