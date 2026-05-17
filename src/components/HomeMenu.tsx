@@ -10,7 +10,6 @@ type HomeMenuProps = {
 };
 
 export default function HomeMenu({ isSignedIn, onOpenTeamTab }: HomeMenuProps) {
-  const [tutors, setTutors] = useState<{ name: string; generation: string | null; role: string }[]>([]);
   const [teamCount, setTeamCount] = useState<number | null>(null);
   const [raised, setRaised] = useState<number | null>(null);
 
@@ -88,14 +87,10 @@ export default function HomeMenu({ isSignedIn, onOpenTeamTab }: HomeMenuProps) {
           };
         })
         .filter((u: any) => {
-          const effectiveRole = u.customRole ?? u.role;
           if (u.isJunior) {
             return activeCreatorIds.has(u.id);
           }
-          if (effectiveRole === "COO") {
-            return false;
-          }
-          return Boolean(effectiveRole && effectiveRole !== "student");
+          return Boolean((u.customRole ?? u.role) && (u.customRole ?? u.role) !== "student");
         });
 
       setTeamCount(users.length);
@@ -104,20 +99,6 @@ export default function HomeMenu({ isSignedIn, onOpenTeamTab }: HomeMenuProps) {
     loadTeamCount();
 
     return onAuthChange(loadTeamCount);
-  }, []);
-
-  useEffect(() => {
-    const loadTutors = async () => {
-      const response = await fetch("/api/tutors");
-      if (!response.ok) {
-        return;
-      }
-
-      const data = (await response.json()) as { tutors?: { name: string; generation: string | null; role: string }[] };
-      setTutors(data.tutors ?? []);
-    };
-
-    loadTutors();
   }, []);
 
   useEffect(() => {
@@ -199,13 +180,13 @@ export default function HomeMenu({ isSignedIn, onOpenTeamTab }: HomeMenuProps) {
           )}
         </p>
       ) : null}
-      {teamCount !== null || tutors.length ? (
+      {teamCount !== null ? (
         <div className="space-y-2">
           <h3 className="text-sm font-semibold text-[var(--foreground)]">
             Team Count
           </h3>
           <p className="text-sm text-[var(--muted)]">
-            We have {teamCount ?? tutors.length} dedicated team members across different roles and generations. Open the <button type="button" onClick={onOpenTeamTab} className="underline hover:text-[var(--foreground)] transition-colors">Our team</button> tab to meet everyone.
+            We have {teamCount} dedicated team members across different roles and generations. Open the <button type="button" onClick={onOpenTeamTab} className="underline hover:text-[var(--foreground)] transition-colors">Our team</button> tab to meet everyone.
           </p>
         </div>
       ) : null}
