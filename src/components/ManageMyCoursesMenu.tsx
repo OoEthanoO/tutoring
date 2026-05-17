@@ -899,7 +899,7 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
     courseId: string,
     student: EnrolledStudent
   ) => {
-    if (role !== "founder") {
+    if (!isFounder(role)) {
       return;
     }
 
@@ -1471,9 +1471,10 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
                   </div>
                 )}
               </div>
-              <div className="flex flex-wrap items-center gap-2">
-                {isTrashMode ? (
-                  <button
+              {isFounder(role) && (
+                <div className="flex flex-wrap items-center gap-2">
+                  {isTrashMode ? (
+                    <button
                     type="button"
                     disabled={isRestoringId === course.id}
                     onClick={() => restoreCourse(course.id)}
@@ -1499,7 +1500,7 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
                       Cancel
                     </button>
                   </>
-                ) : (
+                ) : isFounder(role) ? (
                   <button
                     type="button"
                     onClick={() => startEditCourse(course)}
@@ -1507,8 +1508,8 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
                   >
                     Edit
                   </button>
-                )}
-                {canManageCourses(role) && (!isTrashMode || isFounder(role)) ? (
+                ) : null}
+                {isFounder(role) ? (
                   <button
                     type="button"
                     disabled={pendingDeleteId === course.id}
@@ -1519,6 +1520,7 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
                   </button>
                 ) : null}
               </div>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -1614,23 +1616,25 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
                                 </span>
                             );
                           })()}
-                          <div className="flex gap-2">
-                            <button
-                              type="button"
-                              onClick={() => startEditClass(courseClass)}
-                              className="rounded-full border border-[var(--border)] px-3 py-1 text-[0.6rem] font-semibold text-[var(--foreground)] transition hover:border-[var(--foreground)]"
-                            >
-                              Edit
-                            </button>
-                            <button
-                              type="button"
-                              disabled={pendingClassDeleteId === courseClass.id}
-                              onClick={() => deleteClass(course.id, courseClass)}
-                              className="rounded-full border border-red-200 px-3 py-1 text-[0.6rem] font-semibold text-red-500 transition hover:border-red-400 disabled:cursor-not-allowed disabled:opacity-70"
-                            >
-                              {pendingClassDeleteId === courseClass.id ? "Deleting..." : "Delete"}
-                            </button>
-                          </div>
+                          {isFounder(role) && (
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                onClick={() => startEditClass(courseClass)}
+                                className="rounded-full border border-[var(--border)] px-3 py-1 text-[0.6rem] font-semibold text-[var(--foreground)] transition hover:border-[var(--foreground)]"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                disabled={pendingClassDeleteId === courseClass.id}
+                                onClick={() => deleteClass(course.id, courseClass)}
+                                className="rounded-full border border-red-200 px-3 py-1 text-[0.6rem] font-semibold text-red-500 transition hover:border-red-400 disabled:cursor-not-allowed disabled:opacity-70"
+                              >
+                                {pendingClassDeleteId === courseClass.id ? "Deleting..." : "Delete"}
+                              </button>
+                            </div>
+                          )}
                         </div>
                       )}
                     </li>
@@ -1641,7 +1645,7 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
               )}
             </div>
 
-            {course.is_completed || isTrashMode ? null : (
+            {course.is_completed || isTrashMode || !isFounder(role) ? null : (
               <form
                 className="flex flex-col gap-3 sm:flex-row sm:items-start"
                 onSubmit={(event) => onCreateClass(course.id, event)}

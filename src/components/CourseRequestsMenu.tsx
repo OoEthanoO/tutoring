@@ -140,6 +140,32 @@ export default function CourseRequestsMenu() {
     }
   };
 
+  const handleDelete = async (id: string) => {
+    const firstConfirm = window.confirm("Are you sure you want to permanently delete this course request?");
+    if (!firstConfirm) {
+      return;
+    }
+    
+    if (window.prompt(`Final confirmation: Type "DELETE" to confirm`) !== "DELETE") {
+      return;
+    }
+
+    setActioningId(id);
+    try {
+      const res = await fetch(`/api/course-requests/${id}`, { method: "DELETE" });
+      if (res.ok) {
+        setRequests(reqs => reqs.filter(r => r.id !== id));
+      } else {
+        const err = await res.json().catch(() => null);
+        alert(err?.error || "Failed to delete request.");
+      }
+    } catch (e) {
+      alert("An error occurred.");
+    } finally {
+      setActioningId(null);
+    }
+  };
+
   const resubmitRequest = async (requestId: string) => {
     setActioningId(requestId);
     try {
@@ -562,6 +588,9 @@ export default function CourseRequestsMenu() {
                           Reject
                         </button>
                       </div>
+                      <button onClick={() => handleDelete(req.id)} disabled={actioningId === req.id} className="w-full rounded-full border border-red-200 px-4 py-2 text-sm font-semibold text-red-500 transition hover:bg-red-50 disabled:opacity-70">
+                        {actioningId === req.id ? "Deleting..." : "Delete Request"}
+                      </button>
 
                       {rejectingId === req.id && (
                         <div className="mt-2 space-y-2">
@@ -612,17 +641,26 @@ export default function CourseRequestsMenu() {
                     )}
                   </div>
                   {isFounderAccess ? (
-                    <select 
-                      value={req.status}
-                      onChange={(e) => changeStatus(req.id, e.target.value)}
-                      disabled={actioningId === req.id}
-                      style={{ textAlignLast: "center" }} className={`text-xs font-semibold px-3 py-1 outline-none appearance-none rounded-full cursor-pointer hover:opacity-80 transition disabled:opacity-50 text-center ${getStatusBadge(req.status).classes}`}
-                    >
-                      <option value="draft">Draft</option>
-                      <option value="in_review">In Review</option>
-                      <option value="approved">Approved</option>
-                      <option value="rejected">Rejected</option>
-                    </select>
+                    <div className="flex items-center gap-2">
+                      <select 
+                        value={req.status}
+                        onChange={(e) => changeStatus(req.id, e.target.value)}
+                        disabled={actioningId === req.id}
+                        style={{ textAlignLast: "center" }} className={`text-xs font-semibold px-3 py-1 outline-none appearance-none rounded-full cursor-pointer hover:opacity-80 transition disabled:opacity-50 text-center ${getStatusBadge(req.status).classes}`}
+                      >
+                        <option value="draft">Draft</option>
+                        <option value="in_review">In Review</option>
+                        <option value="approved">Approved</option>
+                        <option value="rejected">Rejected</option>
+                      </select>
+                      <button 
+                        onClick={() => handleDelete(req.id)}
+                        disabled={actioningId === req.id}
+                        className="rounded-full border border-red-200 px-3 py-1 text-[0.65rem] font-semibold text-red-500 transition hover:bg-red-50 disabled:opacity-70"
+                      >
+                        Delete
+                      </button>
+                    </div>
                   ) : (
                     <div className={`text-xs font-semibold px-2 py-1 rounded-full ${getStatusBadge(req.status).classes}`}>
                       {getStatusBadge(req.status).label}

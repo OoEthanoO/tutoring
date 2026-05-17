@@ -409,8 +409,8 @@ export async function PATCH(request: NextRequest) {
   }
 
   const role = resolveUserRole(user.email, user.role ?? null);
-  if (!canManageCourses(role)) {
-    return NextResponse.json({ error: "Forbidden." }, { status: 403 });
+  if (!isFounder(role)) {
+    return NextResponse.json({ error: "Forbidden. Only founders, CEOs, and COOs can edit courses." }, { status: 403 });
   }
 
   if (!serviceRoleKey) {

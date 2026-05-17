@@ -93,9 +93,8 @@ export async function PATCH(
   }
 
   const isFounderUser = isFounder(role as any);
-  const isOwner = courseRow.created_by === user.id;
-  if (!isFounderUser && !isOwner) {
-    return NextResponse.json({ error: "Forbidden." }, { status: 403 });
+  if (!isFounderUser) {
+    return NextResponse.json({ error: "Forbidden. Only founders, CEOs, and COOs can edit classes." }, { status: 403 });
   }
 
   const updates: Record<string, string | number> = {};
@@ -235,9 +234,8 @@ export async function DELETE(
   }
 
   const isFounderUser = isFounder(role as any);
-  const isOwner = courseRow.created_by === user.id;
-  if (!isFounderUser && !isOwner) {
-    return NextResponse.json({ error: "Forbidden." }, { status: 403 });
+  if (!isFounderUser) {
+    return NextResponse.json({ error: "Forbidden. Only founders, CEOs, and COOs can delete classes." }, { status: 403 });
   }
 
   const { error: deleteError } = await adminClient

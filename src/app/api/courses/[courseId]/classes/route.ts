@@ -82,11 +82,10 @@ export async function POST(
   }
 
   const isFounderUser = isFounder(role as any);
-  const isOwner = course.created_by === user.id;
 
-  if (!isFounderUser && !isOwner) {
+  if (!isFounderUser) {
     return NextResponse.json(
-      { error: "Only the course owner can add classes." },
+      { error: "Only founders, CEOs, and COOs can add classes." },
       { status: 403 }
     );
   }
