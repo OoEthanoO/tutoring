@@ -497,7 +497,7 @@ export default function CoursesMenu() {
           <h3 className="text-sm font-semibold text-[var(--foreground)]">
             Available courses
           </h3>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {availableCourses.map((course) => {
               const full = isFullCourse(course);
               const ongoing = (course.course_classes ?? []).some((cls) => {
@@ -511,7 +511,7 @@ export default function CoursesMenu() {
                 <div
                   key={course.id}
                   onClick={() => openEnrollmentModal(course)}
-                  className={`group flex h-[140px] flex-col rounded-xl border p-4 transition-all focus-within:ring-2 focus-within:ring-[var(--foreground)] ${
+                  className={`group flex h-[140px] w-full min-w-0 flex-col rounded-xl border p-4 transition-all focus-within:ring-2 focus-within:ring-[var(--foreground)] ${
                     ongoing
                       ? "border-amber-400 animate-pulse cursor-pointer hover:border-amber-500"
                       : full
@@ -519,7 +519,7 @@ export default function CoursesMenu() {
                       : "border-[var(--border)] cursor-pointer hover:border-[var(--foreground)]"
                   }`}
                 >
-                  <div className="flex-1 min-h-0 space-y-1">
+                  <div className="flex-1 min-h-0 min-w-0 space-y-1">
                     <p className="text-sm font-semibold text-[var(--foreground)] truncate">
                       {course.title}
                     </p>
@@ -557,7 +557,7 @@ export default function CoursesMenu() {
           <h3 className="text-sm font-semibold text-[var(--foreground)]">
             Upcoming courses
           </h3>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {upcomingCourses.map((course) => {
               const full = isFullCourse(course);
               const ongoing = (course.course_classes ?? []).some((cls) => {
@@ -571,7 +571,7 @@ export default function CoursesMenu() {
                 <div
                   key={course.id}
                   onClick={() => openEnrollmentModal(course)}
-                  className={`group flex h-[140px] flex-col rounded-xl border p-4 transition-all focus-within:ring-2 focus-within:ring-[var(--foreground)] ${
+                  className={`group flex h-[140px] w-full min-w-0 flex-col rounded-xl border p-4 transition-all focus-within:ring-2 focus-within:ring-[var(--foreground)] ${
                     ongoing
                       ? "border-amber-400 animate-pulse cursor-pointer hover:border-amber-500"
                       : full
@@ -579,7 +579,7 @@ export default function CoursesMenu() {
                       : "border-[var(--border)] cursor-pointer hover:border-[var(--foreground)]"
                   }`}
                 >
-                  <div className="flex-1 min-h-0 space-y-1">
+                  <div className="flex-1 min-h-0 min-w-0 space-y-1">
                     <p className="text-sm font-semibold text-[var(--foreground)] truncate">
                       {course.title}
                     </p>
@@ -617,16 +617,16 @@ export default function CoursesMenu() {
           <h3 className="text-sm font-semibold text-[var(--foreground)]">
             Completed courses
           </h3>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {completedCourses.map((course) => {
               const { startLabel, endLabel } = getCompletedCourseSummary(course);
               return (
                 <div
                   key={course.id}
                   onClick={() => openEnrollmentModal(course)}
-                  className="group flex h-[140px] flex-col rounded-xl border border-[var(--border)] p-4 transition-all hover:border-[var(--foreground)] cursor-pointer"
+                  className="group flex h-[140px] w-full min-w-0 flex-col rounded-xl border border-[var(--border)] p-4 transition-all hover:border-[var(--foreground)] cursor-pointer"
                 >
-                  <div className="flex-1 min-h-0 space-y-1">
+                  <div className="flex-1 min-h-0 min-w-0 space-y-1">
                     <p className="text-sm font-semibold text-[var(--foreground)] truncate">
                       {course.title}
                     </p>

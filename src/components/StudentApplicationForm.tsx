@@ -97,7 +97,7 @@ export default function StudentApplicationForm({
             />
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-1">
               <label htmlFor="schoolName" className="text-xs font-medium text-[var(--muted)]">
                 School name *
@@ -134,7 +134,7 @@ export default function StudentApplicationForm({
             </div>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-1">
               <label htmlFor="parentGuardianName" className="text-xs font-medium text-[var(--muted)]">
                 Parent/Guardian&apos;s Name *

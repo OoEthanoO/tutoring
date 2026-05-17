@@ -42,7 +42,7 @@ export default function SponsorsMenu() {
           youth development and community change.
         </p>
 
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div className="rounded-xl border-2 border-yellow-500 bg-yellow-50 p-4 dark:bg-yellow-950/20">
             <p className="text-sm font-bold text-yellow-700 dark:text-yellow-400">
               🥇 Gold Sponsor

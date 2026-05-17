@@ -281,7 +281,7 @@ export default function CourseCreator({ editData, onSuccess, onCancel }: CourseC
                 Tip: The wider your available timeframes are, the higher the chance to have more students. Please put your full availability.
               </p>
             </div>
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {DAYS_OF_WEEK.map(day => (
                 <div key={day} className="space-y-1">
                   <label className="text-[0.6rem] font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
