@@ -147,7 +147,7 @@ export async function GET(request: NextRequest) {
 
   let query = adminClient
     .from("course_creation_requests")
-    .select("id, title, description, timeframes, frequency, notes, total_classes, start_date, status, created_by, created_at, decided_at, decided_by, is_co_taught, co_tutor_id, app_users!course_creation_requests_created_by_fkey(full_name, email), co_tutor:app_users!course_creation_requests_co_tutor_id_fkey(full_name, email)")
+    .select("id, title, description, timeframes, frequency, notes, rejection_reason, total_classes, start_date, status, created_by, created_at, decided_at, decided_by, is_co_taught, co_tutor_id, app_users!course_creation_requests_created_by_fkey(full_name, email), co_tutor:app_users!course_creation_requests_co_tutor_id_fkey(full_name, email)")
     .order("created_at", { ascending: false });
 
   if (!isFounder(role)) {

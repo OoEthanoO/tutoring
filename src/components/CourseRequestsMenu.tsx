@@ -16,6 +16,7 @@ type RequestRecord = {
   total_classes: number;
   start_date: string;
   notes: string;
+  rejection_reason?: string;
   status: string;
   created_by: string;
   created_at: string;
@@ -125,7 +126,7 @@ export default function CourseRequestsMenu() {
         body: JSON.stringify({ note: rejectNote.trim() }),
       });
       if (res.ok) {
-        setRequests(reqs => reqs.map(r => r.id === id ? { ...r, status: "rejected", notes: rejectNote.trim() } : r));
+        setRequests(reqs => reqs.map(r => r.id === id ? { ...r, status: "rejected", rejection_reason: rejectNote.trim() } : r));
         setRejectingId(null);
         setRejectNote("");
       } else {
@@ -670,9 +671,18 @@ export default function CourseRequestsMenu() {
 
                     {req.notes && (
                       <div className="pt-2">
-                         <p className="text-[0.65rem] font-bold uppercase tracking-[0.2em] text-[var(--muted)] mb-1.5">Notes / Rejection Reason</p>
-                         <div className="rounded-xl bg-orange-500/10 border border-orange-500/20 p-4 text-sm text-orange-900 dark:text-orange-200 whitespace-pre-wrap">
+                         <p className="text-[0.65rem] font-bold uppercase tracking-[0.2em] text-[var(--muted)] mb-1.5">Notes</p>
+                         <div className="rounded-xl bg-[var(--surface)] border border-[var(--border)] p-4 text-sm text-[var(--foreground)] whitespace-pre-wrap">
                            {req.notes}
+                         </div>
+                      </div>
+                    )}
+
+                    {req.rejection_reason && req.status === "rejected" && (
+                      <div className="pt-2">
+                         <p className="text-[0.65rem] font-bold uppercase tracking-[0.2em] text-[var(--muted)] mb-1.5">Rejection Reason</p>
+                         <div className="rounded-xl bg-orange-500/10 border border-orange-500/20 p-4 text-sm text-orange-900 dark:text-orange-200 whitespace-pre-wrap">
+                           {req.rejection_reason}
                          </div>
                       </div>
                     )}

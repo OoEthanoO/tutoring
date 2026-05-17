@@ -343,25 +343,25 @@ const buildCoursePermissionOverwrites = (
     {
       id: founderRoleId,
       type: 0,
-      allow: pinOnlyAllow,
+      allow: activeAllow,
       deny: "0",
     },
     {
       id: ceoRoleId,
       type: 0,
-      allow: pinOnlyAllow,
+      allow: activeAllow,
       deny: "0",
     },
     {
       id: cooRoleId,
       type: 0,
-      allow: pinOnlyAllow,
+      allow: activeAllow,
       deny: "0",
     },
     {
       id: chiefExecutiveRoleId,
       type: 0,
-      allow: pinOnlyAllow,
+      allow: activeAllow,
       deny: "0",
     },
     {

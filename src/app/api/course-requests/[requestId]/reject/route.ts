@@ -69,7 +69,7 @@ export async function POST(
       status: "rejected",
       decided_at: new Date().toISOString(),
       decided_by: user.id,
-      notes: note,
+      rejection_reason: note,
     })
     .eq("id", requestId);
 
