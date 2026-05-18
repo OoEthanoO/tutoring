@@ -342,6 +342,11 @@ export default function DashboardMenus() {
     ? active
     : "home";
 
+  useEffect(() => {
+    const rafId = requestAnimationFrame(() => updateScrollIndicators());
+    return () => cancelAnimationFrame(rafId);
+  }, [menus, updateScrollIndicators]);
+
   if (!isAuthResolved) {
     return null;
   }
@@ -355,28 +360,31 @@ export default function DashboardMenus() {
       )}
       <div className="sticky top-0 z-20 -mx-6 border-b border-[var(--border)] bg-[var(--background)]/90 px-6 backdrop-blur">
         <div className="relative">
-          <nav
-            ref={navRef}
-            className="scrollbar-hide flex overflow-x-auto"
+          <div
+            className="w-full"
             style={{
               maskImage:
                 canScrollLeft && canScrollRight
-                  ? "linear-gradient(to right, transparent, black 4rem, black calc(100% - 4rem), transparent)"
+                  ? "linear-gradient(to right, transparent, black 3rem, black calc(100% - 3rem), transparent)"
                   : canScrollLeft
-                    ? "linear-gradient(to right, transparent, black 4rem)"
+                    ? "linear-gradient(to right, transparent, black 3rem)"
                     : canScrollRight
-                      ? "linear-gradient(to right, black calc(100% - 4rem), transparent)"
+                      ? "linear-gradient(to right, black calc(100% - 3rem), transparent)"
                       : undefined,
               WebkitMaskImage:
                 canScrollLeft && canScrollRight
-                  ? "linear-gradient(to right, transparent, black 4rem, black calc(100% - 4rem), transparent)"
+                  ? "linear-gradient(to right, transparent, black 3rem, black calc(100% - 3rem), transparent)"
                   : canScrollLeft
-                    ? "linear-gradient(to right, transparent, black 4rem)"
+                    ? "linear-gradient(to right, transparent, black 3rem)"
                     : canScrollRight
-                      ? "linear-gradient(to right, black calc(100% - 4rem), transparent)"
+                      ? "linear-gradient(to right, black calc(100% - 3rem), transparent)"
                       : undefined,
             }}
           >
+            <nav
+              ref={navRef}
+              className="scrollbar-hide flex overflow-x-auto"
+            >
             {menus.map((menu) => (
               <button
                 key={menu.key}
@@ -399,22 +407,27 @@ export default function DashboardMenus() {
               </button>
             ))}
           </nav>
+          </div>
           {canScrollLeft && (
             <button
               aria-label="Scroll tabs left"
               onClick={() => navRef.current?.scrollBy({ left: -360, behavior: "smooth" })}
-              className="pointer-events-auto absolute left-2 top-1/2 -translate-y-1/2 z-30 hidden h-8 w-8 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)] shadow-sm hover:bg-[var(--background-secondary)] md:flex"
+              className="pointer-events-auto absolute left-0 top-0 bottom-0 z-30 flex w-12 items-center justify-center text-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
             >
-              ‹
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="15 18 9 12 15 6"></polyline>
+              </svg>
             </button>
           )}
           {canScrollRight && (
             <button
               aria-label="Scroll tabs right"
               onClick={() => navRef.current?.scrollBy({ left: 360, behavior: "smooth" })}
-              className="pointer-events-auto absolute right-2 top-1/2 -translate-y-1/2 z-30 hidden h-8 w-8 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)] shadow-sm hover:bg-[var(--background-secondary)] md:flex"
+              className="pointer-events-auto absolute right-0 top-0 bottom-0 z-30 flex w-12 items-center justify-center text-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
             >
-              ›
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="9 18 15 12 9 6"></polyline>
+              </svg>
             </button>
           )}
         </div>

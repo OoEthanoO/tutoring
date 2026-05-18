@@ -199,11 +199,21 @@ export default function HomeMenu({ isSignedIn, onOpenTeamTab }: HomeMenuProps) {
           You can view our Letter of Support from SickKids Foundation below.
         </p>
         <div className="mt-4 w-full h-[600px] rounded border border-[var(--border)] overflow-hidden">
-          <iframe
-            src="/Letter%20of%20Support%20from%20SickKids%20Foundation.pdf"
+          <object
+            data="/Letter%20of%20Support%20from%20SickKids%20Foundation.pdf"
+            type="application/pdf"
+            width="100%"
+            height="100%"
             className="w-full h-full"
-            title="Letter of Support from SickKids Foundation"
-          />
+          >
+            <embed
+              src="/Letter%20of%20Support%20from%20SickKids%20Foundation.pdf"
+              type="application/pdf"
+              width="100%"
+              height="100%"
+              className="w-full h-full"
+            />
+          </object>
         </div>
       </div>
     </section>
