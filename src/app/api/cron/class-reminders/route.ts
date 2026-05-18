@@ -1362,7 +1362,8 @@ export async function POST(request: NextRequest) {
         <p><strong>${isStandardClassTitle ? classTitle : `Class: ${classTitle}`}</strong></p>
         <p><strong>Tutor:</strong> ${tutorName}</p>
         <p><strong>Start time (${torontoTimeZone}):</strong> ${startLabel}</p>
-        <p>Please join 5 minutes before the class starts.</p>
+        <p>This class will be held on <strong>Discord</strong>. Please make sure you have connected your Discord account in your profile and joined our Discord server.</p>
+        <p>You will receive a notification in the Discord server with a link to the voice channel 5 minutes before the class starts. Please make sure to join the server if you haven't already.</p>
       `;
           discordContent = [
             `Your class starts in **${escapeDiscordText(reminderLabel)}**.`,
@@ -1372,7 +1373,9 @@ export async function POST(request: NextRequest) {
             `**Start time (${torontoTimeZone}):** ${escapeDiscordText(
               formatTorontoDateTime(classRow.starts_at)
             )}`,
-            "Please join 5 minutes before the class starts.",
+            "This class will be held on **Discord**.",
+            "You will receive a notification in this server with a link to the voice channel 5 minutes before the class starts.",
+            "Please make sure you are in the voice channel 5 minutes before the start time."
           ].join("\n");
         } else {
           // Legacy system (Schoolhouse or CEO tutors)
@@ -1385,13 +1388,25 @@ export async function POST(request: NextRequest) {
         ${
           isFounder
             ? `<p>Please attend the class 5 minutes before the start time on the Schoolhouse platform.</p>`
-            : `<p>This class will be held on <strong>Discord</strong>. Please make sure you have connected your Discord account in your profile and joined our Discord server.</p>\n        <p>You will receive a notification in the Discord server with a link to the voice channel 5 minutes before the class starts. Please make sure to join the server if you haven't already.</p>`
+            : `<p>Please attend the class 5 minutes before the start time:</p>\n        <p>Zoom ID: ${escapeHtml(defaultZoomId)}<br/>Password: ${escapeHtml(defaultZoomPassword)}<br/>${breakoutRoomName
+                ? `Breakout room: "${escapeHtml(breakoutRoomName)}"`
+                : `Please join the breakout room that starts with "${escapeHtml(
+                  `${tutorFirstName}${tutorLastInitial ? ` ${tutorLastInitial}` : ""}`
+                )}" followed by the name of the course.`
+              }</p>\n        <p><strong>Please join the breakout room immediately after joining the meeting. Do not stay in the main meeting room.</strong></p>\n        <p><strong>Please use your registered student name to log into Zoom, otherwise you may be removed by the administrator and bear the consequences of not being able to attend the class.</strong></p>`
         }
       `;
           const nonFounderDiscordInstruction = [
-            "This class will be held on **Discord**.",
-            "You will receive a notification in this server with a link to the voice channel 5 minutes before the class starts.",
-            "Please make sure you are in the voice channel 5 minutes before the start time."
+            "Please attend the class 5 minutes before the start time:",
+            `Zoom ID: ${escapeDiscordText(defaultZoomId)}`,
+            `Password: ${escapeDiscordText(defaultZoomPassword)}`,
+            breakoutRoomName
+              ? `Breakout room: "${escapeDiscordText(breakoutRoomName)}"`
+              : `Please join the breakout room that starts with "${escapeDiscordText(
+                `${tutorFirstName}${tutorLastInitial ? ` ${tutorLastInitial}` : ""}`
+              )}" followed by the name of the course.`,
+            "**Please join the breakout room immediately after joining the meeting. Do not stay in the main meeting room.**",
+            "**Please use your registered student name to log into Zoom, otherwise you may be removed by the administrator and bear the consequences of not being able to attend the class.**",
           ].join("\n");
 
           discordContent = [
@@ -1503,9 +1518,17 @@ export async function POST(request: NextRequest) {
           discordContent = voiceChannelLink;
         } else {
           // Legacy system
+          const fiveMinBreakoutInstruction = breakoutRoomName
+            ? `\nBreakout room: "${escapeDiscordText(breakoutRoomName)}"`
+            : `\nPlease join the breakout room that starts with "${escapeDiscordText(
+                `${tutorFirstName}${tutorLastInitial ? ` ${tutorLastInitial}` : ""}`
+              )}" followed by the name of the course.`;
           const nonFounderFiveMinInstruction = [
-            "Please join the Discord voice channel immediately!",
-            "You should have received a notification with the link to the voice channel."
+            `Please join the meeting immediately:`,
+            `Zoom ID: ${escapeDiscordText(defaultZoomId)}`,
+            `Password: ${escapeDiscordText(defaultZoomPassword)}${fiveMinBreakoutInstruction}`,
+            `**Please join the breakout room immediately after joining the meeting. Do not stay in the main meeting room.**`,
+            `**Please use your registered student name to log into Zoom, otherwise you may be removed by the administrator and bear the consequences of not being able to attend the class.**`,
           ].join("\n");
 
           discordContent = [
