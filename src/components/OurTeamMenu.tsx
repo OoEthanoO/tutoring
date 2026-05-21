@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 interface TeamMember {
   id: string;
@@ -58,6 +58,7 @@ export default function OurTeamMenu() {
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const backdropClickedRef = useRef(false);
 
   useEffect(() => {
     const fetchTeam = async () => {
@@ -335,7 +336,19 @@ export default function OurTeamMenu() {
         {selectedImage && (
           <div
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
-            onClick={() => setSelectedImage(null)}
+            onMouseDown={(e) => {
+              if (e.target === e.currentTarget) {
+                backdropClickedRef.current = true;
+              } else {
+                backdropClickedRef.current = false;
+              }
+            }}
+            onClick={(e) => {
+              if (e.target === e.currentTarget && backdropClickedRef.current) {
+                setSelectedImage(null);
+              }
+              backdropClickedRef.current = false;
+            }}
           >
             <div className="relative max-h-full max-w-full" onClick={(e) => e.stopPropagation()}>
               <button

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
 type CommitInfo = {
@@ -20,6 +20,7 @@ export default function CommitsPage() {
   const [page, setPage] = useState(1);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedCommit, setSelectedCommit] = useState<{ commit: CommitInfo; commitNumber: number } | null>(null);
+  const backdropClickedRef = useRef(false);
 
   useEffect(() => {
     const load = async () => {
@@ -209,7 +210,22 @@ export default function CommitsPage() {
 
       {/* Commit Detail Modal */}
       {selectedCommit !== null && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setSelectedCommit(null)}>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) {
+              backdropClickedRef.current = true;
+            } else {
+              backdropClickedRef.current = false;
+            }
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget && backdropClickedRef.current) {
+              setSelectedCommit(null);
+            }
+            backdropClickedRef.current = false;
+          }}
+        >
           <div 
             className="relative w-full max-w-2xl max-h-[85vh] overflow-y-auto bg-[var(--surface)] border border-[var(--border)] rounded-2xl shadow-2xl p-6"
             onClick={(e) => e.stopPropagation()}

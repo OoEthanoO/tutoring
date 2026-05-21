@@ -205,6 +205,7 @@ export default function CoursesMenu() {
   };
 
   const modalScrollRef = useRef<HTMLDivElement>(null);
+  const backdropClickedRef = useRef(false);
 
   useEffect(() => {
     setHasUnsavedData("courses-menu", selectedCourse !== null);
@@ -662,7 +663,19 @@ export default function CoursesMenu() {
         <div
           key={selectedCourse.id}
           className="fixed inset-0 z-[9999] grid place-items-center p-4 bg-black/50"
-          onClick={() => setSelectedCourse(null)}
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) {
+              backdropClickedRef.current = true;
+            } else {
+              backdropClickedRef.current = false;
+            }
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget && backdropClickedRef.current) {
+              setSelectedCourse(null);
+            }
+            backdropClickedRef.current = false;
+          }}
         >
           <div
             className="w-full md:w-[50vw] max-h-full flex flex-col rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-xl overflow-hidden min-h-0"

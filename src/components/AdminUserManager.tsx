@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   broadcastAuthChange,
@@ -60,6 +60,7 @@ type StudentApplication = {
 
 export default function AdminUserManager() {
   const router = useRouter();
+  const backdropClickedRef = useRef(false);
   const [isFounderAccess, setIsFounderAccess] = useState(false);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -1434,7 +1435,23 @@ export default function AdminUserManager() {
 
       {/* Student Application Modal */}
       {(selectedApplications.length > 0 || applicationError) && (
-        <div className="fixed inset-0 z-50 grid place-items-center p-4 bg-black/50 overflow-y-auto" onClick={() => { setSelectedApplications([]); setApplicationError(""); }}>
+        <div
+          className="fixed inset-0 z-50 grid place-items-center p-4 bg-black/50 overflow-y-auto"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) {
+              backdropClickedRef.current = true;
+            } else {
+              backdropClickedRef.current = false;
+            }
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget && backdropClickedRef.current) {
+              setSelectedApplications([]);
+              setApplicationError("");
+            }
+            backdropClickedRef.current = false;
+          }}
+        >
           <div className="w-full max-w-2xl flex flex-col rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
             <div className="p-6 space-y-4 overflow-y-auto max-h-[90vh]">
               <div className="flex items-start justify-between">

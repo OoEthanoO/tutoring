@@ -46,6 +46,7 @@ export default function AuthStatusActions() {
     message: string;
   }>({ type: "idle", message: "" });
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const backdropClickedRef = useRef(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -426,7 +427,22 @@ export default function AuthStatusActions() {
           </p>
         ) : null}
         {isDisconnectConfirmOpen ? (
-          <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 px-4" onClick={() => setIsDisconnectConfirmOpen(false)}>
+          <div
+            className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 px-4"
+            onMouseDown={(e) => {
+              if (e.target === e.currentTarget) {
+                backdropClickedRef.current = true;
+              } else {
+                backdropClickedRef.current = false;
+              }
+            }}
+            onClick={(e) => {
+              if (e.target === e.currentTarget && backdropClickedRef.current) {
+                setIsDisconnectConfirmOpen(false);
+              }
+              backdropClickedRef.current = false;
+            }}
+          >
             <div className="w-full max-w-sm space-y-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
               <div className="space-y-1">
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
@@ -465,7 +481,22 @@ export default function AuthStatusActions() {
           </div>
         ) : null}
         {isConnectConfirmOpen ? (
-          <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 px-4" onClick={() => setIsConnectConfirmOpen(false)}>
+          <div
+            className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 px-4"
+            onMouseDown={(e) => {
+              if (e.target === e.currentTarget) {
+                backdropClickedRef.current = true;
+              } else {
+                backdropClickedRef.current = false;
+              }
+            }}
+            onClick={(e) => {
+              if (e.target === e.currentTarget && backdropClickedRef.current) {
+                setIsConnectConfirmOpen(false);
+              }
+              backdropClickedRef.current = false;
+            }}
+          >
             <div className="w-full max-w-sm space-y-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
               <div className="space-y-1">
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
@@ -498,7 +529,22 @@ export default function AuthStatusActions() {
           </div>
         ) : null}
         {isEditNameOpen ? (
-          <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 px-4" onClick={closeNameEditor}>
+          <div
+            className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 px-4"
+            onMouseDown={(e) => {
+              if (e.target === e.currentTarget) {
+                backdropClickedRef.current = true;
+              } else {
+                backdropClickedRef.current = false;
+              }
+            }}
+            onClick={(e) => {
+              if (e.target === e.currentTarget && backdropClickedRef.current) {
+                closeNameEditor();
+              }
+              backdropClickedRef.current = false;
+            }}
+          >
             <div className="w-full max-w-sm space-y-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
               <div className="space-y-1">
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
@@ -549,7 +595,22 @@ export default function AuthStatusActions() {
           </div>
         ) : null}
         {isEditLegalNameOpen ? (
-          <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 px-4" onClick={closeLegalNameEditor}>
+          <div
+            className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 px-4"
+            onMouseDown={(e) => {
+              if (e.target === e.currentTarget) {
+                backdropClickedRef.current = true;
+              } else {
+                backdropClickedRef.current = false;
+              }
+            }}
+            onClick={(e) => {
+              if (e.target === e.currentTarget && backdropClickedRef.current) {
+                closeLegalNameEditor();
+              }
+              backdropClickedRef.current = false;
+            }}
+          >
             <div className="w-full max-w-sm space-y-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
               <div className="space-y-1">
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">

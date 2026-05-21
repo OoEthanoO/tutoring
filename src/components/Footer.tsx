@@ -20,6 +20,7 @@ export default function Footer() {
   const [pendingCommitCount, setPendingCommitCount] = useState<number | null>(null);
   const [isCommitHovered, setIsCommitHovered] = useState(false);
   const lastDismissedCommitCountRef = useRef<number | null>(null);
+  const backdropClickedRef = useRef(false);
 
   useEffect(() => {
     lastDismissedCommitCountRef.current = Number(
@@ -242,7 +243,22 @@ export default function Footer() {
         </a>
       </div>
       {isFeedbackOpen ? (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 px-4" onClick={() => setIsFeedbackOpen(false)}>
+        <div
+          className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 px-4"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) {
+              backdropClickedRef.current = true;
+            } else {
+              backdropClickedRef.current = false;
+            }
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget && backdropClickedRef.current) {
+              setIsFeedbackOpen(false);
+            }
+            backdropClickedRef.current = false;
+          }}
+        >
           <div className="w-full max-w-lg space-y-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 text-left" onClick={(e) => e.stopPropagation()}>
             <div className="space-y-1">
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">

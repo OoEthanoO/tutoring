@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { getCurrentUser, onAuthChange } from "@/lib/authClient";
 import { canManageCourses, isExecutive, isFounder, isHighRankingChiefExecutive, resolveUserRole, type UserRole } from "@/lib/roles";
 import { setHasUnsavedData } from "@/lib/unsavedData";
@@ -125,6 +125,7 @@ const isFiveMinuteLocal = (value: string) => {
 
 export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMode?: boolean }) {
   const [role, setRole] = useState<UserRole | null>(null);
+  const backdropClickedRef = useRef(false);
   const [courses, setCourses] = useState<Course[]>([]);
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
   const [donationLink, setDonationLink] = useState<string>("");
@@ -1766,8 +1767,20 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
 
       {isManualEnrollOpen ? (
         <div 
-          className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 px-4" 
-          onClick={() => setIsManualEnrollOpen(false)}
+          className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 px-4"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) {
+              backdropClickedRef.current = true;
+            } else {
+              backdropClickedRef.current = false;
+            }
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget && backdropClickedRef.current) {
+              setIsManualEnrollOpen(false);
+            }
+            backdropClickedRef.current = false;
+          }}
         >
           <div 
             className="w-full max-w-sm space-y-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-xl" 
