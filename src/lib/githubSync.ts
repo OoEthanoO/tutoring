@@ -280,14 +280,14 @@ export const runGithubSync = async (): Promise<GithubSyncResult> => {
   let successfulPushes = 0;
   
     const getCommitNumber = (sha: string) => {
-      const foundIdx = commitsData.commits.findIndex(c => c.hash === sha);
+      const foundIdx = commitsData.commits.findIndex((c: { hash: string }) => c.hash === sha);
       if (foundIdx !== -1) {
         return commitsData.total - foundIdx;
       }
       const githubIdx = githubCommits.findIndex(c => c.sha === sha);
       if (githubIdx !== -1) {
         for (let i = githubIdx + 1; i < githubCommits.length; i++) {
-          const knownIdx = commitsData.commits.findIndex(c => c.hash === githubCommits[i].sha);
+          const knownIdx = commitsData.commits.findIndex((c: { hash: string }) => c.hash === githubCommits[i].sha);
           if (knownIdx !== -1) {
             return commitsData.total - knownIdx + (i - githubIdx);
           }

@@ -59,6 +59,9 @@ type CourseRow = {
   title: string;
   is_completed: boolean;
   created_by: string | null;
+  created_by_name?: string | null;
+  created_by_email?: string | null;
+  created_at?: string | null;
   course_classes?: CourseClassRow[] | null;
 };
 
@@ -361,7 +364,7 @@ const buildCoursePermissionOverwrites = (
     {
       id: chiefExecutiveRoleId,
       type: 0,
-      allow: activeAllow,
+      allow: pinOnlyAllow,
       deny: "0",
     },
     {
@@ -1428,7 +1431,7 @@ export const runDiscordSync = async ({
         .not("email_verified_at", "is", null),
       adminClient
         .from("courses")
-        .select("id, title, is_completed, created_by, course_classes(starts_at, duration_hours)")
+        .select("id, title, is_completed, created_by, created_by_name, created_by_email, created_at, course_classes(starts_at, duration_hours)")
         .is("deleted_at", null),
       adminClient
         .from("course_enrollments")
@@ -1663,6 +1666,20 @@ export const runDiscordSync = async ({
     }
 
     for (const name of customRoleNames) {
+      const lowerName = name.trim().toLowerCase();
+      const isOrgRole = ["ceo", "coo", "executive", "founder", "student", "tutor", "team", "media", "strike"].some(
+        (keyword) => lowerName.includes(keyword)
+      );
+
+      const isActuallyCourseRole = !isOrgRole || websiteCourses.some((course) => {
+        const baseName = normalizeRoleName(course.title, course.id);
+        return lowerName === baseName.trim().toLowerCase();
+      });
+
+      if (isActuallyCourseRole) {
+        continue;
+      }
+
       const customRole = await ensureRole(name, false);
       requiredBaseRoleIds.add(customRole.id);
       customRoleIds.add(customRole.id);
@@ -1751,6 +1768,10 @@ export const runDiscordSync = async ({
     return createdRole;
   };
 
+  const websiteCourseById = new Map(
+    websiteCourses.map((course) => [course.id, course] as const)
+  );
+
   const courseRoleIdFromManagedChannelByCourseId = new Map<string, string>();
   const courseIdsWithManagedChannels = new Set<string>();
   for (const channel of mutableChannels) {
@@ -1768,24 +1789,52 @@ export const runDiscordSync = async ({
       continue;
     }
 
-    const candidateRoleId = getRoleIdsFromOverwrites(channel, discordGuildId)
-      .filter((roleId) => {
-        if (baseRoleIds.has(roleId)) {
-          return false;
-        }
-        const role = mutableRoles.find((item) => item.id === roleId);
-        return Boolean(role && !role.managed);
-      })
-      .sort((left, right) => left.localeCompare(right))[0];
+    const course = websiteCourseById.get(courseId);
+    let candidateRoleId: string | undefined;
+
+    if (course) {
+      const baseName = normalizeRoleName(course.title, course.id).trim().toLowerCase();
+      const suffixSeed = getCourseRoleSuffix(course.id).toLowerCase();
+
+      const candidateRoles = getRoleIdsFromOverwrites(channel, discordGuildId)
+        .filter((roleId) => {
+          if (baseRoleIds.has(roleId)) {
+            return false;
+          }
+          const role = mutableRoles.find((item) => item.id === roleId);
+          return Boolean(role && !role.managed);
+        })
+        .map((roleId) => {
+          const role = mutableRoles.find((item) => item.id === roleId)!;
+          const roleNameLower = role.name.trim().toLowerCase();
+          let score = 0;
+          if (roleNameLower.includes(`(${suffixSeed}`)) {
+            score = 2; // Perfect match with suffix seed
+          } else if (roleNameLower === baseName) {
+            score = 1; // Match with base name
+          }
+          return { roleId, score };
+        })
+        .filter((item) => item.score > 0)
+        .sort((a, b) => b.score - a.score);
+
+      candidateRoleId = candidateRoles[0]?.roleId;
+    } else {
+      candidateRoleId = getRoleIdsFromOverwrites(channel, discordGuildId)
+        .filter((roleId) => {
+          if (baseRoleIds.has(roleId)) {
+            return false;
+          }
+          const role = mutableRoles.find((item) => item.id === roleId);
+          return Boolean(role && !role.managed);
+        })
+        .sort((left, right) => left.localeCompare(right))[0];
+    }
 
     if (candidateRoleId) {
       courseRoleIdFromManagedChannelByCourseId.set(courseId, candidateRoleId);
     }
   }
-
-  const websiteCourseById = new Map(
-    websiteCourses.map((course) => [course.id, course] as const)
-  );
   const courseRoleIdByCourseId = new Map<string, string>();
   for (const course of websiteCourses) {
     const endedAtMs = endedAtMsByCourseId.get(course.id) ?? Number.POSITIVE_INFINITY;
@@ -1833,11 +1882,143 @@ export const runDiscordSync = async ({
     }
   }
 
+  // Ensure Categories are fetched/created early so we can sort channels by position in "Courses" category
+  const textCategory = await ensureCategory(textCategoryName);
+  const voiceCategory = await ensureCategory(voiceCategoryName);
+  const coursesCategory = await ensureCategory(coursesCategoryName);
+
   // Keep course role names synchronized with course titles, while gracefully
   // handling duplicate course titles by assigning deterministic suffixes.
-  const roleRenameCourseIds = Array.from(courseRoleIdByCourseId.keys()).sort((a, b) =>
-    a.localeCompare(b)
+  const activeCourseIdSet = new Set(
+    websiteCourses
+      .filter((course) => {
+        const endedAtMs = endedAtMsByCourseId.get(course.id) ?? Number.POSITIVE_INFINITY;
+        return nowMs < endedAtMs + deletionDelayMs;
+      })
+      .map((course) => course.id)
   );
+
+  const expectedCourseRoleIdSet = new Set(
+    Array.from(courseRoleIdByCourseId.entries())
+      .filter(([courseId]) => activeCourseIdSet.has(courseId))
+      .map(([_, roleId]) => roleId)
+  );
+  const activeRoles = mutableRoles.filter((role) => {
+    if (baseRoleIds.has(role.id) || customRoleIds.has(role.id)) {
+      return true;
+    }
+    return expectedCourseRoleIdSet.has(role.id);
+  });
+
+  const getCourseChannelPosition = (courseId: string): number => {
+    const channel = mutableChannels.find(
+      (c) =>
+        c.type === discordTextChannelType &&
+        c.parent_id === coursesCategory.id &&
+        readCourseIdFromTopic(c.topic).id === courseId
+    );
+    return channel && typeof channel.position === "number" ? channel.position : Number.MAX_SAFE_INTEGER;
+  };
+
+  const isLimboCourse = (course: CourseRow): boolean => {
+    return !course.created_by_name && !course.created_by_email;
+  };
+
+  const isOngoingCourse = (course: CourseRow, nowTimeMs: number): boolean => {
+    if (course.is_completed) {
+      return false;
+    }
+    if (isLimboCourse(course)) {
+      return false;
+    }
+    const classRows = Array.isArray(course.course_classes) ? course.course_classes : [];
+    const hasActive = classRows.some((item) => {
+      const startsAt = new Date(item.starts_at).getTime();
+      if (!Number.isFinite(startsAt)) {
+        return false;
+      }
+      const durationHours = typeof item.duration_hours === "number"
+        ? item.duration_hours
+        : Number.parseFloat(String(item.duration_hours || 1));
+      const durationMs = Number.isFinite(durationHours) && durationHours > 0
+        ? durationHours * 60 * 60 * 1000
+        : 60 * 60 * 1000;
+      const endsAt = startsAt + durationMs;
+      return endsAt >= nowTimeMs;
+    });
+    return hasActive;
+  };
+
+  const compareOngoingOldestFirst = (a: CourseRow, b: CourseRow) => {
+    const getFirstClassTime = (course: CourseRow) => {
+      const classRows = Array.isArray(course.course_classes) ? course.course_classes : [];
+      const allClasses = classRows
+        .map((item) => new Date(item.starts_at).getTime())
+        .filter((value) => Number.isFinite(value));
+      if (allClasses.length > 0) {
+        return Math.min(...allClasses);
+      }
+      return Number.NEGATIVE_INFINITY;
+    };
+
+    const aFirst = getFirstClassTime(a);
+    const bFirst = getFirstClassTime(b);
+
+    if (aFirst !== bFirst) {
+      return aFirst - bFirst; // Earliest start time first
+    }
+
+    const aCreated = a.created_at ? new Date(a.created_at).getTime() : Number.NEGATIVE_INFINITY;
+    const bCreated = b.created_at ? new Date(b.created_at).getTime() : Number.NEGATIVE_INFINITY;
+
+    if (Number.isFinite(aCreated) && Number.isFinite(bCreated)) {
+      if (aCreated !== bCreated) {
+        return aCreated - bCreated; // Earliest creation date first
+      }
+    }
+
+    return a.id.localeCompare(b.id);
+  };
+
+  const roleRenameCourseIds = Array.from(courseRoleIdByCourseId.keys())
+    .filter((id) => activeCourseIdSet.has(id))
+    .sort((idA, idB) => {
+    const courseA = websiteCourseById.get(idA);
+    const courseB = websiteCourseById.get(idB);
+
+    if (courseA && courseB) {
+      const baseNameA = normalizeRoleName(courseA.title, courseA.id).trim().toLowerCase();
+      const baseNameB = normalizeRoleName(courseB.title, courseB.id).trim().toLowerCase();
+
+      if (baseNameA === baseNameB) {
+        const ongoingA = isOngoingCourse(courseA, nowMs);
+        const ongoingB = isOngoingCourse(courseB, nowMs);
+
+        if (ongoingA && !ongoingB) {
+          return -1;
+        }
+        if (!ongoingA && ongoingB) {
+          return 1;
+        }
+        return compareOngoingOldestFirst(courseA, courseB);
+      }
+    }
+
+    const posA = getCourseChannelPosition(idA);
+    const posB = getCourseChannelPosition(idB);
+    if (posA !== posB) {
+      return posA - posB;
+    }
+    return idA.localeCompare(idB);
+  });
+
+  const rolesBeingRenamed = new Set(
+    roleRenameCourseIds
+      .map((courseId) => courseRoleIdByCourseId.get(courseId))
+      .filter((roleId): roleId is string => Boolean(roleId))
+  );
+
+  const finalizedRoles = activeRoles.filter((role) => !rolesBeingRenamed.has(role.id));
 
   for (const courseId of roleRenameCourseIds) {
     const course = websiteCourseById.get(courseId);
@@ -1855,32 +2036,38 @@ export const runDiscordSync = async ({
     const expectedRoleName = buildUniqueCourseRoleName(
       baseName,
       course.id,
-      mutableRoles,
+      finalizedRoles,
       role.id
     );
 
-    if (role.name === expectedRoleName) {
-      continue;
+    let finalRoleObj = role;
+    if (role.name !== expectedRoleName) {
+      try {
+        const updatedRole = await apiClient.updateGuildRole(
+          discordGuildId,
+          role.id,
+          { name: expectedRoleName }
+        );
+        const roleIndex = mutableRoles.findIndex((item) => item.id === role.id);
+        if (roleIndex >= 0) {
+          mutableRoles[roleIndex] = updatedRole;
+        }
+        const activeRoleIndex = activeRoles.findIndex((item) => item.id === role.id);
+        if (activeRoleIndex >= 0) {
+          activeRoles[activeRoleIndex] = updatedRole;
+        }
+        finalRoleObj = updatedRole;
+      } catch (error) {
+        result.errors.push(
+          `Failed to rename course role "${role.name}" for course "${course.title}": ${toErrorMessage(
+            error,
+            "Unknown update role error."
+          )}`
+        );
+      }
     }
 
-    try {
-      const updatedRole = await apiClient.updateGuildRole(
-        discordGuildId,
-        role.id,
-        { name: expectedRoleName }
-      );
-      const roleIndex = mutableRoles.findIndex((item) => item.id === role.id);
-      if (roleIndex >= 0) {
-        mutableRoles[roleIndex] = updatedRole;
-      }
-    } catch (error) {
-      result.errors.push(
-        `Failed to rename course role "${role.name}" for course "${course.title}": ${toErrorMessage(
-          error,
-          "Unknown update role error."
-        )}`
-      );
-    }
+    finalizedRoles.push(finalRoleObj);
   }
 
   const discordUserIdByWebsiteUserId = new Map<string, string>();
@@ -1943,15 +2130,7 @@ export const runDiscordSync = async ({
     }
   }
 
-  const activeCourseIdSet = new Set(
-    websiteCourses
-      .filter((course) => {
-        const endedAtMs = endedAtMsByCourseId.get(course.id) ?? Number.POSITIVE_INFINITY;
-        return nowMs < endedAtMs + deletionDelayMs;
-      })
-      .map((course) => course.id)
-  );
-  const expectedCourseRoleIdSet = new Set(courseRoleIdByCourseId.values());
+
   const staleCourseRoleIdCandidates = new Set<string>();
 
   for (const channel of [...mutableChannels]) {
@@ -2013,7 +2192,12 @@ export const runDiscordSync = async ({
       if (channel.type !== discordTextChannelType) {
         return false;
       }
-      if (!readCourseIdFromTopic(channel.topic).id) {
+      const { id: courseId } = readCourseIdFromTopic(channel.topic);
+      if (!courseId) {
+        return false;
+      }
+      const expectedRoleId = courseRoleIdByCourseId.get(courseId);
+      if (!expectedRoleId || expectedRoleId !== roleId) {
         return false;
       }
       return getRoleIdsFromOverwrites(channel, discordGuildId).includes(roleId);
@@ -2040,9 +2224,7 @@ export const runDiscordSync = async ({
     }
   }
 
-  const textCategory = await ensureCategory(textCategoryName);
-  const voiceCategory = await ensureCategory(voiceCategoryName);
-  const coursesCategory = await ensureCategory(coursesCategoryName);
+
 
 
   // Ensure Courses category denies @everyone viewChannel so
