@@ -20,7 +20,7 @@ const supabase = createClient(supabaseUrl, supabaseKey, {
 });
 
 async function main() {
-  const { data: users } = await supabase.from('app_users').select('*').eq('email', 'ethanyanxu@icloud.com');
+  const { data: users } = await supabase.from('app_users').select('*').eq('email', 'ethanxucoder@gmail.com');
   console.log('Founder User:', users);
 }
 
