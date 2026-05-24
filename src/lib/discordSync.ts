@@ -1624,6 +1624,7 @@ export const runDiscordSync = async ({
   };
 
   const customRoleIds = new Set<string>();
+  const chiefExecutiveCustomRoleIds = new Set<string>();
   for (const member of humanMembers) {
     const memberId = member.user?.id ?? "";
     if (!memberId || !websiteMemberIds.has(memberId)) {
@@ -1634,6 +1635,21 @@ export const runDiscordSync = async ({
     const websiteUser = websiteUserByDiscordMemberId.get(memberId);
     if (!roleSet || !websiteUser) {
       continue;
+    }
+
+    const requiredBaseRoleIds = new Set<string>();
+
+    const userCustomRoles = Array.isArray(websiteUser.custom_roles)
+      ? websiteUser.custom_roles
+      : [websiteUser.custom_roles].filter(Boolean);
+
+    for (const r of userCustomRoles) {
+      if (r && r.role_level === "Chief Executive" && r.name) {
+        const customRole = await ensureRole(r.name.trim(), false);
+        requiredBaseRoleIds.add(customRole.id);
+        customRoleIds.add(customRole.id);
+        chiefExecutiveCustomRoleIds.add(customRole.id);
+      }
     }
 
     const customRoleNames = Array.isArray(websiteUser.custom_roles)
@@ -1647,8 +1663,6 @@ export const runDiscordSync = async ({
     const isHardcodedFounder = founderDiscordUserIds.has(memberId) && customRoleLevels.length === 0;
 
     const isChiefExecCategory = ["CEO", "COO", "Chief Executive", "founder"].includes(websiteRole);
-
-    const requiredBaseRoleIds = new Set<string>();
 
     let primaryHierarchyRoleId = studentRole.id;
     if (isHardcodedFounder || websiteRole === "founder") primaryHierarchyRoleId = founderRole.id;
@@ -1714,6 +1728,12 @@ export const runDiscordSync = async ({
     }
 
     for (const rId of hierarchyRoleIds) {
+      if (!requiredBaseRoleIds.has(rId) && roleSet.has(rId)) {
+        await addRoleToMember(memberId, rId, roleSet, "baseRoleRemovedCount", true);
+      }
+    }
+
+    for (const rId of chiefExecutiveCustomRoleIds) {
       if (!requiredBaseRoleIds.has(rId) && roleSet.has(rId)) {
         await addRoleToMember(memberId, rId, roleSet, "baseRoleRemovedCount", true);
       }
