@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import DonationHistoryMenu from "./DonationHistoryMenu";
 import { getCurrentUser, onAuthChange } from "@/lib/authClient";
-import { canManageCourses, isExecutive, isFounder, resolveUserRole, type UserRole } from "@/lib/roles";
+import { canManageCourses, isExecutive, isFounder, isHighRankingChiefExecutive, resolveUserRole, type UserRole } from "@/lib/roles";
+import WithdrawHoursMenu from "@/components/WithdrawHoursMenu";
 import AdminUserManager from "@/components/AdminUserManager";
 import CourseCreator from "@/components/CourseCreator";
 import CoursesMenu from "@/components/CoursesMenu";
@@ -35,6 +36,7 @@ type MenuKey =
   | "manage_courses"
   | "manage_enrollments"
   | "founder_tools"
+  | "withdrawals"
   | "help"
   | "events"
   | "forms"
@@ -311,6 +313,10 @@ export default function DashboardMenus() {
       items.push({ key: "founder_tools", label: "Manage accounts" });
     }
 
+    if (role && isHighRankingChiefExecutive(role)) {
+      items.push({ key: "withdrawals", label: "Withdraw hours" });
+    }
+
     if (isExecutive(role)) {
       items.push({ key: "events", label: "Events" });
     }
@@ -444,6 +450,7 @@ export default function DashboardMenus() {
       {activeMenu === "manage_courses" ? <ManageMyCoursesMenu /> : null}
       {activeMenu === "manage_enrollments" ? <ManageEnrollmentsMenu /> : null}
       {activeMenu === "founder_tools" ? <AdminUserManager /> : null}
+      {activeMenu === "withdrawals" ? <WithdrawHoursMenu /> : null}
       {activeMenu === "help" ? <HelpMenu /> : null}
       {activeMenu === "events" ? <EventsMenu /> : null}
       {activeMenu === "forms" ? <FormsMenu /> : null}
