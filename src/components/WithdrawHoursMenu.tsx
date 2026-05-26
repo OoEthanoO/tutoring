@@ -19,13 +19,19 @@ type CourseClass = {
   tutor_withdrawal_id: string | null;
 };
 
-type Withdrawal = {
+type GlobalWithdrawal = {
   id: string;
+  tutor_id: string;
   hours: number;
   start_date: string;
   end_date: string;
   created_at: string;
-  tutor_legal_name?: string;
+  tutor_legal_name: string;
+  tutor?: {
+    id: string;
+    full_name: string | null;
+    email: string | null;
+  } | null;
 };
 
 type TutorInfo = {
@@ -39,7 +45,7 @@ export default function WithdrawHoursMenu() {
   const [tutors, setTutors] = useState<Tutor[]>([]);
   const [selectedTutorId, setSelectedTutorId] = useState<string>("");
   const [classes, setClasses] = useState<CourseClass[]>([]);
-  const [withdrawals, setWithdrawals] = useState<Withdrawal[]>([]);
+  const [globalWithdrawals, setGlobalWithdrawals] = useState<GlobalWithdrawal[]>([]);
   const [tutorInfo, setTutorInfo] = useState<TutorInfo | null>(null);
   const [hoursToWithdraw, setHoursToWithdraw] = useState<string>("");
   const [previewData, setPreviewData] = useState<{
@@ -73,7 +79,20 @@ export default function WithdrawHoursMenu() {
       }
     };
     fetchTutors();
+    loadGlobalWithdrawals();
   }, []);
+
+  const loadGlobalWithdrawals = async () => {
+    try {
+      const res = await fetch("/api/admin/withdrawals"); // No tutorId, fetches all
+      if (res.ok) {
+        const data = await res.json();
+        setGlobalWithdrawals(data.withdrawals || []);
+      }
+    } catch (err) {
+      console.error("Failed to load global withdrawals", err);
+    }
+  };
 
   const loadTutorData = async (tutorId: string) => {
     setIsLoading(true);
@@ -83,7 +102,6 @@ export default function WithdrawHoursMenu() {
       if (res.ok) {
         const data = await res.json();
         setClasses(data.classes || []);
-        setWithdrawals(data.withdrawals || []);
         setTutorInfo(data.tutor || null);
       } else {
         const errData = await res.json().catch(() => null);
@@ -109,7 +127,6 @@ export default function WithdrawHoursMenu() {
       loadTutorData(id);
     } else {
       setClasses([]);
-      setWithdrawals([]);
     }
   };
 
@@ -183,8 +200,9 @@ export default function WithdrawHoursMenu() {
         const data = await res.json();
         setSuccessMsg(`Hours successfully withdrawn! Added a past withdrawal record of ${data.withdrawal.hours} hours.`);
         setStep("success");
-        // Reload fresh details
+        // Reload fresh details and history list
         await loadTutorData(selectedTutorId);
+        await loadGlobalWithdrawals();
       } else {
         const errData = await res.json().catch(() => null);
         setErrorMsg(errData?.error || "Withdrawal failed.");
@@ -293,304 +311,319 @@ export default function WithdrawHoursMenu() {
         </div>
       ) : null}
 
-      {selectedTutorId && selectedTutor ? (
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          {/* Main Action Form and Summary */}
-          <div className="space-y-6 lg:col-span-2">
-            {/* Tutor Status Grid */}
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-              <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-4 text-center">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">
-                  Lessons Taught
-                </p>
-                <p className="mt-1 text-2xl font-bold text-[var(--foreground)]">
-                  {totalClassesTaughtCount}
-                </p>
-                <p className="text-[10px] text-[var(--muted)]">
-                  ({totalClassesTaughtCount * 1.5} total hrs)
-                </p>
+      {/* Main Grid Layout */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        {/* Left Panel: Tutor summary or Select prompt */}
+        <div className="lg:col-span-2 space-y-6">
+          {selectedTutorId && selectedTutor ? (
+            <>
+              {/* Tutor Status Grid */}
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-4 text-center animate-in fade-in duration-300">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">
+                    Lessons Taught
+                  </p>
+                  <p className="mt-1 text-2xl font-bold text-[var(--foreground)]">
+                    {totalClassesTaughtCount}
+                  </p>
+                  <p className="text-[10px] text-[var(--muted)]">
+                    ({totalClassesTaughtCount * 1.5} total hrs)
+                  </p>
+                </div>
+
+                <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-4 text-center animate-in fade-in duration-300">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">
+                    Withdrawn
+                  </p>
+                  <p className="mt-1 text-2xl font-bold text-amber-600 dark:text-amber-500">
+                    {withdrawnClassesCount}
+                  </p>
+                  <p className="text-[10px] text-[var(--muted)]">
+                    ({totalHoursWithdrawn} hrs)
+                  </p>
+                </div>
+
+                <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-4 text-center animate-in fade-in duration-300">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">
+                    Available
+                  </p>
+                  <p className="mt-1 text-2xl font-bold text-green-600 dark:text-green-500">
+                    {availableClassesCount}
+                  </p>
+                  <p className="text-[10px] text-[var(--muted)]">
+                    ({availableHours} hrs)
+                  </p>
+                </div>
+
+                <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-4 text-center animate-in fade-in duration-300">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">
+                    Future Lessons
+                  </p>
+                  <p className="mt-1 text-2xl font-bold text-blue-600 dark:text-blue-500">
+                    {futureLessons.length}
+                  </p>
+                  <p className="text-[10px] text-[var(--muted)]">
+                    (not eligible yet)
+                  </p>
+                </div>
               </div>
 
-              <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-4 text-center">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">
-                  Withdrawn
-                </p>
-                <p className="mt-1 text-2xl font-bold text-amber-600 dark:text-amber-500">
-                  {withdrawnClassesCount}
-                </p>
-                <p className="text-[10px] text-[var(--muted)]">
-                  ({totalHoursWithdrawn} hrs)
-                </p>
-              </div>
-
-              <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-4 text-center">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">
-                  Available
-                </p>
-                <p className="mt-1 text-2xl font-bold text-green-600 dark:text-green-500">
-                  {availableClassesCount}
-                </p>
-                <p className="text-[10px] text-[var(--muted)]">
-                  ({availableHours} hrs)
-                </p>
-              </div>
-
-              <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-4 text-center">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">
-                  Future Lessons
-                </p>
-                <p className="mt-1 text-2xl font-bold text-blue-600 dark:text-blue-500">
-                  {futureLessons.length}
-                </p>
-                <p className="text-[10px] text-[var(--muted)]">
-                  (not eligible yet)
-                </p>
-              </div>
-            </div>
-
-            {/* Steps Container (Hidden if legal name is missing to prevent actions) */}
-            {!isLegalNameMissing ? (
-              <div className="rounded-2xl border border-[var(--border)] bg-[var(--background)] p-6 shadow-sm">
-                {step === "input" && (
-                  <form onSubmit={handlePreview} className="space-y-4">
-                    <div className="space-y-1">
-                      <h3 className="text-sm font-semibold text-[var(--foreground)]">
-                        New Hour Withdrawal
-                      </h3>
-                      <p className="text-xs text-[var(--muted)]">
-                        Input the total amount of hours to withdraw. It must be a multiple of 1.5.
-                      </p>
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-3">
-                      <div className="relative w-full max-w-[200px]">
-                        <input
-                          type="number"
-                          step="1.5"
-                          min="1.5"
-                          required
-                          value={hoursToWithdraw}
-                          onChange={(e) => setHoursToWithdraw(e.target.value)}
-                          placeholder="e.g. 3.0"
-                          className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-2 text-sm font-medium text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]/30"
-                        />
-                        <span className="absolute right-3 top-2 text-xs text-[var(--muted)]">
-                          hours
-                        </span>
-                      </div>
-
-                      <button
-                        type="submit"
-                        disabled={isLoading || availableHours <= 0}
-                        className="rounded-xl bg-[var(--foreground)] px-5 py-2 text-xs font-semibold text-[var(--background)] hover:bg-[var(--foreground)]/90 transition disabled:bg-[var(--border)] disabled:text-[var(--muted)]"
-                      >
-                        {isLoading ? "Verifying..." : "Verify & Preview"}
-                      </button>
-                    </div>
-                    {availableHours <= 0 ? (
-                      <p className="text-xs text-amber-600 dark:text-amber-500 font-medium">
-                        Tutor has no available hours to withdraw at this time.
-                      </p>
-                    ) : null}
-                  </form>
-                )}
-
-                {step === "preview" && previewData && (
-                  <div className="space-y-5 animate-in fade-in duration-300">
-                    <div className="space-y-1">
-                      <h3 className="text-sm font-semibold text-amber-600 dark:text-amber-500 flex items-center gap-2">
-                        <span className="h-2 w-2 rounded-full bg-amber-500 animate-ping" />
-                        Verify Withdrawal Preview
-                      </h3>
-                      <p className="text-xs text-[var(--muted)]">
-                        Please review the chronological details of the classes that will be marked as withdrawn:
-                      </p>
-                    </div>
-
-                    <div className="rounded-xl border border-amber-100 bg-amber-50/20 p-5 dark:border-amber-950/40 dark:bg-amber-950/10 grid grid-cols-1 gap-4 sm:grid-cols-4">
-                      <div>
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">
-                          Tutor Legal Name
-                        </p>
-                        <p className="mt-0.5 text-sm font-bold text-[var(--foreground)]">
-                          {previewData.tutorLegalName || "Not Set"}
+              {/* Steps Container (Hidden if legal name is missing to prevent actions) */}
+              {!isLegalNameMissing ? (
+                <div className="rounded-2xl border border-[var(--border)] bg-[var(--background)] p-6 shadow-sm">
+                  {step === "input" && (
+                    <form onSubmit={handlePreview} className="space-y-4">
+                      <div className="space-y-1">
+                        <h3 className="text-sm font-semibold text-[var(--foreground)]">
+                          New Hour Withdrawal
+                        </h3>
+                        <p className="text-xs text-[var(--muted)]">
+                          Input the total amount of hours to withdraw. It must be a multiple of 1.5.
                         </p>
                       </div>
 
-                      <div>
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">
-                          Start Class Date
-                        </p>
-                        <p className="mt-0.5 text-sm font-semibold text-[var(--foreground)]">
-                          {formatDate(previewData.startDate)}
-                        </p>
-                      </div>
-
-                      <div>
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">
-                          End Class Date
-                        </p>
-                        <p className="mt-0.5 text-sm font-semibold text-[var(--foreground)]">
-                          {formatDate(previewData.endDate)}
-                        </p>
-                      </div>
-
-                      <div>
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">
-                          Total Hours
-                        </p>
-                        <p className="mt-0.5 text-sm font-semibold text-[var(--foreground)]">
-                          {previewData.hours} hrs ({previewData.numClasses} lessons)
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-3">
-                      <button
-                        type="button"
-                        onClick={handleConfirm}
-                        disabled={isLoading}
-                        className="rounded-xl bg-green-600 hover:bg-green-700 px-5 py-2 text-xs font-semibold text-white transition disabled:bg-[var(--border)]"
-                      >
-                        {isLoading ? "Confirming..." : "Confirm & Save"}
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={resetForm}
-                        disabled={isLoading}
-                        className="rounded-xl border border-[var(--border)] bg-[var(--surface)] hover:bg-[var(--border)]/20 px-5 py-2 text-xs font-semibold text-[var(--foreground)] transition"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {step === "success" && (
-                  <div className="space-y-4 animate-in zoom-in-95 duration-300">
-                    <div className="rounded-full bg-green-100 dark:bg-green-950/30 p-2.5 w-fit">
-                      <svg className="h-6 w-6 text-green-600" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-                        <polyline points="20 6 9 17 4 12" />
-                      </svg>
-                    </div>
-
-                    <div className="space-y-1">
-                      <h3 className="text-base font-bold text-green-600 dark:text-green-500">
-                        Withdrawal Finalized
-                      </h3>
-                      <p className="text-xs text-[var(--muted)]">
-                        The withdrawal record has been permanently added to the tutor's history, and the associated lessons have been locked under their legal name.
-                      </p>
-                    </div>
-
-                    <div className="rounded-xl border border-green-100 bg-green-50/20 p-4 text-xs font-medium text-green-800 dark:border-green-950/40 dark:bg-green-950/10 dark:text-green-300">
-                      <div>{successMsg}</div>
-                      {tutorInfo?.legalName && (
-                        <div className="mt-1.5 font-bold text-[9px] uppercase tracking-wider text-[var(--muted)]">
-                          Locked Legal Name: {tutorInfo.legalName}
+                      <div className="flex flex-wrap items-center gap-3">
+                        <div className="relative w-full max-w-[200px]">
+                          <input
+                            type="number"
+                            step="1.5"
+                            min="1.5"
+                            required
+                            value={hoursToWithdraw}
+                            onChange={(e) => setHoursToWithdraw(e.target.value)}
+                            placeholder="e.g. 3.0"
+                            className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-2 text-sm font-medium text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]/30"
+                          />
+                          <span className="absolute right-3 top-2 text-xs text-[var(--muted)]">
+                            hours
+                          </span>
                         </div>
-                      )}
-                    </div>
 
-                    <button
-                      type="button"
-                      onClick={resetForm}
-                      className="rounded-xl bg-[var(--foreground)] px-5 py-2 text-xs font-semibold text-[var(--background)] hover:bg-[var(--foreground)]/90 transition"
-                    >
-                      Done
-                    </button>
-                  </div>
-                )}
-              </div>
-            ) : null}
+                        <button
+                          type="submit"
+                          disabled={isLoading || availableHours <= 0}
+                          className="rounded-xl bg-[var(--foreground)] px-5 py-2 text-xs font-semibold text-[var(--background)] hover:bg-[var(--foreground)]/90 transition disabled:bg-[var(--border)] disabled:text-[var(--muted)]"
+                        >
+                          {isLoading ? "Verifying..." : "Verify & Preview"}
+                        </button>
+                      </div>
+                      {availableHours <= 0 ? (
+                        <p className="text-xs text-amber-600 dark:text-amber-500 font-medium">
+                          Tutor has no available hours to withdraw at this time.
+                        </p>
+                      ) : null}
+                    </form>
+                  )}
 
-            {/* Timeline of classes */}
-            <div className="space-y-4">
-              <div className="space-y-1">
-                <h3 className="text-sm font-semibold text-[var(--foreground)]">
-                  Timeline of Lessons
-                </h3>
-                <p className="text-xs text-[var(--muted)]">
-                  Complete history of lessons scheduled and taught. Oldest lessons are at the top.
-                </p>
-              </div>
+                  {step === "preview" && previewData && (
+                    <div className="space-y-5 animate-in fade-in duration-300">
+                      <div className="space-y-1">
+                        <h3 className="text-sm font-semibold text-amber-600 dark:text-amber-500 flex items-center gap-2">
+                          <span className="h-2 w-2 rounded-full bg-amber-500 animate-ping" />
+                          Verify Withdrawal Preview
+                        </h3>
+                        <p className="text-xs text-[var(--muted)]">
+                          Please review the chronological details of the classes that will be marked as withdrawn:
+                        </p>
+                      </div>
 
-              {classes.length === 0 ? (
-                <p className="text-xs text-[var(--muted)] italic">
-                  No lessons found for this tutor.
-                </p>
-              ) : (
-                <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1">
-                  {classes.map((cls) => {
-                    const isFuture = new Date(cls.starts_at) > now;
-                    const isWithdrawn = cls.tutor_withdrawal_id !== null;
-                    const isAvailable = !isFuture && !isWithdrawn;
-
-                    return (
-                      <div
-                        key={cls.id}
-                        className={`flex items-center justify-between gap-4 rounded-xl border px-4 py-3 text-xs transition-colors hover:border-[var(--foreground)]/10 bg-[var(--background)] ${
-                          isWithdrawn
-                            ? "border-[var(--border)] opacity-60"
-                            : isAvailable
-                              ? "border-green-100 dark:border-green-950/50"
-                              : "border-blue-100 dark:border-blue-950/50"
-                        }`}
-                      >
-                        <div className="space-y-0.5">
-                          <p className="font-semibold text-[var(--foreground)]">
-                            {cls.course_title}
+                      <div className="rounded-xl border border-amber-100 bg-amber-50/20 p-5 dark:border-amber-950/40 dark:bg-amber-950/10 grid grid-cols-1 gap-4 sm:grid-cols-4">
+                        <div>
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">
+                            Tutor Legal Name
                           </p>
-                          <p className="text-[10px] text-[var(--muted)]">
-                            {cls.title} • {formatDateTime(cls.starts_at)}
+                          <p className="mt-0.5 text-sm font-bold text-[var(--foreground)]">
+                            {previewData.tutorLegalName || "Not Set"}
                           </p>
                         </div>
 
                         <div>
-                          {isWithdrawn ? (
-                            <span className="rounded-full bg-amber-50 border border-amber-200 px-2.5 py-0.5 text-[10px] font-bold text-amber-700 dark:bg-amber-950/20 dark:border-amber-900/50 dark:text-amber-400">
-                              Withdrawn
-                            </span>
-                          ) : isAvailable ? (
-                            <span className="rounded-full bg-green-50 border border-green-200 px-2.5 py-0.5 text-[10px] font-bold text-green-700 dark:bg-green-950/20 dark:border-green-900/50 dark:text-green-400">
-                              Available
-                            </span>
-                          ) : (
-                            <span className="rounded-full bg-blue-50 border border-blue-200 px-2.5 py-0.5 text-[10px] font-bold text-blue-700 dark:bg-blue-950/20 dark:border-blue-900/50 dark:text-blue-400">
-                              Future
-                            </span>
-                          )}
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">
+                            Start Class Date
+                          </p>
+                          <p className="mt-0.5 text-sm font-semibold text-[var(--foreground)]">
+                            {formatDate(previewData.startDate)}
+                          </p>
+                        </div>
+
+                        <div>
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">
+                            End Class Date
+                          </p>
+                          <p className="mt-0.5 text-sm font-semibold text-[var(--foreground)]">
+                            {formatDate(previewData.endDate)}
+                          </p>
+                        </div>
+
+                        <div>
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">
+                            Total Hours
+                          </p>
+                          <p className="mt-0.5 text-sm font-semibold text-[var(--foreground)]">
+                            {previewData.hours} hrs ({previewData.numClasses} lessons)
+                          </p>
                         </div>
                       </div>
-                    );
-                  })}
+
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={handleConfirm}
+                          disabled={isLoading}
+                          className="rounded-xl bg-green-600 hover:bg-green-700 px-5 py-2 text-xs font-semibold text-white transition disabled:bg-[var(--border)]"
+                        >
+                          {isLoading ? "Confirming..." : "Confirm & Save"}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={resetForm}
+                          disabled={isLoading}
+                          className="rounded-xl border border-[var(--border)] bg-[var(--surface)] hover:bg-[var(--border)]/20 px-5 py-2 text-xs font-semibold text-[var(--foreground)] transition"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {step === "success" && (
+                    <div className="space-y-4 animate-in zoom-in-95 duration-300">
+                      <div className="rounded-full bg-green-100 dark:bg-green-950/30 p-2.5 w-fit">
+                        <svg className="h-6 w-6 text-green-600" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                      </div>
+
+                      <div className="space-y-1">
+                        <h3 className="text-base font-bold text-green-600 dark:text-green-500">
+                          Withdrawal Finalized
+                        </h3>
+                        <p className="text-xs text-[var(--muted)]">
+                          The withdrawal record has been permanently added to the tutor's history, and the associated lessons have been locked under their legal name.
+                        </p>
+                      </div>
+
+                      <div className="rounded-xl border border-green-100 bg-green-50/20 p-4 text-xs font-medium text-green-800 dark:border-green-950/40 dark:bg-green-950/10 dark:text-green-300">
+                        <div>{successMsg}</div>
+                        {tutorInfo?.legalName && (
+                          <div className="mt-1.5 font-bold text-[9px] uppercase tracking-wider text-[var(--muted)]">
+                            Locked Legal Name: {tutorInfo.legalName}
+                          </div>
+                        )}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={resetForm}
+                        className="rounded-xl bg-[var(--foreground)] px-5 py-2 text-xs font-semibold text-[var(--background)] hover:bg-[var(--foreground)]/90 transition"
+                      >
+                        Done
+                      </button>
+                    </div>
+                  )}
                 </div>
-              )}
+              ) : null}
+
+              {/* Timeline of classes */}
+              <div className="space-y-4">
+                <div className="space-y-1">
+                  <h3 className="text-sm font-semibold text-[var(--foreground)]">
+                    Timeline of Lessons
+                  </h3>
+                  <p className="text-xs text-[var(--muted)]">
+                    Complete history of lessons scheduled and taught. Oldest lessons are at the top.
+                  </p>
+                </div>
+
+                {classes.length === 0 ? (
+                  <p className="text-xs text-[var(--muted)] italic">
+                    No lessons found for this tutor.
+                  </p>
+                ) : (
+                  <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1">
+                    {classes.map((cls) => {
+                      const isFuture = new Date(cls.starts_at) > now;
+                      const isWithdrawn = cls.tutor_withdrawal_id !== null;
+                      const isAvailable = !isFuture && !isWithdrawn;
+
+                      return (
+                        <div
+                          key={cls.id}
+                          className={`flex items-center justify-between gap-4 rounded-xl border px-4 py-3 text-xs transition-colors hover:border-[var(--foreground)]/10 bg-[var(--background)] ${
+                            isWithdrawn
+                              ? "border-[var(--border)] opacity-60"
+                              : isAvailable
+                                ? "border-green-100 dark:border-green-950/50"
+                                : "border-blue-100 dark:border-blue-950/50"
+                          }`}
+                        >
+                          <div className="space-y-0.5">
+                            <p className="font-semibold text-[var(--foreground)]">
+                              {cls.course_title}
+                            </p>
+                            <p className="text-[10px] text-[var(--muted)]">
+                              {cls.title} • {formatDateTime(cls.starts_at)}
+                            </p>
+                          </div>
+
+                          <div>
+                            {isWithdrawn ? (
+                              <span className="rounded-full bg-amber-50 border border-amber-200 px-2.5 py-0.5 text-[10px] font-bold text-amber-700 dark:bg-amber-950/20 dark:border-amber-900/50 dark:text-amber-400">
+                                Withdrawn
+                              </span>
+                            ) : isAvailable ? (
+                              <span className="rounded-full bg-green-50 border border-green-200 px-2.5 py-0.5 text-[10px] font-bold text-green-700 dark:bg-green-950/20 dark:border-green-900/50 dark:text-green-400">
+                                Available
+                              </span>
+                            ) : (
+                              <span className="rounded-full bg-blue-50 border border-blue-200 px-2.5 py-0.5 text-[10px] font-bold text-blue-700 dark:bg-blue-950/20 dark:border-blue-900/50 dark:text-blue-400">
+                                Future
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </>
+          ) : (
+            <div className="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--background)] p-12 text-center text-xs text-[var(--muted)]">
+              Please select a tutor from the dropdown above to view classes and manage their community service hours.
             </div>
+          )}
+        </div>
+
+        {/* Right Panel: ALWAYS SHOW GLOBAL WITHDRAWAL HISTORY */}
+        <div className="lg:col-span-1 space-y-4">
+          <div className="space-y-1">
+            <h3 className="text-sm font-semibold text-[var(--foreground)]">
+              Global Withdrawal History
+            </h3>
+            <p className="text-xs text-[var(--muted)]">
+              All past hour withdrawals across all tutors.
+            </p>
           </div>
 
-          {/* Withdrawal History Card */}
-          <div className="space-y-4 lg:col-span-1">
-            <div className="space-y-1">
-              <h3 className="text-sm font-semibold text-[var(--foreground)]">
-                Withdrawal History
-              </h3>
-              <p className="text-xs text-[var(--muted)]">
-                Past hour withdrawals for this tutor.
-              </p>
+          {globalWithdrawals.length === 0 ? (
+            <div className="rounded-2xl border border-[var(--border)] bg-[var(--background)] p-6 text-center text-xs text-[var(--muted)] italic">
+              No past withdrawals recorded.
             </div>
+          ) : (
+            <div className="space-y-3 max-h-[600px] overflow-y-auto pr-1">
+              {globalWithdrawals.map((w) => {
+                const tutorDisplayName =
+                  w.tutor_legal_name ||
+                  w.tutor?.full_name ||
+                  w.tutor?.email ||
+                  "Unknown Tutor";
 
-            {withdrawals.length === 0 ? (
-              <div className="rounded-2xl border border-[var(--border)] bg-[var(--background)] p-6 text-center text-xs text-[var(--muted)] italic">
-                No past withdrawals recorded.
-              </div>
-            ) : (
-              <div className="space-y-3 max-h-[600px] overflow-y-auto pr-1">
-                {withdrawals.map((w) => (
+                return (
                   <div
                     key={w.id}
-                    className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-4 shadow-sm space-y-2 animate-in slide-in-from-right duration-300"
+                    className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-4 shadow-sm space-y-2 animate-in slide-in-from-right duration-300 hover:border-[var(--foreground)]/10 transition-colors"
                   >
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-bold text-[var(--foreground)]">
@@ -603,31 +636,28 @@ export default function WithdrawHoursMenu() {
 
                     <div className="text-[10px] text-[var(--muted)] space-y-1">
                       <p>
-                        <span className="font-semibold">Start class:</span>{" "}
-                        {formatDate(w.start_date)}
+                        <span className="font-semibold">Tutor:</span>{" "}
+                        <span className="font-medium text-[var(--foreground)]">{tutorDisplayName}</span>
                       </p>
                       <p>
-                        <span className="font-semibold">End class:</span>{" "}
-                        {formatDate(w.end_date)}
+                        <span className="font-semibold">Period:</span>{" "}
+                        {formatDate(w.start_date)} - {formatDate(w.end_date)}
                       </p>
                     </div>
 
                     {w.tutor_legal_name && (
-                      <div className="mt-2 border-t border-[var(--border)] pt-2 text-[9px] text-[var(--muted)]">
-                        <span className="font-semibold uppercase tracking-wider">Legal Name:</span> {w.tutor_legal_name}
+                      <div className="mt-2 border-t border-[var(--border)] pt-2 text-[9px] text-[var(--muted)] flex items-center justify-between">
+                        <span>Legal Name:</span>
+                        <span className="font-bold text-[var(--foreground)]">{w.tutor_legal_name}</span>
                       </div>
                     )}
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
+                );
+              })}
+            </div>
+          )}
         </div>
-      ) : (
-        <div className="rounded-2xl border-2 border-dashed border-[var(--border)] bg-[var(--surface)] p-12 text-center text-xs text-[var(--muted)]">
-          Please select a tutor from the dropdown above to view classes and manage their community service hours.
-        </div>
-      )}
+      </div>
     </section>
   );
 }

@@ -114,12 +114,40 @@ export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const tutorId = searchParams.get("tutorId");
 
-  if (!tutorId) {
-    return NextResponse.json({ error: "Missing tutorId parameter." }, { status: 400 });
-  }
-
   // Ensure table exists on first query invocation
   await ensureTutorWithdrawalsSchema(adminClient);
+
+  if (!tutorId) {
+    // Fetch all past withdrawals globally
+    const { data: withdrawals, error: withdrawalsError } = await adminClient
+      .from("tutor_withdrawals")
+      .select("id, tutor_id, hours, start_date, end_date, created_at, created_by, tutor_legal_name")
+      .order("created_at", { ascending: false });
+
+    if (withdrawalsError) {
+      return NextResponse.json({ error: withdrawalsError.message }, { status: 500 });
+    }
+
+    const tutorIds = Array.from(new Set((withdrawals || []).map((w: any) => w.tutor_id)));
+    let enrichedWithdrawals = withdrawals || [];
+
+    if (tutorIds.length > 0) {
+      const { data: usersData, error: usersError } = await adminClient
+        .from("app_users")
+        .select("id, full_name, email")
+        .in("id", tutorIds);
+
+      if (!usersError && usersData) {
+        const usersMap = new Map(usersData.map((u: any) => [u.id, u]));
+        enrichedWithdrawals = withdrawals.map((w: any) => ({
+          ...w,
+          tutor: usersMap.get(w.tutor_id) || null
+        }));
+      }
+    }
+
+    return NextResponse.json({ withdrawals: enrichedWithdrawals });
+  }
 
   // Fetch tutor user details
   const { data: tutorUser, error: tutorUserError } = await adminClient
@@ -167,7 +195,7 @@ export async function GET(request: NextRequest) {
     }));
   }
 
-  // Fetch past withdrawals (including tutor_legal_name at time of withdrawal)
+  // Fetch past withdrawals for the specific tutor (including tutor_legal_name at time of withdrawal)
   const { data: withdrawals, error: withdrawalsError } = await adminClient
     .from("tutor_withdrawals")
     .select("id, hours, start_date, end_date, created_at, created_by, tutor_legal_name")
