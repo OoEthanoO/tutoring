@@ -20,6 +20,7 @@ export type SessionUser = {
   is_junior: boolean;
   grade: string | null;
   school: string | null;
+  tutor_promoted_at: string | null;
 };
 
 export const IMPERSONATE_COOKIE = "impersonate_user_id";
@@ -49,7 +50,7 @@ export const getSessionUser = async (token?: string | null) => {
   const { data } = await adminClient
     .from("app_sessions")
     .select(
-      "user:app_users(id, email, full_name, legal_name, role, custom_role, custom_roles(role_level), email_verified_at, discord_user_id, discord_username, discord_connected_at, is_junior, grade, school, grade, school), expires_at"
+      "user:app_users(id, email, full_name, legal_name, role, custom_role, custom_roles(role_level), email_verified_at, discord_user_id, discord_username, discord_connected_at, is_junior, grade, school, tutor_promoted_at), expires_at"
     )
     .eq("token_hash", tokenHash)
     .gt("expires_at", now)
@@ -95,7 +96,7 @@ export const getRequestUser = async (
   const { data: impersonatedUser } = await adminClient
     .from("app_users")
     .select(
-      "id, email, full_name, legal_name, role, custom_role, custom_roles(role_level), email_verified_at, discord_user_id, discord_username, discord_connected_at, is_junior, grade, school"
+      "id, email, full_name, legal_name, role, custom_role, custom_roles(role_level), email_verified_at, discord_user_id, discord_username, discord_connected_at, is_junior, grade, school, tutor_promoted_at"
     )
     .eq("id", impersonatedUserId)
     .maybeSingle();
@@ -140,7 +141,7 @@ export const getRequestAuthContext = async (
   const { data: impersonatedUser } = await adminClient
     .from("app_users")
     .select(
-      "id, email, full_name, legal_name, role, custom_role, custom_roles(role_level), email_verified_at, discord_user_id, discord_username, discord_connected_at, is_junior, grade, school"
+      "id, email, full_name, legal_name, role, custom_role, custom_roles(role_level), email_verified_at, discord_user_id, discord_username, discord_connected_at, is_junior, grade, school, tutor_promoted_at"
     )
     .eq("id", impersonatedUserId)
     .maybeSingle();

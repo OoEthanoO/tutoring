@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import DonationHistoryMenu from "./DonationHistoryMenu";
 import { getCurrentUser, onAuthChange } from "@/lib/authClient";
 import { canManageCourses, isExecutive, isFounder, isHighRankingChiefExecutive, resolveUserRole, type UserRole } from "@/lib/roles";
+import TutorApplicationFormModal from "./TutorApplicationFormModal";
 import WithdrawHoursMenu from "@/components/WithdrawHoursMenu";
 import AdminUserManager from "@/components/AdminUserManager";
 import CourseCreator from "@/components/CourseCreator";
@@ -61,6 +62,8 @@ export default function DashboardMenus() {
   const [hasPendingRSVP, setHasPendingRSVP] = useState(false);
   const [trashCount, setTrashCount] = useState(0);
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const [isOnboardingCompleted, setIsOnboardingCompleted] = useState<boolean | null>(null);
+  const [isFormOpen, setIsFormOpen] = useState(false);
   const router = useRouter();
   const searchParams = useSearchParams();
   const deepLinkedEventId = searchParams.get("event_id");
@@ -118,6 +121,35 @@ export default function DashboardMenus() {
 
     return onAuthChange(load);
   }, []);
+
+  useEffect(() => {
+    if (!currentUser || !role) {
+      setIsOnboardingCompleted(null);
+      return;
+    }
+
+    const isExempt = role === "founder" || role === "CEO" || role === "COO";
+    const cutoffDate = new Date("2026-05-26T00:00:00.000Z");
+    const promotedDate = currentUser.tutor_promoted_at ? new Date(currentUser.tutor_promoted_at) : null;
+    const isNewlyPromoted = promotedDate && promotedDate >= cutoffDate;
+
+    if (isExecutive(role) && !isExempt && isNewlyPromoted) {
+      const checkOnboarding = async () => {
+        try {
+          const res = await fetch("/api/tutor-application/status");
+          if (res.ok) {
+            const data = await res.json();
+            setIsOnboardingCompleted(data.completed);
+          }
+        } catch (err) {
+          console.error("Failed to check tutor application status:", err);
+        }
+      };
+      checkOnboarding();
+    } else {
+      setIsOnboardingCompleted(true);
+    }
+  }, [currentUser, role]);
 
   useEffect(() => {
     if (!isAuthResolved) return;
@@ -359,6 +391,35 @@ export default function DashboardMenus() {
 
   return (
     <div className="space-y-6">
+      {isOnboardingCompleted === false && (
+        <div className="animate-in fade-in slide-in-from-top duration-500">
+          <div className="relative overflow-hidden rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3.5 text-amber-200 shadow-[0_0_15px_rgba(245,158,11,0.05)] backdrop-blur">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-2">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+                </span>
+                <div className="space-y-0.5">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-amber-400">
+                    Mandatory Action Required
+                  </p>
+                  <p className="text-xs text-amber-100/90">
+                    Your executive onboarding is incomplete. Please submit the Tutor Consent & Honor Agreement form.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsFormOpen(true)}
+                className="self-start rounded-full bg-amber-500 hover:bg-amber-400 px-4 py-1.5 text-xs font-bold text-black transition-all sm:self-auto shadow-md"
+              >
+                Complete Onboarding
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {hasPendingRSVP && activeMenu !== "events" && (
         <div className="animate-in fade-in slide-in-from-top duration-500">
           <EventReminderBanner onAction={() => setActive("events")} />
@@ -457,6 +518,16 @@ export default function DashboardMenus() {
       {activeMenu === "trash" ? <ManageMyCoursesMenu isTrashMode={true} /> : null}
       {activeMenu === "roles_manager" ? <RolesManagerMenu /> : null}
       {activeMenu === "sponsors" ? <SponsorsMenu /> : null}
+
+      <TutorApplicationFormModal
+        isOpen={isFormOpen}
+        onClose={() => setIsFormOpen(false)}
+        onSubmitSuccess={() => {
+          setIsOnboardingCompleted(true);
+        }}
+        initialEmail={currentUser?.email || ""}
+        initialFullName={currentUser?.full_name || ""}
+      />
     </div>
   );
 }

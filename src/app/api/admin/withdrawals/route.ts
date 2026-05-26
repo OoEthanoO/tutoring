@@ -27,31 +27,30 @@ async function ensureTutorWithdrawalsSchema(adminClient: any) {
         -- Enable RLS on tutor_withdrawals
         ALTER TABLE public.tutor_withdrawals ENABLE ROW LEVEL SECURITY;
 
-        -- Create policies for tutor_withdrawals
+        -- Admins can view/insert tutor withdrawals (restricted to Founder, CEO, or COO)
+        DROP POLICY IF EXISTS "Admins can view all withdrawals" ON public.tutor_withdrawals;
+        CREATE POLICY "Admins can view all withdrawals" ON public.tutor_withdrawals
+          FOR SELECT
+          USING (
+            EXISTS (
+              SELECT 1 FROM public.app_users
+              WHERE id = auth.uid() AND (role = 'founder' OR custom_role = 'CEO' OR custom_role = 'COO')
+            )
+          );
+
+        DROP POLICY IF EXISTS "Admins can insert withdrawals" ON public.tutor_withdrawals;
+        CREATE POLICY "Admins can insert withdrawals" ON public.tutor_withdrawals
+          FOR INSERT
+          WITH CHECK (
+            EXISTS (
+              SELECT 1 FROM public.app_users
+              WHERE id = auth.uid() AND (role = 'founder' OR custom_role = 'CEO' OR custom_role = 'COO')
+            )
+          );
+
+        -- Create tutors own view policy if not exists
         DO $$
         BEGIN
-          IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'tutor_withdrawals' AND policyname = 'Admins can view all withdrawals') THEN
-            CREATE POLICY "Admins can view all withdrawals" ON public.tutor_withdrawals
-              FOR SELECT
-              USING (
-                EXISTS (
-                  SELECT 1 FROM public.app_users
-                  WHERE id = auth.uid() AND (role = 'founder' or role = 'executive')
-                )
-              );
-          END IF;
-          
-          IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'tutor_withdrawals' AND policyname = 'Admins can insert withdrawals') THEN
-            CREATE POLICY "Admins can insert withdrawals" ON public.tutor_withdrawals
-              FOR INSERT
-              WITH CHECK (
-                EXISTS (
-                  SELECT 1 FROM public.app_users
-                  WHERE id = auth.uid() AND (role = 'founder' or role = 'executive')
-                )
-              );
-          END IF;
-
           IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'tutor_withdrawals' AND policyname = 'Tutors can view their own withdrawals') THEN
             CREATE POLICY "Tutors can view their own withdrawals" ON public.tutor_withdrawals
               FOR SELECT

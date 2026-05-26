@@ -450,6 +450,14 @@ export default function CoursesMenu() {
     setSelectedCourse(course);
   };
 
+  const isCourseEnded = selectedCourse
+    ? selectedCourse.is_completed ||
+      (selectedCourse.course_classes &&
+        selectedCourse.course_classes.length > 0 &&
+        !hasGrayClass(selectedCourse) &&
+        !hasYellowClass(selectedCourse))
+    : false;
+
   return (
     <>
     <section className="space-y-6 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6">
@@ -706,7 +714,7 @@ export default function CoursesMenu() {
                 </button>
               </div>
 
-              {!isGuest && !selectedCourse.is_completed && !isFullCourse(selectedCourse) && !isEnrolledInCourse(selectedCourse) && (
+              {!isGuest && !isCourseEnded && !isFullCourse(selectedCourse) && !isEnrolledInCourse(selectedCourse) && (
                 <div className="flex items-start gap-2 rounded-lg border border-amber-400 bg-amber-50 px-3 py-2 dark:border-amber-700 dark:bg-amber-950/30">
                   <span className="mt-0.5 flex-shrink-0 text-amber-600 text-base leading-none" aria-hidden="true">⚠️</span>
                   <p className="text-xs font-semibold text-amber-800 dark:text-amber-400">
@@ -727,37 +735,33 @@ export default function CoursesMenu() {
                 </div>
               )}
 
-              <div className="space-y-2">
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
-                  {selectedCourse.is_completed ? "Course summary" : "Classes"}
-                </p>
-                {selectedCourse.is_completed ? (
-                  <p className="text-xs text-[var(--muted)]">
-                    Completed course: {formatCompletedDate(selectedCourse.completed_start_date)} to{" "}
-                    {formatCompletedDate(selectedCourse.completed_end_date)} ·{" "}
-                    {selectedCourse.completed_class_count ?? 0} classes
+              {!isCourseEnded && (
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
+                    Classes
                   </p>
-                ) : selectedCourse.course_classes?.length ? (
-                  <ul className="space-y-1 text-xs text-[var(--muted)]">
-                    {sortClassesByStart(selectedCourse.course_classes).map((courseClass) => {
-                      const { start, end } = getClassTimes(
-                        courseClass.starts_at,
-                        courseClass.duration_hours || 1
-                      );
-                      const tone = getClassTimeStyle(start, end);
-                      return (
-                        <li key={courseClass.id} className={tone}>
-                          {courseClass.title} · {formatClassSchedule(start, end)}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                ) : (
-                  <p className="text-xs text-[var(--muted)]">No classes yet.</p>
-                )}
-              </div>
+                  {selectedCourse.course_classes?.length ? (
+                    <ul className="space-y-1 text-xs text-[var(--muted)]">
+                      {sortClassesByStart(selectedCourse.course_classes).map((courseClass) => {
+                        const { start, end } = getClassTimes(
+                          courseClass.starts_at,
+                          courseClass.duration_hours || 1
+                        );
+                        const tone = getClassTimeStyle(start, end);
+                        return (
+                          <li key={courseClass.id} className={tone}>
+                            {courseClass.title} · {formatClassSchedule(start, end)}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  ) : (
+                    <p className="text-xs text-[var(--muted)]">No classes yet.</p>
+                  )}
+                </div>
+              )}
 
-              {!isGuest && !selectedCourse.is_completed && !isFullCourse(selectedCourse) && !isEnrolledInCourse(selectedCourse) && (
+              {!isGuest && !isCourseEnded && !isFullCourse(selectedCourse) && !isEnrolledInCourse(selectedCourse) && (
                 <p className="text-xs text-[var(--muted)]">
                   When you enroll, the founder will review your request. You will
                   receive an email when it is approved or rejected.
@@ -768,7 +772,7 @@ export default function CoursesMenu() {
                   Warning: In the past 3 months the tutor has arbitrarily cancelled a class near class time, so you should beware of taking this particular tutor&apos;s courses.
                 </p>
               )}
-              {!isGuest && !selectedCourse.is_completed && !isFullCourse(selectedCourse) && !isEnrolledInCourse(selectedCourse) && (
+              {!isGuest && !isCourseEnded && !isFullCourse(selectedCourse) && !isEnrolledInCourse(selectedCourse) && (
                 requiresDonationLink ? (
                   <div className="space-y-3 rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] p-4 shadow-sm">
                     <div className="flex flex-col gap-1">
@@ -804,7 +808,7 @@ export default function CoursesMenu() {
                 )
               )}
 
-              {!selectedCourse.is_completed && (
+              {!isCourseEnded && (
                 <StudentApplicationForm
                   initialGrade={user?.grade}
                   initialSchool={user?.school}

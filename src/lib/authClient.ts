@@ -13,6 +13,7 @@ export type ClientUser = {
   is_junior: boolean;
   grade: string | null;
   school: string | null;
+  tutor_promoted_at?: string | null;
 };
 
 export type AuthContext = {

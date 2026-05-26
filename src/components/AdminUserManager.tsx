@@ -103,6 +103,10 @@ export default function AdminUserManager() {
   const [isLoadingApplication, setIsLoadingApplication] = useState(false);
   const [applicationError, setApplicationError] = useState("");
 
+  const [tutorApplications, setTutorApplications] = useState<any[]>([]);
+  const [selectedTutorApp, setSelectedTutorApp] = useState<any>(null);
+  const [onboardingFilter, setOnboardingFilter] = useState<"all" | "pending" | "completed" | "exempt">("all");
+
   const toLocalDateTimeInput = (value: string) => {
     const parsed = new Date(value);
     if (Number.isNaN(parsed.getTime())) {
@@ -174,9 +178,6 @@ export default function AdminUserManager() {
     }
 
     const fetchUsers = async () => {
-      setIsLoading(true);
-      setStatus({ type: "idle", message: "" });
-
       const base = "/api/admin/users";
       let url = base;
       if (verifiedFilter === "unverified") {
@@ -196,7 +197,6 @@ export default function AdminUserManager() {
             payload?.error ??
             "Unable to load users. Please try again.",
         });
-        setIsLoading(false);
         return;
       }
 
@@ -230,11 +230,33 @@ export default function AdminUserManager() {
           (data.users ?? []).map((user) => [user.id, user.school ?? ""])
         )
       );
-
-      setIsLoading(false);
     };
 
-    fetchUsers();
+    const fetchTutorApps = async () => {
+      try {
+        const res = await fetch("/api/admin/tutor-applications");
+        if (res.ok) {
+          const data = await res.json();
+          setTutorApplications(data.applications || []);
+        }
+      } catch (err) {
+        console.error("Failed to load tutor applications:", err);
+      }
+    };
+
+    const loadData = async () => {
+      setIsLoading(true);
+      setStatus({ type: "idle", message: "" });
+      try {
+        await Promise.all([fetchUsers(), fetchTutorApps()]);
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadData();
   }, [isFounderAccess, verifiedFilter]);
 
   useEffect(() => {
@@ -297,14 +319,84 @@ export default function AdminUserManager() {
     fetchFeedback();
   }, [isFounderAccess]);
 
+  const applicationsByUserId = useMemo(() => {
+    const map = new Map<string, any>();
+    tutorApplications.forEach((app) => map.set(app.user_id, app));
+    return map;
+  }, [tutorApplications]);
+
+  const onboardingStats = useMemo(() => {
+    let required = 0;
+    let completed = 0;
+    let pending = 0;
+    let exempt = 0;
+
+    const cutoffDate = new Date("2026-05-26T00:00:00.000Z");
+
+    users.forEach((user) => {
+      if (!isExecutive(user.role as any)) {
+        return;
+      }
+
+      const email = user.email || "";
+      const baseRole = user.role || null;
+      const customRoleLevels = user.customRole ? [user.customRole] : [];
+      const resolved = resolveUserRole(email, baseRole, customRoleLevels);
+
+      const isExemptRole = resolved === "founder" || resolved === "CEO" || resolved === "COO";
+      const promotedDate = user.tutorPromotedAt ? new Date(user.tutorPromotedAt) : null;
+      const isNewlyPromoted = promotedDate && promotedDate >= cutoffDate;
+
+      if (isExemptRole || !isNewlyPromoted) {
+        exempt++;
+      } else {
+        required++;
+        if (applicationsByUserId.has(user.id)) {
+          completed++;
+        } else {
+          pending++;
+        }
+      }
+    });
+
+    return { required, completed, pending, exempt };
+  }, [users, applicationsByUserId]);
+
   const filteredUsers = useMemo(() => {
     const normalizedSearch = searchQuery.trim().toLowerCase();
+    const cutoffDate = new Date("2026-05-26T00:00:00.000Z");
+
     return users
       .filter((user) => {
         if (roleFilter === "all") {
           return true;
         }
         return user.role === roleFilter;
+      })
+      .filter((user) => {
+        if (onboardingFilter === "all") {
+          return true;
+        }
+
+        const isUserExec = isExecutive(user.role as any);
+        const email = user.email || "";
+        const baseRole = user.role || null;
+        const customRoleLevels = user.customRole ? [user.customRole] : [];
+        const resolved = resolveUserRole(email, baseRole, customRoleLevels);
+        const isExemptRole = resolved === "founder" || resolved === "CEO" || resolved === "COO";
+        const promotedDate = user.tutorPromotedAt ? new Date(user.tutorPromotedAt) : null;
+        const isNewlyPromoted = promotedDate && promotedDate >= cutoffDate;
+
+        if (onboardingFilter === "completed") {
+          return isUserExec && applicationsByUserId.has(user.id);
+        }
+        if (onboardingFilter === "pending") {
+          return isUserExec && !isExemptRole && isNewlyPromoted && !applicationsByUserId.has(user.id);
+        }
+        if (onboardingFilter === "exempt") {
+          return isUserExec && (isExemptRole || !isNewlyPromoted);
+        }
+        return true;
       })
       .filter((user) => {
         if (!normalizedSearch) {
@@ -317,7 +409,7 @@ export default function AdminUserManager() {
           email.includes(normalizedSearch)
         );
       });
-  }, [users, searchQuery, roleFilter]);
+  }, [users, searchQuery, roleFilter, onboardingFilter, applicationsByUserId]);
 
   const deleteFeedback = async (feedbackId: string) => {
     const confirmed = window.confirm("Delete this feedback entry?");
@@ -1055,6 +1147,38 @@ export default function AdminUserManager() {
           <option value="verified">Verified</option>
           <option value="unverified">Unverified</option>
         </select>
+        <select
+          value={onboardingFilter}
+          onChange={(event) =>
+            setOnboardingFilter(event.target.value as any)
+          }
+          className="w-full rounded-full border border-[var(--border)] bg-[var(--surface)] px-4 py-2 text-xs text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)] sm:w-48"
+        >
+          <option value="all">All Onboarding Statuses</option>
+          <option value="completed">Onboarded & Verified</option>
+          <option value="pending">Pending Onboarding</option>
+          <option value="exempt">Grandfathered / Exempt</option>
+        </select>
+      </div>
+
+      {/* Onboarding Compliance Stats */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 rounded-xl border border-[var(--border)] p-4 bg-[var(--surface-raised)]">
+        <div className="space-y-1">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">Total Req. Onboarding</p>
+          <p className="text-xl font-bold text-[var(--foreground)]">{onboardingStats.required}</p>
+        </div>
+        <div className="space-y-1">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-500">Onboarded & Verified</p>
+          <p className="text-xl font-bold text-emerald-500">{onboardingStats.completed}</p>
+        </div>
+        <div className="space-y-1">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-amber-500">Pending Onboarding</p>
+          <p className="text-xl font-bold text-amber-500">{onboardingStats.pending}</p>
+        </div>
+        <div className="space-y-1">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">Grandfathered / Exempt</p>
+          <p className="text-xl font-bold text-[var(--foreground)]">{onboardingStats.exempt}</p>
+        </div>
       </div>
 
       {status.type !== "idle" ? (
@@ -1077,6 +1201,12 @@ export default function AdminUserManager() {
         <p className="text-sm text-[var(--muted)]">No users found.</p>
       ) : null}
 
+      {!isLoading && filteredUsers.length > 0 && (
+        <p className="text-sm text-[var(--muted)] mb-2">
+          Showing {filteredUsers.length} account{filteredUsers.length !== 1 ? 's' : ''}
+        </p>
+      )}
+
       <div className="space-y-3">
         {filteredUsers.map((user) => {
           const isPending = pendingId === user.id;
@@ -1095,6 +1225,43 @@ export default function AdminUserManager() {
                       Legal: {user.legalName}
                     </span>
                   ) : null}
+                  {isExecutive(user.role as any) ? (() => {
+                    const email = user.email || "";
+                    const baseRole = user.role || null;
+                    const customRoleLevels = user.customRole ? [user.customRole] : [];
+                    const resolved = resolveUserRole(email, baseRole, customRoleLevels);
+                    const isExemptRole = resolved === "founder" || resolved === "CEO" || resolved === "COO";
+                    const cutoffDate = new Date("2026-05-26T00:00:00.000Z");
+                    const promotedDate = user.tutorPromotedAt ? new Date(user.tutorPromotedAt) : null;
+                    const isNewlyPromoted = promotedDate && promotedDate >= cutoffDate;
+
+                    if (isExemptRole) {
+                      return (
+                        <span className="rounded bg-blue-500/10 border border-blue-500/20 px-1.5 py-0.5 text-[10px] font-medium text-blue-400">
+                          Exempt (Chief Exec/Founder)
+                        </span>
+                      );
+                    }
+                    if (!isNewlyPromoted) {
+                      return (
+                        <span className="rounded bg-zinc-500/10 border border-zinc-500/20 px-1.5 py-0.5 text-[10px] font-medium text-[var(--muted)]">
+                          Grandfathered
+                        </span>
+                      );
+                    }
+                    if (applicationsByUserId.has(user.id)) {
+                      return (
+                        <span className="rounded bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 text-[10px] font-medium text-emerald-400">
+                          Onboarded & Verified
+                        </span>
+                      );
+                    }
+                    return (
+                      <span className="rounded bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 text-[10px] font-medium text-amber-400">
+                        Pending Onboarding
+                      </span>
+                    );
+                  })() : null}
                 </div>
                 <p className="text-xs text-[var(--muted)]">{user.email}</p>
                 <p className="mt-1 text-xs text-[var(--muted)]">
@@ -1364,6 +1531,18 @@ export default function AdminUserManager() {
                         {isLoadingApplication && pendingId === user.id ? "Loading..." : "View Applications"}
                       </button>
                     ) : null}
+                    {isExecutive(user.role as any) && applicationsByUserId.has(user.id) ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const app = applicationsByUserId.get(user.id);
+                          setSelectedTutorApp(app);
+                        }}
+                        className="rounded-full border border-emerald-500/30 text-emerald-500 hover:bg-emerald-500/10 px-4 py-2 text-xs font-semibold transition"
+                      >
+                        View Onboarding
+                      </button>
+                    ) : null}
                     <button
                       type="button"
                       disabled={isPending}
@@ -1537,6 +1716,118 @@ export default function AdminUserManager() {
                   Close
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Onboarding Form Audit Modal */}
+      {selectedTutorApp && (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center p-4 bg-black/60 backdrop-blur-sm overflow-y-auto"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) {
+              backdropClickedRef.current = true;
+            } else {
+              backdropClickedRef.current = false;
+            }
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget && backdropClickedRef.current) {
+              setSelectedTutorApp(null);
+            }
+            backdropClickedRef.current = false;
+          }}
+        >
+          <div className="w-full max-w-lg flex flex-col rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            {/* Header */}
+            <div className="border-b border-[var(--border)] px-6 py-4 flex items-center justify-between bg-[var(--surface-raised)]">
+              <div>
+                <h3 className="text-base font-bold text-[var(--foreground)]">
+                  Tutor Onboarding Submission
+                </h3>
+                <p className="text-xs text-[var(--muted)] mt-0.5">
+                  Detailed information submitted by the tutor.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedTutorApp(null)}
+                className="rounded-full p-1 text-[var(--muted)] hover:bg-[var(--border)] hover:text-[var(--foreground)] transition"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">Legal Full Name</p>
+                  <p className="text-sm font-semibold text-[var(--foreground)] mt-1">{selectedTutorApp.full_name}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">Current Grade</p>
+                  <p className="text-sm font-semibold text-[var(--foreground)] mt-1">{selectedTutorApp.current_grade}</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">Tutor Email</p>
+                  <p className="text-sm font-semibold text-[var(--foreground)] mt-1">{selectedTutorApp.email}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">Tutor Phone Number</p>
+                  <p className="text-sm font-semibold text-[var(--foreground)] mt-1">{selectedTutorApp.phone_number}</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">Parents&apos; Phone Number</p>
+                  <p className="text-sm font-semibold text-[var(--foreground)] mt-1">{selectedTutorApp.parents_phone_number}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">Submitted At</p>
+                  <p className="text-sm font-semibold text-[var(--foreground)] mt-1">
+                    {new Date(selectedTutorApp.created_at).toLocaleDateString("en-US", {
+                      month: "short",
+                      day: "numeric",
+                      year: "numeric",
+                      hour: "numeric",
+                      minute: "2-digit",
+                    })}
+                  </p>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-raised)] p-4 space-y-2">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">Signed Consent Signature</p>
+                <p className="text-sm font-medium italic text-[var(--foreground)] underline decoration-amber-500/30 underline-offset-4 font-mono select-none">
+                  {selectedTutorApp.consent_signature}
+                </p>
+                <div className="flex items-center gap-1.5 text-[10px] text-emerald-500">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="20 6 9 17 4 12"></polyline>
+                  </svg>
+                  Signed and agreed legally online
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="border-t border-[var(--border)] px-6 py-4 flex justify-end bg-[var(--surface-raised)]">
+              <button
+                type="button"
+                onClick={() => setSelectedTutorApp(null)}
+                className="rounded-full bg-[var(--foreground)] px-6 py-2 text-xs font-semibold text-[var(--surface)] hover:opacity-90 transition"
+              >
+                Close Audit View
+              </button>
             </div>
           </div>
         </div>
