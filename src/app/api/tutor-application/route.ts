@@ -28,6 +28,10 @@ export async function POST(request: NextRequest) {
       phoneNumber,
       currentGrade,
       parentsPhoneNumber,
+      subjectGrades,
+      programmingProficiency,
+      debateExperience,
+      otherCoursesExperience,
       consentSignature,
     } = body;
 
@@ -77,6 +81,10 @@ export async function POST(request: NextRequest) {
           phone_number: phoneNumber.trim(),
           current_grade: currentGrade,
           parents_phone_number: parentsPhoneNumber.trim(),
+          subject_grades: subjectGrades?.trim() || null,
+          programming_proficiency: programmingProficiency?.trim() || null,
+          debate_experience: debateExperience?.trim() || null,
+          other_courses_experience: otherCoursesExperience?.trim() || null,
           consent_signature: consentSignature.trim(),
           created_at: new Date().toISOString(),
         },

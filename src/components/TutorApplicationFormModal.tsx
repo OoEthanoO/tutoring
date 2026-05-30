@@ -23,6 +23,10 @@ export default function TutorApplicationFormModal({
   const [phoneNumber, setPhoneNumber] = useState("");
   const [currentGrade, setCurrentGrade] = useState("Grade 9");
   const [parentsPhoneNumber, setParentsPhoneNumber] = useState("");
+  const [subjectGrades, setSubjectGrades] = useState("");
+  const [programmingProficiency, setProgrammingProficiency] = useState("");
+  const [debateExperience, setDebateExperience] = useState("");
+  const [otherCoursesExperience, setOtherCoursesExperience] = useState("");
   const [consentSignature, setConsentSignature] = useState("");
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -53,6 +57,10 @@ export default function TutorApplicationFormModal({
           phoneNumber,
           currentGrade,
           parentsPhoneNumber,
+          subjectGrades,
+          programmingProficiency,
+          debateExperience,
+          otherCoursesExperience,
           consentSignature,
         }),
       });
@@ -219,40 +227,88 @@ export default function TutorApplicationFormModal({
               </div>
             </div>
 
+            {/* Subject Grades */}
+            <div className="space-y-1">
+              <label htmlFor="modal-subjectGrades" className="text-xs font-semibold text-[var(--muted)]">
+                If you would like to become a tutor in mathematics, English, French, science, biology, physics, or chemistry, please fill in your most recent grades in the specific subject below.
+              </label>
+              <textarea
+                id="modal-subjectGrades"
+                placeholder="Your answer"
+                value={subjectGrades}
+                onChange={(e) => setSubjectGrades(e.target.value)}
+                className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--foreground)] transition min-h-[80px]"
+              />
+            </div>
+
+            {/* Programming Proficiency */}
+            <div className="space-y-1">
+              <label htmlFor="modal-programmingProficiency" className="text-xs font-semibold text-[var(--muted)]">
+                If you would like to become a programming course tutor, please fill in the programming languages you are proficient in and your relevant learning and achievements below.
+              </label>
+              <textarea
+                id="modal-programmingProficiency"
+                placeholder="Your answer"
+                value={programmingProficiency}
+                onChange={(e) => setProgrammingProficiency(e.target.value)}
+                className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--foreground)] transition min-h-[80px]"
+              />
+            </div>
+
+            {/* Debate Experience */}
+            <div className="space-y-1">
+              <label htmlFor="modal-debateExperience" className="text-xs font-semibold text-[var(--muted)]">
+                If you would like to become a tutor for the debate course, please fill in your learning experience and achievements below.
+              </label>
+              <textarea
+                id="modal-debateExperience"
+                placeholder="Your answer"
+                value={debateExperience}
+                onChange={(e) => setDebateExperience(e.target.value)}
+                className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--foreground)] transition min-h-[80px]"
+              />
+            </div>
+
+            {/* Other Courses Experience */}
+            <div className="space-y-1">
+              <label htmlFor="modal-otherCoursesExperience" className="text-xs font-semibold text-[var(--muted)]">
+                Would you like to teach other courses? Please write it below and provide your learning experience and achievements.
+              </label>
+              <textarea
+                id="modal-otherCoursesExperience"
+                placeholder="Your answer"
+                value={otherCoursesExperience}
+                onChange={(e) => setOtherCoursesExperience(e.target.value)}
+                className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--foreground)] transition min-h-[80px]"
+              />
+            </div>
+
             {/* Tutor Legal Consent Scroll Block */}
             <div className="space-y-2">
-              <label className="text-xs font-semibold text-[var(--muted)]">
-                Tutor Consent & Honor Agreement *
+              <label className="text-xs font-semibold text-red-500">
+                Consent Form (If you are under 18, please have your parent or guardian sign it) *
               </label>
               <div className="max-h-36 overflow-y-auto rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] p-3 text-[11px] leading-relaxed text-[var(--muted)] scrollbar-thin">
-                <p className="font-semibold mb-2 text-[var(--foreground)]">
-                  Please read the following agreement carefully:
+                <p className="mb-2">
+                  I agree that the parent or guardian of the student have the right join the meeting and supervise the tutoring process at any time.I know it is my right to decide the maximum number of students I can tutor at one time. I know I have the right to withdraw from the tutoring group, but I will have to give valid reasons and withdraw at the end of the current term.
                 </p>
                 <p className="mb-2">
-                  I agree to participate as a tutor/executive in the YanLearn peer tutoring program. I understand that my involvement is a voluntary contribution to the community, and I agree to uphold the highest standards of professional conduct, empathy, and educational support.
+                  I know I need to get into the meeting 5-10 minutes early, after the tutoring ends I have 20 minutes to fill out and submit the tutoring log. I know I will get 1 hour and 30 minutes of volunteer time for each tutoring session (10 minutes to prepare + 60 minutes to tutor + 20 minutes to fill out and submit a tutorial log). I agree to submit the tutoring log on the day of (and fill in the names of students who attended the tutoring).
                 </p>
-                <ul className="list-decimal pl-4 space-y-2 mb-2">
-                  <li>
-                    <strong>Punctuality & Reliability:</strong> I will attend all my scheduled tutoring sessions punctually. If I am unable to attend due to an emergency or illness, I will notify the student and/or parent as well as the Tutor Lead/Executive team at least 24 hours in advance.
-                  </li>
-                  <li>
-                    <strong>Appropriate Communication:</strong> I will maintain clean, supportive, and appropriate communication with my students at all times, adhering strictly to the designated YanLearn servers and authorized Discord channels.
-                  </li>
-                  <li>
-                    <strong>Professional Safety:</strong> I will not engage in any form of inappropriate contact, harassment, discrimination, or share any personal/unapproved content with students.
-                  </li>
-                  <li>
-                    <strong>Truthful Reporting:</strong> I agree to accurately log my teaching sessions and ensure that my community service hour claims are 100% truthful and represent actual time taught (where each standard class yields 1.5 hours).
-                  </li>
-                  <li>
-                    <strong>Compliance & Enforcement:</strong> I understand that YanLearn has a zero-tolerance policy for code of conduct violations, which can result in immediate termination, suspension of community service hours, or removal of executive roles.
-                  </li>
-                  <li>
-                    <strong>Liability Release:</strong> I agree to waive, discharge, and covenant not to sue YanLearn, its volunteers, founders, and governing members from any and all liability, claims, or losses arising from my participation in this program.
-                  </li>
-                </ul>
-                <p>
-                  By signing below, I certify that I have read, understood, and agreed to be bound by the terms and conditions outlined in this YanLearn Tutor Consent & Honor Agreement.
+                <p className="mb-2">
+                  I agree that there is mutual respect and equality between tutors, students and parents, and that there is zero tolerance for inappropriate language in the tutoring process.
+                </p>
+                <p className="mb-2">
+                  I know I can choose my own content materials for tutoring.
+                </p>
+                <p className="mb-2">
+                  I agree that tutoring sessions will not be audio-recorded and videotaped.
+                </p>
+                <p className="mb-2">
+                  I am willing to accept other tutors to sit in or assist me in during tutoring, under the condition that it will not impact the effectiveness of the session. I agree to participate in the tutors' experience exchange meetings regularly, share my experience and actively improve my comprehensive tutoring ability.
+                </p>
+                <p className="mb-2">
+                  I agree to participate in the YanLearn under the condition that it will not affect my daily life and academics. I understand that YanLearn will only use my tutoring logs as the basis for calculating the amount of tutoring sessions and providing volunteer hours. I agree to use only publicly available or copyrighted material for tutoring. I agree that YanLearn is not responsible for the content, effectiveness and copyright of the tutoring material. I release, waive, discharge and covenant not to sue the YanLearn, its governors, volunteers from any and all liability to the participant, me, or the participant's heirs and next of kin for any and all claims, demands, losses or damages.
                 </p>
               </div>
               <p className="text-[10px] text-[var(--muted)]">

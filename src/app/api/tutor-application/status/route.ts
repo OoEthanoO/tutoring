@@ -24,6 +24,12 @@ async function ensureTutorApplicationsSchema(adminClient: any) {
           created_at timestamptz NOT NULL DEFAULT now()
         );
 
+        -- Add new columns if they do not exist
+        ALTER TABLE public.tutor_applications ADD COLUMN IF NOT EXISTS subject_grades text;
+        ALTER TABLE public.tutor_applications ADD COLUMN IF NOT EXISTS programming_proficiency text;
+        ALTER TABLE public.tutor_applications ADD COLUMN IF NOT EXISTS debate_experience text;
+        ALTER TABLE public.tutor_applications ADD COLUMN IF NOT EXISTS other_courses_experience text;
+
         -- Enable RLS on tutor_applications
         ALTER TABLE public.tutor_applications ENABLE ROW LEVEL SECURITY;
 
@@ -86,7 +92,7 @@ export async function GET(request: NextRequest) {
   // Fetch the application for the current user
   const { data: application, error } = await adminClient
     .from("tutor_applications")
-    .select("id, full_name, email, phone_number, current_grade, parents_phone_number, consent_signature, created_at")
+    .select("id, full_name, email, phone_number, current_grade, parents_phone_number, subject_grades, programming_proficiency, debate_experience, other_courses_experience, consent_signature, created_at")
     .eq("user_id", user.id)
     .maybeSingle();
 

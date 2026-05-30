@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
   // Fetch all completed tutor applications
   const { data: applications, error } = await adminClient
     .from("tutor_applications")
-    .select("id, user_id, full_name, email, phone_number, current_grade, parents_phone_number, consent_signature, created_at")
+    .select("id, user_id, full_name, email, phone_number, current_grade, parents_phone_number, subject_grades, programming_proficiency, debate_experience, other_courses_experience, consent_signature, created_at")
     .order("created_at", { ascending: false });
 
   if (error) {

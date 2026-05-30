@@ -1805,6 +1805,34 @@ export default function AdminUserManager() {
                 </div>
               </div>
 
+              {selectedTutorApp.subject_grades && (
+                <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-raised)] p-4 space-y-2">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">Subject Grades</p>
+                  <p className="text-sm text-[var(--foreground)] whitespace-pre-wrap">{selectedTutorApp.subject_grades}</p>
+                </div>
+              )}
+
+              {selectedTutorApp.programming_proficiency && (
+                <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-raised)] p-4 space-y-2">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">Programming Proficiency</p>
+                  <p className="text-sm text-[var(--foreground)] whitespace-pre-wrap">{selectedTutorApp.programming_proficiency}</p>
+                </div>
+              )}
+
+              {selectedTutorApp.debate_experience && (
+                <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-raised)] p-4 space-y-2">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">Debate Experience</p>
+                  <p className="text-sm text-[var(--foreground)] whitespace-pre-wrap">{selectedTutorApp.debate_experience}</p>
+                </div>
+              )}
+
+              {selectedTutorApp.other_courses_experience && (
+                <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-raised)] p-4 space-y-2">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">Other Courses Experience</p>
+                  <p className="text-sm text-[var(--foreground)] whitespace-pre-wrap">{selectedTutorApp.other_courses_experience}</p>
+                </div>
+              )}
+
               <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-raised)] p-4 space-y-2">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">Signed Consent Signature</p>
                 <p className="text-sm font-medium italic text-[var(--foreground)] underline decoration-amber-500/30 underline-offset-4 font-mono select-none">
