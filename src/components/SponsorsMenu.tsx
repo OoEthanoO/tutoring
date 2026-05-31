@@ -1,6 +1,18 @@
 "use client";
 
+import { useEffect, useState } from "react";
+
 export default function SponsorsMenu() {
+  const [contactEmail, setContactEmail] = useState("ethanxucoder@gmail.com");
+
+  useEffect(() => {
+    fetch("/api/settings/contact-email")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.contact_email) setContactEmail(data.contact_email);
+      })
+      .catch((err) => console.error(err));
+  }, []);
   return (
     <section className="space-y-6 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6">
       <header className="space-y-1">
@@ -83,10 +95,10 @@ export default function SponsorsMenu() {
         <p className="text-sm text-[var(--muted)]">
           Interested in sponsoring?{" "}
           <a
-            href="mailto:ethanxucoder@gmail.com"
+            href={`mailto:${contactEmail}`}
             className="font-semibold text-[var(--foreground)] underline transition-colors hover:text-[var(--muted)]"
           >
-            ethanxucoder@gmail.com
+            {contactEmail}
           </a>
         </p>
       </div>

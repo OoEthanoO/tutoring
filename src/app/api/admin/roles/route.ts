@@ -1,10 +1,20 @@
 import { NextResponse } from "next/server";
 import { getRequestUser } from "@/lib/authServer";
 import { getAdminClient } from "@/lib/authServer";
+import { resolveUserRole, isFounder } from "@/lib/roles";
 
 export async function GET(request: Request) {
   const user = await getRequestUser(request as any);
-  if (!user || user.email !== "ethanxucoder@gmail.com") {
+  if (!user) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const customRoleLevels = Array.isArray(user.custom_roles)
+    ? user.custom_roles.map((r: any) => r.role_level).filter(Boolean)
+    : [user.custom_roles?.role_level].filter(Boolean);
+
+  const role = resolveUserRole(user.email, user.role, customRoleLevels);
+  if (!isFounder(role)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -19,7 +29,16 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   const user = await getRequestUser(request as any);
-  if (!user || user.email !== "ethanxucoder@gmail.com") {
+  if (!user) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const customRoleLevels = Array.isArray(user.custom_roles)
+    ? user.custom_roles.map((r: any) => r.role_level).filter(Boolean)
+    : [user.custom_roles?.role_level].filter(Boolean);
+
+  const role = resolveUserRole(user.email, user.role, customRoleLevels);
+  if (!isFounder(role)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

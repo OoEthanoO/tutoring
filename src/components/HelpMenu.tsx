@@ -1,6 +1,18 @@
 "use client";
 
+import { useEffect, useState } from "react";
+
 export default function HelpMenu() {
+    const [contactEmail, setContactEmail] = useState("ethanxucoder@gmail.com");
+
+    useEffect(() => {
+        fetch("/api/settings/contact-email")
+            .then((res) => res.json())
+            .then((data) => {
+                if (data.contact_email) setContactEmail(data.contact_email);
+            })
+            .catch((err) => console.error(err));
+    }, []);
     return (
         <section className="space-y-6 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6">
             <header className="space-y-1">
@@ -121,10 +133,10 @@ export default function HelpMenu() {
                     <p className="text-sm text-[var(--foreground)]">
                         Email us at{" "}
                         <a
-                            href="mailto:ethanxucoder@gmail.com"
+                            href={`mailto:${contactEmail}`}
                             className="font-semibold text-[var(--foreground)] underline decoration-2 decoration-[var(--border)] underline-offset-4 hover:decoration-[var(--foreground)] transition-all"
                         >
-                            ethanxucoder@gmail.com
+                            {contactEmail}
                         </a>
                     </p>
                 </div>

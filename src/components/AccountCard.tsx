@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { getAuthContext, onAuthChange } from "@/lib/authClient";
-import { isExecutive, resolveUserRole } from "@/lib/roles";
+import { resolveUserRole } from "@/lib/roles";
 
 type AccountInfo = {
   email: string;
@@ -30,7 +30,11 @@ export default function AccountCard({ onClick }: { onClick?: () => void }) {
 
       const fullName =
         String(user.full_name ?? "").trim() || "Unnamed user";
-      const role = resolveUserRole(user.email, user.role ?? null);
+      const customRoleLevels = Array.isArray((user as any).custom_roles)
+        ? (user as any).custom_roles.map((r: any) => r.role_level).filter(Boolean)
+        : [(user as any).custom_roles?.role_level].filter(Boolean);
+
+      const role = resolveUserRole(user.email, user.role ?? null, customRoleLevels);
 
       const discordUserId = user.discord_user_id ?? null;
       const discordUsername = user.discord_username ?? null;
@@ -58,6 +62,11 @@ export default function AccountCard({ onClick }: { onClick?: () => void }) {
     );
   }
 
+  let roleBadgeText = account.role.toUpperCase();
+  if (account.role === "executive" || account.role === "Executive") {
+    roleBadgeText = account.isJunior ? "JUNIOR EXEC" : "EXEC";
+  }
+
   return (
     <div
       onClick={onClick}
@@ -82,7 +91,7 @@ export default function AccountCard({ onClick }: { onClick?: () => void }) {
 
       <div className="flex items-center gap-2">
         <span className="inline-flex h-6 items-center px-1 text-[10px] font-medium uppercase text-[var(--muted)] border-0">
-          {account.customRole || (isExecutive(account.role as any) ? (account.isJunior ? "JUNIOR EXEC" : "EXEC") : account.role.toUpperCase())}
+          {account.customRole || roleBadgeText}
         </span>
         {account.isImpersonating ? (
           <span className="inline-flex h-6 items-center rounded-md bg-amber-500/10 px-2 text-[10px] font-medium uppercase text-amber-600">

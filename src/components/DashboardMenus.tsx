@@ -23,6 +23,7 @@ import EventsMenu from "@/components/EventsMenu";
 import FormsMenu from "@/components/FormsMenu";
 import EventReminderBanner from "@/components/EventReminderBanner";
 import CourseRequestsMenu from "@/components/CourseRequestsMenu";
+import SiteSettingsMenu from "@/components/SiteSettingsMenu";
 import { useRouter, useSearchParams } from "next/navigation";
 
 type MenuKey =
@@ -43,7 +44,8 @@ type MenuKey =
   | "forms"
   | "trash"
   | "roles_manager"
-  | "sponsors";
+  | "sponsors"
+  | "site_settings";
 
 type MenuItem = {
   key: MenuKey;
@@ -347,6 +349,7 @@ export default function DashboardMenus() {
 
     if (role && isHighRankingChiefExecutive(role)) {
       items.push({ key: "withdrawals", label: "Withdraw hours" });
+      items.push({ key: "site_settings", label: "Site Settings" });
     }
 
     if (isExecutive(role)) {
@@ -365,7 +368,7 @@ export default function DashboardMenus() {
       items.push({ key: "trash", label: "Trash" });
     }
 
-    if (currentUser?.email === "ethanxucoder@gmail.com") {
+    if (isFounder(role)) {
       items.push({ key: "roles_manager", label: "Roles" });
     }
 
@@ -518,6 +521,7 @@ export default function DashboardMenus() {
       {activeMenu === "trash" ? <ManageMyCoursesMenu isTrashMode={true} /> : null}
       {activeMenu === "roles_manager" ? <RolesManagerMenu /> : null}
       {activeMenu === "sponsors" ? <SponsorsMenu /> : null}
+      {activeMenu === "site_settings" ? <SiteSettingsMenu /> : null}
 
       <TutorApplicationFormModal
         isOpen={isFormOpen}
