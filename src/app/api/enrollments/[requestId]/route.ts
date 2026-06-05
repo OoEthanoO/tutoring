@@ -208,6 +208,19 @@ export async function PATCH(
     isFounderCourse = resolveUserRole(tutorEmail, null) === "founder";
   }
 
+  let hasDiscordConnected = false;
+  if (requestData.student_id) {
+    const { data: studentUser } = await adminClient
+      .from("app_users")
+      .select("discord_user_id")
+      .eq("id", requestData.student_id)
+      .maybeSingle();
+    
+    if (studentUser?.discord_user_id) {
+      hasDiscordConnected = true;
+    }
+  }
+
   if (studentEmail) {
     const isApproval = action === "approve" || action === "expand_and_approve";
     const subject = isApproval
@@ -220,6 +233,13 @@ export async function PATCH(
              `<p>This course is hosted on Schoolhouse! Please join the session via the Schoolhouse platform. If you don't have a Schoolhouse account yet, please create one using this link: <a href="https://schoolhouse.world/?ref=u-mx1o1c1hti">https://schoolhouse.world/?ref=u-mx1o1c1hti</a></p>` 
              : 
              `<p>This class will be held on <strong>Discord</strong>. Please make sure you have connected your Discord account in your profile and joined our Discord server.</p>
+              ${!hasDiscordConnected ? `<p style="color: red; font-weight: bold;">⚠️ Action Required: You have not connected your Discord account yet! You will NOT be able to attend classes until you do so.</p>
+              <p style="color: red;">To connect your Discord account:</p>
+              <ol style="color: red;">
+                <li>Go to your Profile on our website.</li>
+                <li>Click the "Connect Discord" button.</li>
+                <li>Authorize your account and you will be redirected to join our Discord server.</li>
+              </ol>` : ""}
               <p>You will receive a notification in the Discord server with a link to the voice channel 5 minutes before the class starts. Please make sure to join the server if you haven't already.</p>`
            }`
         : `<p>Your enrollment request for <strong>${courseTitle}</strong> has been rejected.</p>`;
