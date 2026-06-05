@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { resolveUserRole } from "@/lib/roles";
+import { isFounder, resolveUserRole } from "@/lib/roles";
 import { getRequestUser } from "@/lib/authServer";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
@@ -53,7 +53,7 @@ export async function PATCH(
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
-  if (resolveUserRole(user.email, user.role ?? null) !== "founder") {
+  if (!isFounder(resolveUserRole(user.email, user.role ?? null))) {
     return NextResponse.json({ error: "Forbidden." }, { status: 403 });
   }
 
@@ -98,7 +98,10 @@ export async function PATCH(
     );
   }
 
-  if (requestData.status !== "pending") {
+  const isPending = requestData.status === "pending";
+  const isRejectedButApproving = requestData.status === "rejected" && (action === "approve" || action === "expand_and_approve");
+
+  if (!isPending && !isRejectedButApproving) {
     return NextResponse.json(
       { error: "Request already processed." },
       { status: 400 }

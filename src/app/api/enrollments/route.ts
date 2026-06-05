@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { resolveUserRole } from "@/lib/roles";
+import { isFounder, resolveUserRole } from "@/lib/roles";
 import { getRequestUser } from "@/lib/authServer";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
-  if (resolveUserRole(user.email, user.role ?? null) !== "founder") {
+  if (!isFounder(resolveUserRole(user.email, user.role ?? null))) {
     return NextResponse.json({ error: "Forbidden." }, { status: 403 });
   }
 
@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
     .select(
       "id, status, created_at, student_id, course_id, student_name, student_email, course:courses(id, title, created_by, created_by_name, created_by_email, max_students, course_enrollments(count))"
     )
-    .eq("status", "pending")
+    .in("status", ["pending", "rejected"])
     .order("created_at", { ascending: false });
 
   if (listError || !requests) {

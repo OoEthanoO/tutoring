@@ -261,7 +261,12 @@ export default function ManageEnrollmentsMenu() {
                 </div>
               )}
 
-              <div className="flex flex-wrap gap-2 pt-1">
+              <div className="flex flex-wrap gap-2 pt-1 items-center">
+                {request.status === "rejected" && (
+                  <div className="w-full pb-2 text-xs font-semibold text-red-500">
+                    This request was previously rejected. You can still approve it.
+                  </div>
+                )}
                 <button
                   type="button"
                   disabled={isPending}
@@ -270,14 +275,16 @@ export default function ManageEnrollmentsMenu() {
                 >
                   {isPending ? "Updating..." : "Approve"}
                 </button>
-                <button
-                  type="button"
-                  disabled={isPending}
-                  onClick={() => updateRequest(request.id, "reject")}
-                  className="rounded-full border border-[var(--border)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:border-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-70"
-                >
-                  Reject
-                </button>
+                {request.status !== "rejected" && (
+                  <button
+                    type="button"
+                    disabled={isPending}
+                    onClick={() => updateRequest(request.id, "reject")}
+                    className="rounded-full border border-[var(--border)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:border-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-70"
+                  >
+                    Reject
+                  </button>
+                )}
               </div>
             </div>
           );
