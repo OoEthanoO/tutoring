@@ -99,7 +99,8 @@ export async function GET(request: NextRequest) {
     .maybeSingle();
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("Error fetching tutor application:", error);
+    return NextResponse.json({ completed: false, application: null });
   }
 
   return NextResponse.json({

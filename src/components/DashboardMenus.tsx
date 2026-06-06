@@ -142,9 +142,12 @@ export default function DashboardMenus() {
           if (res.ok) {
             const data = await res.json();
             setIsOnboardingCompleted(data.completed);
+          } else {
+            setIsOnboardingCompleted(false);
           }
         } catch (err) {
           console.error("Failed to check tutor application status:", err);
+          setIsOnboardingCompleted(false);
         }
       };
       checkOnboarding();
@@ -396,18 +399,18 @@ export default function DashboardMenus() {
     <div className="space-y-6">
       {isOnboardingCompleted === false && (
         <div className="animate-in fade-in slide-in-from-top duration-500">
-          <div className="relative overflow-hidden rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3.5 text-amber-200 shadow-[0_0_15px_rgba(245,158,11,0.05)] backdrop-blur">
+          <div className="relative overflow-hidden rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3.5 text-amber-900 dark:text-amber-200 shadow-[0_0_15px_rgba(245,158,11,0.05)] backdrop-blur">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-2">
                 <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-500 dark:bg-amber-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-600 dark:bg-amber-500"></span>
                 </span>
                 <div className="space-y-0.5">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-amber-400">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-amber-800 dark:text-amber-400">
                     Mandatory Action Required
                   </p>
-                  <p className="text-xs text-amber-100/90">
+                  <p className="text-xs text-amber-900/90 dark:text-amber-100/90">
                     Your executive onboarding is incomplete. Please submit the Tutor Consent & Honor Agreement form.
                   </p>
                 </div>
