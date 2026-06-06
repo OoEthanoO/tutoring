@@ -106,6 +106,9 @@ export default function DashboardMenus() {
       const customRoleLevels = Array.isArray(user.custom_roles)
         ? user.custom_roles.map((r: any) => r.role_level).filter(Boolean)
         : [user.custom_roles?.role_level].filter(Boolean);
+      if (user.custom_role) {
+        customRoleLevels.push(user.custom_role);
+      }
 
       const resolvedRole = resolveUserRole(
         user.email,
@@ -135,7 +138,7 @@ export default function DashboardMenus() {
     if (isExecutive(role) && !isExempt) {
       const checkOnboarding = async () => {
         try {
-          const res = await fetch("/api/tutor-application/status");
+          const res = await fetch("/api/tutor-application/status", { cache: "no-store" });
           if (res.ok) {
             const data = await res.json();
             setIsOnboardingCompleted(data.completed);
