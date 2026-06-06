@@ -333,8 +333,6 @@ export default function AdminUserManager() {
     let pending = 0;
     let exempt = 0;
 
-    const cutoffDate = new Date("2026-05-26T00:00:00.000Z");
-
     users.forEach((user) => {
       if (!isExecutive(user.role as any)) {
         return;
@@ -346,10 +344,8 @@ export default function AdminUserManager() {
       const resolved = resolveUserRole(email, baseRole, customRoleLevels);
 
       const isExemptRole = resolved === "founder" || resolved === "CEO" || resolved === "COO";
-      const promotedDate = user.tutorPromotedAt ? new Date(user.tutorPromotedAt) : null;
-      const isNewlyPromoted = promotedDate && promotedDate >= cutoffDate;
 
-      if (isExemptRole || !isNewlyPromoted) {
+      if (isExemptRole) {
         exempt++;
       } else {
         required++;
@@ -366,7 +362,6 @@ export default function AdminUserManager() {
 
   const filteredUsers = useMemo(() => {
     const normalizedSearch = searchQuery.trim().toLowerCase();
-    const cutoffDate = new Date("2026-05-26T00:00:00.000Z");
 
     return users
       .filter((user) => {
@@ -386,17 +381,15 @@ export default function AdminUserManager() {
         const customRoleLevels = user.customRole ? [user.customRole] : [];
         const resolved = resolveUserRole(email, baseRole, customRoleLevels);
         const isExemptRole = resolved === "founder" || resolved === "CEO" || resolved === "COO";
-        const promotedDate = user.tutorPromotedAt ? new Date(user.tutorPromotedAt) : null;
-        const isNewlyPromoted = promotedDate && promotedDate >= cutoffDate;
 
         if (onboardingFilter === "completed") {
           return isUserExec && applicationsByUserId.has(user.id);
         }
         if (onboardingFilter === "pending") {
-          return isUserExec && !isExemptRole && isNewlyPromoted && !applicationsByUserId.has(user.id);
+          return isUserExec && !isExemptRole && !applicationsByUserId.has(user.id);
         }
         if (onboardingFilter === "exempt") {
-          return isUserExec && (isExemptRole || !isNewlyPromoted);
+          return isUserExec && isExemptRole;
         }
         return true;
       })
@@ -1230,7 +1223,7 @@ export default function AdminUserManager() {
           <option value="all">All Onboarding Statuses</option>
           <option value="completed">Onboarded & Verified</option>
           <option value="pending">Pending Onboarding</option>
-          <option value="exempt">Grandfathered / Exempt</option>
+          <option value="exempt">Exempt (Chief Execs)</option>
         </select>
       </div>
 
@@ -1249,7 +1242,7 @@ export default function AdminUserManager() {
           <p className="text-xl font-bold text-amber-500">{onboardingStats.pending}</p>
         </div>
         <div className="space-y-1">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">Grandfathered / Exempt</p>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">Exempt (Chief Execs)</p>
           <p className="text-xl font-bold text-[var(--foreground)]">{onboardingStats.exempt}</p>
         </div>
       </div>
@@ -1304,21 +1297,11 @@ export default function AdminUserManager() {
                     const customRoleLevels = user.customRole ? [user.customRole] : [];
                     const resolved = resolveUserRole(email, baseRole, customRoleLevels);
                     const isExemptRole = resolved === "founder" || resolved === "CEO" || resolved === "COO";
-                    const cutoffDate = new Date("2026-05-26T00:00:00.000Z");
-                    const promotedDate = user.tutorPromotedAt ? new Date(user.tutorPromotedAt) : null;
-                    const isNewlyPromoted = promotedDate && promotedDate >= cutoffDate;
 
                     if (isExemptRole) {
                       return (
                         <span className="rounded bg-blue-500/10 border border-blue-500/20 px-1.5 py-0.5 text-[10px] font-medium text-blue-400">
                           Exempt (Chief Exec/Founder)
-                        </span>
-                      );
-                    }
-                    if (!isNewlyPromoted) {
-                      return (
-                        <span className="rounded bg-zinc-500/10 border border-zinc-500/20 px-1.5 py-0.5 text-[10px] font-medium text-[var(--muted)]">
-                          Grandfathered
                         </span>
                       );
                     }

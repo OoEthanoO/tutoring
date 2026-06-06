@@ -131,11 +131,8 @@ export default function DashboardMenus() {
     }
 
     const isExempt = role === "founder" || role === "CEO" || role === "COO";
-    const cutoffDate = new Date("2026-05-26T00:00:00.000Z");
-    const promotedDate = currentUser.tutor_promoted_at ? new Date(currentUser.tutor_promoted_at) : null;
-    const isNewlyPromoted = promotedDate && promotedDate >= cutoffDate;
 
-    if (isExecutive(role) && !isExempt && isNewlyPromoted) {
+    if (isExecutive(role) && !isExempt) {
       const checkOnboarding = async () => {
         try {
           const res = await fetch("/api/tutor-application/status");
