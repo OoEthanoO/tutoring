@@ -525,7 +525,7 @@ export async function POST(request: NextRequest) {
     | { action?: string; skipEmails?: string[] }
     | null;
 
-  if (body?.action && body.action !== "notify_discord_unlinked") {
+  if (body?.action && body.action !== "notify_discord_unlinked" && body.action !== "notify_discord_transition") {
     return NextResponse.json({ error: "Invalid action." }, { status: 400 });
   }
 
@@ -546,7 +546,7 @@ export async function POST(request: NextRequest) {
 
   const { data: users, error: listError } = await adminClient
     .from("app_users")
-    .select("id, email, full_name, discord_user_id")
+    .select("id, email, full_name, role, discord_user_id")
     .not("email_verified_at", "is", null);
 
   if (listError || !users) {
@@ -556,6 +556,71 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  if (body?.action === "notify_discord_transition") {
+    const studentUsers = users.filter((item) => {
+      const email = normalizeEmail(String(item.email ?? ""));
+      const role = resolveUserRole(email, item.role ?? null);
+      return Boolean(email) && role === "student";
+    });
+
+    const skippedUsers = studentUsers.filter((item) =>
+      skipEmailSet.has(normalizeEmail(String(item.email ?? "")))
+    );
+    const targets = studentUsers.filter(
+      (item) => !skipEmailSet.has(normalizeEmail(String(item.email ?? "")))
+    );
+
+    const subject = "Important Update: Classes are moving to Discord!";
+    const failed: Array<{ email: string; error: string }> = [];
+    let sentCount = 0;
+
+    for (const [index, target] of targets.entries()) {
+      const email = normalizeEmail(String(target.email ?? ""));
+      if (!email) continue;
+
+      const recipientName = escapeHtml((target.full_name ?? "").trim() || "there");
+      const emailResult = await sendEmail(
+        email,
+        subject,
+        `<p>Hi ${recipientName},</p>
+<p>We have an important update regarding how classes will be hosted! Going forward, our classes will be transitioning from Zoom to Discord.</p>
+<p><strong>How it works:</strong></p>
+<ul>
+  <li>You will need to join our Discord server and connect your Discord account to your YanLearn profile.</li>
+  <li>Notifications and links to voice channels for your classes will be sent directly within our Discord server.</li>
+</ul>
+<p><em>Note: Courses taught by our lead tutor, Yan Xu, will continue to use Schoolhouse, which relies on Zoom.</em></p>
+<p>Please let us know if you have any questions!</p>
+<p>Thanks,<br/>The YanLearn Team</p>`
+      );
+
+      if (!emailResult.ok) {
+        failed.push({
+          email,
+          error: emailResult.error ?? "Unknown email failure.",
+        });
+      } else {
+        sentCount += 1;
+      }
+
+      if (index < targets.length - 1) {
+        await sleep(150);
+      }
+    }
+
+    return NextResponse.json({
+      targetCount: targets.length,
+      sentCount,
+      failedCount: failed.length,
+      skippedCount: skippedUsers.length,
+      skippedEmails: skippedUsers
+        .map((item) => normalizeEmail(String(item.email ?? "")))
+        .filter(Boolean),
+      failed,
+    });
+  }
+
+  // Handle notify_discord_unlinked
   const unlinkedUsers = users.filter((item) => {
     const email = normalizeEmail(String(item.email ?? ""));
     const discordUserId = (item.discord_user_id ?? "").trim();

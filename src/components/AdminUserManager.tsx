@@ -78,6 +78,8 @@ export default function AdminUserManager() {
   const [isSavingMaintenance, setIsSavingMaintenance] = useState(false);
   const [isSendingDiscordReminder, setIsSendingDiscordReminder] =
     useState(false);
+  const [isSendingDiscordTransition, setIsSendingDiscordTransition] =
+    useState(false);
   const [isFixingClasses, setIsFixingClasses] = useState(false);
   const [isSyncingNames, setIsSyncingNames] = useState(false);
   const [discordReminderSkipList, setDiscordReminderSkipList] = useState("");
@@ -947,6 +949,67 @@ export default function AdminUserManager() {
     setIsSendingDiscordReminder(false);
   };
 
+  const notifyDiscordTransition = async () => {
+    const skipEmails = Array.from(
+      new Set(
+        discordReminderSkipList
+          .split(/[\s,;]+/)
+          .map((value) => value.trim().toLowerCase())
+          .filter(Boolean)
+      )
+    );
+    const confirmed = window.confirm(
+      skipEmails.length > 0
+        ? `Send the Discord transition email to EVERY verified student account? ${skipEmails.length} email(s) in the skip list will be excluded.`
+        : "Send the Discord transition email to EVERY verified student account?"
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setIsSendingDiscordTransition(true);
+    setStatus({ type: "idle", message: "" });
+
+    const response = await fetch("/api/admin/users", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "notify_discord_transition",
+        skipEmails,
+      }),
+    });
+
+    if (!response.ok) {
+      const payload = (await response.json().catch(() => null)) as
+        | { error?: string }
+        | null;
+      setStatus({
+        type: "error",
+        message: payload?.error ?? "Could not send Discord transition emails.",
+      });
+      setIsSendingDiscordTransition(false);
+      return;
+    }
+
+    const data = (await response.json()) as {
+      targetCount: number;
+      sentCount: number;
+      failedCount: number;
+      skippedCount: number;
+    };
+    const skipSummary =
+      data.skippedCount > 0 ? ` (${data.skippedCount} skipped)` : "";
+
+    setStatus({
+      type: data.failedCount > 0 ? "error" : "success",
+      message:
+        data.failedCount > 0
+          ? `Sent ${data.sentCount} of ${data.targetCount} Discord transition emails (${data.failedCount} failed)${skipSummary}.`
+          : `Sent ${data.sentCount} Discord transition emails${skipSummary}.`,
+    });
+    setIsSendingDiscordTransition(false);
+  };
+
   const fixClassNumbering = async () => {
     const confirmed = window.confirm(
       "Re-number all classes sequentially across all courses?"
@@ -1073,12 +1136,22 @@ export default function AdminUserManager() {
           <button
             type="button"
             onClick={notifyDiscordUnlinkedUsers}
-            disabled={isSendingDiscordReminder}
+            disabled={isSendingDiscordReminder || isSendingDiscordTransition}
             className="rounded-full border border-[var(--foreground)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-70"
           >
             {isSendingDiscordReminder
               ? "Sending emails..."
               : "Notify users to connect Discord"}
+          </button>
+          <button
+            type="button"
+            onClick={notifyDiscordTransition}
+            disabled={isSendingDiscordReminder || isSendingDiscordTransition}
+            className="rounded-full border border-[var(--foreground)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            {isSendingDiscordTransition
+              ? "Sending emails..."
+              : "Notify students of Discord transition"}
           </button>
           <button
             type="button"
