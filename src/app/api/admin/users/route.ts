@@ -586,7 +586,7 @@ export async function POST(request: NextRequest) {
 <p>We have an important update regarding how classes will be hosted! Going forward, our classes will be transitioning from Zoom to Discord.</p>
 <p><strong>How it works:</strong></p>
 <ul>
-  <li>You will need to join our Discord server and connect your Discord account to your YanLearn profile.</li>
+  <li>You will need to connect your Discord account to your YanLearn profile and join our Discord server.</li>
   <li>Notifications and links to voice channels for your classes will be sent directly within our Discord server.</li>
 </ul>
 <p><em>Note: Courses taught by our lead tutor, Yan Xu, will continue to use Schoolhouse, which relies on Zoom.</em></p>
