@@ -40,7 +40,6 @@ export async function GET(request: NextRequest) {
     .select(
       "id, status, created_at, student_id, course_id, student_name, student_email, course:courses(id, title, created_by, created_by_name, created_by_email, max_students, course_enrollments(count))"
     )
-    .in("status", ["pending", "rejected"])
     .order("created_at", { ascending: false });
 
   if (listError || !requests) {

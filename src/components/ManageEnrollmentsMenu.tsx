@@ -267,15 +267,22 @@ export default function ManageEnrollmentsMenu() {
                     This request was previously rejected. You can still approve it.
                   </div>
                 )}
-                <button
-                  type="button"
-                  disabled={isPending}
-                  onClick={() => updateRequest(request.id, "approve")}
-                  className="rounded-full border border-emerald-300 px-4 py-2 text-xs font-semibold text-emerald-600 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-70 dark:border-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
-                >
-                  {isPending ? "Updating..." : "Approve"}
-                </button>
-                {request.status !== "rejected" && (
+                {request.status === "approved" && (
+                  <div className="w-full pb-2 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                    This request was approved.
+                  </div>
+                )}
+                {request.status !== "approved" && (
+                  <button
+                    type="button"
+                    disabled={isPending}
+                    onClick={() => updateRequest(request.id, "approve")}
+                    className="rounded-full border border-emerald-300 px-4 py-2 text-xs font-semibold text-emerald-600 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-70 dark:border-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
+                  >
+                    {isPending ? "Updating..." : "Approve"}
+                  </button>
+                )}
+                {request.status !== "rejected" && request.status !== "approved" && (
                   <button
                     type="button"
                     disabled={isPending}

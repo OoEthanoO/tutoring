@@ -17,6 +17,7 @@ export default function LoginPageClient({ maintenanceEnabled = false }: { mainte
   const [resendSending, setResendSending] = useState(false);
   const [resendSent, setResendSent] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [signupConfirmStep, setSignupConfirmStep] = useState<0 | 1 | 2>(0);
   const router = useRouter();
 
   useEffect(() => {
@@ -25,6 +26,41 @@ export default function LoginPageClient({ maintenanceEnabled = false }: { mainte
     setHasUnsavedData("login-page", hasUnsavedAuth);
     return () => setHasUnsavedData("login-page", false);
   }, [email, password, fullName]);
+
+  const performSignup = async () => {
+    setError("");
+    setStatus("");
+    setIsSubmitting(true);
+    try {
+      const response = await fetch("/api/auth/signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email,
+          password,
+          fullName: fullName.trim(),
+        }),
+      });
+
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as
+          | { error?: string }
+          | null;
+        throw new Error(payload?.error ?? "Unable to sign up.");
+      }
+
+      setStatus(
+        "Check your inbox to confirm your email. You can sign in after verification. There might be a delay between clicking create account and the verification email getting sent."
+      );
+      setSignupConfirmStep(0);
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Something went wrong.";
+      setError(message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -54,26 +90,9 @@ export default function LoginPageClient({ maintenanceEnabled = false }: { mainte
         if (!fullName.trim()) {
           throw new Error("Full name is required for sign up.");
         }
-        const response = await fetch("/api/auth/signup", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            email,
-            password,
-            fullName: fullName.trim(),
-          }),
-        });
-
-        if (!response.ok) {
-          const payload = (await response.json().catch(() => null)) as
-            | { error?: string }
-            | null;
-          throw new Error(payload?.error ?? "Unable to sign up.");
-        }
-
-        setStatus(
-          "Check your inbox to confirm your email. You can sign in after verification. There might be a delay between clicking create account and the verification email getting sent."
-        );
+        setSignupConfirmStep(1);
+        setIsSubmitting(false);
+        return;
       } else {
         const response = await fetch("/api/auth/login", {
           method: "POST",
@@ -113,6 +132,41 @@ export default function LoginPageClient({ maintenanceEnabled = false }: { mainte
 
   return (
     <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
+      {signupConfirmStep > 0 && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-xl">
+            <h2 className="text-lg font-semibold mb-4">Confirm Details</h2>
+            {signupConfirmStep === 1 ? (
+              <p className="mb-6 text-sm">Are you using the child&apos;s full name?</p>
+            ) : (
+              <p className="mb-6 text-sm">Are you using the child&apos;s email address?</p>
+            )}
+            <div className="flex gap-3 justify-end">
+              <button
+                type="button"
+                onClick={() => setSignupConfirmStep(0)}
+                className="rounded-full border border-[var(--border)] px-4 py-2 text-sm font-semibold transition hover:bg-[var(--surface-muted)]"
+              >
+                No
+              </button>
+              <button
+                type="button"
+                disabled={isSubmitting}
+                onClick={() => {
+                  if (signupConfirmStep === 1) {
+                    setSignupConfirmStep(2);
+                  } else {
+                    performSignup();
+                  }
+                }}
+                className="rounded-full bg-[var(--foreground)] text-[var(--background)] px-4 py-2 text-sm font-semibold transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                {isSubmitting ? "Working..." : "Yes"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="mx-auto flex w-full max-w-md flex-col gap-6 px-6 py-10">
         <h1 className="text-xl font-semibold">Sign in</h1>
 
@@ -121,7 +175,10 @@ export default function LoginPageClient({ maintenanceEnabled = false }: { mainte
           <p className="mt-1">
             {mode === "signup" ? (
               <>
-                Please use a <strong>personal email</strong> (e.g., Gmail, Outlook, iCloud) instead of a school email. School filters often block our verification and automated notification emails.
+                Please use <strong>the child&apos;s personal email</strong> (e.g., Gmail, Outlook, iCloud) instead of a school email. School filters often block our verification and automated notification emails.
+                <br />
+                <br />
+                Please also make sure to use <strong>the child&apos;s full name</strong>.
                 <br />
                 <br />
               </>
