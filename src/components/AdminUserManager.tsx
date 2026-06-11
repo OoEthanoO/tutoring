@@ -9,6 +9,7 @@ import {
 } from "@/lib/authClient";
 import { isExecutive, isFounder, resolveUserRole } from "@/lib/roles";
 import AdminBannedEmails from "@/components/AdminBannedEmails";
+import TutorApplicationFormModal from "@/components/TutorApplicationFormModal";
 
 type AdminUser = {
   id: string;
@@ -108,6 +109,7 @@ export default function AdminUserManager() {
   const [tutorApplications, setTutorApplications] = useState<any[]>([]);
   const [selectedTutorApp, setSelectedTutorApp] = useState<any>(null);
   const [onboardingFilter, setOnboardingFilter] = useState<"all" | "pending" | "completed" | "exempt">("all");
+  const [isPreviewFormOpen, setIsPreviewFormOpen] = useState(false);
 
   const toLocalDateTimeInput = (value: string) => {
     const parsed = new Date(value);
@@ -1247,6 +1249,16 @@ export default function AdminUserManager() {
         </div>
       </div>
 
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={() => setIsPreviewFormOpen(true)}
+          className="rounded-full border border-[var(--foreground)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)]"
+        >
+          Preview Executive Onboarding Form
+        </button>
+      </div>
+
       {status.type !== "idle" ? (
         <div
           className={
@@ -1916,6 +1928,16 @@ export default function AdminUserManager() {
           </div>
         </div>
       )}
+
+      <TutorApplicationFormModal
+        isOpen={isPreviewFormOpen}
+        onClose={() => setIsPreviewFormOpen(false)}
+        onSubmitSuccess={() => {
+          setIsPreviewFormOpen(false);
+        }}
+        initialEmail=""
+        initialFullName=""
+      />
     </>
   );
 }
