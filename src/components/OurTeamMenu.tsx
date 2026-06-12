@@ -193,7 +193,7 @@ export default function OurTeamMenu() {
           </p>
           <p className="font-semibold">Students Helping Students</p>
           <p>
-            We believe every student who needs academic support should be able to access it without financial pressure. On our platform, students help students — and together, they give back to the community. All proceeds are donated to SickKids Hospital through our "Coding for SickKids" fundraising campaign, turning academic value into real-world impact.
+            We believe every student who needs academic support should be able to access it without financial pressure. On our platform, students help students — and together, they give back to the community. All proceeds are donated to SickKids Hospital through our "Coding for SickKids" fundraising campaign, turning academic value into tangible support for sick kids' healthcare in our community.
           </p>
         </div>
       </section>
@@ -208,8 +208,8 @@ export default function OurTeamMenu() {
                 <h3 className="text-sm font-semibold uppercase tracking-wide text-[var(--foreground)]">{roleLabels.founder}</h3>
                 <div className="flex flex-wrap gap-2">
                   {groupedMembers.founder.map((member) => (
-                      <div key={member.id} className="group inline-flex items-center rounded-full border border-[var(--border)] bg-[var(--background-secondary)] px-3 py-1 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-[var(--background-tertiary)] hover:shadow-md">
-                        <p className="whitespace-nowrap text-sm font-medium text-[var(--foreground)]">{member.name}</p>
+                    <div key={member.id} className="group inline-flex items-center rounded-full border border-[var(--border)] bg-[var(--background-secondary)] px-3 py-1 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-[var(--background-tertiary)] hover:shadow-md">
+                      <p className="whitespace-nowrap text-sm font-medium text-[var(--foreground)]">{member.name}</p>
                     </div>
                   ))}
                 </div>
@@ -319,11 +319,11 @@ export default function OurTeamMenu() {
               className="group cursor-zoom-in overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--background-secondary)] shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-lg"
             >
               <div className="relative">
-              <img
-                src={`/images/${image}`}
-                alt={`SickKids moment ${idx + 1}`}
-                className="h-40 w-full object-cover transition-transform duration-300 group-hover:scale-[1.04] group-hover:brightness-95"
-              />
+                <img
+                  src={`/images/${image}`}
+                  alt={`SickKids moment ${idx + 1}`}
+                  className="h-40 w-full object-cover transition-transform duration-300 group-hover:scale-[1.04] group-hover:brightness-95"
+                />
                 <div className="pointer-events-none absolute inset-0 flex items-end justify-end bg-gradient-to-t from-black/30 via-transparent to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100">
                   <span className="m-2 rounded-full bg-white/90 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-black shadow-sm">
                     Click to enlarge
