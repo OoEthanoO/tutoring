@@ -7,6 +7,7 @@ import { canManageCourses, isExecutive, isFounder, isHighRankingChiefExecutive, 
 import TutorApplicationFormModal from "./TutorApplicationFormModal";
 import WithdrawHoursMenu from "@/components/WithdrawHoursMenu";
 import AdminUserManager from "@/components/AdminUserManager";
+import EmailHistoryMenu from "@/components/EmailHistoryMenu";
 import CourseCreator from "@/components/CourseCreator";
 import CoursesMenu from "@/components/CoursesMenu";
 import EnrolledCoursesMenu from "@/components/EnrolledCoursesMenu";
@@ -38,6 +39,7 @@ type MenuKey =
   | "manage_courses"
   | "manage_enrollments"
   | "founder_tools"
+  | "emails"
   | "withdrawals"
   | "help"
   | "events"
@@ -351,6 +353,7 @@ export default function DashboardMenus() {
     }
 
     if (role && isHighRankingChiefExecutive(role)) {
+      items.push({ key: "emails", label: "Emails" });
       items.push({ key: "withdrawals", label: "Withdraw hours" });
       items.push({ key: "site_settings", label: "Site Settings" });
     }
@@ -517,6 +520,7 @@ export default function DashboardMenus() {
       {activeMenu === "manage_courses" ? <ManageMyCoursesMenu /> : null}
       {activeMenu === "manage_enrollments" ? <ManageEnrollmentsMenu /> : null}
       {activeMenu === "founder_tools" ? <AdminUserManager /> : null}
+      {activeMenu === "emails" ? <EmailHistoryMenu /> : null}
       {activeMenu === "withdrawals" ? <WithdrawHoursMenu /> : null}
       {activeMenu === "help" ? <HelpMenu /> : null}
       {activeMenu === "events" ? <EventsMenu /> : null}
