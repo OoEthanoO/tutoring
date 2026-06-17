@@ -46,7 +46,7 @@
   },
   "allowScripts": {
     "sharp@0.34.5": true,
-    "supabase@2.95.3": true,
-    "unrs-resolver@1.11.1": true
+    "unrs-resolver@1.11.1": true,
+    "supabase@2.107.0": true
   }
 }
