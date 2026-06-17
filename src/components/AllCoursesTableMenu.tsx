@@ -177,13 +177,23 @@ const formatScheduleCell = (classes: CourseClass[] | undefined) => {
   return schedule;
 };
 
+// The first number appearing in a course title is treated as its grade number.
+// Returns null when the title has no number.
+const getCourseGradeNumber = (title: string | null | undefined): number | null => {
+  if (!title) {
+    return null;
+  }
+  const match = title.match(/\d+/);
+  return match ? Number.parseInt(match[0], 10) : null;
+};
+
 export default function AllCoursesTableMenu() {
   const [courses, setCourses] = useState<Course[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const { showNotification } = useNotification();
   const visibleCourses = useMemo(() => {
     const now = Date.now();
-    return courses.filter((course) => {
+    const filtered = courses.filter((course) => {
       const isLegacyCompletedCourse =
         Boolean(course.is_completed) ||
         Boolean(course.completed_start_date && course.completed_end_date);
@@ -196,6 +206,25 @@ export default function AllCoursesTableMenu() {
         const startsAt = new Date(courseClass.starts_at).getTime();
         return Number.isFinite(startsAt) && startsAt <= now;
       });
+    });
+
+    // Courses with a grade number (first number in the title) come first,
+    // ordered by grade ascending. Courses without one keep their existing
+    // relative order below them (Array.sort is stable).
+    return filtered.sort((a, b) => {
+      const gradeA = getCourseGradeNumber(a.title);
+      const gradeB = getCourseGradeNumber(b.title);
+
+      if (gradeA !== null && gradeB !== null) {
+        return gradeA - gradeB;
+      }
+      if (gradeA !== null) {
+        return -1;
+      }
+      if (gradeB !== null) {
+        return 1;
+      }
+      return 0;
     });
   }, [courses]);
 
@@ -251,7 +280,7 @@ export default function AllCoursesTableMenu() {
             <th className="border border-[var(--border)] px-2 py-1 text-center font-semibold leading-tight">Course</th>
             <th className="border border-[var(--border)] px-2 py-1 text-center font-semibold leading-tight">Tutor</th>
             <th className="border border-[var(--border)] px-2 py-1 text-center font-semibold leading-tight">Classes</th>
-            <th className="border border-[var(--border)] px-2 py-1 text-center font-semibold leading-tight">Fee</th>
+            <th className="border border-[var(--border)] px-2 py-1 text-center font-semibold leading-tight">Donation</th>
             <th className="border border-[var(--border)] px-2 py-1 text-center font-semibold leading-tight">Period</th>
             <th className="border border-[var(--border)] px-1 py-1 text-center font-semibold leading-tight whitespace-nowrap">Mon</th>
             <th className="border border-[var(--border)] px-1 py-1 text-center font-semibold leading-tight whitespace-nowrap">Tue</th>
