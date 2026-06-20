@@ -35,6 +35,8 @@ type StatusState = {
   message: string;
 };
 
+type DiscordEmailRecipientMode = "blacklist" | "whitelist";
+
 type FeedbackEntry = {
   id: string;
   userId: string | null;
@@ -83,7 +85,9 @@ export default function AdminUserManager() {
     useState(false);
   const [isFixingClasses, setIsFixingClasses] = useState(false);
   const [isSyncingNames, setIsSyncingNames] = useState(false);
-  const [discordReminderSkipList, setDiscordReminderSkipList] = useState("");
+  const [discordReminderRecipientMode, setDiscordReminderRecipientMode] =
+    useState<DiscordEmailRecipientMode>("blacklist");
+  const [discordReminderEmailList, setDiscordReminderEmailList] = useState("");
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [impersonatedUserId, setImpersonatedUserId] = useState<string | null>(
     null
@@ -883,20 +887,35 @@ export default function AdminUserManager() {
     router.refresh();
   };
 
-  const notifyDiscordUnlinkedUsers = async () => {
-    const skipEmails = Array.from(
+  const parseDiscordReminderEmails = () =>
+    Array.from(
       new Set(
-        discordReminderSkipList
+        discordReminderEmailList
           .split(/[\s,;]+/)
           .map((value) => value.trim().toLowerCase())
           .filter(Boolean)
       )
     );
-    const confirmed = window.confirm(
-      skipEmails.length > 0
-        ? `Send an email to every account without a connected Discord account? ${skipEmails.length} email(s) in the skip list will be excluded.`
-        : "Send an email to every account without a connected Discord account?"
-    );
+
+  const notifyDiscordUnlinkedUsers = async () => {
+    const emails = parseDiscordReminderEmails();
+    if (discordReminderRecipientMode === "whitelist" && emails.length === 0) {
+      setStatus({
+        type: "error",
+        message: "Add at least one email before sending in whitelist mode.",
+      });
+      return;
+    }
+
+    let confirmationMessage =
+      "Send an email to every account without a connected Discord account?";
+    if (discordReminderRecipientMode === "whitelist") {
+      confirmationMessage = `Send an email only to listed accounts without a connected Discord account? ${emails.length} email(s) are whitelisted.`;
+    } else if (emails.length > 0) {
+      confirmationMessage = `Send an email to every account without a connected Discord account? ${emails.length} email(s) in the skip list will be excluded.`;
+    }
+
+    const confirmed = window.confirm(confirmationMessage);
     if (!confirmed) {
       return;
     }
@@ -909,7 +928,8 @@ export default function AdminUserManager() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         action: "notify_discord_unlinked",
-        skipEmails,
+        recipientMode: discordReminderRecipientMode,
+        emails,
       }),
     });
 
@@ -930,9 +950,12 @@ export default function AdminUserManager() {
       sentCount: number;
       failedCount: number;
       skippedCount: number;
+      recipientMode?: DiscordEmailRecipientMode;
     };
+    const skippedLabel =
+      data.recipientMode === "whitelist" ? "not whitelisted" : "skipped";
     const skipSummary =
-      data.skippedCount > 0 ? ` (${data.skippedCount} skipped)` : "";
+      data.skippedCount > 0 ? ` (${data.skippedCount} ${skippedLabel})` : "";
 
     setStatus({
       type: data.failedCount > 0 ? "error" : "success",
@@ -945,19 +968,24 @@ export default function AdminUserManager() {
   };
 
   const notifyDiscordTransition = async () => {
-    const skipEmails = Array.from(
-      new Set(
-        discordReminderSkipList
-          .split(/[\s,;]+/)
-          .map((value) => value.trim().toLowerCase())
-          .filter(Boolean)
-      )
-    );
-    const confirmed = window.confirm(
-      skipEmails.length > 0
-        ? `Send the Discord transition email to EVERY verified student account? ${skipEmails.length} email(s) in the skip list will be excluded.`
-        : "Send the Discord transition email to EVERY verified student account?"
-    );
+    const emails = parseDiscordReminderEmails();
+    if (discordReminderRecipientMode === "whitelist" && emails.length === 0) {
+      setStatus({
+        type: "error",
+        message: "Add at least one email before sending in whitelist mode.",
+      });
+      return;
+    }
+
+    let confirmationMessage =
+      "Send the Discord transition email to EVERY verified student account?";
+    if (discordReminderRecipientMode === "whitelist") {
+      confirmationMessage = `Send the Discord transition email only to listed verified student accounts? ${emails.length} email(s) are whitelisted.`;
+    } else if (emails.length > 0) {
+      confirmationMessage = `Send the Discord transition email to EVERY verified student account? ${emails.length} email(s) in the skip list will be excluded.`;
+    }
+
+    const confirmed = window.confirm(confirmationMessage);
     if (!confirmed) {
       return;
     }
@@ -970,7 +998,8 @@ export default function AdminUserManager() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         action: "notify_discord_transition",
-        skipEmails,
+        recipientMode: discordReminderRecipientMode,
+        emails,
       }),
     });
 
@@ -991,9 +1020,12 @@ export default function AdminUserManager() {
       sentCount: number;
       failedCount: number;
       skippedCount: number;
+      recipientMode?: DiscordEmailRecipientMode;
     };
+    const skippedLabel =
+      data.recipientMode === "whitelist" ? "not whitelisted" : "skipped";
     const skipSummary =
-      data.skippedCount > 0 ? ` (${data.skippedCount} skipped)` : "";
+      data.skippedCount > 0 ? ` (${data.skippedCount} ${skippedLabel})` : "";
 
     setStatus({
       type: data.failedCount > 0 ? "error" : "success",
@@ -1165,17 +1197,47 @@ export default function AdminUserManager() {
             {isSyncingNames ? "Syncing names..." : "Sync profile names"}
           </button>
         </div>
-        <div className="space-y-1">
+        <div className="space-y-2">
+          <div className="space-y-1">
+            <p className="text-xs text-[var(--muted)]">
+              Discord notification recipient filter
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <label className="flex items-center gap-2 rounded-full border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--foreground)]">
+                <input
+                  type="radio"
+                  name="discord-recipient-mode"
+                  value="blacklist"
+                  checked={discordReminderRecipientMode === "blacklist"}
+                  onChange={() => setDiscordReminderRecipientMode("blacklist")}
+                />
+                Blacklist listed emails
+              </label>
+              <label className="flex items-center gap-2 rounded-full border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--foreground)]">
+                <input
+                  type="radio"
+                  name="discord-recipient-mode"
+                  value="whitelist"
+                  checked={discordReminderRecipientMode === "whitelist"}
+                  onChange={() => setDiscordReminderRecipientMode("whitelist")}
+                />
+                Whitelist listed emails
+              </label>
+            </div>
+          </div>
           <label
-            htmlFor="discord-reminder-skip-list"
+            htmlFor="discord-reminder-email-list"
             className="text-xs text-[var(--muted)]"
           >
-            Skip emails for Discord reminder (comma, space, semicolon, or new line separated)
+            {discordReminderRecipientMode === "whitelist"
+              ? "Only send Discord emails to these addresses"
+              : "Do not send Discord emails to these addresses"}{" "}
+            (comma, space, semicolon, or new line separated)
           </label>
           <textarea
-            id="discord-reminder-skip-list"
-            value={discordReminderSkipList}
-            onChange={(event) => setDiscordReminderSkipList(event.target.value)}
+            id="discord-reminder-email-list"
+            value={discordReminderEmailList}
+            onChange={(event) => setDiscordReminderEmailList(event.target.value)}
             rows={2}
             placeholder="example1@email.com, example2@email.com"
             className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-xs text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"

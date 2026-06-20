@@ -20,6 +20,44 @@ const escapeHtml = (value: string) =>
 
 const normalizeEmail = (value: string) => value.trim().toLowerCase();
 
+type DiscordEmailRecipientMode = "blacklist" | "whitelist";
+
+type DiscordEmailCandidate = {
+  email?: string | null;
+};
+
+const normalizeEmailList = (items?: string[]) =>
+  Array.isArray(items)
+    ? Array.from(
+      new Set(
+        items
+          .map((item) => normalizeEmail(String(item ?? "")))
+          .filter(Boolean)
+      )
+    )
+    : [];
+
+const filterDiscordEmailTargets = <T extends DiscordEmailCandidate>(
+  candidates: T[],
+  recipientMode: DiscordEmailRecipientMode,
+  emailSet: Set<string>
+) => {
+  const isListed = (item: T) =>
+    emailSet.has(normalizeEmail(String(item.email ?? "")));
+
+  if (recipientMode === "whitelist") {
+    return {
+      targets: candidates.filter(isListed),
+      skippedUsers: candidates.filter((item) => !isListed(item)),
+    };
+  }
+
+  return {
+    targets: candidates.filter((item) => !isListed(item)),
+    skippedUsers: candidates.filter(isListed),
+  };
+};
+
 const sleep = (ms: number) =>
   new Promise<void>((resolve) => {
     setTimeout(resolve, ms);
@@ -522,23 +560,32 @@ export async function POST(request: NextRequest) {
   }
 
   const body = (await request.json().catch(() => null)) as
-    | { action?: string; skipEmails?: string[] }
+    | {
+      action?: string;
+      recipientMode?: string;
+      emails?: string[];
+      skipEmails?: string[];
+    }
     | null;
 
   if (body?.action && body.action !== "notify_discord_unlinked" && body.action !== "notify_discord_transition") {
     return NextResponse.json({ error: "Invalid action." }, { status: 400 });
   }
 
-  const skipEmails = Array.isArray(body?.skipEmails)
-    ? Array.from(
-      new Set(
-        body!.skipEmails
-          .map((item) => normalizeEmail(String(item ?? "")))
-          .filter(Boolean)
-      )
-    )
-    : [];
-  const skipEmailSet = new Set(skipEmails);
+  if (
+    body?.recipientMode &&
+    body.recipientMode !== "blacklist" &&
+    body.recipientMode !== "whitelist"
+  ) {
+    return NextResponse.json({ error: "Invalid recipient mode." }, { status: 400 });
+  }
+
+  const recipientMode: DiscordEmailRecipientMode =
+    body?.recipientMode === "whitelist" ? "whitelist" : "blacklist";
+  const recipientEmails = normalizeEmailList(
+    Array.isArray(body?.emails) ? body.emails : body?.skipEmails
+  );
+  const recipientEmailSet = new Set(recipientEmails);
 
   const adminClient = createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false },
@@ -563,11 +610,10 @@ export async function POST(request: NextRequest) {
       return Boolean(email) && role === "student";
     });
 
-    const skippedUsers = studentUsers.filter((item) =>
-      skipEmailSet.has(normalizeEmail(String(item.email ?? "")))
-    );
-    const targets = studentUsers.filter(
-      (item) => !skipEmailSet.has(normalizeEmail(String(item.email ?? "")))
+    const { targets, skippedUsers } = filterDiscordEmailTargets(
+      studentUsers,
+      recipientMode,
+      recipientEmailSet
     );
 
     const subject = "Important Update: Classes are moving to Discord!";
@@ -612,6 +658,7 @@ export async function POST(request: NextRequest) {
       targetCount: targets.length,
       sentCount,
       failedCount: failed.length,
+      recipientMode,
       skippedCount: skippedUsers.length,
       skippedEmails: skippedUsers
         .map((item) => normalizeEmail(String(item.email ?? "")))
@@ -626,11 +673,10 @@ export async function POST(request: NextRequest) {
     const discordUserId = (item.discord_user_id ?? "").trim();
     return Boolean(email) && !discordUserId;
   });
-  const skippedUsers = unlinkedUsers.filter((item) =>
-    skipEmailSet.has(normalizeEmail(String(item.email ?? "")))
-  );
-  const targets = unlinkedUsers.filter(
-    (item) => !skipEmailSet.has(normalizeEmail(String(item.email ?? "")))
+  const { targets, skippedUsers } = filterDiscordEmailTargets(
+    unlinkedUsers,
+    recipientMode,
+    recipientEmailSet
   );
 
   const subject = "YanLearn Discord server is now live";
@@ -649,6 +695,7 @@ export async function POST(request: NextRequest) {
       subject,
       `<p>Hi ${recipientName},</p>
 <p>We have just launched the YanLearn Discord server.</p>
+<p><strong>Connecting Discord and joining the Discord server is crucial for lessons.</strong> Class reminders and voice channel links are sent through the Discord server, so please complete both steps before your next lesson.</p>
 <p>To join, please follow these steps:</p>
 <ol>
   <li>Sign in to your YanLearn account.</li>
@@ -680,6 +727,7 @@ export async function POST(request: NextRequest) {
     targetCount: targets.length,
     sentCount,
     failedCount: failed.length,
+    recipientMode,
     skippedCount: skippedUsers.length,
     skippedEmails: skippedUsers
       .map((item) => normalizeEmail(String(item.email ?? "")))
