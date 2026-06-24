@@ -430,6 +430,16 @@ const createDiscordGuildChannel = async (
     body: payload,
   });
 
+const updateDiscordChannel = async (
+  channelId: string,
+  payload: Record<string, unknown>
+) =>
+  requestDiscord<DiscordGuildChannel>({
+    method: "PATCH",
+    path: `/channels/${channelId}`,
+    body: payload,
+  });
+
 const deleteDiscordChannel = async (channelId: string) =>
   requestDiscord<void>({
     method: "DELETE",
@@ -1232,16 +1242,19 @@ export async function POST(request: NextRequest) {
       String(course.created_by_email ?? "").trim() ||
       (course.created_by ? tutorEmailById.get(course.created_by) ?? "" : "");
     const isFounder = resolveRoleByEmail(tutorEmail) === "founder";
+    const firstClassDate = firstClassDateByCourseId.get(classRow.course_id) ?? null;
+    const usesDiscordVoiceSystem = !isFounder && shouldUseDiscordVoiceSystem(firstClassDate);
+    const isTutorEarlyAccessReminder = reminderType === "fifteen_minutes" && usesDiscordVoiceSystem;
 
     const shouldSendCourseDiscordReminder =
       isCourseChannelReminder && discordReminderDeliveryEnabled;
     const shouldSendAnyEmail =
-      (isStandardReminder || isFollowUpReminder) && emailRemindersEnabled;
+      (isStandardReminder || isFollowUpReminder || isTutorEarlyAccessReminder) && emailRemindersEnabled;
     const shouldSendExecutiveTutorReminder =
       !isFollowUpReminder &&
       (isFounder
         ? reminderType !== "ten_minutes" && reminderType !== "five_minutes"
-        : reminderType !== "ten_minutes" && reminderType !== "fifteen_minutes") &&
+        : reminderType !== "ten_minutes" && (usesDiscordVoiceSystem || reminderType !== "fifteen_minutes")) &&
       discordReminderDeliveryEnabled &&
       executivesChannelId !== null;    const shouldSendFounderChannelReminder =
       !isFounder &&
@@ -1267,7 +1280,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    if (tutorEmail && (isStandardReminder || isFollowUpReminder)) {
+    if (tutorEmail && (isStandardReminder || isFollowUpReminder || isTutorEarlyAccessReminder)) {
       recipients.add(tutorEmail.toLowerCase());
     }
 
@@ -1347,10 +1360,97 @@ export async function POST(request: NextRequest) {
         ].join("\n");
       }
     } else {
-      // Check if this course should use the Discord live voice system
-      const firstClassDate = firstClassDateByCourseId.get(classRow.course_id) || null;
-      const usesDiscordVoiceSystem = shouldUseDiscordVoiceSystem(firstClassDate);
-      
+      let voiceChannelLinkForTutor = "";
+
+      if (isTutorEarlyAccessReminder) {
+        if (discordRemindersEnabled && !discordReminderSkippedReason && discordGuildId && botUserId) {
+          const tutorDiscordIdForChannel = course.created_by
+            ? tutorDiscordIdById.get(course.created_by) ?? ""
+            : "";
+          if (tutorDiscordIdForChannel) {
+            const liveCategoryId = await ensureLiveCategory();
+            if (liveCategoryId) {
+              const { data: existingLiveRow } = await adminClient
+                .from("discord_live_class_channels")
+                .select("id, discord_channel_id, deleted_at")
+                .eq("class_id", classRow.id)
+                .single();
+
+              let liveChannelId = "";
+              if (existingLiveRow && !existingLiveRow.deleted_at) {
+                liveChannelId = String(existingLiveRow.discord_channel_id ?? "").trim();
+              }
+
+              const existingChannel = liveChannelId
+                ? guildChannels.find((ch) => ch.id === liveChannelId)
+                : null;
+
+              if (!existingChannel) {
+                const permissionOverwrites = buildLiveVoicePermissionOverwrites({
+                  guildId: discordGuildId,
+                  botUserId,
+                  ceoRoleId,
+                  cooRoleId,
+                  tutorDiscordUserId: tutorDiscordIdForChannel,
+                  studentDiscordUserIds: [],
+                });
+                const createdVoiceChannel = await createDiscordGuildChannel(discordGuildId, {
+                  name: normalizeVoiceChannelName(courseTitleRaw, classRow.id),
+                  type: discordVoiceChannelType,
+                  parent_id: liveCategoryId,
+                  permission_overwrites: permissionOverwrites,
+                });
+                guildChannels.push(createdVoiceChannel);
+                liveChannelId = createdVoiceChannel.id;
+
+                const startsAtMs = new Date(classRow.starts_at).getTime();
+                const durationHoursRaw =
+                  typeof classRow.duration_hours === "number"
+                    ? classRow.duration_hours
+                    : Number.parseFloat(String(classRow.duration_hours || 1));
+                const durationHours = Number.isFinite(durationHoursRaw) ? durationHoursRaw : 1;
+                const endsAt = new Date(startsAtMs + durationHours * 60 * 60 * 1000);
+
+                if (existingLiveRow) {
+                  await adminClient
+                    .from("discord_live_class_channels")
+                    .update({
+                      discord_channel_id: liveChannelId,
+                      tutor_discord_user_id: tutorDiscordIdForChannel,
+                      starts_at: classRow.starts_at,
+                      ends_at: endsAt.toISOString(),
+                      deleted_at: null,
+                    })
+                    .eq("id", existingLiveRow.id);
+                } else {
+                  await adminClient.from("discord_live_class_channels").insert({
+                    class_id: classRow.id,
+                    course_id: classRow.course_id,
+                    discord_channel_id: liveChannelId,
+                    tutor_discord_user_id: tutorDiscordIdForChannel,
+                    starts_at: classRow.starts_at,
+                    ends_at: endsAt.toISOString(),
+                  });
+                }
+              }
+
+              if (liveChannelId) {
+                voiceChannelLinkForTutor = `https://discord.com/channels/${discordGuildId}/${liveChannelId}`;
+              }
+            }
+          }
+        }
+
+        subject = `Class reminder: starts in 15 minutes (${course.title})`;
+        html = `
+        <p>Your class starts in <strong>15 minutes</strong>. Please join the voice channel now to prepare for your students.</p>
+        <p><strong>Course:</strong> ${courseTitle}</p>
+        <p><strong>${isStandardClassTitle ? classTitle : `Class: ${classTitle}`}</strong></p>
+        <p><strong>Start time (${torontoTimeZone}):</strong> ${startLabel}</p>
+        ${voiceChannelLinkForTutor ? `<p><strong>Voice channel:</strong> <a href="${escapeHtml(voiceChannelLinkForTutor)}">${escapeHtml(voiceChannelLinkForTutor)}</a></p>` : ""}
+      `;
+      }
+
       if (isStandardReminder) {
         subject = `Class reminder: starts in ${reminderLabel} (${course.title})`;
         
@@ -1425,35 +1525,32 @@ export async function POST(request: NextRequest) {
       }
 
       if (reminderType === "five_minutes" && !isStandardReminder) {
-        // For Discord live system, create/find live voice channel and send only its link.
+        // For Discord live system, look up the voice channel created at the 15-minute mark.
+        // If the 15-minute cron was missed, fall back to creating it now.
         if (usesDiscordVoiceSystem) {
           let voiceChannelLink = "";
 
-          if (discordRemindersEnabled && !discordReminderSkippedReason && discordGuildId && botUserId) {
-            const tutorDiscordId = course.created_by
-              ? tutorDiscordIdById.get(course.created_by) ?? ""
-              : "";
+          if (discordRemindersEnabled && !discordReminderSkippedReason && discordGuildId) {
+            const { data: existingLiveRow } = await adminClient
+              .from("discord_live_class_channels")
+              .select("id, discord_channel_id, deleted_at")
+              .eq("class_id", classRow.id)
+              .single();
 
-            if (tutorDiscordId) {
-              const liveCategoryId = await ensureLiveCategory();
+            let liveChannelId = "";
+            let channelFoundInDb = false;
+            if (existingLiveRow && !existingLiveRow.deleted_at) {
+              liveChannelId = String(existingLiveRow.discord_channel_id ?? "").trim();
+              channelFoundInDb = Boolean(liveChannelId);
+            }
 
-              if (liveCategoryId) {
-                const { data: existingLiveRow } = await adminClient
-                  .from("discord_live_class_channels")
-                  .select("id, discord_channel_id, deleted_at")
-                  .eq("class_id", classRow.id)
-                  .single();
-
-                let liveChannelId = "";
-                if (existingLiveRow && !existingLiveRow.deleted_at) {
-                  liveChannelId = String(existingLiveRow.discord_channel_id ?? "").trim();
-                }
-
-                const existingChannel = liveChannelId
-                  ? guildChannels.find((ch) => ch.id === liveChannelId)
-                  : null;
-
-                if (!existingChannel) {
+            if (!liveChannelId && botUserId) {
+              const tutorDiscordIdForFallback = course.created_by
+                ? tutorDiscordIdById.get(course.created_by) ?? ""
+                : "";
+              if (tutorDiscordIdForFallback) {
+                const liveCategoryId = await ensureLiveCategory();
+                if (liveCategoryId) {
                   const enrolledDiscordIds = Array.from(
                     new Set(studentDiscordIdsByCourseId.get(classRow.course_id) ?? [])
                   );
@@ -1462,10 +1559,9 @@ export async function POST(request: NextRequest) {
                     botUserId,
                     ceoRoleId,
                     cooRoleId,
-                    tutorDiscordUserId: tutorDiscordId,
+                    tutorDiscordUserId: tutorDiscordIdForFallback,
                     studentDiscordUserIds: enrolledDiscordIds,
                   });
-
                   const createdVoiceChannel = await createDiscordGuildChannel(discordGuildId, {
                     name: normalizeVoiceChannelName(courseTitleRaw, classRow.id),
                     type: discordVoiceChannelType,
@@ -1474,23 +1570,19 @@ export async function POST(request: NextRequest) {
                   });
                   guildChannels.push(createdVoiceChannel);
                   liveChannelId = createdVoiceChannel.id;
-
                   const startsAtMs = new Date(classRow.starts_at).getTime();
                   const durationHoursRaw =
                     typeof classRow.duration_hours === "number"
                       ? classRow.duration_hours
                       : Number.parseFloat(String(classRow.duration_hours || 1));
-                  const durationHours = Number.isFinite(durationHoursRaw)
-                    ? durationHoursRaw
-                    : 1;
+                  const durationHours = Number.isFinite(durationHoursRaw) ? durationHoursRaw : 1;
                   const endsAt = new Date(startsAtMs + durationHours * 60 * 60 * 1000);
-
                   if (existingLiveRow) {
                     await adminClient
                       .from("discord_live_class_channels")
                       .update({
                         discord_channel_id: liveChannelId,
-                        tutor_discord_user_id: tutorDiscordId,
+                        tutor_discord_user_id: tutorDiscordIdForFallback,
                         starts_at: classRow.starts_at,
                         ends_at: endsAt.toISOString(),
                         deleted_at: null,
@@ -1501,17 +1593,39 @@ export async function POST(request: NextRequest) {
                       class_id: classRow.id,
                       course_id: classRow.course_id,
                       discord_channel_id: liveChannelId,
-                      tutor_discord_user_id: tutorDiscordId,
+                      tutor_discord_user_id: tutorDiscordIdForFallback,
                       starts_at: classRow.starts_at,
                       ends_at: endsAt.toISOString(),
                     });
                   }
                 }
-
-                if (liveChannelId) {
-                  voiceChannelLink = `https://discord.com/channels/${discordGuildId}/${liveChannelId}`;
-                }
               }
+            }
+
+            if (liveChannelId && channelFoundInDb && botUserId) {
+              const tutorDiscordIdForUpdate = course.created_by
+                ? tutorDiscordIdById.get(course.created_by) ?? ""
+                : "";
+              if (tutorDiscordIdForUpdate) {
+                const enrolledDiscordIds = Array.from(
+                  new Set(studentDiscordIdsByCourseId.get(classRow.course_id) ?? [])
+                );
+                const fullPermissionOverwrites = buildLiveVoicePermissionOverwrites({
+                  guildId: discordGuildId,
+                  botUserId,
+                  ceoRoleId,
+                  cooRoleId,
+                  tutorDiscordUserId: tutorDiscordIdForUpdate,
+                  studentDiscordUserIds: enrolledDiscordIds,
+                });
+                await updateDiscordChannel(liveChannelId, {
+                  permission_overwrites: fullPermissionOverwrites,
+                });
+              }
+            }
+
+            if (liveChannelId) {
+              voiceChannelLink = `https://discord.com/channels/${discordGuildId}/${liveChannelId}`;
             }
           }
 
@@ -1557,6 +1671,10 @@ export async function POST(request: NextRequest) {
           } else if (reminderType === "fifteen_minutes") {
             contactInstruction = "Please join the meeting via Schoolhouse!";
           }
+        } else if (isTutorEarlyAccessReminder) {
+          contactInstruction = voiceChannelLinkForTutor
+            ? `Please join the voice channel now to prepare for your students: ${voiceChannelLinkForTutor}`
+            : "Please prepare for your class starting in 15 minutes.";
         } else if (founderRoleId) {
           if (reminderType === "twenty_four_hours" || reminderType === "six_hours") {
             contactInstruction =
@@ -1572,7 +1690,7 @@ export async function POST(request: NextRequest) {
 
         executiveTutorContent = [
           `<@${tutorDiscordId}> Your **${escapeDiscordText(classTitleOrdinalRaw)}** for **${escapeDiscordText(courseTitleRaw)}** is starting in ${escapeDiscordText(reminderLabel)}.${contactInstruction ? ` ${contactInstruction}` : ""}`,
-          !isFounder ? "Please join the breakout room immediately after joining the meeting. Do not stay in the main meeting room." : "",
+          !isFounder && !usesDiscordVoiceSystem ? "Please join the breakout room immediately after joining the meeting. Do not stay in the main meeting room." : "",
         ].filter(Boolean).join("\n");
       }
     }
