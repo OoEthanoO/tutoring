@@ -836,8 +836,9 @@ export async function POST(request: NextRequest) {
     const { data: classes, error: classError } = await adminClient
       .from("course_classes")
       .select(
-        "id, title, starts_at, duration_hours, course_id, course:courses(id, title, short_name, created_by, created_by_name, created_by_email)"
+        "id, title, starts_at, duration_hours, course_id, course:courses!inner(id, title, short_name, created_by, created_by_name, created_by_email)"
       )
+      .is("courses.deleted_at", null)
       .gte("starts_at", windowStart.toISOString())
       .lt("starts_at", windowEnd.toISOString());
 
@@ -872,8 +873,9 @@ export async function POST(request: NextRequest) {
   const { data: pastClasses, error: pastClassError } = await adminClient
     .from("course_classes")
     .select(
-      "id, title, starts_at, duration_hours, course_id, course:courses(id, title, short_name, created_by, created_by_name, created_by_email)"
+      "id, title, starts_at, duration_hours, course_id, course:courses!inner(id, title, short_name, created_by, created_by_name, created_by_email)"
     )
+    .is("courses.deleted_at", null)
     .gte("starts_at", searchStart.toISOString())
     .lt("starts_at", followUpWindowEnd.toISOString());
 
