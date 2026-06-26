@@ -33,9 +33,6 @@ export default function CourseCreator({ editData, onSuccess, onCancel }: CourseC
   const initialStartDate = editData?.start_date ? new Date(editData.start_date + 'T12:00:00Z') : new Date();
   const [startDate, setStartDate] = useState<Date | null>(initialStartDate);
   const [notes, setNotes] = useState(editData?.notes || "");
-  const [isCoTaught, setIsCoTaught] = useState<boolean>(editData?.is_co_taught || false);
-  const [coTutorId, setCoTutorId] = useState<string>(editData?.co_tutor_id || "");
-  const [availableTutors, setAvailableTutors] = useState<{ id: string; name: string }[]>([]);
 
   const [status, setStatus] = useState<StatusState>({
     type: "idle",
@@ -57,16 +54,6 @@ export default function CourseCreator({ editData, onSuccess, onCancel }: CourseC
         user.role ?? null
       );
       setCanCreate(canManageCourses(resolvedRole));
-
-      try {
-        const res = await fetch("/api/tutors");
-        if (res.ok) {
-          const data = await res.json();
-          setAvailableTutors(data.tutors || []);
-        }
-      } catch (err) {
-        console.error("Failed to fetch tutors", err);
-      }
     };
 
     load();
@@ -135,8 +122,6 @@ export default function CourseCreator({ editData, onSuccess, onCancel }: CourseC
           totalClasses,
           startDate: startDate?.toISOString().split('T')[0],
           notes: notes.trim(),
-          isCoTaught,
-          coTutorId: isCoTaught ? coTutorId : null,
           status: isEditing && editData?.status === "rejected" ? "draft" : undefined,
         }),
       });
@@ -163,8 +148,6 @@ export default function CourseCreator({ editData, onSuccess, onCancel }: CourseC
         setTotalClasses(1);
         setStartDate(new Date());
         setNotes("");
-        setIsCoTaught(false);
-        setCoTutorId("");
       }
       
       setStatus({ type: "success", message: isEditing ? "Course request updated successfully." : "Course request submitted successfully." });
@@ -357,53 +340,6 @@ export default function CourseCreator({ editData, onSuccess, onCancel }: CourseC
               rows={3}
               className="mt-2 w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
             />
-          </div>
-
-          <div className="space-y-4 rounded-xl border border-[var(--border)] px-4 py-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <label className="text-[0.65rem] font-bold uppercase tracking-[0.2em] text-[var(--muted)]">
-                  Co-teach this course
-                </label>
-                <p className="text-xs text-[var(--muted)] mt-1">
-                  Check this box if this course will be co-taught with another tutor.
-                </p>
-              </div>
-              <input
-                type="checkbox"
-                checked={isCoTaught}
-                onChange={(e) => {
-                  if (e.target.checked) {
-                    const confirmed = window.confirm("This is only allowed if you have been given permission to do so as co-taught courses are not conventional.");
-                    if (confirmed) {
-                      setIsCoTaught(true);
-                    }
-                  } else {
-                    setIsCoTaught(false);
-                    setCoTutorId("");
-                  }
-                }}
-                className="h-5 w-5 rounded border-[var(--border)] text-[var(--foreground)] focus:ring-[var(--foreground)]"
-              />
-            </div>
-            {isCoTaught && (
-              <div className="pt-2">
-                <label className="text-[0.65rem] font-bold uppercase tracking-[0.2em] text-[var(--muted)]">
-                  Select Secondary Tutor
-                </label>
-                <select
-                  value={coTutorId}
-                  onChange={(e) => setCoTutorId(e.target.value)}
-                  className="mt-2 w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
-                  required={isCoTaught}
-                >
-                  <option value="" disabled>Select a tutor...</option>
-                  {availableTutors.map((t) => (
-                    <option key={t.id} value={t.id}>{t.name}</option>
-                  ))}
-                </select>
-              </div>
-            )}
           </div>
 
           <div className="flex gap-2">
