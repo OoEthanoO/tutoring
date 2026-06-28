@@ -9,6 +9,12 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 
+type FinalizedClass = {
+  title: string | null;
+  starts_at: string;
+  duration_hours: number | null;
+};
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ requestId: string }> }
@@ -145,6 +151,16 @@ export async function POST(
     }
   }
 
+  const { data: finalizedClasses, error: finalizedClassesError } = await adminClient
+    .from("course_classes")
+    .select("title, starts_at, duration_hours")
+    .eq("course_id", courseData.id)
+    .order("starts_at", { ascending: true });
+
+  if (finalizedClassesError) {
+    console.error("Failed to load finalized classes for notifications", courseData.id, finalizedClassesError);
+  }
+
   // Mark request as approved
   const { error: updateError } = await adminClient
     .from("course_creation_requests")
@@ -174,9 +190,32 @@ export async function POST(
       if (!execEmail) return;
 
       const courseTitle = requestRecord.title;
-      const classDetails = classRows.map((c, i) => 
-        `Class ${i + 1}: ${new Date(c.startsAt).toLocaleString('en-US', { timeZone: 'America/Toronto', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} (${c.durationHours}h)`
-      ).join('\n');
+      const formatClassDetails = (items: FinalizedClass[]) => items.map((item, index) => {
+        const startsAt = new Date(item.starts_at);
+        const durationHours = typeof item.duration_hours === "number" && item.duration_hours > 0
+          ? item.duration_hours
+          : 1;
+        const endsAt = new Date(startsAt.getTime() + durationHours * 60 * 60 * 1000);
+        const date = startsAt.toLocaleDateString("en-US", {
+          timeZone: "America/Toronto",
+          month: "numeric",
+          day: "numeric",
+          year: "numeric",
+        });
+        const startTime = startsAt.toLocaleTimeString("en-US", {
+          timeZone: "America/Toronto",
+          hour: "numeric",
+          minute: "2-digit",
+        });
+        const endTime = endsAt.toLocaleTimeString("en-US", {
+          timeZone: "America/Toronto",
+          hour: "numeric",
+          minute: "2-digit",
+        });
+
+        return `${item.title || `Class ${index + 1}`}: ${date} · ${startTime} - ${endTime}`;
+      }).join("\n");
+      const classDetails = formatClassDetails((finalizedClasses ?? []) as FinalizedClass[]);
 
       const emailSubject = `Course Request Approved: ${courseTitle}`;
       const emailHtml = `
