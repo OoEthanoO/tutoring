@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { canManageCourses, isExecutive, isFounder, isHighRankingChiefExecutive, resolveUserRole } from "@/lib/roles";
 import { getRequestUser } from "@/lib/authServer";
 import { relabelClassesForCourse } from "@/lib/classTools";
+import { notifyCourseTutorsOfChanges } from "@/lib/courseChangeNotifications";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
@@ -297,7 +298,7 @@ export async function GET(request: NextRequest) {
       : request?.status ?? null;
 
     // Founders should never be stuck with "rejected" – let them re-enroll.
-    if (isFounder(userRole as any) && enrollmentStatus === "rejected") {
+    if (isFounder(userRole) && enrollmentStatus === "rejected") {
       enrollmentStatus = null;
     }
 
@@ -498,6 +499,12 @@ export async function PATCH(request: NextRequest) {
     auth: { persistSession: false },
   });
 
+  const { data: previousCourse } = await adminClient
+    .from("courses")
+    .select("id, title, description, short_name, max_students, donation_fee, completed_start_date, completed_end_date, completed_class_count, created_by, created_by_name, created_by_email")
+    .eq("id", body.courseId)
+    .maybeSingle();
+
   const updatePayload: {
     title?: string;
     short_name?: string | null;
@@ -623,6 +630,64 @@ export async function PATCH(request: NextRequest) {
       { status: 500 }
     );
   }
+
+  const changedBy = String(user.full_name ?? "").trim() || user.email || "a YanLearn admin";
+  const changes: string[] = [];
+  if (previousCourse) {
+    if (title !== undefined && title !== previousCourse.title) {
+      changes.push(`Course name changed from "${previousCourse.title ?? "Untitled"}" to "${title}".`);
+    }
+    if (
+      description !== undefined &&
+      (description || null) !== (previousCourse.description ?? null)
+    ) {
+      changes.push("Course description was updated.");
+    }
+    if (
+      shortName !== undefined &&
+      (shortName || null) !== (previousCourse.short_name ?? null)
+    ) {
+      changes.push(`Short name changed from "${previousCourse.short_name ?? "None"}" to "${shortName || "None"}".`);
+    }
+    if (
+      maxStudents !== undefined &&
+      maxStudents !== (previousCourse.max_students ?? null)
+    ) {
+      changes.push(`Max students changed from ${previousCourse.max_students ?? "Unlimited"} to ${maxStudents ?? "Unlimited"}.`);
+    }
+    if (
+      donationFee !== undefined &&
+      donationFee !== (previousCourse.donation_fee ?? null)
+    ) {
+      changes.push(`Donation fee changed from ${previousCourse.donation_fee ?? "None"} to ${donationFee ?? "None"}.`);
+    }
+    if (
+      createdBy !== undefined &&
+      (data.created_by ?? null) !== (previousCourse.created_by ?? null)
+    ) {
+      changes.push(`Course tutor changed from "${previousCourse.created_by_name ?? previousCourse.created_by_email ?? "None"}" to "${data.created_by_name ?? data.created_by_email ?? "None"}".`);
+    }
+    if (
+      completedStartDate !== undefined &&
+      (completedStartDate || null) !== (previousCourse.completed_start_date ?? null)
+    ) {
+      changes.push(`Completed-course start date changed from ${previousCourse.completed_start_date ?? "None"} to ${completedStartDate || "None"}.`);
+    }
+    if (
+      completedEndDate !== undefined &&
+      (completedEndDate || null) !== (previousCourse.completed_end_date ?? null)
+    ) {
+      changes.push(`Completed-course end date changed from ${previousCourse.completed_end_date ?? "None"} to ${completedEndDate || "None"}.`);
+    }
+    if (
+      completedClassCount !== undefined &&
+      (completedClassCount || null) !== (previousCourse.completed_class_count ?? null)
+    ) {
+      changes.push(`Completed-course class count changed from ${previousCourse.completed_class_count ?? "None"} to ${completedClassCount || "None"}.`);
+    }
+  }
+
+  await notifyCourseTutorsOfChanges(adminClient, data.id, changes, changedBy);
 
   return NextResponse.json({ course: data });
 }

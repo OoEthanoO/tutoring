@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { canManageCourses, isFounder, resolveUserRole } from "@/lib/roles";
 import { getRequestUser } from "@/lib/authServer";
 import { relabelClassesForCourse } from "@/lib/classTools";
+import { formatCourseChangeDateTime, notifyCourseTutorsOfChanges } from "@/lib/courseChangeNotifications";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
@@ -81,7 +82,7 @@ export async function POST(
     );
   }
 
-  const isFounderUser = isFounder(role as any);
+  const isFounderUser = isFounder(role);
 
   if (!isFounderUser) {
     return NextResponse.json(
@@ -119,11 +120,17 @@ export async function POST(
   await relabelClassesForCourse(courseId, adminClient);
 
   // Re-fetch the newly created class in case its title was changed by the relabel step
-  const { data: updatedClass, error: refetchError } = await adminClient
+  const { data: updatedClass } = await adminClient
     .from("course_classes")
     .select("id, title, starts_at, duration_hours, created_at")
     .eq("id", data.id)
     .single();
 
-  return NextResponse.json({ class: updatedClass || data });
+  const finalClass = updatedClass || data;
+  const changedBy = String(user.full_name ?? "").trim() || user.email || "a YanLearn admin";
+  await notifyCourseTutorsOfChanges(adminClient, courseId, [
+    `${finalClass.title || "A class"} was added on ${formatCourseChangeDateTime(finalClass.starts_at)}.`,
+  ], changedBy);
+
+  return NextResponse.json({ class: finalClass });
 }

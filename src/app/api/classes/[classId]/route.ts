@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { canManageCourses, isFounder, resolveUserRole } from "@/lib/roles";
 import { getRequestUser } from "@/lib/authServer";
 import { relabelClassesForCourse } from "@/lib/classTools";
+import { formatCourseChangeDateTime, notifyCourseTutorsOfChanges } from "@/lib/courseChangeNotifications";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
@@ -92,7 +93,7 @@ export async function PATCH(
     );
   }
 
-  const isFounderUser = isFounder(role as any);
+  const isFounderUser = isFounder(role);
   if (!isFounderUser) {
     return NextResponse.json({ error: "Forbidden. Only founders, CEOs, and COOs can edit classes." }, { status: 403 });
   }
@@ -124,7 +125,7 @@ export async function PATCH(
 
   await relabelClassesForCourse(classRow.course_id, adminClient);
 
-  const { data: latestClass, error: refetchError } = await adminClient
+  const { data: latestClass } = await adminClient
     .from("course_classes")
     .select("id, title, starts_at, duration_hours, created_at")
     .eq("id", classId)
@@ -132,15 +133,30 @@ export async function PATCH(
 
   const primaryUpdatedClass = latestClass || updated;
   const allUpdatedClasses = [primaryUpdatedClass];
+  const notificationChanges: string[] = [];
+  if (nextTitle && nextTitle !== classRow.title) {
+    notificationChanges.push(`Class name changed from "${classRow.title ?? "Untitled"}" to "${nextTitle}".`);
+  }
+  if (nextStartsAt && new Date(nextStartsAt).toISOString() !== new Date(classRow.starts_at).toISOString()) {
+    notificationChanges.push(`${primaryUpdatedClass.title || "A class"} was moved from ${formatCourseChangeDateTime(classRow.starts_at)} to ${formatCourseChangeDateTime(primaryUpdatedClass.starts_at)}.`);
+  }
+  if (
+    isFounder(role) &&
+    typeof body?.durationHours === "number" &&
+    body.durationHours !== classRow.duration_hours
+  ) {
+    notificationChanges.push(`${primaryUpdatedClass.title || "A class"} duration changed from ${classRow.duration_hours ?? 1}h to ${body.durationHours}h.`);
+  }
 
   const updatesList = body?.bulkClassUpdates;
+  let bulkShiftCount = 0;
   if (Array.isArray(updatesList) && updatesList.length > 0) {
     for (const update of updatesList) {
       if (!update.classId || (!update.startsAt && typeof update.durationHours !== "number")) {
         continue;
       }
 
-      const bulkUpdatePayload: any = {};
+      const bulkUpdatePayload: { starts_at?: string; duration_hours?: number } = {};
       if (update.startsAt) {
         bulkUpdatePayload.starts_at = new Date(update.startsAt).toISOString();
       }
@@ -159,9 +175,17 @@ export async function PATCH(
         
       if (shiftedClass) {
         allUpdatedClasses.push(shiftedClass);
+        bulkShiftCount += 1;
       }
     }
   }
+
+  if (bulkShiftCount > 0) {
+    notificationChanges.push(`${bulkShiftCount} additional class${bulkShiftCount === 1 ? "" : "es"} in the schedule ${bulkShiftCount === 1 ? "was" : "were"} shifted.`);
+  }
+
+  const changedBy = String(user.full_name ?? "").trim() || user.email || "a YanLearn admin";
+  await notifyCourseTutorsOfChanges(adminClient, classRow.course_id, notificationChanges, changedBy);
 
   return NextResponse.json({
     class: primaryUpdatedClass,
@@ -209,7 +233,7 @@ export async function DELETE(
 
   const { data: classRow, error: classError } = await adminClient
     .from("course_classes")
-    .select("id, course_id")
+    .select("id, course_id, title, starts_at")
     .eq("id", classId)
     .single();
 
@@ -233,7 +257,7 @@ export async function DELETE(
     );
   }
 
-  const isFounderUser = isFounder(role as any);
+  const isFounderUser = isFounder(role);
   if (!isFounderUser) {
     return NextResponse.json({ error: "Forbidden. Only founders, CEOs, and COOs can delete classes." }, { status: 403 });
   }
@@ -251,6 +275,11 @@ export async function DELETE(
   }
 
   await relabelClassesForCourse(classRow.course_id, adminClient);
+
+  const changedBy = String(user.full_name ?? "").trim() || user.email || "a YanLearn admin";
+  await notifyCourseTutorsOfChanges(adminClient, classRow.course_id, [
+    `${classRow.title || "A class"} scheduled for ${formatCourseChangeDateTime(classRow.starts_at)} was removed.`,
+  ], changedBy);
 
   return NextResponse.json({ success: true });
 }
