@@ -117,9 +117,12 @@ const getScheduleData = (classes: CourseClass[] | undefined): ScheduleData => {
   // Check if schedule is irregular (has very few classes or many one-off dates)
   const daysWithClasses = classMap.size;
   const totalUniqueTimes = Array.from(classMap.values()).reduce((sum, set) => sum + set.size, 0);
-  // Irregular if: spans too many weeks, has very few consistent slots, or way too many unique times
+  // Irregular if the weekly pattern doesn't hold: every class is a one-off, classes
+  // span too many days of the week, or there are too many distinct time slots.
+  // Note: total class count is NOT a signal — a regular course (e.g. every Thu & Sat)
+  // run over a full semester legitimately has many sessions.
   const isIrregular =
-    classes.length > 15 || (totalUniqueTimes === classes.length && classes.length < 5) || daysWithClasses > 5 || totalUniqueTimes > 7;
+    (totalUniqueTimes === classes.length && classes.length < 5) || daysWithClasses > 5 || totalUniqueTimes > 7;
 
   // Build summary for irregular schedules
   let summary = "";
