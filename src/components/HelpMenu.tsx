@@ -88,6 +88,9 @@ export default function HelpMenu() {
                     <p className="text-sm text-[var(--foreground)] leading-relaxed">
                         After submitting, navigate to <span className="font-semibold text-[var(--foreground)]">&quot;My enrollments&quot;</span>. Your registration will show as <span className="font-semibold text-amber-600">&quot;Under Review&quot;</span> while our founder reviews your application. You will receive an email notification upon approval or rejection.
                     </p>
+                    <p className="text-sm text-[var(--foreground)] leading-relaxed">
+                        Once approved, <span className="font-semibold text-[var(--foreground)]">check your email for instructions on how to attend your classes</span>. You must also <span className="font-semibold text-[var(--foreground)]">connect to Discord</span> to participate — see the instructions below.
+                    </p>
                 </div>
 
                 {/* Troubleshooting Section */}
