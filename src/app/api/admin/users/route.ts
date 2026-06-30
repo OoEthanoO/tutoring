@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { isExecutive, isFounder, resolveUserRole } from "@/lib/roles";
 import { getRequestUser } from "@/lib/authServer";
+import { fetchDiscordGuildMemberIds } from "@/lib/discordSync";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
@@ -63,9 +64,13 @@ const sleep = (ms: number) =>
     setTimeout(resolve, ms);
   });
 
-const sendEmail = async (to: string, subject: string, html: string, attachments?: any[]) => {
-  if (!resendApiKey || !resendFrom || !to) {
-    return { ok: false, error: "Missing email configuration." };
+// Resend allows at most 50 recipients (to + cc + bcc combined) per email.
+const RESEND_MAX_RECIPIENTS = 50;
+
+// Core sender with retry/backoff. Accepts an arbitrary Resend payload (to, bcc, etc.).
+const postResendEmail = async (payload: Record<string, unknown>) => {
+  if (!resendApiKey || !resendFrom) {
+    return { ok: false as const, error: "Missing email configuration." };
   }
 
   const maxAttempts = 4;
@@ -77,13 +82,7 @@ const sendEmail = async (to: string, subject: string, html: string, attachments?
         Authorization: `Bearer ${resendApiKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        from: resendFrom,
-        to,
-        subject,
-        html,
-        ...(attachments && attachments.length > 0 ? { attachments } : {}),
-      }),
+      body: JSON.stringify({ from: resendFrom, ...payload }),
     });
 
     if (response.ok) {
@@ -99,7 +98,7 @@ const sendEmail = async (to: string, subject: string, html: string, attachments?
 
     if (!isRetriable || attempt === maxAttempts) {
       return {
-        ok: false,
+        ok: false as const,
         error: details || `Email provider error (${response.status}).`,
       };
     }
@@ -112,8 +111,74 @@ const sendEmail = async (to: string, subject: string, html: string, attachments?
     await sleep(backoffMs);
   }
 
-  return { ok: false, error: "Unknown email failure." };
+  return { ok: false as const, error: "Unknown email failure." };
 };
+
+const sendEmail = async (to: string, subject: string, html: string, attachments?: any[]) => {
+  if (!to) {
+    return { ok: false as const, error: "Missing email configuration." };
+  }
+  return postResendEmail({
+    to,
+    subject,
+    html,
+    ...(attachments && attachments.length > 0 ? { attachments } : {}),
+  });
+};
+
+// Send a single email to many recipients via BCC, chunked to respect Resend's
+// per-message recipient limit. The visible "to" is the sender, so recipients
+// cannot see each other.
+const sendBccEmail = async (bccEmails: string[], subject: string, html: string) => {
+  const recipients = Array.from(
+    new Set(bccEmails.map((email) => normalizeEmail(email)).filter(Boolean))
+  );
+
+  // Leave one recipient slot for the "to" address (the sender).
+  const chunkSize = RESEND_MAX_RECIPIENTS - 1;
+  let sentCount = 0;
+  const failed: Array<{ batch: string; error: string }> = [];
+
+  for (let start = 0; start < recipients.length; start += chunkSize) {
+    const chunk = recipients.slice(start, start + chunkSize);
+    const result = await postResendEmail({
+      to: resendFrom,
+      bcc: chunk,
+      subject,
+      html,
+    });
+
+    if (result.ok) {
+      sentCount += chunk.length;
+    } else {
+      failed.push({
+        batch: `${start + 1}-${start + chunk.length}`,
+        error: result.error ?? "Unknown email failure.",
+      });
+    }
+
+    if (start + chunkSize < recipients.length) {
+      await sleep(150);
+    }
+  }
+
+  return { totalRecipients: recipients.length, sentCount, failed };
+};
+
+// A class is "upcoming" while it has not yet ended (start + duration > now).
+const hasFutureClass = (
+  classes: { starts_at: string; duration_hours: number | string | null }[] | null | undefined,
+  nowMs: number
+) =>
+  (classes ?? []).some((cls) => {
+    const startMs = new Date(cls.starts_at).getTime();
+    if (Number.isNaN(startMs)) {
+      return false;
+    }
+    const durationHours = Number.parseFloat(String(cls.duration_hours ?? "1"));
+    const endMs = startMs + (Number.isFinite(durationHours) ? durationHours : 1) * 60 * 60 * 1000;
+    return endMs > nowMs;
+  });
 
 export async function GET(request: NextRequest) {
   if (!supabaseUrl || !supabaseAnonKey) {
@@ -210,6 +275,9 @@ export async function GET(request: NextRequest) {
     tutorPromotedAt: item.tutor_promoted_at ?? null,
     discordUserId: item.discord_user_id ?? null,
     discordUsername: item.discord_username ?? null,
+    // null = membership unknown (Discord not configured / lookup failed)
+    discordJoined: null as boolean | null,
+    hasUpcomingClasses: false,
     isJunior: item.is_junior,
     grade: item.grade ?? "",
     school: item.school ?? "",
@@ -218,6 +286,20 @@ export async function GET(request: NextRequest) {
     customRole: item.custom_role ?? null,
     generation: item.executive_generation ?? null,
   }));
+
+  // For connected users, determine whether they have actually joined the Discord
+  // server so the UI can distinguish "connected but not joined" from "connected
+  // and joined". Skipped entirely when nobody on this page has connected Discord.
+  if (users.some((user) => Boolean(user.discordUserId))) {
+    const guildMemberIds = await fetchDiscordGuildMemberIds();
+    if (guildMemberIds) {
+      users.forEach((user) => {
+        user.discordJoined = user.discordUserId
+          ? guildMemberIds.has(user.discordUserId)
+          : false;
+      });
+    }
+  }
 
   const userIds = users.map((user) => user.id);
   if (userIds.length > 0) {
@@ -232,6 +314,44 @@ export async function GET(request: NextRequest) {
 
     users.forEach((user) => {
       user.donationLink = donationMap.get(user.id) ?? "";
+    });
+
+    // Determine which users on this page have an upcoming class, either as an
+    // enrolled student or as the tutor who created the course. A class counts as
+    // upcoming while it has not yet ended.
+    const nowMs = Date.now();
+    const upcomingUserIds = new Set<string>();
+
+    const [{ data: enrollmentRows }, { data: tutorCourseRows }] = await Promise.all([
+      adminClient
+        .from("course_enrollments")
+        .select("student_id, course:courses(deleted_at, course_classes(starts_at, duration_hours))")
+        .in("student_id", userIds),
+      adminClient
+        .from("courses")
+        .select("created_by, course_classes(starts_at, duration_hours)")
+        .is("deleted_at", null)
+        .in("created_by", userIds),
+    ]);
+
+    for (const row of enrollmentRows ?? []) {
+      // Supabase types a to-one embed as an array; it is a single object at runtime.
+      const course = row.course as unknown as
+        | { deleted_at: string | null; course_classes: { starts_at: string; duration_hours: number | string | null }[] | null }
+        | null;
+      if (row.student_id && course && !course.deleted_at && hasFutureClass(course.course_classes, nowMs)) {
+        upcomingUserIds.add(row.student_id);
+      }
+    }
+
+    for (const row of tutorCourseRows ?? []) {
+      if (row.created_by && hasFutureClass(row.course_classes, nowMs)) {
+        upcomingUserIds.add(row.created_by);
+      }
+    }
+
+    users.forEach((user) => {
+      user.hasUpcomingClasses = upcomingUserIds.has(user.id);
     });
   }
 
@@ -353,6 +473,16 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: "Failed to link Discord to target user." }, { status: 500 });
     }
 
+    let discordJoined: boolean | null = null;
+    if (updatedTarget.discord_user_id) {
+      const guildMemberIds = await fetchDiscordGuildMemberIds();
+      if (guildMemberIds) {
+        discordJoined = guildMemberIds.has(updatedTarget.discord_user_id);
+      }
+    } else {
+      discordJoined = false;
+    }
+
     const responseUser = {
       id: updatedTarget.id,
       email: updatedTarget.email,
@@ -364,6 +494,7 @@ export async function PATCH(request: NextRequest) {
       tutorPromotedAt: updatedTarget.tutor_promoted_at ?? null,
       discordUserId: updatedTarget.discord_user_id ?? null,
       discordUsername: updatedTarget.discord_username ?? null,
+      discordJoined,
       discordConnectedAt: updatedTarget.discord_connected_at ?? null,
       isJunior: updatedTarget.is_junior ?? false,
       grade: updatedTarget.grade ?? "",
@@ -568,7 +699,12 @@ export async function POST(request: NextRequest) {
     }
     | null;
 
-  if (body?.action && body.action !== "notify_discord_unlinked" && body.action !== "notify_discord_transition") {
+  if (
+    body?.action &&
+    body.action !== "notify_discord_unlinked" &&
+    body.action !== "notify_discord_transition" &&
+    body.action !== "notify_unjoined_students_with_classes"
+  ) {
     return NextResponse.json({ error: "Invalid action." }, { status: 400 });
   }
 
@@ -601,6 +737,117 @@ export async function POST(request: NextRequest) {
       { error: listError?.message ?? "Failed to fetch users." },
       { status: 500 }
     );
+  }
+
+  if (body?.action === "notify_unjoined_students_with_classes") {
+    // Determine which courses have an upcoming class, then which students are
+    // enrolled in them.
+    const nowMs = Date.now();
+    const { data: courseRows, error: courseError } = await adminClient
+      .from("courses")
+      .select("id, course_classes(starts_at, duration_hours)")
+      .is("deleted_at", null);
+
+    if (courseError) {
+      return NextResponse.json(
+        { error: courseError.message ?? "Failed to fetch courses." },
+        { status: 500 }
+      );
+    }
+
+    const upcomingCourseIds = (courseRows ?? [])
+      .filter((course) =>
+        hasFutureClass(
+          (course as { course_classes: { starts_at: string; duration_hours: number | string | null }[] | null }).course_classes,
+          nowMs
+        )
+      )
+      .map((course) => course.id);
+
+    const studentIdsWithUpcoming = new Set<string>();
+    if (upcomingCourseIds.length > 0) {
+      const { data: enrollmentRows } = await adminClient
+        .from("course_enrollments")
+        .select("student_id")
+        .in("course_id", upcomingCourseIds);
+      for (const row of enrollmentRows ?? []) {
+        if (row.student_id) {
+          studentIdsWithUpcoming.add(row.student_id);
+        }
+      }
+    }
+
+    // Determine Discord server membership. When this is unavailable we cannot
+    // confirm a connected user has NOT joined, so we only target the clearly
+    // unconnected ones to avoid emailing people who are already fully set up.
+    const guildMemberIds = await fetchDiscordGuildMemberIds();
+
+    const candidates = users.filter((item) => {
+      const email = normalizeEmail(String(item.email ?? ""));
+      if (!email) {
+        return false;
+      }
+      const role = resolveUserRole(email, item.role ?? null);
+      if (role !== "student") {
+        return false;
+      }
+      if (!studentIdsWithUpcoming.has(item.id)) {
+        return false;
+      }
+
+      const discordUserId = (item.discord_user_id ?? "").trim();
+      const notConnected = !discordUserId;
+      const connectedButNotJoined =
+        Boolean(discordUserId) && guildMemberIds !== null && !guildMemberIds.has(discordUserId);
+      return notConnected || connectedButNotJoined;
+    });
+
+    const { targets, skippedUsers } = filterDiscordEmailTargets(
+      candidates,
+      recipientMode,
+      recipientEmailSet
+    );
+
+    const subject = "Action required: connect & join Discord to attend your classes";
+    const html = `<p>Hi there,</p>
+<p>Our records show you have upcoming classes but have <strong>not yet finished setting up Discord</strong>. Classes are held in our Discord server, so you must complete <strong>both</strong> of the following to attend:</p>
+<ol>
+  <li><strong>Connect your Discord account</strong> to your YanLearn profile.</li>
+  <li><strong>Join the YanLearn Discord server.</strong></li>
+</ol>
+<p>To do this:</p>
+<ol>
+  <li>Sign in to your YanLearn account.</li>
+  <li>Click your profile card in the top-right corner.</li>
+  <li>Click <strong>Connect Discord</strong> and authorize your Discord account.</li>
+  <li>After authorizing, you will be redirected to the server invite page — accept it to join.</li>
+</ol>
+<p>If you connected Discord but closed that tab before joining, open your profile card and click <strong>Join Discord Server</strong> to retry.</p>
+<p><strong>Please complete both steps before your next class</strong>, otherwise you will not be able to attend.</p>
+<p>Thanks,<br/>The YanLearn Team</p>`;
+
+    const targetEmails = targets
+      .map((item) => normalizeEmail(String(item.email ?? "")))
+      .filter(Boolean);
+
+    const { totalRecipients, sentCount, failed } = await sendBccEmail(
+      targetEmails,
+      subject,
+      html
+    );
+
+    return NextResponse.json({
+      targetCount: totalRecipients,
+      sentCount,
+      failedCount: failed.length,
+      recipientMode,
+      skippedCount: skippedUsers.length,
+      skippedEmails: skippedUsers
+        .map((item) => normalizeEmail(String(item.email ?? "")))
+        .filter(Boolean),
+      membershipKnown: guildMemberIds !== null,
+      failed,
+    });
   }
 
   if (body?.action === "notify_discord_transition") {

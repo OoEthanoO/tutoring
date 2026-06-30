@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 type EmailHistoryEntry = {
   id: string;
   to: string[];
+  bcc: string[];
   from: string;
   subject: string;
   createdAt: string;
@@ -186,6 +187,11 @@ export default function EmailHistoryMenu() {
                   <p className="text-xs text-[var(--muted)]">
                     To: {email.to.length > 0 ? email.to.join(", ") : "Unknown"}
                   </p>
+                  {email.bcc.length > 0 ? (
+                    <p className="text-xs text-[var(--muted)]">
+                      Bcc ({email.bcc.length}): {email.bcc.join(", ")}
+                    </p>
+                  ) : null}
                   {email.from ? (
                     <p className="text-xs text-[var(--muted)]">From: {email.from}</p>
                   ) : null}

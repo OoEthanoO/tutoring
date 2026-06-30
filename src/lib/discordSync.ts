@@ -1183,6 +1183,35 @@ class DiscordApiClient {
   }
 }
 
+/**
+ * Returns the set of Discord user IDs that are currently members of the guild,
+ * or null when Discord is not configured or the lookup fails. Used to tell whether
+ * a website user who connected their Discord account has actually joined the server.
+ */
+export const fetchDiscordGuildMemberIds = async (): Promise<Set<string> | null> => {
+  const discordBotToken = String(process.env.DISCORD_BOT_TOKEN ?? "").trim();
+  const discordGuildId = String(process.env.DISCORD_GUILD_ID ?? "").trim();
+
+  if (!discordBotToken || !discordGuildId) {
+    return null;
+  }
+
+  try {
+    const apiClient = new DiscordApiClient(discordBotToken);
+    const members = await apiClient.listGuildMembers(discordGuildId);
+    const memberIds = new Set<string>();
+    for (const member of members) {
+      const memberId = member.user?.id;
+      if (memberId) {
+        memberIds.add(memberId);
+      }
+    }
+    return memberIds;
+  } catch {
+    return null;
+  }
+};
+
 const findRoleByName = (roles: DiscordRole[], name: string) => {
   const lowerName = name.toLowerCase();
   return (
@@ -2677,6 +2706,108 @@ export const runDiscordSync = async ({
       chiefExecutiveRole.id
     ),
   });
+
+  // Ping the COO in the founders channel whenever a member joins or leaves the
+  // server. There is no realtime gateway, so we diff the current website-linked
+  // membership against the snapshot persisted from the previous sync run.
+  if (foundersOnlyChannel) {
+    try {
+      const discordUsernameByMemberId = new Map<string, string>();
+      for (const member of humanMembers) {
+        const memberId = member.user?.id;
+        if (memberId && member.user?.username) {
+          discordUsernameByMemberId.set(memberId, member.user.username);
+        }
+      }
+
+      const buildMemberLabel = (memberId: string, fallbackUsername?: string) => {
+        const websiteUser = websiteUserByDiscordMemberId.get(memberId);
+        const username = discordUsernameByMemberId.get(memberId) ?? fallbackUsername ?? "";
+        const name = websiteUser?.full_name?.trim() || websiteUser?.email?.trim() || "";
+        const handle = username ? `@${username}` : "";
+        const display = [name, handle].filter(Boolean).join(" ") || memberId;
+        return `${display} (<@${memberId}>)`;
+      };
+
+      // Current membership snapshot: { [discordUserId]: discordUsername }.
+      const currentSnapshot: Record<string, string> = {};
+      for (const memberId of websiteMemberIds) {
+        currentSnapshot[memberId] = discordUsernameByMemberId.get(memberId) ?? "";
+      }
+
+      const { data: settingsRow, error: snapshotReadError } = await adminClient
+        .from("site_settings")
+        .select("discord_member_snapshot")
+        .eq("id", true)
+        .single();
+
+      if (snapshotReadError) {
+        result.errors.push(
+          `Failed to read Discord member snapshot (is the migration applied?): ${snapshotReadError.message}`
+        );
+      } else {
+        const previousSnapshot =
+          (settingsRow?.discord_member_snapshot as Record<string, string> | null) ?? null;
+
+        // Skip notifications on the very first run (no baseline yet) to avoid a flood.
+        if (previousSnapshot) {
+          const previousIds = new Set(Object.keys(previousSnapshot));
+          const currentIds = new Set(Object.keys(currentSnapshot));
+
+          const joinedIds = [...currentIds].filter((id) => !previousIds.has(id));
+          const leftIds = [...previousIds].filter((id) => !currentIds.has(id));
+
+          if (joinedIds.length > 0 || leftIds.length > 0) {
+            const lines = [`<@&${cooRole.id}>`];
+            for (const id of joinedIds) {
+              lines.push(`📥 **Member joined:** ${buildMemberLabel(id)}`);
+            }
+            for (const id of leftIds) {
+              lines.push(`📤 **Member left:** ${buildMemberLabel(id, previousSnapshot[id])}`);
+            }
+
+            // Chunk into messages under Discord's 2000 character limit.
+            const messageCharLimit = 1900;
+            let buffer = "";
+            const flush = async () => {
+              if (!buffer) {
+                return;
+              }
+              await apiClient.createChannelMessage(foundersOnlyChannel.id, buffer);
+              buffer = "";
+            };
+            try {
+              for (const line of lines) {
+                if (buffer && `${buffer}\n${line}`.length > messageCharLimit) {
+                  await flush();
+                }
+                buffer = buffer ? `${buffer}\n${line}` : line;
+              }
+              await flush();
+            } catch (error) {
+              result.errors.push(
+                `Failed to post Discord membership change notice: ${toErrorMessage(error, "Unknown error")}`
+              );
+            }
+          }
+        }
+
+        const { error: snapshotWriteError } = await adminClient
+          .from("site_settings")
+          .update({ discord_member_snapshot: currentSnapshot })
+          .eq("id", true);
+        if (snapshotWriteError) {
+          result.errors.push(
+            `Failed to persist Discord member snapshot: ${snapshotWriteError.message}`
+          );
+        }
+      }
+    } catch (error) {
+      result.errors.push(
+        `Failed to process Discord membership change notifications: ${toErrorMessage(error, "Unknown error")}`
+      );
+    }
+  }
 
   const executivesOnlyChannel = await ensureFixedChannel({
     name: executivesOnlyChannelName,

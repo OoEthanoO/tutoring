@@ -7,6 +7,8 @@ const resendApiKey = process.env.RESEND_API_KEY ?? "";
 type ResendEmail = {
   id?: string;
   to?: string | string[] | null;
+  bcc?: string | string[] | null;
+  cc?: string | string[] | null;
   from?: string | null;
   subject?: string | null;
   created_at?: string | null;
@@ -25,6 +27,8 @@ const toRecipients = (value: string | string[] | null | undefined): string[] => 
 const normalizeEmail = (email: ResendEmail) => ({
   id: email.id ?? "",
   to: toRecipients(email.to),
+  bcc: toRecipients(email.bcc),
+  cc: toRecipients(email.cc),
   from: email.from ?? "",
   subject: email.subject ?? "(no subject)",
   createdAt: email.created_at ?? "",

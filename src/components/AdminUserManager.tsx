@@ -20,6 +20,9 @@ type AdminUser = {
   tutorPromotedAt?: string | null;
   discordUserId?: string | null;
   discordUsername?: string | null;
+  // true = joined the server, false = not joined, null/undefined = membership unknown
+  discordJoined?: boolean | null;
+  hasUpcomingClasses?: boolean;
   discordConnectedAt?: string | null;
   isJunior: boolean;
   grade?: string;
@@ -33,6 +36,21 @@ type AdminUser = {
 type StatusState = {
   type: "idle" | "error" | "success";
   message: string;
+};
+
+type UserCourseEntry = {
+  id: string;
+  title: string;
+  tutor: string;
+  classCount: number;
+  startsAt: string | null;
+  endsAt: string | null;
+};
+
+type UserCourses = {
+  completed: UserCourseEntry[];
+  ongoing: UserCourseEntry[];
+  future: UserCourseEntry[];
 };
 
 type DiscordEmailRecipientMode = "blacklist" | "whitelist";
@@ -68,6 +86,10 @@ export default function AdminUserManager() {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<"all" | "student" | "executive">("all");
+  const [discordFilter, setDiscordFilter] = useState<
+    "all" | "not_connected" | "connected_not_joined" | "connected_joined"
+  >("all");
+  const [classesFilter, setClassesFilter] = useState<"all" | "upcoming" | "none">("all");
   const [availableCustomRoles, setAvailableCustomRoles] = useState<{name: string}[]>([]);
   const [verifiedFilter, setVerifiedFilter] = useState<"all" | "verified" | "unverified">(
     "all"
@@ -83,6 +105,12 @@ export default function AdminUserManager() {
     useState(false);
   const [isSendingDiscordTransition, setIsSendingDiscordTransition] =
     useState(false);
+  const [isSendingJoinReminder, setIsSendingJoinReminder] = useState(false);
+  const [activeTab, setActiveTab] = useState<"accounts" | "tools">("accounts");
+  const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
+  const [userCoursesById, setUserCoursesById] = useState<Record<string, UserCourses>>({});
+  const [coursesLoadingId, setCoursesLoadingId] = useState<string | null>(null);
+  const [coursesErrorById, setCoursesErrorById] = useState<Record<string, string>>({});
   const [isFixingClasses, setIsFixingClasses] = useState(false);
   const [isSyncingNames, setIsSyncingNames] = useState(false);
   const [discordReminderRecipientMode, setDiscordReminderRecipientMode] =
@@ -400,6 +428,31 @@ export default function AdminUserManager() {
         return true;
       })
       .filter((user) => {
+        if (discordFilter === "all") {
+          return true;
+        }
+        const isConnected = Boolean(user.discordUserId);
+        if (discordFilter === "not_connected") {
+          return !isConnected;
+        }
+        if (discordFilter === "connected_not_joined") {
+          return isConnected && user.discordJoined === false;
+        }
+        if (discordFilter === "connected_joined") {
+          return isConnected && user.discordJoined === true;
+        }
+        return true;
+      })
+      .filter((user) => {
+        if (classesFilter === "all") {
+          return true;
+        }
+        if (classesFilter === "upcoming") {
+          return user.hasUpcomingClasses === true;
+        }
+        return !user.hasUpcomingClasses;
+      })
+      .filter((user) => {
         if (!normalizedSearch) {
           return true;
         }
@@ -410,7 +463,7 @@ export default function AdminUserManager() {
           email.includes(normalizedSearch)
         );
       });
-  }, [users, searchQuery, roleFilter, onboardingFilter, applicationsByUserId]);
+  }, [users, searchQuery, roleFilter, discordFilter, classesFilter, onboardingFilter, applicationsByUserId]);
 
   const deleteFeedback = async (feedbackId: string) => {
     const confirmed = window.confirm("Delete this feedback entry?");
@@ -1037,6 +1090,198 @@ export default function AdminUserManager() {
     setIsSendingDiscordTransition(false);
   };
 
+  const notifyStudentsToJoinDiscord = async () => {
+    const emails = parseDiscordReminderEmails();
+    if (discordReminderRecipientMode === "whitelist" && emails.length === 0) {
+      setStatus({
+        type: "error",
+        message: "Add at least one email before sending in whitelist mode.",
+      });
+      return;
+    }
+
+    let confirmationMessage =
+      "Send one BCC email to all students with upcoming classes who haven't connected Discord or haven't joined the server?";
+    if (discordReminderRecipientMode === "whitelist") {
+      confirmationMessage = `Send the join reminder only to listed students with upcoming classes who haven't finished Discord setup? ${emails.length} email(s) are whitelisted.`;
+    } else if (emails.length > 0) {
+      confirmationMessage = `Send a BCC email to all students with upcoming classes who haven't finished Discord setup? ${emails.length} email(s) in the skip list will be excluded.`;
+    }
+
+    const confirmed = window.confirm(confirmationMessage);
+    if (!confirmed) {
+      return;
+    }
+
+    setIsSendingJoinReminder(true);
+    setStatus({ type: "idle", message: "" });
+
+    const response = await fetch("/api/admin/users", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "notify_unjoined_students_with_classes",
+        recipientMode: discordReminderRecipientMode,
+        emails,
+      }),
+    });
+
+    if (!response.ok) {
+      const payload = (await response.json().catch(() => null)) as
+        | { error?: string }
+        | null;
+      setStatus({
+        type: "error",
+        message: payload?.error ?? "Could not send Discord join reminder emails.",
+      });
+      setIsSendingJoinReminder(false);
+      return;
+    }
+
+    const data = (await response.json()) as {
+      targetCount: number;
+      sentCount: number;
+      failedCount: number;
+      skippedCount: number;
+      recipientMode?: DiscordEmailRecipientMode;
+      membershipKnown?: boolean;
+    };
+    const skippedLabel =
+      data.recipientMode === "whitelist" ? "not whitelisted" : "skipped";
+    const skipSummary =
+      data.skippedCount > 0 ? ` (${data.skippedCount} ${skippedLabel})` : "";
+    const membershipNote =
+      data.membershipKnown === false
+        ? " Note: Discord membership couldn't be verified, so only students with no connected Discord account were targeted."
+        : "";
+
+    if (data.targetCount === 0) {
+      setStatus({
+        type: "success",
+        message: `No matching students to email${skipSummary}.${membershipNote}`,
+      });
+      setIsSendingJoinReminder(false);
+      return;
+    }
+
+    setStatus({
+      type: data.failedCount > 0 ? "error" : "success",
+      message:
+        data.failedCount > 0
+          ? `BCC'd ${data.sentCount} of ${data.targetCount} students (${data.failedCount} failed)${skipSummary}.${membershipNote}`
+          : `BCC'd ${data.sentCount} student${data.sentCount !== 1 ? "s" : ""} to connect & join Discord${skipSummary}.${membershipNote}`,
+    });
+    setIsSendingJoinReminder(false);
+  };
+
+  const toggleUserCourses = async (userId: string) => {
+    if (expandedUserId === userId) {
+      setExpandedUserId(null);
+      return;
+    }
+    setExpandedUserId(userId);
+
+    // Cache per user so re-opening doesn't refetch.
+    if (userCoursesById[userId]) {
+      return;
+    }
+
+    setCoursesLoadingId(userId);
+    setCoursesErrorById((current) => ({ ...current, [userId]: "" }));
+
+    try {
+      const response = await fetch(`/api/admin/users/${userId}/courses`);
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as
+          | { error?: string }
+          | null;
+        setCoursesErrorById((current) => ({
+          ...current,
+          [userId]: payload?.error ?? "Could not load courses.",
+        }));
+        setCoursesLoadingId(null);
+        return;
+      }
+      const data = (await response.json()) as Partial<UserCourses>;
+      setUserCoursesById((current) => ({
+        ...current,
+        [userId]: {
+          completed: data.completed ?? [],
+          ongoing: data.ongoing ?? [],
+          future: data.future ?? [],
+        },
+      }));
+    } catch {
+      setCoursesErrorById((current) => ({
+        ...current,
+        [userId]: "Could not load courses.",
+      }));
+    }
+    setCoursesLoadingId(null);
+  };
+
+  const formatCourseRange = (startsAt: string | null, endsAt: string | null) => {
+    const fmt = (value: string | null) => {
+      if (!value) {
+        return null;
+      }
+      const parsed = new Date(value);
+      if (Number.isNaN(parsed.getTime())) {
+        return null;
+      }
+      return parsed.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      });
+    };
+    const start = fmt(startsAt);
+    const end = fmt(endsAt);
+    if (start && end) {
+      return `${start} – ${end}`;
+    }
+    if (start) {
+      return `From ${start}`;
+    }
+    if (end) {
+      return `Until ${end}`;
+    }
+    return "No scheduled dates";
+  };
+
+  const renderCourseSection = (
+    label: string,
+    entries: UserCourseEntry[],
+    labelClass: string
+  ) => (
+    <div className="space-y-2">
+      <p className={`text-[10px] font-bold uppercase tracking-wider ${labelClass}`}>
+        {label} ({entries.length})
+      </p>
+      {entries.length === 0 ? (
+        <p className="text-xs text-[var(--muted)]">None</p>
+      ) : (
+        <div className="space-y-2">
+          {entries.map((course) => (
+            <div
+              key={course.id}
+              className="rounded-lg border border-[var(--border)] px-3 py-2"
+            >
+              <p className="text-xs font-semibold text-[var(--foreground)]">
+                {course.title}
+              </p>
+              <p className="text-[11px] text-[var(--muted)]">Tutor: {course.tutor}</p>
+              <p className="text-[11px] text-[var(--muted)]">
+                {course.classCount} class{course.classCount !== 1 ? "es" : ""} ·{" "}
+                {formatCourseRange(course.startsAt, course.endsAt)}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
   const fixClassNumbering = async () => {
     const confirmed = window.confirm(
       "Re-number all classes sequentially across all courses?"
@@ -1140,6 +1385,44 @@ export default function AdminUserManager() {
         </a>
       </header>
 
+      <div className="flex flex-wrap gap-1 border-b border-[var(--border)]">
+        <button
+          type="button"
+          onClick={() => setActiveTab("accounts")}
+          className={
+            activeTab === "accounts"
+              ? "rounded-t-lg border-b-2 border-[var(--foreground)] px-4 py-2 text-xs font-semibold text-[var(--foreground)]"
+              : "rounded-t-lg border-b-2 border-transparent px-4 py-2 text-xs font-semibold text-[var(--muted)] transition hover:text-[var(--foreground)]"
+          }
+        >
+          Accounts
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("tools")}
+          className={
+            activeTab === "tools"
+              ? "rounded-t-lg border-b-2 border-[var(--foreground)] px-4 py-2 text-xs font-semibold text-[var(--foreground)]"
+              : "rounded-t-lg border-b-2 border-transparent px-4 py-2 text-xs font-semibold text-[var(--muted)] transition hover:text-[var(--foreground)]"
+          }
+        >
+          Admin Tools
+        </button>
+      </div>
+
+      {status.type !== "idle" ? (
+        <div
+          className={
+            status.type === "error"
+              ? "rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-400"
+              : "rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-400"
+          }
+        >
+          {status.message}
+        </div>
+      ) : null}
+
+      {activeTab === "tools" ? (
       <div className="space-y-3 rounded-xl border border-[var(--border)] px-4 py-3">
         <div className="flex flex-wrap items-center gap-2">
           <p className="text-xs text-[var(--muted)]">
@@ -1163,7 +1446,7 @@ export default function AdminUserManager() {
           <button
             type="button"
             onClick={notifyDiscordUnlinkedUsers}
-            disabled={isSendingDiscordReminder || isSendingDiscordTransition}
+            disabled={isSendingDiscordReminder || isSendingDiscordTransition || isSendingJoinReminder}
             className="rounded-full border border-[var(--foreground)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-70"
           >
             {isSendingDiscordReminder
@@ -1173,12 +1456,22 @@ export default function AdminUserManager() {
           <button
             type="button"
             onClick={notifyDiscordTransition}
-            disabled={isSendingDiscordReminder || isSendingDiscordTransition}
+            disabled={isSendingDiscordReminder || isSendingDiscordTransition || isSendingJoinReminder}
             className="rounded-full border border-[var(--foreground)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-70"
           >
             {isSendingDiscordTransition
               ? "Sending emails..."
               : "Notify students of Discord transition"}
+          </button>
+          <button
+            type="button"
+            onClick={notifyStudentsToJoinDiscord}
+            disabled={isSendingDiscordReminder || isSendingDiscordTransition || isSendingJoinReminder}
+            className="rounded-full border border-[var(--foreground)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            {isSendingJoinReminder
+              ? "Sending email..."
+              : "Notify students to connect & join Discord"}
           </button>
           <button
             type="button"
@@ -1244,7 +1537,10 @@ export default function AdminUserManager() {
           />
         </div>
       </div>
+      ) : null}
 
+      {activeTab === "accounts" ? (
+      <>
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <input
           type="text"
@@ -1289,6 +1585,35 @@ export default function AdminUserManager() {
           <option value="pending">Pending Onboarding</option>
           <option value="exempt">Exempt (Chief Execs)</option>
         </select>
+        <select
+          value={discordFilter}
+          onChange={(event) =>
+            setDiscordFilter(
+              event.target.value as
+                | "all"
+                | "not_connected"
+                | "connected_not_joined"
+                | "connected_joined"
+            )
+          }
+          className="w-full rounded-full border border-[var(--border)] bg-[var(--surface)] px-4 py-2 text-xs text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)] sm:w-56"
+        >
+          <option value="all">All Discord states</option>
+          <option value="not_connected">Not connected and not joined</option>
+          <option value="connected_not_joined">Connected but not joined</option>
+          <option value="connected_joined">Connected and joined</option>
+        </select>
+        <select
+          value={classesFilter}
+          onChange={(event) =>
+            setClassesFilter(event.target.value as "all" | "upcoming" | "none")
+          }
+          className="w-full rounded-full border border-[var(--border)] bg-[var(--surface)] px-4 py-2 text-xs text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)] sm:w-52"
+        >
+          <option value="all">All class statuses</option>
+          <option value="upcoming">Has upcoming classes</option>
+          <option value="none">No upcoming classes</option>
+        </select>
       </div>
 
       {/* Onboarding Compliance Stats */}
@@ -1321,18 +1646,6 @@ export default function AdminUserManager() {
         </button>
       </div>
 
-      {status.type !== "idle" ? (
-        <div
-          className={
-            status.type === "error"
-              ? "rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-400"
-              : "rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-400"
-          }
-        >
-          {status.message}
-        </div>
-      ) : null}
-
       {isLoading ? (
         <p className="text-sm text-[var(--muted)]">Loading users...</p>
       ) : null}
@@ -1353,9 +1666,22 @@ export default function AdminUserManager() {
           return (
             <div
               key={user.id}
-              className="flex flex-col gap-3 rounded-xl border border-[var(--border)] px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+              className="rounded-xl border border-[var(--border)]"
             >
-              <div>
+              <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => toggleUserCourses(user.id)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    toggleUserCourses(user.id);
+                  }
+                }}
+                className="flex-1 cursor-pointer rounded-lg transition hover:opacity-80"
+                title="Click to view this user's courses"
+              >
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="text-sm font-semibold text-[var(--foreground)]">
                     {user.fullName || "Unnamed user"}
@@ -1399,11 +1725,22 @@ export default function AdminUserManager() {
                 </p>
                 <p className="text-xs text-[var(--muted)]">
                   Discord:{" "}
-                  {user.discordUserId
-                    ? user.discordUsername
-                      ? `Connected (${user.discordUsername})`
-                      : "Connected"
-                    : "Not connected"}
+                  {!user.discordUserId ? (
+                    <span className="text-red-600">Not connected and not joined</span>
+                  ) : user.discordJoined === false ? (
+                    <span className="text-amber-600">
+                      Connected but not joined
+                      {user.discordUsername ? ` (${user.discordUsername})` : ""}
+                    </span>
+                  ) : user.discordJoined ? (
+                    <span className="text-green-600">
+                      Connected and joined
+                      {user.discordUsername ? ` (${user.discordUsername})` : ""}
+                    </span>
+                  ) : (
+                    // Membership unknown (Discord not configured / lookup failed)
+                    <span>Connected{user.discordUsername ? ` (${user.discordUsername})` : ""}</span>
+                  )}
                 </p>
                 {isExecutive(user.role as any) ? (
                   <p className="text-xs text-[var(--muted)]">
@@ -1415,6 +1752,9 @@ export default function AdminUserManager() {
                     Currently impersonating this user
                   </p>
                 ) : null}
+                <p className="mt-1 text-xs font-semibold text-[var(--foreground)]">
+                  {expandedUserId === user.id ? "▾ Hide courses" : "▸ View courses"}
+                </p>
               </div>
               <div className="flex flex-col gap-2">
                 {!isFounder(user.role as any) ? (
@@ -1684,6 +2024,36 @@ export default function AdminUserManager() {
                   </>
                 ) : null}
               </div>
+              </div>
+              {expandedUserId === user.id ? (
+                <div className="border-t border-[var(--border)] px-4 py-3">
+                  {coursesLoadingId === user.id ? (
+                    <p className="text-xs text-[var(--muted)]">Loading courses...</p>
+                  ) : coursesErrorById[user.id] ? (
+                    <p className="text-xs text-red-500">{coursesErrorById[user.id]}</p>
+                  ) : userCoursesById[user.id] ? (
+                    (() => {
+                      const data = userCoursesById[user.id];
+                      const total =
+                        data.completed.length + data.ongoing.length + data.future.length;
+                      if (total === 0) {
+                        return (
+                          <p className="text-xs text-[var(--muted)]">
+                            No enrolled courses.
+                          </p>
+                        );
+                      }
+                      return (
+                        <div className="grid gap-4 sm:grid-cols-3">
+                          {renderCourseSection("Completed courses", data.completed, "text-emerald-500")}
+                          {renderCourseSection("Ongoing courses", data.ongoing, "text-amber-500")}
+                          {renderCourseSection("Future courses", data.future, "text-sky-500")}
+                        </div>
+                      );
+                    })()
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           );
         })}
@@ -1740,6 +2110,8 @@ export default function AdminUserManager() {
       </div>
 
       <AdminBannedEmails />
+      </>
+      ) : null}
     </section >
 
       {/* Student Application Modal */}
