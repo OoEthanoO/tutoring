@@ -1222,6 +1222,12 @@ export async function POST(request: NextRequest) {
   const discordReminderDeliveryEnabled =
     discordRemindersEnabled && !discordReminderSkippedReason;
 
+  const liveChannelRecovery: {
+    activeRows: number;
+    recreated: number;
+    skipped: { classId: string; reason: string }[];
+  } = { activeRows: 0, recreated: 0, skipped: [] };
+
   // Recover live voice channels that should currently exist but whose Discord
   // channel is missing (e.g. it was deleted while the server was in a bad state).
   // This runs every tick and is independent of reminder de-duplication, so a class
@@ -1231,23 +1237,39 @@ export async function POST(request: NextRequest) {
     const earlyAccessLeadMs = 15 * 60 * 1000;
     const studentAccessLeadMs = 5 * 60 * 1000;
 
+    // Rows whose class has not yet ended. We intentionally do NOT filter on
+    // deleted_at: a row may have been marked deleted prematurely while its channel
+    // was being wrongly removed, and we still want to restore it mid-class.
     const { data: liveRows } = await adminClient
       .from("discord_live_class_channels")
       .select("id, class_id, course_id, discord_channel_id, tutor_discord_user_id, starts_at, ends_at")
-      .is("deleted_at", null);
+      .gte("ends_at", new Date(nowMs).toISOString());
+
+    liveChannelRecovery.activeRows = (liveRows ?? []).length;
 
     const recoverable = (liveRows ?? []).filter((row) => {
+      const classId = String(row.class_id);
       const startsMs = new Date(String(row.starts_at)).getTime();
       const endsMs = new Date(String(row.ends_at)).getTime();
       if (Number.isNaN(startsMs) || Number.isNaN(endsMs)) {
+        liveChannelRecovery.skipped.push({ classId, reason: "invalid start/end dates" });
         return false;
       }
       // The channel should exist from the tutor early-access window until class end.
-      if (nowMs < startsMs - earlyAccessLeadMs || nowMs > endsMs) {
+      if (nowMs < startsMs - earlyAccessLeadMs) {
+        liveChannelRecovery.skipped.push({ classId, reason: "more than 15 min before start" });
+        return false;
+      }
+      if (nowMs > endsMs) {
+        liveChannelRecovery.skipped.push({ classId, reason: "class already ended" });
         return false;
       }
       // Only recover when the recorded channel is actually gone from the guild.
-      return !guildChannels.some((ch) => ch.id === String(row.discord_channel_id));
+      if (guildChannels.some((ch) => ch.id === String(row.discord_channel_id))) {
+        liveChannelRecovery.skipped.push({ classId, reason: "channel already exists in guild" });
+        return false;
+      }
+      return true;
     });
 
     if (recoverable.length > 0) {
@@ -1299,10 +1321,21 @@ export async function POST(request: NextRequest) {
       }
 
       const liveCategoryId = await ensureLiveCategory();
-      if (liveCategoryId) {
+      if (!liveCategoryId) {
+        for (const row of recoverable) {
+          liveChannelRecovery.skipped.push({
+            classId: String(row.class_id),
+            reason: "could not ensure Live category",
+          });
+        }
+      } else {
         for (const row of recoverable) {
           const tutorDiscordId = String(row.tutor_discord_user_id ?? "").trim();
           if (!tutorDiscordId) {
+            liveChannelRecovery.skipped.push({
+              classId: String(row.class_id),
+              reason: "no tutor Discord id on record",
+            });
             continue;
           }
           const courseId = String(row.course_id);
@@ -1333,10 +1366,16 @@ export async function POST(request: NextRequest) {
               .from("discord_live_class_channels")
               .update({ discord_channel_id: recreatedChannel.id, deleted_at: null })
               .eq("id", String(row.id));
+            liveChannelRecovery.recreated += 1;
           } catch (error) {
+            const reason = error instanceof Error ? error.message : "Unknown error.";
+            liveChannelRecovery.skipped.push({
+              classId: String(row.class_id),
+              reason: `failed to recreate channel: ${reason}`,
+            });
             failedClasses.push({
               classId: String(row.class_id),
-              reason: `Failed to recover live voice channel: ${error instanceof Error ? error.message : "Unknown error."}`,
+              reason: `Failed to recover live voice channel: ${reason}`,
             });
           }
         }
@@ -2027,6 +2066,7 @@ export async function POST(request: NextRequest) {
     autoClosedMeetingsCount: autoCloseResult.closedCount,
     autoCloseErrors: autoCloseResult.errors,
     failedClasses,
+    liveChannelRecovery,
     timezone: torontoTimeZone,
     reminderSkippedReason,
     discordReminderSkippedReason,
