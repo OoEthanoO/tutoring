@@ -3,7 +3,12 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { runDiscordSync, type DiscordSyncResult } from "@/lib/discordSync";
 import { runGithubSync, type GithubSyncResult } from "@/lib/githubSync";
 import { fetchFundraisingRaisedAmount } from "@/lib/fundraising";
-import { resolveRoleByEmail } from "@/lib/roles";
+import {
+  isFounder as isFounderRole,
+  resolveRoleByEmail,
+  resolveUserRole,
+  type UserRole,
+} from "@/lib/roles";
 import { deleteZoomMeeting } from "@/lib/zoom";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
@@ -1067,19 +1072,31 @@ export async function POST(request: NextRequest) {
   );
   const tutorDiscordIdById = new Map<string, string>();
   const tutorStrikeCountById = new Map<string, number>();
+  const tutorRoleById = new Map<string, UserRole>();
   if (allTutorIds.length > 0) {
     const { data: tutorDiscordRows } = await adminClient
       .from("app_users")
-      .select("id, discord_user_id, strike_count")
+      .select("id, email, role, discord_user_id, strike_count")
       .in("id", allTutorIds);
     for (const tutor of tutorDiscordRows ?? []) {
+      const tutorId = String(tutor.id ?? "").trim();
+      const email = String(tutor.email ?? "").trim();
+      if (tutorId && email) {
+        tutorEmailById.set(tutorId, email);
+      }
+      if (tutorId) {
+        tutorRoleById.set(
+          tutorId,
+          resolveUserRole(email || tutorEmailById.get(tutorId) || null, String(tutor.role ?? "") || null)
+        );
+      }
       const discordId = String(tutor.discord_user_id ?? "").trim();
-      if (discordId) {
-        tutorDiscordIdById.set(tutor.id as string, discordId);
+      if (tutorId && discordId) {
+        tutorDiscordIdById.set(tutorId, discordId);
       }
       const strikeCount = Number(tutor.strike_count) || 0;
-      if (strikeCount > 0) {
-        tutorStrikeCountById.set(tutor.id as string, strikeCount);
+      if (tutorId && strikeCount > 0) {
+        tutorStrikeCountById.set(tutorId, strikeCount);
       }
     }
   }
@@ -1214,9 +1231,12 @@ export async function POST(request: NextRequest) {
         const tutorEmail =
           String(course.created_by_email ?? "").trim() ||
           (course.created_by ? tutorEmailById.get(course.created_by) ?? "" : "");
+        const tutorRole = course.created_by
+          ? tutorRoleById.get(course.created_by) ?? resolveRoleByEmail(tutorEmail)
+          : resolveRoleByEmail(tutorEmail);
         const firstClassDate = firstClassDateByCourseId.get(classRow.course_id) ?? null;
-        if (resolveRoleByEmail(tutorEmail) === "founder") {
-          liveChannelRecovery.skipped.push({ classId: classRow.id, reason: "founder-taught legacy class" });
+        if (isFounderRole(tutorRole)) {
+          liveChannelRecovery.skipped.push({ classId: classRow.id, reason: "founder/CEO/COO-taught legacy class" });
           return false;
         }
         if (!shouldUseDiscordVoiceSystem(firstClassDate)) {
@@ -1449,9 +1469,12 @@ export async function POST(request: NextRequest) {
     const tutorEmail =
       String(course.created_by_email ?? "").trim() ||
       (course.created_by ? tutorEmailById.get(course.created_by) ?? "" : "");
-    const isFounder = resolveRoleByEmail(tutorEmail) === "founder";
+    const tutorRole = course.created_by
+      ? tutorRoleById.get(course.created_by) ?? resolveRoleByEmail(tutorEmail)
+      : resolveRoleByEmail(tutorEmail);
+    const isFounderTaughtClass = isFounderRole(tutorRole);
     const firstClassDate = firstClassDateByCourseId.get(classRow.course_id) ?? null;
-    const usesDiscordVoiceSystem = !isFounder && shouldUseDiscordVoiceSystem(firstClassDate);
+    const usesDiscordVoiceSystem = !isFounderTaughtClass && shouldUseDiscordVoiceSystem(firstClassDate);
     const isTutorEarlyAccessReminder = reminderType === "fifteen_minutes" && usesDiscordVoiceSystem;
 
     const shouldSendCourseDiscordReminder =
@@ -1459,12 +1482,12 @@ export async function POST(request: NextRequest) {
     const shouldSendAnyEmail =
       (isStandardReminder || isTutorEarlyAccessReminder) && emailRemindersEnabled;
     const shouldSendExecutiveTutorReminder =
-      (isFounder
+      (isFounderTaughtClass
         ? reminderType !== "ten_minutes" && reminderType !== "five_minutes"
         : reminderType !== "ten_minutes" && (usesDiscordVoiceSystem || reminderType !== "fifteen_minutes")) &&
       discordReminderDeliveryEnabled &&
       executivesChannelId !== null;    const shouldSendFounderChannelReminder =
-      !isFounder &&
+      !isFounderTaughtClass &&
       (reminderType === "one_hour" || reminderType === "ten_minutes") &&
       discordReminderDeliveryEnabled &&
       foundersChannelId !== null &&
@@ -1652,7 +1675,7 @@ export async function POST(request: NextRequest) {
         <p><strong>Tutor:</strong> ${tutorName}</p>
         <p><strong>Start time (${torontoTimeZone}):</strong> ${startLabel}</p>
         ${
-          isFounder
+          isFounderTaughtClass
             ? `<p>Please attend the class 5 minutes before the start time on the Schoolhouse platform.</p>`
             : `<p>Please attend the class 5 minutes before the start time:</p>\n        <p>Zoom ID: ${escapeHtml(defaultZoomId)}<br/>Password: ${escapeHtml(defaultZoomPassword)}<br/>${breakoutRoomName
                 ? `Breakout room: "${escapeHtml(breakoutRoomName)}"`
@@ -1683,7 +1706,7 @@ export async function POST(request: NextRequest) {
             `**Start time (${torontoTimeZone}):** ${escapeDiscordText(
               formatTorontoDateTime(classRow.starts_at)
             )}`,
-            isFounder
+            isFounderTaughtClass
               ? "Please attend the class 5 minutes before the start time on the Schoolhouse platform."
               : nonFounderDiscordInstruction,
           ].join("\n");
@@ -1825,7 +1848,7 @@ export async function POST(request: NextRequest) {
             `**Start time (${torontoTimeZone}):** ${escapeDiscordText(
               formatTorontoDateTime(classRow.starts_at)
             )}`,
-            isFounder
+            isFounderTaughtClass
               ? "Please join the meeting on the Schoolhouse platform immediately!"
               : nonFounderFiveMinInstruction,
           ].join("\n");
@@ -1837,7 +1860,7 @@ export async function POST(request: NextRequest) {
         : "";
       if (tutorDiscordId) {
         let contactInstruction = "";
-        if (isFounder) {
+        if (isFounderTaughtClass) {
           if (reminderType === "one_hour") {
             contactInstruction = "Please remember to mark the students' homework!";
           } else if (reminderType === "fifteen_minutes") {
@@ -1862,7 +1885,7 @@ export async function POST(request: NextRequest) {
 
         executiveTutorContent = [
           `<@${tutorDiscordId}> Your **${escapeDiscordText(classTitleOrdinalRaw)}** for **${escapeDiscordText(courseTitleRaw)}** is starting in ${escapeDiscordText(reminderLabel)}.${contactInstruction ? ` ${contactInstruction}` : ""}`,
-          !isFounder && !usesDiscordVoiceSystem ? "Please join the breakout room immediately after joining the meeting. Do not stay in the main meeting room." : "",
+          !isFounderTaughtClass && !usesDiscordVoiceSystem ? "Please join the breakout room immediately after joining the meeting. Do not stay in the main meeting room." : "",
         ].filter(Boolean).join("\n");
       }
 
