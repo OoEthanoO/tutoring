@@ -1367,6 +1367,9 @@ export const runDiscordSync = async ({
   const voiceCategoryName =
     String(process.env.DISCORD_VOICE_CATEGORY_NAME ?? "").trim() ||
     defaultVoiceCategoryName;
+  // Temporary live-class voice channels live under this category. It is created and
+  // managed by the class-reminders cron; this name must match that cron's value.
+  const liveCategoryName = "Live";
   const infoChannelName =
     String(process.env.DISCORD_INFO_CHANNEL_NAME ?? "").trim() ||
     defaultInfoChannelName;
@@ -3192,6 +3195,8 @@ export const runDiscordSync = async ({
     }
   };
 
+  const liveCategory = findCategoryByName(mutableChannels, liveCategoryName);
+
   let nextTopLevelPosition = 0;
   if (infoChannel) {
     await enforceTopLevelPosition(
@@ -3237,6 +3242,15 @@ export const runDiscordSync = async ({
     await enforceTopLevelPosition(
       fundraiserVoiceChannel.id,
       fundraiserVoiceChannel.name,
+      nextTopLevelPosition
+    );
+    nextTopLevelPosition += 1;
+  }
+  // The Live category (when present) sits directly above the Text category.
+  if (liveCategory) {
+    await enforceTopLevelPosition(
+      liveCategory.id,
+      liveCategoryName,
       nextTopLevelPosition
     );
     nextTopLevelPosition += 1;
@@ -3305,11 +3319,36 @@ export const runDiscordSync = async ({
   if (nonprofitTeamVoiceChannel) allowedVoiceChannelIds.add(nonprofitTeamVoiceChannel.id);
   if (developmentTeamVoiceChannel) allowedVoiceChannelIds.add(developmentTeamVoiceChannel.id);
 
+  // Preserve temporary live-class voice channels (created by the class-reminders
+  // cron). Their lifecycle is owned by that cron, so the sweep below must not
+  // delete them. Any row without deleted_at is considered live.
+  try {
+    const { data: liveClassRows } = await adminClient
+      .from("discord_live_class_channels")
+      .select("discord_channel_id")
+      .is("deleted_at", null);
+    for (const row of liveClassRows ?? []) {
+      const liveChannelId = String(row.discord_channel_id ?? "").trim();
+      if (liveChannelId) {
+        allowedVoiceChannelIds.add(liveChannelId);
+      }
+    }
+  } catch (error) {
+    result.errors.push(
+      `Failed to load live class channels to preserve: ${toErrorMessage(error, "Unknown error.")}`
+    );
+  }
+
   const allowedCategoryIds = new Set<string>([
     textCategory.id,
     voiceCategory.id,
     coursesCategory.id,
   ]);
+  // Keep the Live category around so the cron's ordering/state is stable; it is
+  // only cleaned up by the cron, never by this sweep.
+  if (liveCategory) {
+    allowedCategoryIds.add(liveCategory.id);
+  }
 
   for (const channel of [...mutableChannels]) {
     if (channel.type === discordCategoryChannelType) {
