@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { runDiscordSync, type DiscordSyncResult } from "@/lib/discordSync";
 import { runGithubSync, type GithubSyncResult } from "@/lib/githubSync";
 import { fetchFundraisingRaisedAmount } from "@/lib/fundraising";
@@ -24,7 +24,6 @@ const defaultLiveCategoryName = "Live";
 const torontoTimeZone = "America/Toronto";
 const defaultZoomId = "822 9677 5321";
 const defaultZoomPassword = "youth";
-const fundraiserVoiceChannelNamePattern = /^\$\d[\d,]*\sraised$/i;
 const viewChannelPermission = 1024;
 const connectPermission = 1048576;
 const speakPermission = 2097152;
@@ -35,8 +34,7 @@ type ReminderType =
   | "one_hour"
   | "fifteen_minutes"
   | "ten_minutes"
-  | "five_minutes"
-  | "class_follow_up";
+  | "five_minutes";
 
 type ReminderTarget = {
   type: ReminderType;
@@ -183,7 +181,7 @@ const shouldUseDiscordVoiceSystem = (firstClassDate: Date | null): boolean => {
  * Build a map of course IDs to their first class date
  */
 const buildFirstClassDateMap = async (
-  adminClient: any,
+  adminClient: SupabaseClient,
   courseIds: string[]
 ): Promise<Map<string, Date>> => {
   const map = new Map<string, Date>();
@@ -607,7 +605,7 @@ const sendEmail = async (to: string, subject: string, html: string) => {
 };
 
 const runAutoCloseMeetings = async (
-  adminClient: any
+  adminClient: SupabaseClient
 ): Promise<{ closedCount: number; errors: string[] }> => {
   const errors: string[] = [];
   const now = new Date();
@@ -868,56 +866,6 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // Follow-ups
-  const followUpWindowStart = new Date(base.getTime() - 2 * 60 * 1000);
-  const followUpWindowEnd = new Date(base.getTime() + 1 * 60 * 1000);
-  const searchStart = new Date(base.getTime() - 24 * 60 * 60 * 1000);
-
-  const { data: pastClasses, error: pastClassError } = await adminClient
-    .from("course_classes")
-    .select(
-      "id, title, starts_at, duration_hours, course_id, course:courses!inner(id, title, short_name, created_by, created_by_name, created_by_email)"
-    )
-    .is("courses.deleted_at", null)
-    .gte("starts_at", searchStart.toISOString())
-    .lt("starts_at", followUpWindowEnd.toISOString());
-
-  if (pastClassError) {
-    return NextResponse.json(
-      {
-        error: pastClassError.message ?? "Failed to load classes for follow-up.",
-        discordSync,
-      },
-      { status: 500 }
-    );
-  }
-
-  for (const classRow of (pastClasses ?? []) as ClassRow[]) {
-    const course = readCourse(classRow.course);
-    if (course && !course.created_by_name && !course.created_by_email) {
-      continue;
-    }
-
-    const startsAt = new Date(classRow.starts_at);
-    const durationHours = typeof classRow.duration_hours === 'number'
-      ? classRow.duration_hours
-      : Number.parseFloat(String(classRow.duration_hours || 1));
-
-    if (Number.isNaN(durationHours)) {
-      continue;
-    }
-
-    const endsAt = new Date(startsAt.getTime() + durationHours * 60 * 60 * 1000);
-
-    if (endsAt >= followUpWindowStart && endsAt < followUpWindowEnd) {
-      candidates.push({
-        reminderType: "class_follow_up",
-        reminderLabel: "0 minutes",
-        classRow,
-      });
-    }
-  }
-
   // Deduplicate reminders using logs to prevent multiple sends during the drift window
   const candidateClassIdsForLogs = Array.from(
     new Set(candidates.map((c) => c.classRow.id))
@@ -938,69 +886,70 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // Build first class date map for all courses in candidates
+  const liveRecoveryNow = floorToMinuteBoundary(new Date());
+  const liveRecoverySearchStart = new Date(liveRecoveryNow.getTime() - 8 * 60 * 60 * 1000);
+  const liveRecoverySearchEnd = new Date(liveRecoveryNow.getTime() + 15 * 60 * 1000);
+  const { data: potentialLiveClasses, error: potentialLiveClassesError } = await adminClient
+    .from("course_classes")
+    .select(
+      "id, title, starts_at, duration_hours, course_id, course:courses!inner(id, title, short_name, created_by, created_by_name, created_by_email)"
+    )
+    .is("courses.deleted_at", null)
+    .gte("starts_at", liveRecoverySearchStart.toISOString())
+    .lt("starts_at", liveRecoverySearchEnd.toISOString())
+    .order("starts_at", { ascending: true });
+
+  if (potentialLiveClassesError) {
+    return NextResponse.json(
+      {
+        error: potentialLiveClassesError.message ?? "Failed to load active classes for live channel recovery.",
+        discordSync,
+      },
+      { status: 500 }
+    );
+  }
+
+  const classesInLiveWindow = ((potentialLiveClasses ?? []) as ClassRow[]).filter((classRow) => {
+    const startsAt = new Date(classRow.starts_at);
+    const durationHoursRaw =
+      typeof classRow.duration_hours === "number"
+        ? classRow.duration_hours
+        : Number.parseFloat(String(classRow.duration_hours || 1));
+    const durationHours = Number.isFinite(durationHoursRaw) ? durationHoursRaw : 1;
+    const startsMs = startsAt.getTime();
+    const endsMs = startsMs + durationHours * 60 * 60 * 1000;
+    const earlyAccessMs = 15 * 60 * 1000;
+    return (
+      Number.isFinite(startsMs) &&
+      liveRecoveryNow.getTime() >= startsMs - earlyAccessMs &&
+      liveRecoveryNow.getTime() <= endsMs
+    );
+  });
+
+  // Build first class date map for all courses that might need reminders or live recovery.
   const courseIdsInCandidates = Array.from(
-    new Set(candidates.map((c) => c.classRow.course_id))
+    new Set([
+      ...candidates.map((c) => c.classRow.course_id),
+      ...classesInLiveWindow.map((classRow) => classRow.course_id),
+    ])
   );
   const firstClassDateByCourseId = await buildFirstClassDateMap(
     adminClient,
     courseIdsInCandidates
   );
 
-  if (candidates.length === 0) {
-    let githubSync: GithubSyncResult | null = null;
-    try {
-      githubSync = await runGithubSync();
-      
-      // Update daily fundraising total
-      const raised = await fetchFundraisingRaisedAmount();
-      if (raised !== null) {
-        const nowStr = new Date().toLocaleString("en-US", {
-          timeZone: "America/Toronto",
-          year: "numeric",
-          month: "2-digit",
-          day: "2-digit",
-        });
-        const [month, day, year] = nowStr.split("/");
-        const today = `${year}-${month}-${day}`;
-        await adminClient.from("daily_donations").upsert({ date: today, amount: raised }, { onConflict: "date" });
-      }
-
-    } catch (error) {
-      console.error("Failed to run Github sync from cron:", error);
-      githubSync = {
-        success: false,
-        processed: 0,
-        skippedReason: null,
-        errors: [
-          error instanceof Error
-            ? error.message
-            : "Unknown runtime exception in Github sync",
-        ],
-      };
-    }
-
-    return NextResponse.json({
-      sentClassCount: 0,
-      sentEmailCount: 0,
-      sentDiscordReminderCount: 0,
-      sentDiscordFollowUpCount: 0,
-      failedClasses: [],
-      timezone: torontoTimeZone,
-      reminderSkippedReason,
-      discordReminderSkippedReason,
-      discordSync,
-      githubSync,
-    });
-  }
-
   const courseIds = Array.from(
-    new Set(candidates.map((item) => item.classRow.course_id))
+    new Set([
+      ...candidates.map((item) => item.classRow.course_id),
+      ...classesInLiveWindow.map((classRow) => classRow.course_id),
+    ])
   );
-  const { data: enrollments, error: enrollmentError } = await adminClient
-    .from("course_enrollments")
-    .select("course_id, student_id, student_email")
-    .in("course_id", courseIds);
+  const { data: enrollments, error: enrollmentError } = courseIds.length > 0
+    ? await adminClient
+      .from("course_enrollments")
+      .select("course_id, student_id, student_email")
+      .in("course_id", courseIds)
+    : { data: [], error: null };
 
   if (enrollmentError) {
     return NextResponse.json(
@@ -1078,8 +1027,11 @@ export async function POST(request: NextRequest) {
 
   const missingTutorIds = Array.from(
     new Set(
-      candidates
-        .map((item) => readCourse(item.classRow.course))
+      [
+        ...candidates.map((item) => item.classRow),
+        ...classesInLiveWindow,
+      ]
+        .map((classRow) => readCourse(classRow.course))
         .filter(Boolean)
         .filter((course) => !course?.created_by_email && course?.created_by)
         .map((course) => course!.created_by as string)
@@ -1103,8 +1055,11 @@ export async function POST(request: NextRequest) {
   // Look up tutor Discord IDs for follow-up messages.
   const allTutorIds = Array.from(
     new Set(
-      candidates
-        .map((item) => readCourse(item.classRow.course))
+      [
+        ...candidates.map((item) => item.classRow),
+        ...classesInLiveWindow,
+      ]
+        .map((classRow) => readCourse(classRow.course))
         .filter(Boolean)
         .filter((course) => course?.created_by)
         .map((course) => course!.created_by as string)
@@ -1146,27 +1101,27 @@ export async function POST(request: NextRequest) {
       guildChannels.push(liveCategory);
     }
 
-    const fundraiserChannel = guildChannels.find(
-      (ch) => ch.type === discordVoiceChannelType && fundraiserVoiceChannelNamePattern.test(ch.name)
-    );
     const textCategory = guildChannels.find(
       (ch) => ch.type === discordCategoryChannelType && ch.name === defaultTextCategoryName
     );
 
-    const livePos = Number(liveCategory.position ?? 0);
-    let targetPos = livePos;
-    if (fundraiserChannel && textCategory) {
-      const fundraiserPos = Number(fundraiserChannel.position ?? 0);
-      const textPos = Number(textCategory.position ?? fundraiserPos + 1);
-      targetPos = Math.max(fundraiserPos + 1, Math.min(textPos - 1, textPos));
-    } else if (textCategory) {
-      const textPos = Number(textCategory.position ?? 1);
-      targetPos = Math.max(0, textPos - 1);
-    }
+    const topLevelChannels = guildChannels
+      .filter((ch) => !ch.parent_id)
+      .sort((left, right) => {
+        const positionDiff = Number(left.position ?? 0) - Number(right.position ?? 0);
+        return positionDiff || left.id.localeCompare(right.id);
+      });
+    const liveIndex = topLevelChannels.findIndex((ch) => ch.id === liveCategory.id);
+    const textIndex = textCategory
+      ? topLevelChannels.findIndex((ch) => ch.id === textCategory.id)
+      : -1;
+    const isLiveDirectlyAboveText = liveIndex >= 0 && textIndex >= 0 && liveIndex + 1 === textIndex;
 
-    if (targetPos !== livePos) {
+    if (textCategory && !isLiveDirectlyAboveText) {
+      const textPos = Number(textCategory.position ?? 1);
       await reorderDiscordChannels(discordGuildId, [
-        { id: liveCategory.id, position: targetPos },
+        { id: liveCategory.id, position: Math.max(0, textPos) },
+        { id: textCategory.id, position: Math.max(1, textPos + 1) },
       ]);
       guildChannels = await listDiscordGuildChannels(discordGuildId);
     }
@@ -1245,9 +1200,56 @@ export async function POST(request: NextRequest) {
       .select("id, class_id, course_id, discord_channel_id, tutor_discord_user_id, starts_at, ends_at")
       .gte("ends_at", new Date(nowMs).toISOString());
 
-    liveChannelRecovery.activeRows = (liveRows ?? []).length;
+    const liveRowsByClassId = new Map(
+      (liveRows ?? []).map((row) => [String(row.class_id), row])
+    );
+    const missingLiveRows = classesInLiveWindow
+      .filter((classRow) => !liveRowsByClassId.has(classRow.id))
+      .filter((classRow) => {
+        const course = readCourse(classRow.course);
+        if (!course) {
+          liveChannelRecovery.skipped.push({ classId: classRow.id, reason: "missing course" });
+          return false;
+        }
+        const tutorEmail =
+          String(course.created_by_email ?? "").trim() ||
+          (course.created_by ? tutorEmailById.get(course.created_by) ?? "" : "");
+        const firstClassDate = firstClassDateByCourseId.get(classRow.course_id) ?? null;
+        if (resolveRoleByEmail(tutorEmail) === "founder") {
+          liveChannelRecovery.skipped.push({ classId: classRow.id, reason: "founder-taught legacy class" });
+          return false;
+        }
+        if (!shouldUseDiscordVoiceSystem(firstClassDate)) {
+          liveChannelRecovery.skipped.push({ classId: classRow.id, reason: "course does not use Discord voice system" });
+          return false;
+        }
+        return true;
+      })
+      .map((classRow) => {
+        const course = readCourse(classRow.course);
+        const startsAtMs = new Date(classRow.starts_at).getTime();
+        const durationHoursRaw =
+          typeof classRow.duration_hours === "number"
+            ? classRow.duration_hours
+            : Number.parseFloat(String(classRow.duration_hours || 1));
+        const durationHours = Number.isFinite(durationHoursRaw) ? durationHoursRaw : 1;
+        return {
+          id: null,
+          class_id: classRow.id,
+          course_id: classRow.course_id,
+          discord_channel_id: "",
+          tutor_discord_user_id: course?.created_by
+            ? tutorDiscordIdById.get(course.created_by) ?? ""
+            : "",
+          starts_at: classRow.starts_at,
+          ends_at: new Date(startsAtMs + durationHours * 60 * 60 * 1000).toISOString(),
+        };
+      });
 
-    const recoverable = (liveRows ?? []).filter((row) => {
+    const liveRowsForRecovery = [...(liveRows ?? []), ...missingLiveRows];
+    liveChannelRecovery.activeRows = liveRowsForRecovery.length;
+
+    const recoverable = liveRowsForRecovery.filter((row) => {
       const classId = String(row.class_id);
       const startsMs = new Date(String(row.starts_at)).getTime();
       const endsMs = new Date(String(row.ends_at)).getTime();
@@ -1265,7 +1267,8 @@ export async function POST(request: NextRequest) {
         return false;
       }
       // Only recover when the recorded channel is actually gone from the guild.
-      if (guildChannels.some((ch) => ch.id === String(row.discord_channel_id))) {
+      const recordedChannelId = String(row.discord_channel_id ?? "").trim();
+      if (recordedChannelId && guildChannels.some((ch) => ch.id === recordedChannelId)) {
         liveChannelRecovery.skipped.push({ classId, reason: "channel already exists in guild" });
         return false;
       }
@@ -1362,10 +1365,21 @@ export async function POST(request: NextRequest) {
               permission_overwrites: permissionOverwrites,
             });
             guildChannels.push(recreatedChannel);
-            await adminClient
-              .from("discord_live_class_channels")
-              .update({ discord_channel_id: recreatedChannel.id, deleted_at: null })
-              .eq("id", String(row.id));
+            if (row.id) {
+              await adminClient
+                .from("discord_live_class_channels")
+                .update({ discord_channel_id: recreatedChannel.id, deleted_at: null })
+                .eq("id", String(row.id));
+            } else {
+              await adminClient.from("discord_live_class_channels").insert({
+                class_id: String(row.class_id),
+                course_id: String(row.course_id),
+                discord_channel_id: recreatedChannel.id,
+                tutor_discord_user_id: tutorDiscordId,
+                starts_at: String(row.starts_at),
+                ends_at: String(row.ends_at),
+              });
+            }
             liveChannelRecovery.recreated += 1;
           } catch (error) {
             const reason = error instanceof Error ? error.message : "Unknown error.";
@@ -1380,6 +1394,35 @@ export async function POST(request: NextRequest) {
           }
         }
       }
+    }
+  }
+
+  if (discordRemindersEnabled && !discordReminderSkippedReason && discordGuildId) {
+    try {
+      guildChannels = await listDiscordGuildChannels(discordGuildId);
+      const liveCategory = guildChannels.find(
+        (ch) => ch.type === discordCategoryChannelType && ch.name === defaultLiveCategoryName
+      );
+      if (liveCategory) {
+        const hasLiveChildren = guildChannels.some(
+          (ch) => String(ch.parent_id ?? "") === liveCategory.id
+        );
+        const { data: remainingLiveRows } = await adminClient
+          .from("discord_live_class_channels")
+          .select("id")
+          .is("deleted_at", null)
+          .limit(1);
+
+        if (!hasLiveChildren && (remainingLiveRows ?? []).length === 0) {
+          await deleteDiscordChannel(liveCategory.id);
+          guildChannels = guildChannels.filter((ch) => ch.id !== liveCategory.id);
+        }
+      }
+    } catch (error) {
+      failedClasses.push({
+        classId: "live-category-cleanup",
+        reason: `Failed to clean up empty Live category: ${error instanceof Error ? error.message : "Unknown error."}`,
+      });
     }
   }
 
@@ -1401,7 +1444,6 @@ export async function POST(request: NextRequest) {
 
     const isStandardReminder =
       reminderType === "twenty_four_hours" || reminderType === "one_hour";
-    const isFollowUpReminder = reminderType === "class_follow_up";
     const isCourseChannelReminder = reminderType === "one_hour" || reminderType === "five_minutes";
 
     const tutorEmail =
@@ -1415,9 +1457,8 @@ export async function POST(request: NextRequest) {
     const shouldSendCourseDiscordReminder =
       isCourseChannelReminder && discordReminderDeliveryEnabled;
     const shouldSendAnyEmail =
-      (isStandardReminder || isFollowUpReminder || isTutorEarlyAccessReminder) && emailRemindersEnabled;
+      (isStandardReminder || isTutorEarlyAccessReminder) && emailRemindersEnabled;
     const shouldSendExecutiveTutorReminder =
-      !isFollowUpReminder &&
       (isFounder
         ? reminderType !== "ten_minutes" && reminderType !== "five_minutes"
         : reminderType !== "ten_minutes" && (usesDiscordVoiceSystem || reminderType !== "fifteen_minutes")) &&
@@ -1446,7 +1487,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    if (tutorEmail && (isStandardReminder || isFollowUpReminder || isTutorEarlyAccessReminder)) {
+    if (tutorEmail && (isStandardReminder || isTutorEarlyAccessReminder)) {
       recipients.add(tutorEmail.toLowerCase());
     }
 
@@ -1463,7 +1504,6 @@ export async function POST(request: NextRequest) {
     const classTitleOrdinalRaw = formatOrdinalClass(classTitleRaw);
     const courseTitleRaw = String(course.title ?? "").trim() || "Course";
     const classTitle = escapeHtml(classTitleRaw);
-    const classTitleOrdinal = escapeHtml(classTitleOrdinalRaw);
     const courseTitle = escapeHtml(courseTitleRaw);
     const tutorNameRaw =
       String(course.created_by_name ?? "").trim() || "your tutor";
@@ -1486,47 +1526,7 @@ export async function POST(request: NextRequest) {
     let discordContent = "";
     let executiveTutorContent = "";
 
-    if (reminderType === "class_follow_up") {
-      subject = isFounder 
-        ? `Class follow-up: Please submit manual activity for ${course.title}`
-        : `Class follow-up: Please submit the tutor form for ${course.title}`;
-      const siteBase = (process.env.NEXT_PUBLIC_SITE_URL ?? "").replace(/\/+$/, "");
-      const formUrl = siteBase ? `${siteBase}/redirect/tutor-log` : "https://docs.google.com/forms/d/e/1FAIpQLSfbp8hNm_hpGUfH-SvGbnF7LbsiemBbeXhjddVccSHS8di2nw/viewform";
-      html = `
-        <p>Hi ${tutorName},</p>
-        <p>Your <strong>${classTitleOrdinal}</strong> for <strong>${courseTitle}</strong> recently ended.</p>
-        ${
-          isFounder
-            ? `<p>Please remember to submit a manual activity on the Schoolhouse platform.</p>`
-            : `<p>Please remember to complete the tutor form:</p>\n        <p><a href="${formUrl}"><strong>${formUrl}</strong></a></p>`
-        }
-        <br/>
-        <p><strong>Class details:</strong></p>
-        <ul>
-          <li><strong>Course:</strong> ${courseTitle}</li>
-          <li><strong>${isStandardClassTitle ? classTitle : `Class: ${classTitle}`}</strong></li>
-          <li><strong>Start time (${torontoTimeZone}):</strong> ${startLabel}</li>
-        </ul>
-        <p>Thank you!</p>
-      `;
-      const tutorDiscordId = course.created_by
-        ? tutorDiscordIdById.get(course.created_by) ?? ""
-        : "";
-      if (tutorDiscordId) {
-        executiveTutorContent = [
-          `<@${tutorDiscordId}> Your **${escapeDiscordText(classTitleOrdinalRaw)}** for **${escapeDiscordText(courseTitleRaw)}** recently ended.`,
-          isFounder
-            ? `Please remember to submit a manual activity on the Schoolhouse platform.`
-            : `Please remember to complete the tutor log form:\n${formUrl}`,
-          `**Course:** ${escapeDiscordText(courseTitleRaw)}`,
-          isStandardClassTitle ? `**${escapeDiscordText(classTitleRaw)}**` : `**Class:** ${escapeDiscordText(classTitleRaw)}`,
-          `**Start time (${torontoTimeZone}):** ${escapeDiscordText(
-            formatTorontoDateTime(classRow.starts_at)
-          )}`,
-        ].join("\n");
-      }
-    } else {
-      let voiceChannelLinkForTutor = "";
+    let voiceChannelLinkForTutor = "";
 
       if (isTutorEarlyAccessReminder) {
         if (discordRemindersEnabled && !discordReminderSkippedReason && discordGuildId && botUserId) {
@@ -1865,7 +1865,6 @@ export async function POST(request: NextRequest) {
           !isFounder && !usesDiscordVoiceSystem ? "Please join the breakout room immediately after joining the meeting. Do not stay in the main meeting room." : "",
         ].filter(Boolean).join("\n");
       }
-    }
 
     const recipientList = Array.from(recipients).sort();
     const failedRecipients: { email: string; reason: string }[] = [];
@@ -1940,9 +1939,9 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Send follow-up or executive reminder to the executives channel with a tutor user mention.
+    // Send executive reminder to the executives channel with a tutor user mention.
     if (
-      (shouldSendExecutiveTutorReminder || isFollowUpReminder) &&
+      shouldSendExecutiveTutorReminder &&
       discordReminderDeliveryEnabled &&
       executivesChannelId &&
       executiveTutorContent
