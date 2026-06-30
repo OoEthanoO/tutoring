@@ -1222,6 +1222,128 @@ export async function POST(request: NextRequest) {
   const discordReminderDeliveryEnabled =
     discordRemindersEnabled && !discordReminderSkippedReason;
 
+  // Recover live voice channels that should currently exist but whose Discord
+  // channel is missing (e.g. it was deleted while the server was in a bad state).
+  // This runs every tick and is independent of reminder de-duplication, so a class
+  // that is already in session self-heals instead of staying broken.
+  if (discordRemindersEnabled && !discordReminderSkippedReason && discordGuildId && botUserId) {
+    const nowMs = Date.now();
+    const earlyAccessLeadMs = 15 * 60 * 1000;
+    const studentAccessLeadMs = 5 * 60 * 1000;
+
+    const { data: liveRows } = await adminClient
+      .from("discord_live_class_channels")
+      .select("id, class_id, course_id, discord_channel_id, tutor_discord_user_id, starts_at, ends_at")
+      .is("deleted_at", null);
+
+    const recoverable = (liveRows ?? []).filter((row) => {
+      const startsMs = new Date(String(row.starts_at)).getTime();
+      const endsMs = new Date(String(row.ends_at)).getTime();
+      if (Number.isNaN(startsMs) || Number.isNaN(endsMs)) {
+        return false;
+      }
+      // The channel should exist from the tutor early-access window until class end.
+      if (nowMs < startsMs - earlyAccessLeadMs || nowMs > endsMs) {
+        return false;
+      }
+      // Only recover when the recorded channel is actually gone from the guild.
+      return !guildChannels.some((ch) => ch.id === String(row.discord_channel_id));
+    });
+
+    if (recoverable.length > 0) {
+      const recoverCourseIds = Array.from(
+        new Set(recoverable.map((row) => String(row.course_id)).filter(Boolean))
+      );
+      const titleByCourseId = new Map<string, string>();
+      const studentDiscordIdsByCourse = new Map<string, string[]>();
+
+      if (recoverCourseIds.length > 0) {
+        const { data: courseRows } = await adminClient
+          .from("courses")
+          .select("id, title")
+          .in("id", recoverCourseIds);
+        for (const courseRow of courseRows ?? []) {
+          titleByCourseId.set(String(courseRow.id), String(courseRow.title ?? ""));
+        }
+
+        const { data: recoverEnrollments } = await adminClient
+          .from("course_enrollments")
+          .select("course_id, student_id")
+          .in("course_id", recoverCourseIds);
+        const recoverStudentIds = Array.from(
+          new Set((recoverEnrollments ?? []).map((e) => String(e.student_id ?? "")).filter(Boolean))
+        );
+        const discordByStudentId = new Map<string, string>();
+        if (recoverStudentIds.length > 0) {
+          const { data: studentRows } = await adminClient
+            .from("app_users")
+            .select("id, discord_user_id")
+            .in("id", recoverStudentIds);
+          for (const student of studentRows ?? []) {
+            const discordId = String(student.discord_user_id ?? "").trim();
+            if (discordId) {
+              discordByStudentId.set(String(student.id), discordId);
+            }
+          }
+        }
+        for (const enrollment of recoverEnrollments ?? []) {
+          const discordId = discordByStudentId.get(String(enrollment.student_id ?? ""));
+          if (!discordId) {
+            continue;
+          }
+          const courseId = String(enrollment.course_id ?? "");
+          const current = studentDiscordIdsByCourse.get(courseId) ?? [];
+          current.push(discordId);
+          studentDiscordIdsByCourse.set(courseId, current);
+        }
+      }
+
+      const liveCategoryId = await ensureLiveCategory();
+      if (liveCategoryId) {
+        for (const row of recoverable) {
+          const tutorDiscordId = String(row.tutor_discord_user_id ?? "").trim();
+          if (!tutorDiscordId) {
+            continue;
+          }
+          const courseId = String(row.course_id);
+          const startsMs = new Date(String(row.starts_at)).getTime();
+          // Students only get access from 5 minutes before the start; before that
+          // it stays tutor-only, matching the normal early-access behaviour.
+          const grantStudents = nowMs >= startsMs - studentAccessLeadMs;
+          const studentDiscordUserIds = grantStudents
+            ? Array.from(new Set(studentDiscordIdsByCourse.get(courseId) ?? []))
+            : [];
+          try {
+            const permissionOverwrites = buildLiveVoicePermissionOverwrites({
+              guildId: discordGuildId,
+              botUserId,
+              ceoRoleId,
+              cooRoleId,
+              tutorDiscordUserId: tutorDiscordId,
+              studentDiscordUserIds,
+            });
+            const recreatedChannel = await createDiscordGuildChannel(discordGuildId, {
+              name: normalizeVoiceChannelName(titleByCourseId.get(courseId) || "Class", String(row.class_id)),
+              type: discordVoiceChannelType,
+              parent_id: liveCategoryId,
+              permission_overwrites: permissionOverwrites,
+            });
+            guildChannels.push(recreatedChannel);
+            await adminClient
+              .from("discord_live_class_channels")
+              .update({ discord_channel_id: recreatedChannel.id, deleted_at: null })
+              .eq("id", String(row.id));
+          } catch (error) {
+            failedClasses.push({
+              classId: String(row.class_id),
+              reason: `Failed to recover live voice channel: ${error instanceof Error ? error.message : "Unknown error."}`,
+            });
+          }
+        }
+      }
+    }
+  }
+
   for (const candidate of candidates) {
     let wasAnyReminderSent = false;
     const { classRow, reminderType, reminderLabel } = candidate;
@@ -1545,8 +1667,14 @@ export async function POST(request: NextRequest) {
             let liveChannelId = "";
             let channelFoundInDb = false;
             if (existingLiveRow && !existingLiveRow.deleted_at) {
-              liveChannelId = String(existingLiveRow.discord_channel_id ?? "").trim();
-              channelFoundInDb = Boolean(liveChannelId);
+              const recordedChannelId = String(existingLiveRow.discord_channel_id ?? "").trim();
+              // Only reuse the recorded channel if it still exists in the guild. If it
+              // was removed (e.g. deleted while the server was in a bad state), fall
+              // through to recreate it below instead of pointing at a dead channel.
+              if (recordedChannelId && guildChannels.some((ch) => ch.id === recordedChannelId)) {
+                liveChannelId = recordedChannelId;
+                channelFoundInDb = true;
+              }
             }
 
             if (!liveChannelId && botUserId) {
