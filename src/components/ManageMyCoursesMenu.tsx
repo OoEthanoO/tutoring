@@ -5,6 +5,7 @@ import { getCurrentUser, onAuthChange } from "@/lib/authClient";
 import { canManageCourses, isExecutive, isFounder, isHighRankingChiefExecutive, resolveUserRole, type UserRole } from "@/lib/roles";
 import { setHasUnsavedData } from "@/lib/unsavedData";
 import { MarkdownText } from "@/lib/parseMarkdown";
+import CourseAttendance from "@/components/CourseAttendance";
 
 type EnrolledStudent = {
   id: string;
@@ -155,6 +156,7 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
     null
   );
   const [editingClassId, setEditingClassId] = useState<string | null>(null);
+  const [attendanceCourseId, setAttendanceCourseId] = useState<string | null>(null);
   const [editStartsAt, setEditStartsAt] = useState("");
   const [editDurationMinutes, setEditDurationMinutes] = useState("");
   const [pendingClassId, setPendingClassId] = useState<string | null>(null);
@@ -1291,6 +1293,22 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
                 ongoing ? "border-amber-400 animate-pulse" : "border-[var(--border)]"
               }`}
             >
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() =>
+                  setAttendanceCourseId((current) => (current === course.id ? null : course.id))
+                }
+                className="text-xs font-semibold text-[var(--foreground)] underline-offset-2 hover:underline"
+              >
+                {attendanceCourseId === course.id ? "Hide attendance" : "View attendance"}
+              </button>
+            </div>
+            {attendanceCourseId === course.id ? (
+              <div className="rounded-lg border border-[var(--border)] p-3">
+                <CourseAttendance courseId={course.id} />
+              </div>
+            ) : null}
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="flex-1">
                 {editingCourseId === course.id ? (

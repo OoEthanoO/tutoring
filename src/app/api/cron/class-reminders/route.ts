@@ -1446,6 +1446,168 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // Auto-attendance: record which enrolled students (and the tutor) are currently
+  // in their class's live Discord voice channel. Runs every tick while a class is
+  // in session; each participant is polled only until first detected, which bounds
+  // the number of Discord API calls.
+  let attendanceRecorded = 0;
+  if (discordRemindersEnabled && !discordReminderSkippedReason && discordGuildId) {
+    try {
+      const attendanceNow = Date.now();
+      const attendanceLeadMs = 5 * 60 * 1000;
+      const attendanceTrailMs = 2 * 60 * 1000;
+
+      // Classes whose live voice channel should currently be active.
+      const { data: liveSessions } = await adminClient
+        .from("discord_live_class_channels")
+        .select("class_id, course_id, discord_channel_id, tutor_discord_user_id, starts_at, ends_at")
+        .is("deleted_at", null)
+        .lte("starts_at", new Date(attendanceNow + attendanceLeadMs).toISOString())
+        .gte("ends_at", new Date(attendanceNow - attendanceTrailMs).toISOString());
+
+      const sessions = liveSessions ?? [];
+      if (sessions.length > 0) {
+        const sessionCourseIds = Array.from(
+          new Set(sessions.map((s) => String(s.course_id)).filter(Boolean))
+        );
+        const sessionClassIds = sessions.map((s) => String(s.class_id)).filter(Boolean);
+
+        // Enrolled students (app_users id + Discord id) per in-session course.
+        const { data: attendanceEnrollments } = await adminClient
+          .from("course_enrollments")
+          .select("course_id, student_id")
+          .in("course_id", sessionCourseIds);
+        const attendanceStudentIds = Array.from(
+          new Set((attendanceEnrollments ?? []).map((e) => String(e.student_id ?? "")).filter(Boolean))
+        );
+        const discordByStudentId = new Map<string, string>();
+        if (attendanceStudentIds.length > 0) {
+          const { data: attendanceStudentRows } = await adminClient
+            .from("app_users")
+            .select("id, discord_user_id")
+            .in("id", attendanceStudentIds);
+          for (const student of attendanceStudentRows ?? []) {
+            const discordId = String(student.discord_user_id ?? "").trim();
+            if (discordId) {
+              discordByStudentId.set(String(student.id), discordId);
+            }
+          }
+        }
+        const studentsByCourse = new Map<string, { userId: string; discordId: string }[]>();
+        for (const enrollment of attendanceEnrollments ?? []) {
+          const courseId = String(enrollment.course_id ?? "");
+          const studentId = String(enrollment.student_id ?? "");
+          const discordId = discordByStudentId.get(studentId);
+          if (!courseId || !studentId || !discordId) {
+            continue;
+          }
+          const current = studentsByCourse.get(courseId) ?? [];
+          current.push({ userId: studentId, discordId });
+          studentsByCourse.set(courseId, current);
+        }
+
+        // Tutor (course creator) app_users id per in-session course.
+        const createdByByCourse = new Map<string, string>();
+        const { data: sessionCourses } = await adminClient
+          .from("courses")
+          .select("id, created_by")
+          .in("id", sessionCourseIds);
+        for (const courseRow of sessionCourses ?? []) {
+          const createdBy = String(courseRow.created_by ?? "").trim();
+          if (createdBy) {
+            createdByByCourse.set(String(courseRow.id), createdBy);
+          }
+        }
+
+        // Participants already recorded for these classes (skip to bound API calls).
+        const recordedKeys = new Set<string>();
+        if (sessionClassIds.length > 0) {
+          const { data: existingAttendance } = await adminClient
+            .from("class_attendance")
+            .select("class_id, user_id")
+            .in("class_id", sessionClassIds);
+          for (const row of existingAttendance ?? []) {
+            recordedKeys.add(`${row.class_id}:${row.user_id}`);
+          }
+        }
+
+        const nowIso = new Date(attendanceNow).toISOString();
+        let pollBudget = 300; // hard cap per tick to avoid long-running requests
+
+        for (const session of sessions) {
+          if (pollBudget <= 0) {
+            break;
+          }
+          const classId = String(session.class_id);
+          const courseId = String(session.course_id);
+          const channelId = String(session.discord_channel_id ?? "").trim();
+          if (!channelId) {
+            continue;
+          }
+
+          const participants: { userId: string; discordId: string; isTutor: boolean }[] = [];
+          const tutorUserId = createdByByCourse.get(courseId);
+          const tutorDiscordId = String(session.tutor_discord_user_id ?? "").trim();
+          if (tutorUserId && tutorDiscordId) {
+            participants.push({ userId: tutorUserId, discordId: tutorDiscordId, isTutor: true });
+          }
+          for (const student of studentsByCourse.get(courseId) ?? []) {
+            // A student who is also the creator is already covered as the tutor.
+            if (student.userId === tutorUserId) {
+              continue;
+            }
+            participants.push({ userId: student.userId, discordId: student.discordId, isTutor: false });
+          }
+
+          for (const participant of participants) {
+            if (pollBudget <= 0) {
+              break;
+            }
+            if (recordedKeys.has(`${classId}:${participant.userId}`)) {
+              continue;
+            }
+            pollBudget -= 1;
+            let currentChannelId: string | null = null;
+            try {
+              currentChannelId = await getDiscordUserVoiceChannelId(
+                discordGuildId,
+                participant.discordId
+              );
+            } catch {
+              continue;
+            }
+            if (currentChannelId !== channelId) {
+              continue;
+            }
+            const { error: upsertError } = await adminClient
+              .from("class_attendance")
+              .upsert(
+                {
+                  class_id: classId,
+                  course_id: courseId,
+                  user_id: participant.userId,
+                  discord_user_id: participant.discordId,
+                  is_tutor: participant.isTutor,
+                  first_seen_at: nowIso,
+                  last_seen_at: nowIso,
+                },
+                { onConflict: "class_id,user_id", ignoreDuplicates: true }
+              );
+            if (!upsertError) {
+              recordedKeys.add(`${classId}:${participant.userId}`);
+              attendanceRecorded += 1;
+            }
+          }
+        }
+      }
+    } catch (error) {
+      failedClasses.push({
+        classId: "attendance",
+        reason: `Failed to record attendance: ${error instanceof Error ? error.message : "Unknown error."}`,
+      });
+    }
+  }
+
   for (const candidate of candidates) {
     let wasAnyReminderSent = false;
     const { classRow, reminderType, reminderLabel } = candidate;
@@ -2089,6 +2251,7 @@ export async function POST(request: NextRequest) {
     autoCloseErrors: autoCloseResult.errors,
     failedClasses,
     liveChannelRecovery,
+    attendanceRecorded,
     timezone: torontoTimeZone,
     reminderSkippedReason,
     discordReminderSkippedReason,

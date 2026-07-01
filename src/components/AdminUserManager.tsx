@@ -9,6 +9,7 @@ import {
 } from "@/lib/authClient";
 import { isExecutive, isFounder, resolveUserRole } from "@/lib/roles";
 import AdminBannedEmails from "@/components/AdminBannedEmails";
+import CourseAttendance from "@/components/CourseAttendance";
 import TutorApplicationFormModal from "@/components/TutorApplicationFormModal";
 
 type AdminUser = {
@@ -111,6 +112,7 @@ export default function AdminUserManager() {
   const [userCoursesById, setUserCoursesById] = useState<Record<string, UserCourses>>({});
   const [coursesLoadingId, setCoursesLoadingId] = useState<string | null>(null);
   const [coursesErrorById, setCoursesErrorById] = useState<Record<string, string>>({});
+  const [attendanceCourseId, setAttendanceCourseId] = useState<string | null>(null);
   const [isFixingClasses, setIsFixingClasses] = useState(false);
   const [isSyncingNames, setIsSyncingNames] = useState(false);
   const [discordReminderRecipientMode, setDiscordReminderRecipientMode] =
@@ -1275,6 +1277,20 @@ export default function AdminUserManager() {
                 {course.classCount} class{course.classCount !== 1 ? "es" : ""} ·{" "}
                 {formatCourseRange(course.startsAt, course.endsAt)}
               </p>
+              <button
+                type="button"
+                onClick={() =>
+                  setAttendanceCourseId((current) => (current === course.id ? null : course.id))
+                }
+                className="mt-1 text-[11px] font-semibold text-[var(--foreground)] underline-offset-2 hover:underline"
+              >
+                {attendanceCourseId === course.id ? "Hide attendance" : "View attendance"}
+              </button>
+              {attendanceCourseId === course.id ? (
+                <div className="mt-2">
+                  <CourseAttendance courseId={course.id} />
+                </div>
+              ) : null}
             </div>
           ))}
         </div>

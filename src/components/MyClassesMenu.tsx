@@ -59,6 +59,10 @@ export default function MyClassesMenu() {
     message: "",
   });
   const [isLoading, setIsLoading] = useState(false);
+  const [pastAttendance, setPastAttendance] = useState<
+    { classId: string; courseTitle: string; classTitle: string; startsAt: string; attended: boolean }[]
+  >([]);
+  const [attendanceHasDiscord, setAttendanceHasDiscord] = useState(true);
 
   useEffect(() => {
     const load = async () => {
@@ -105,6 +109,26 @@ export default function MyClassesMenu() {
     };
 
     loadClasses();
+  }, [userId]);
+
+  useEffect(() => {
+    if (!userId) {
+      setPastAttendance([]);
+      return;
+    }
+    const loadAttendance = async () => {
+      const response = await fetch("/api/my-attendance");
+      if (!response.ok) {
+        return;
+      }
+      const data = (await response.json()) as {
+        hasDiscord?: boolean;
+        classes?: { classId: string; courseTitle: string; classTitle: string; startsAt: string; attended: boolean }[];
+      };
+      setAttendanceHasDiscord(data.hasDiscord ?? true);
+      setPastAttendance(data.classes ?? []);
+    };
+    loadAttendance();
   }, [userId]);
 
   if (!userId) {
@@ -181,6 +205,48 @@ export default function MyClassesMenu() {
           );
         })}
       </div>
+
+      {pastAttendance.length > 0 ? (
+        <div className="space-y-2">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
+            Past attendance
+          </p>
+          {!attendanceHasDiscord ? (
+            <p className="text-xs text-amber-600">
+              Connect and join Discord so your class attendance can be tracked automatically.
+            </p>
+          ) : null}
+          <div className="space-y-2">
+            {pastAttendance.slice(0, 12).map((cls) => (
+              <div
+                key={cls.classId}
+                className="flex items-center justify-between gap-3 rounded-xl border border-[var(--border)] px-4 py-2"
+              >
+                <div>
+                  <p className="text-sm font-medium text-[var(--foreground)]">{cls.courseTitle}</p>
+                  <p className="text-xs text-[var(--muted)]">
+                    {cls.classTitle} <span className="mx-1">•</span>{" "}
+                    {new Date(cls.startsAt).toLocaleDateString("en-US", {
+                      month: "short",
+                      day: "numeric",
+                      year: "numeric",
+                    })}
+                  </p>
+                </div>
+                {cls.attended ? (
+                  <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-0.5 text-xs font-semibold text-emerald-500">
+                    Attended
+                  </span>
+                ) : (
+                  <span className="rounded-full border border-red-500/30 bg-red-500/10 px-2.5 py-0.5 text-xs font-semibold text-red-500">
+                    Absent
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
