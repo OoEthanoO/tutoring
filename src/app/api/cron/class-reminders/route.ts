@@ -298,20 +298,13 @@ const buildDiscordCourseTargetMap = (
       continue;
     }
 
-    // A dedicated per-course role is preferred, but some channels (e.g. founder/
-    // CEO-taught courses) only grant executive roles and have no course role.
-    // Keep those in the map with an empty roleId so the reminder still posts
-    // (without a role ping) instead of being dropped entirely.
-    const roleId = getCourseRoleIdsFromOverwrites(channel, guildId, guildRoles)[0] ?? "";
+    const roleId = getCourseRoleIdsFromOverwrites(channel, guildId, guildRoles)[0];
+    if (!roleId) {
+      continue;
+    }
 
     const current = map.get(courseId);
-    const shouldReplace =
-      !current ||
-      // Prefer a channel that actually has a course role over one that doesn't.
-      (!current.roleId && Boolean(roleId)) ||
-      (Boolean(current.roleId) === Boolean(roleId) &&
-        channel.id.localeCompare(current.channelId) < 0);
-    if (shouldReplace) {
+    if (!current || channel.id.localeCompare(current.channelId) < 0) {
       map.set(courseId, { channelId: channel.id, roleId });
     }
   }
@@ -409,7 +402,7 @@ const sendDiscordCourseReminderMessage = async (
       content,
       allowed_mentions: {
         parse: [],
-        roles: roleId ? [roleId] : [],
+        roles: [roleId],
         users: [],
       },
     },
@@ -1947,9 +1940,7 @@ export async function POST(request: NextRequest) {
         });
       } else {
         try {
-          const message = discordTarget.roleId
-            ? `<@&${discordTarget.roleId}>\n${discordContent}`
-            : discordContent;
+          const message = `<@&${discordTarget.roleId}>\n${discordContent}`;
           await sendDiscordCourseReminderMessage(
             discordTarget.channelId,
             discordTarget.roleId,
