@@ -931,11 +931,52 @@ export async function POST(request: NextRequest) {
     );
   });
 
-  // Build first class date map for all courses that might need reminders or live recovery.
+  // Absence follow-ups: classes whose computed end fell 10-60 minutes ago. The
+  // 10-minute grace lets the attendance trail and stragglers settle; the 60-minute
+  // lookback tolerates cron hiccups; the dedupe log prevents double sends.
+  const followUpNowMs = liveRecoveryNow.getTime();
+  const followUpEndWindowStartMs = followUpNowMs - 60 * 60 * 1000;
+  const followUpEndWindowEndMs = followUpNowMs - 10 * 60 * 1000;
+
+  let recentlyEndedClasses: ClassRow[] = [];
+  {
+    const { data: potentialEndedClasses, error: endedClassesError } = await adminClient
+      .from("course_classes")
+      .select(
+        "id, title, starts_at, duration_hours, course_id, course:courses!inner(id, title, short_name, created_by, created_by_name, created_by_email)"
+      )
+      .is("courses.deleted_at", null)
+      .gte("starts_at", new Date(followUpEndWindowStartMs - 8 * 60 * 60 * 1000).toISOString())
+      .lt("starts_at", new Date(followUpEndWindowEndMs).toISOString());
+
+    if (endedClassesError) {
+      // Absence follow-ups are best-effort; never fail the whole cron for them.
+      console.error("Failed to load ended classes for absence follow-ups:", endedClassesError);
+    } else {
+      recentlyEndedClasses = ((potentialEndedClasses ?? []) as ClassRow[]).filter((classRow) => {
+        const startsMs = new Date(classRow.starts_at).getTime();
+        const durationHoursRaw =
+          typeof classRow.duration_hours === "number"
+            ? classRow.duration_hours
+            : Number.parseFloat(String(classRow.duration_hours || 1));
+        const durationHours = Number.isFinite(durationHoursRaw) ? durationHoursRaw : 1;
+        const endsMs = startsMs + durationHours * 60 * 60 * 1000;
+        return (
+          Number.isFinite(startsMs) &&
+          endsMs >= followUpEndWindowStartMs &&
+          endsMs <= followUpEndWindowEndMs
+        );
+      });
+    }
+  }
+
+  // Build first class date map for all courses that might need reminders, live
+  // recovery, or absence follow-ups.
   const courseIdsInCandidates = Array.from(
     new Set([
       ...candidates.map((c) => c.classRow.course_id),
       ...classesInLiveWindow.map((classRow) => classRow.course_id),
+      ...recentlyEndedClasses.map((classRow) => classRow.course_id),
     ])
   );
   const firstClassDateByCourseId = await buildFirstClassDateMap(
@@ -947,6 +988,7 @@ export async function POST(request: NextRequest) {
     new Set([
       ...candidates.map((item) => item.classRow.course_id),
       ...classesInLiveWindow.map((classRow) => classRow.course_id),
+      ...recentlyEndedClasses.map((classRow) => classRow.course_id),
     ])
   );
   const { data: enrollments, error: enrollmentError } = courseIds.length > 0
@@ -987,18 +1029,23 @@ export async function POST(request: NextRequest) {
     enrollmentsByCourseId.set(courseId, current);
   }
 
+  const studentEmailById = new Map<string, string>();
+  const studentDiscordById = new Map<string, string>();
+  const studentNameById = new Map<string, string>();
   if (studentIds.size > 0) {
     const { data: studentRows } = await adminClient
       .from("app_users")
-      .select("id, email, discord_user_id")
+      .select("id, email, full_name, discord_user_id")
       .in("id", Array.from(studentIds));
-    const studentEmailById = new Map<string, string>();
-    const studentDiscordById = new Map<string, string>();
     for (const student of studentRows ?? []) {
       const studentId = String(student.id ?? "").trim();
       const email = String(student.email ?? "").trim();
       if (studentId && email) {
         studentEmailById.set(studentId, email);
+      }
+      const fullName = String(student.full_name ?? "").trim();
+      if (studentId && fullName) {
+        studentNameById.set(studentId, fullName);
       }
       const discordUserId = String(student.discord_user_id ?? "").trim();
       if (studentId && discordUserId) {
@@ -1030,11 +1077,55 @@ export async function POST(request: NextRequest) {
 
   }
 
+  // Per-student enrollment details for absence classification. Built from ALL
+  // enrollment rows: rows without an app_users match still land here (as
+  // unverifiable, since no Discord link can exist for them).
+  type EnrolledStudentDetail = {
+    userId: string | null;
+    email: string;
+    fullName: string;
+    discordUserId: string | null;
+  };
+  const studentDetailByCourseId = new Map<string, EnrolledStudentDetail[]>();
+  {
+    const seenByCourse = new Map<string, Set<string>>();
+    for (const enrollment of enrollments ?? []) {
+      const courseId = String(enrollment.course_id ?? "").trim();
+      if (!courseId) {
+        continue;
+      }
+      const studentId = String(enrollment.student_id ?? "").trim();
+      const email =
+        (studentId ? studentEmailById.get(studentId) : undefined) ??
+        String(enrollment.student_email ?? "").trim();
+      if (!email) {
+        continue;
+      }
+      const dedupeKey = studentId || email.toLowerCase();
+      const seen = seenByCourse.get(courseId) ?? new Set<string>();
+      if (seen.has(dedupeKey)) {
+        continue;
+      }
+      seen.add(dedupeKey);
+      seenByCourse.set(courseId, seen);
+
+      const details = studentDetailByCourseId.get(courseId) ?? [];
+      details.push({
+        userId: studentId || null,
+        email,
+        fullName: (studentId ? studentNameById.get(studentId) : undefined) ?? "",
+        discordUserId: (studentId ? studentDiscordById.get(studentId) : undefined) ?? null,
+      });
+      studentDetailByCourseId.set(courseId, details);
+    }
+  }
+
   const missingTutorIds = Array.from(
     new Set(
       [
         ...candidates.map((item) => item.classRow),
         ...classesInLiveWindow,
+        ...recentlyEndedClasses,
       ]
         .map((classRow) => readCourse(classRow.course))
         .filter(Boolean)
@@ -1063,6 +1154,7 @@ export async function POST(request: NextRequest) {
       [
         ...candidates.map((item) => item.classRow),
         ...classesInLiveWindow,
+        ...recentlyEndedClasses,
       ]
         .map((classRow) => readCourse(classRow.course))
         .filter(Boolean)
@@ -1604,6 +1696,248 @@ export async function POST(request: NextRequest) {
       failedClasses.push({
         classId: "attendance",
         reason: `Failed to record attendance: ${error instanceof Error ? error.message : "Unknown error."}`,
+      });
+    }
+  }
+
+  // Absence follow-ups: after a Discord-voice class ends, email absent students,
+  // nudge students with no linked Discord, and send the tutor a summary.
+  const absenceFollowUps: {
+    classesProcessed: number;
+    absentEmails: number;
+    unverifiedEmails: number;
+    tutorSummaries: number;
+    skipped: { classId: string; reason: string }[];
+  } = { classesProcessed: 0, absentEmails: 0, unverifiedEmails: 0, tutorSummaries: 0, skipped: [] };
+
+  if (emailRemindersEnabled && recentlyEndedClasses.length > 0) {
+    try {
+      const endedClassIds = recentlyEndedClasses.map((classRow) => classRow.id);
+      const { data: followUpLogs } = await adminClient
+        .from("class_reminder_logs")
+        .select("class_id, reminder_type")
+        .in("class_id", endedClassIds)
+        .eq("reminder_type", "absence_follow_up");
+      const alreadyLogged = new Set((followUpLogs ?? []).map((log) => String(log.class_id)));
+      const pendingClasses = recentlyEndedClasses.filter(
+        (classRow) => !alreadyLogged.has(classRow.id)
+      );
+
+      const attendedUserIdsByClassId = new Map<string, Set<string>>();
+      const tutorPresentByClassId = new Set<string>();
+      const attendanceRowCountByClassId = new Map<string, number>();
+      if (pendingClasses.length > 0) {
+        const { data: attendanceRows } = await adminClient
+          .from("class_attendance")
+          .select("class_id, user_id, is_tutor")
+          .in("class_id", pendingClasses.map((classRow) => classRow.id));
+        for (const row of attendanceRows ?? []) {
+          const classId = String(row.class_id);
+          attendanceRowCountByClassId.set(
+            classId,
+            (attendanceRowCountByClassId.get(classId) ?? 0) + 1
+          );
+          if (row.is_tutor) {
+            tutorPresentByClassId.add(classId);
+          } else {
+            const set = attendedUserIdsByClassId.get(classId) ?? new Set<string>();
+            set.add(String(row.user_id));
+            attendedUserIdsByClassId.set(classId, set);
+          }
+        }
+      }
+
+      for (const classRow of pendingClasses) {
+        const insertFollowUpLog = async () => {
+          // The unique (class_id, reminder_type) constraint makes a racing
+          // duplicate insert a harmless error.
+          await adminClient
+            .from("class_reminder_logs")
+            .insert({ class_id: classRow.id, reminder_type: "absence_follow_up" });
+        };
+        const skip = async (reason: string) => {
+          absenceFollowUps.skipped.push({ classId: classRow.id, reason });
+          await insertFollowUpLog();
+        };
+
+        const course = readCourse(classRow.course);
+        if (!course || (!course.created_by && !course.created_by_name && !course.created_by_email)) {
+          await skip("missing tutor info");
+          continue;
+        }
+
+        const tutorEmail =
+          String(course.created_by_email ?? "").trim() ||
+          (course.created_by ? tutorEmailById.get(course.created_by) ?? "" : "");
+        const tutorRole = course.created_by
+          ? tutorRoleById.get(course.created_by) ?? resolveRoleByEmail(tutorEmail)
+          : resolveRoleByEmail(tutorEmail);
+        if (isFounderRole(tutorRole)) {
+          await skip("founder/CEO/COO-taught legacy class");
+          continue;
+        }
+
+        const firstClassDate = firstClassDateByCourseId.get(classRow.course_id) ?? null;
+        if (!shouldUseDiscordVoiceSystem(firstClassDate)) {
+          await skip("course does not use Discord voice system");
+          continue;
+        }
+
+        const students = (studentDetailByCourseId.get(classRow.course_id) ?? []).filter(
+          (student) => student.userId !== course.created_by
+        );
+        if (students.length === 0) {
+          await skip("no enrolled students");
+          continue;
+        }
+
+        // Critical false-positive guard: if attendance tracking recorded nobody at
+        // all (e.g. the voice channel was never created), do not email anyone.
+        if ((attendanceRowCountByClassId.get(classRow.id) ?? 0) === 0) {
+          await skip("no attendance rows recorded (tracking failed or nobody joined)");
+          continue;
+        }
+
+        const attendedUserIds = attendedUserIdsByClassId.get(classRow.id) ?? new Set<string>();
+        const attended = students.filter(
+          (student) => student.userId && attendedUserIds.has(student.userId)
+        );
+        const absent = students.filter(
+          (student) => student.userId && student.discordUserId && !attendedUserIds.has(student.userId)
+        );
+        const unverifiable = students.filter((student) => !student.discordUserId);
+
+        const courseTitleRaw = String(course.title ?? "").trim() || "Course";
+        const classTitleRaw = String(classRow.title ?? "").trim() || "Class";
+        const courseTitle = escapeHtml(courseTitleRaw);
+        const classTitle = escapeHtml(classTitleRaw);
+        const isStandardClassTitle = /^class\s+\d+/i.test(classTitleRaw);
+        const startLabel = escapeHtml(formatTorontoDateTime(classRow.starts_at));
+        const tutorNameRaw = String(course.created_by_name ?? "").trim() || "your tutor";
+        const tutorName = escapeHtml(tutorNameRaw);
+        const classDetailsHtml = `
+        <p><strong>Course:</strong> ${courseTitle}</p>
+        <p><strong>${isStandardClassTitle ? classTitle : `Class: ${classTitle}`}</strong></p>
+        <p><strong>Start time (${torontoTimeZone}):</strong> ${startLabel}</p>`;
+
+        const failedRecipients: { email: string; reason: string }[] = [];
+        let attemptedSends = 0;
+        let successfulSends = 0;
+
+        const trySend = async (to: string, subject: string, html: string) => {
+          attemptedSends += 1;
+          try {
+            await sendEmail(to, subject, html);
+            successfulSends += 1;
+            await sleep(150);
+            return true;
+          } catch (error) {
+            failedRecipients.push({
+              email: to,
+              reason: error instanceof Error ? error.message : "Failed to send email.",
+            });
+            return false;
+          }
+        };
+
+        for (const student of absent) {
+          const sent = await trySend(
+            student.email,
+            `We missed you in class today (${courseTitleRaw})`,
+            `<p>Hi there,</p>
+<p>Our attendance system didn't detect you in the Discord voice channel for your class:</p>
+${classDetailsHtml}
+<p>We understand things come up. To catch up on what was covered, please reach out to your tutor, <strong>${tutorName}</strong>.</p>
+<p>If you did attend and believe this is an error, please contact your tutor so we can look into it &mdash; no further action is needed on your part.</p>
+<p>Thanks,<br/>The YanLearn Team</p>`
+          );
+          if (sent) {
+            absenceFollowUps.absentEmails += 1;
+          }
+        }
+
+        for (const student of unverifiable) {
+          const sent = await trySend(
+            student.email,
+            `Action required: connect & join Discord — we couldn't verify your attendance (${courseTitleRaw})`,
+            `<p>Hi there,</p>
+<p>Your class recently ended, but we <strong>could not verify your attendance</strong> because your Discord account is not connected to your YanLearn profile:</p>
+${classDetailsHtml}
+<p>Classes are held in our Discord server, so you must complete <strong>both</strong> of the following to attend:</p>
+<ol>
+  <li><strong>Connect your Discord account</strong> to your YanLearn profile.</li>
+  <li><strong>Join the YanLearn Discord server.</strong></li>
+</ol>
+<p>To do this:</p>
+<ol>
+  <li>Sign in to your YanLearn account.</li>
+  <li>Click your profile card in the top-right corner.</li>
+  <li>Click <strong>Connect Discord</strong> and authorize your Discord account.</li>
+  <li>After authorizing, you will be redirected to the server invite page &mdash; accept it to join.</li>
+</ol>
+<p>If you connected Discord but closed that tab before joining, open your profile card and click <strong>Join Discord Server</strong> to retry.</p>
+<p><strong>Please complete both steps before your next class</strong>, otherwise you will not be able to attend and your attendance cannot be recorded.</p>
+<p>Thanks,<br/>The YanLearn Team</p>`
+          );
+          if (sent) {
+            absenceFollowUps.unverifiedEmails += 1;
+          }
+        }
+
+        if (tutorEmail) {
+          const renderStudents = (list: typeof students) =>
+            list.length === 0
+              ? "<p>None</p>"
+              : `<ul>${list
+                  .map(
+                    (student) =>
+                      `<li>${escapeHtml(
+                        student.fullName ? `${student.fullName} (${student.email})` : student.email
+                      )}</li>`
+                  )
+                  .join("")}</ul>`;
+          const tutorWasPresent = tutorPresentByClassId.has(classRow.id);
+          const sent = await trySend(
+            tutorEmail,
+            `Attendance summary: ${courseTitleRaw} — ${classTitleRaw}`,
+            `<p>Hi ${tutorName},</p>
+<p>Here is the attendance summary for your class:</p>
+${classDetailsHtml}
+<p><strong>Attended (${attended.length}):</strong></p>
+${renderStudents(attended)}
+<p><strong>Absent (${absent.length}):</strong> <em>enrolled with Discord linked but never joined the voice channel; they have been sent a follow-up email.</em></p>
+${renderStudents(absent)}
+<p><strong>Unverifiable (${unverifiable.length}):</strong> <em>no linked Discord account, so attendance cannot be tracked; they have been asked to connect Discord and join the server.</em></p>
+${renderStudents(unverifiable)}
+${tutorWasPresent ? "" : "<p><strong>Note:</strong> you were not detected in the class voice channel yourself, so the lists above may be unreliable for this class.</p>"}
+<p>Thanks,<br/>The YanLearn Team</p>`
+          );
+          if (sent) {
+            absenceFollowUps.tutorSummaries += 1;
+          }
+        }
+
+        if (failedRecipients.length > 0) {
+          failedClasses.push({
+            classId: classRow.id,
+            reason: `Failed absence follow-up recipients: ${failedRecipients
+              .map((item) => `${item.email} (${item.reason})`)
+              .join("; ")}`,
+          });
+        }
+
+        // Leave unlogged only on total transient failure so the next tick retries
+        // within the window; partial success matches existing reminder semantics
+        // (failed recipients are not retried).
+        if (!(attemptedSends > 0 && successfulSends === 0)) {
+          await insertFollowUpLog();
+          absenceFollowUps.classesProcessed += 1;
+        }
+      }
+    } catch (error) {
+      failedClasses.push({
+        classId: "absence-follow-up",
+        reason: `Failed absence follow-up pass: ${error instanceof Error ? error.message : "Unknown error."}`,
       });
     }
   }
@@ -2252,6 +2586,7 @@ export async function POST(request: NextRequest) {
     failedClasses,
     liveChannelRecovery,
     attendanceRecorded,
+    absenceFollowUps,
     timezone: torontoTimeZone,
     reminderSkippedReason,
     discordReminderSkippedReason,
