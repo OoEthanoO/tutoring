@@ -86,15 +86,21 @@ function buildWeeklySeries(
   const series: Array<{ week: string; label: string } & Record<string, string | number>> = [];
   for (let week = firstWeek; week <= currentWeek; week = addWeek(week)) {
     const bucket = byWeek.get(week) ?? Object.fromEntries(counterKeys.map((k) => [k, 0]));
-    series.push({ week, label: weekLabel(week), ...bucket });
+    // Round accumulated floats (e.g. summed duration_hours) to avoid values like
+    // 6.7200000000000001 surfacing in tooltips.
+    const rounded = Object.fromEntries(
+      Object.entries(bucket).map(([key, value]) => [key, Math.round(value * 100) / 100])
+    );
+    series.push({ week, label: weekLabel(week), ...rounded });
   }
   return series;
 }
 
 const parseHours = (value: number | string | null) => {
   const parsed = typeof value === "number" ? value : Number.parseFloat(String(value ?? ""));
-  // 1.5 hours per class is the org convention (matches the withdrawal invariant).
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1.5;
+  // Fallback of 1 hour mirrors the tutor-profile taughtMinutes accounting, so the
+  // analytics total reconciles with the per-tutor "minutes taught" numbers.
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
 };
 
 export async function GET(request: NextRequest) {
@@ -132,11 +138,12 @@ export async function GET(request: NextRequest) {
           title: string | null;
           created_at: string;
           is_completed: boolean | null;
+          completed_class_count: number | string | null;
           created_by: string | null;
         }>((from, to) =>
           adminClient
             .from("courses")
-            .select("id, title, created_at, is_completed, created_by")
+            .select("id, title, created_at, is_completed, completed_class_count, created_by")
             .is("deleted_at", null)
             .order("created_at", { ascending: true })
             .range(from, to)
@@ -210,17 +217,60 @@ export async function GET(request: NextRequest) {
     });
 
     // --- Courses ---
-    const completedCourses = courses.filter((course) => course.is_completed).length;
+    // Completed matches the Courses tab: either explicitly flagged (legacy archived
+    // courses) or a course whose scheduled classes have all ended.
+    const lastClassEndByCourse = new Map<string, number>();
+    const classCountByCourse = new Map<string, number>();
+    const upcomingByCourse = new Set<string>();
+    for (const cls of classes) {
+      const startMs = new Date(cls.starts_at).getTime();
+      if (!Number.isFinite(startMs)) {
+        continue;
+      }
+      const endMs = startMs + parseHours(cls.duration_hours) * 60 * 60 * 1000;
+      classCountByCourse.set(cls.course_id, (classCountByCourse.get(cls.course_id) ?? 0) + 1);
+      lastClassEndByCourse.set(
+        cls.course_id,
+        Math.max(lastClassEndByCourse.get(cls.course_id) ?? 0, endMs)
+      );
+      if (endMs > nowMs) {
+        upcomingByCourse.add(cls.course_id);
+      }
+    }
+    const completedCourses = courses.filter(
+      (course) =>
+        course.is_completed ||
+        ((classCountByCourse.get(course.id) ?? 0) > 0 && !upcomingByCourse.has(course.id))
+    ).length;
 
-    // --- Teaching (past classes) ---
+    // --- Teaching (legacy completed courses + past classes) ---
+    // Mirrors the tutor-profile taughtMinutes accounting: each legacy completed
+    // class counts as 1 hour (completed_class_count × 60 min); modern classes use
+    // their scheduled duration.
+    const legacyClasses = courses.reduce((sum, course) => {
+      if (!course.is_completed) {
+        return sum;
+      }
+      const count = Number(course.completed_class_count ?? 0);
+      return sum + (Number.isFinite(count) && count > 0 ? count : 0);
+    }, 0);
     const pastClasses = classes.filter(
       (cls) => new Date(cls.starts_at).getTime() <= nowMs && courseById.has(cls.course_id)
     );
-    const hoursTaught = pastClasses.reduce((sum, cls) => sum + parseHours(cls.duration_hours), 0);
+    const hoursTaught =
+      legacyClasses +
+      pastClasses.reduce((sum, cls) => sum + parseHours(cls.duration_hours), 0);
     const hoursWithdrawn = withdrawals.reduce((sum, row) => {
       const parsed = Number(row.hours);
       return sum + (Number.isFinite(parsed) ? parsed : 0);
     }, 0);
+
+    // --- Enrollments (course sizes summed; a student in two courses counts twice) ---
+    // 245 enrollments predate the website (courses run before it existed).
+    const LEGACY_ENROLLMENT_COUNT = 245;
+    const platformEnrollments = enrollments.filter((row) =>
+      courseById.has(row.course_id)
+    ).length;
 
     // --- Attendance ---
     // Eligible classes = past classes with at least one attendance row: this is
@@ -315,7 +365,12 @@ export async function GET(request: NextRequest) {
         hours: {
           taught: Math.round(hoursTaught * 10) / 10,
           withdrawn: Math.round(hoursWithdrawn * 10) / 10,
-          classesTaught: pastClasses.length,
+          classesTaught: legacyClasses + pastClasses.length,
+        },
+        enrollments: {
+          total: platformEnrollments + LEGACY_ENROLLMENT_COUNT,
+          platform: platformEnrollments,
+          legacy: LEGACY_ENROLLMENT_COUNT,
         },
         raised: donations.length > 0 ? donations[donations.length - 1].amount : null,
         attendance: {

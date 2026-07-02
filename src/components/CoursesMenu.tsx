@@ -418,14 +418,15 @@ export default function CoursesMenu() {
           if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) {
             return classSum;
           }
+          const fullDurationMinutes = Math.round((endMs - startMs) / (60 * 1000));
           if (nowMs >= endMs) {
-            return classSum + 60;
+            return classSum + fullDurationMinutes;
           }
           if (nowMs <= startMs) {
             return classSum;
           }
           const elapsedMinutes = Math.floor((nowMs - startMs) / (60 * 1000));
-          const boundedElapsed = Math.max(0, Math.min(59, elapsedMinutes));
+          const boundedElapsed = Math.max(0, Math.min(fullDurationMinutes, elapsedMinutes));
           return classSum + boundedElapsed;
         },
         0

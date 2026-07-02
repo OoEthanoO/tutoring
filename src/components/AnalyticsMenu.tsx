@@ -7,6 +7,7 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  Legend,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -21,6 +22,7 @@ type AnalyticsData = {
     verifiedUsers: { total: number; students: number; executives: number };
     courses: { active: number; completed: number; total: number };
     hours: { taught: number; withdrawn: number; classesTaught: number };
+    enrollments: { total: number; platform: number; legacy: number };
     raised: number | null;
     attendance: {
       rate: number | null;
@@ -150,7 +152,7 @@ export default function AnalyticsMenu() {
         </p>
       </header>
 
-      <div className="grid grid-cols-2 gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-raised)] p-4 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-raised)] p-4 sm:grid-cols-3 xl:grid-cols-5">
         <div className="space-y-1">
           <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">
             Verified users
@@ -181,6 +183,17 @@ export default function AnalyticsMenu() {
           </p>
         </div>
         <div className="space-y-1">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">
+            Total enrollments
+          </p>
+          <p className="text-xl font-bold text-[var(--foreground)]">
+            {totals.enrollments.total.toLocaleString()}
+          </p>
+          <p className="text-[10px] text-[var(--muted)]">
+            {totals.enrollments.platform} on platform · {totals.enrollments.legacy} pre-website
+          </p>
+        </div>
+        <div className="space-y-1">
           <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-500">
             Total raised
           </p>
@@ -207,10 +220,10 @@ export default function AnalyticsMenu() {
             <XAxis dataKey="label" {...axisProps} />
             <YAxis {...axisProps} allowDecimals={false} />
             <Tooltip {...tooltipProps} />
+            <Legend wrapperStyle={{ fontSize: 12, color: "var(--muted)" }} iconType="plainline" />
             <Area
               type="monotone"
               dataKey="students"
-              stackId="1"
               stroke="var(--foreground)"
               strokeWidth={2}
               fill="url(#analyticsSignupsStudents)"
@@ -218,7 +231,6 @@ export default function AnalyticsMenu() {
             <Area
               type="monotone"
               dataKey="executives"
-              stackId="1"
               stroke="var(--muted)"
               strokeWidth={2}
               fill="url(#analyticsSignupsExecs)"
@@ -253,7 +265,7 @@ export default function AnalyticsMenu() {
 
         <ChartCard
           title="Hours taught per week"
-          subtitle="Past classes only"
+          subtitle="Scheduled classes only — excludes legacy completed courses"
           hasData={charts.teachingPerWeek.length > 0}
         >
           <AreaChart data={charts.teachingPerWeek} margin={{ top: 5, right: 20, left: 0, bottom: 0 }}>
