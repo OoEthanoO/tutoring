@@ -141,7 +141,7 @@ export default function HomeMenu({ isSignedIn, onOpenTeamTab }: HomeMenuProps) {
         <p className="text-sm text-[var(--muted)]">
           All YanLearn tutors are current IB/AP high school students with
           excellent grades in their respective subjects. We run our classes by
-          hosting online Discord meetings with a requirement of a $50 donation fee
+          hosting online Discord meetings with a requirement of a donation fee
           to enjoy 10 lessons per term. As of April 2026, more than 300 classes
           have been taught, and more than 350 students are participating in our
           program.

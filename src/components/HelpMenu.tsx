@@ -69,7 +69,7 @@ export default function HelpMenu() {
                     </p>
                     <ul className="list-disc list-outside text-sm text-[var(--foreground)] space-y-2 pl-5">
                         <li>
-                            If the course requires a donation, click <span className="font-semibold text-[var(--foreground)]">&quot;Open Donation Link&quot;</span> to make your course donation ($50).
+                            If the course requires a donation, click <span className="font-semibold text-[var(--foreground)]">&quot;Open Donation Link&quot;</span> to make your course donation.
                         </li>
                         <li>
                             Fill out the <span className="font-semibold text-[var(--foreground)]">Student Application Form</span> embedded below.
