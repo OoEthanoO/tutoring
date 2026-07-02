@@ -1,32 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getAdminClient, getRequestUser } from "@/lib/authServer";
 import { isExecutive, isFounder, resolveUserRole } from "@/lib/roles";
+import { computeCoreTotals, loadCoreRows, parseHours } from "@/lib/impactStats";
 
 const TORONTO_TZ = "America/Toronto";
-const PAGE_SIZE = 1000;
-
-// Supabase caps responses at max_rows (default 1000) regardless of .limit().
-// buildQuery must construct a FRESH query each call and include a stable
-// .order() so pages don't shuffle between requests.
-async function fetchAllRows<T>(
-  buildQuery: (
-    from: number,
-    to: number
-  ) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>
-): Promise<T[]> {
-  const rows: T[] = [];
-  for (let from = 0; ; from += PAGE_SIZE) {
-    const { data, error } = await buildQuery(from, from + PAGE_SIZE - 1);
-    if (error) {
-      throw new Error(error.message);
-    }
-    const batch = data ?? [];
-    rows.push(...batch);
-    if (batch.length < PAGE_SIZE) {
-      return rows;
-    }
-  }
-}
 
 // Toronto calendar day of a timestamp, as "YYYY-MM-DD" (en-CA formats ISO-like).
 const torontoDayKey = (iso: string) =>
@@ -96,13 +73,6 @@ function buildWeeklySeries(
   return series;
 }
 
-const parseHours = (value: number | string | null) => {
-  const parsed = typeof value === "number" ? value : Number.parseFloat(String(value ?? ""));
-  // Fallback of 1 hour mirrors the tutor-profile taughtMinutes accounting, so the
-  // analytics total reconciles with the per-tutor "minutes taught" numbers.
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
-};
-
 export async function GET(request: NextRequest) {
   const user = await getRequestUser(request);
   if (!user) {
@@ -121,156 +91,22 @@ export async function GET(request: NextRequest) {
 
   try {
     const adminClient = getAdminClient();
+    const rows = await loadCoreRows(adminClient);
+    const { users, courses, enrollments, attendance, donations } = rows;
 
-    const [users, courses, classes, enrollments, attendance, withdrawals, donations] =
-      await Promise.all([
-        fetchAllRows<{ id: string; email: string | null; role: string | null; created_at: string }>(
-          (from, to) =>
-            adminClient
-              .from("app_users")
-              .select("id, email, role, created_at")
-              .not("email_verified_at", "is", null)
-              .order("created_at", { ascending: true })
-              .range(from, to)
-        ),
-        fetchAllRows<{
-          id: string;
-          title: string | null;
-          created_at: string;
-          is_completed: boolean | null;
-          completed_class_count: number | string | null;
-          created_by: string | null;
-        }>((from, to) =>
-          adminClient
-            .from("courses")
-            .select("id, title, created_at, is_completed, completed_class_count, created_by")
-            .is("deleted_at", null)
-            .order("created_at", { ascending: true })
-            .range(from, to)
-        ),
-        fetchAllRows<{
-          id: string;
-          course_id: string;
-          starts_at: string;
-          duration_hours: number | string | null;
-        }>((from, to) =>
-          adminClient
-            .from("course_classes")
-            .select("id, course_id, starts_at, duration_hours")
-            .order("starts_at", { ascending: true })
-            .range(from, to)
-        ),
-        fetchAllRows<{ course_id: string; student_id: string | null; created_at: string }>(
-          (from, to) =>
-            adminClient
-              .from("course_enrollments")
-              .select("course_id, student_id, created_at")
-              .order("created_at", { ascending: true })
-              .range(from, to)
-        ),
-        fetchAllRows<{
-          class_id: string;
-          course_id: string;
-          user_id: string;
-          is_tutor: boolean | null;
-        }>((from, to) =>
-          adminClient
-            .from("class_attendance")
-            .select("class_id, course_id, user_id, is_tutor")
-            .order("created_at", { ascending: true })
-            .range(from, to)
-        ),
-        fetchAllRows<{ hours: number | string; created_at: string }>((from, to) =>
-          adminClient
-            .from("tutor_withdrawals")
-            .select("hours, created_at")
-            .order("created_at", { ascending: true })
-            .range(from, to)
-        ),
-        fetchAllRows<{ date: string; amount: number }>((from, to) =>
-          adminClient
-            .from("daily_donations")
-            .select("date, amount")
-            .order("date", { ascending: true })
-            .range(from, to)
-        ),
-      ]);
+    // Shared with the public impact page so the numbers never drift.
+    const { totals, pastClasses } = computeCoreTotals(rows);
 
-    const nowMs = Date.now();
     const courseById = new Map(courses.map((course) => [course.id, course]));
 
-    // --- Users ---
-    let studentCount = 0;
-    let executiveCount = 0;
+    // --- Signups chart rows (verified users, split by resolved role) ---
     const userSignupRows = users.map((row) => {
-      const resolved = resolveUserRole(row.email, row.role ?? null);
-      const isExec = isExecutive(resolved);
-      if (isExec) {
-        executiveCount += 1;
-      } else {
-        studentCount += 1;
-      }
+      const isExec = isExecutive(resolveUserRole(row.email, row.role ?? null));
       return {
         timestamp: row.created_at,
         counters: { students: isExec ? 0 : 1, executives: isExec ? 1 : 0 },
       };
     });
-
-    // --- Courses ---
-    // Completed matches the Courses tab: either explicitly flagged (legacy archived
-    // courses) or a course whose scheduled classes have all ended.
-    const lastClassEndByCourse = new Map<string, number>();
-    const classCountByCourse = new Map<string, number>();
-    const upcomingByCourse = new Set<string>();
-    for (const cls of classes) {
-      const startMs = new Date(cls.starts_at).getTime();
-      if (!Number.isFinite(startMs)) {
-        continue;
-      }
-      const endMs = startMs + parseHours(cls.duration_hours) * 60 * 60 * 1000;
-      classCountByCourse.set(cls.course_id, (classCountByCourse.get(cls.course_id) ?? 0) + 1);
-      lastClassEndByCourse.set(
-        cls.course_id,
-        Math.max(lastClassEndByCourse.get(cls.course_id) ?? 0, endMs)
-      );
-      if (endMs > nowMs) {
-        upcomingByCourse.add(cls.course_id);
-      }
-    }
-    const completedCourses = courses.filter(
-      (course) =>
-        course.is_completed ||
-        ((classCountByCourse.get(course.id) ?? 0) > 0 && !upcomingByCourse.has(course.id))
-    ).length;
-
-    // --- Teaching (legacy completed courses + past classes) ---
-    // Mirrors the tutor-profile taughtMinutes accounting: each legacy completed
-    // class counts as 1 hour (completed_class_count × 60 min); modern classes use
-    // their scheduled duration.
-    const legacyClasses = courses.reduce((sum, course) => {
-      if (!course.is_completed) {
-        return sum;
-      }
-      const count = Number(course.completed_class_count ?? 0);
-      return sum + (Number.isFinite(count) && count > 0 ? count : 0);
-    }, 0);
-    const pastClasses = classes.filter(
-      (cls) => new Date(cls.starts_at).getTime() <= nowMs && courseById.has(cls.course_id)
-    );
-    const hoursTaught =
-      legacyClasses +
-      pastClasses.reduce((sum, cls) => sum + parseHours(cls.duration_hours), 0);
-    const hoursWithdrawn = withdrawals.reduce((sum, row) => {
-      const parsed = Number(row.hours);
-      return sum + (Number.isFinite(parsed) ? parsed : 0);
-    }, 0);
-
-    // --- Enrollments (course sizes summed; a student in two courses counts twice) ---
-    // 245 enrollments predate the website (courses run before it existed).
-    const LEGACY_ENROLLMENT_COUNT = 245;
-    const platformEnrollments = enrollments.filter((row) =>
-      courseById.has(row.course_id)
-    ).length;
 
     // --- Attendance ---
     // Eligible classes = past classes with at least one attendance row: this is
@@ -352,27 +188,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       generatedAt: new Date().toISOString(),
       totals: {
-        verifiedUsers: {
-          total: users.length,
-          students: studentCount,
-          executives: executiveCount,
-        },
-        courses: {
-          active: courses.length - completedCourses,
-          completed: completedCourses,
-          total: courses.length,
-        },
-        hours: {
-          taught: Math.round(hoursTaught * 10) / 10,
-          withdrawn: Math.round(hoursWithdrawn * 10) / 10,
-          classesTaught: legacyClasses + pastClasses.length,
-        },
-        enrollments: {
-          total: platformEnrollments + LEGACY_ENROLLMENT_COUNT,
-          platform: platformEnrollments,
-          legacy: LEGACY_ENROLLMENT_COUNT,
-        },
-        raised: donations.length > 0 ? donations[donations.length - 1].amount : null,
+        ...totals,
         attendance: {
           rate: enrolledSlots > 0 ? attendedSlots / enrolledSlots : null,
           attendedSlots,

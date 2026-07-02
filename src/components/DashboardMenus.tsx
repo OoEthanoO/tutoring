@@ -27,6 +27,7 @@ import CourseRequestsMenu from "@/components/CourseRequestsMenu";
 import SiteSettingsMenu from "@/components/SiteSettingsMenu";
 import NavDropdown from "@/components/NavDropdown";
 import AnalyticsMenu from "@/components/AnalyticsMenu";
+import ImpactMenu from "@/components/ImpactMenu";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 export type MenuKey =
@@ -50,7 +51,8 @@ export type MenuKey =
   | "roles_manager"
   | "sponsors"
   | "site_settings"
-  | "analytics";
+  | "analytics"
+  | "impact";
 
 export type MenuItem = {
   key: MenuKey;
@@ -79,6 +81,7 @@ const ALL_MENU_KEYS: readonly MenuKey[] = [
   "sponsors",
   "site_settings",
   "analytics",
+  "impact",
 ];
 
 const isMenuKey = (value: string | null): value is MenuKey =>
@@ -367,6 +370,7 @@ export default function DashboardMenus() {
       { key: "all_courses_table", label: "Courses table" },
       { key: "our_team", label: "Our team" },
       { key: "donation_history", label: "Donation history" },
+      { key: "impact", label: "Impact" },
       { key: "sponsors", label: "For Sponsors" },
     ];
 
@@ -538,6 +542,7 @@ export default function DashboardMenus() {
       {activeMenu === "sponsors" ? <SponsorsMenu /> : null}
       {activeMenu === "site_settings" ? <SiteSettingsMenu /> : null}
       {activeMenu === "analytics" ? <AnalyticsMenu /> : null}
+      {activeMenu === "impact" ? <ImpactMenu /> : null}
 
       <TutorApplicationFormModal
         isOpen={isFormOpen}

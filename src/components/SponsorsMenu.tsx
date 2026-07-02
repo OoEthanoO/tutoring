@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 
 export default function SponsorsMenu() {
   const [contactEmail, setContactEmail] = useState("ethanxucoder@gmail.com");
@@ -20,6 +21,15 @@ export default function SponsorsMenu() {
           Sponsorship
         </p>
       </header>
+
+      <div>
+        <Link
+          href="/?menu=impact"
+          className="inline-flex rounded-full border border-[var(--foreground)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)]"
+        >
+          See our live impact →
+        </Link>
+      </div>
 
       <div className="space-y-2">
         <h3 className="text-sm font-semibold text-[var(--foreground)]">
