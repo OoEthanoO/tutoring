@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import DonationHistoryMenu from "./DonationHistoryMenu";
 import { getCurrentUser, onAuthChange } from "@/lib/authClient";
 import { canManageCourses, isExecutive, isFounder, isHighRankingChiefExecutive, resolveUserRole, type UserRole } from "@/lib/roles";
@@ -25,9 +25,10 @@ import FormsMenu from "@/components/FormsMenu";
 import EventReminderBanner from "@/components/EventReminderBanner";
 import CourseRequestsMenu from "@/components/CourseRequestsMenu";
 import SiteSettingsMenu from "@/components/SiteSettingsMenu";
-import { useRouter, useSearchParams } from "next/navigation";
+import NavDropdown from "@/components/NavDropdown";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
-type MenuKey =
+export type MenuKey =
   | "home"
   | "all_courses"
   | "all_courses_table"
@@ -49,19 +50,45 @@ type MenuKey =
   | "sponsors"
   | "site_settings";
 
-type MenuItem = {
+export type MenuItem = {
   key: MenuKey;
   label: string;
 };
 
+const ALL_MENU_KEYS: readonly MenuKey[] = [
+  "home",
+  "all_courses",
+  "all_courses_table",
+  "our_team",
+  "donation_history",
+  "enrolled_courses",
+  "my_classes",
+  "manage_course_requests",
+  "manage_courses",
+  "manage_enrollments",
+  "founder_tools",
+  "emails",
+  "withdrawals",
+  "help",
+  "events",
+  "forms",
+  "trash",
+  "roles_manager",
+  "sponsors",
+  "site_settings",
+];
+
+const isMenuKey = (value: string | null): value is MenuKey =>
+  Boolean(value) && (ALL_MENU_KEYS as readonly string[]).includes(value as string);
+
+// Nav entries are either a direct tab or a labeled dropdown group of tabs.
+type NavEntry =
+  | { type: "item"; item: MenuItem }
+  | { type: "group"; key: string; label: string; items: MenuItem[] };
+
 export default function DashboardMenus() {
   const [role, setRole] = useState<UserRole | null>(null);
   const [isAuthResolved, setIsAuthResolved] = useState(false);
-  const [active, setActive] = useState<MenuKey>("home");
-  const navRef = useRef<HTMLElement>(null);
-  const [canScrollLeft, setCanScrollLeft] = useState(false);
-  const [canScrollRight, setCanScrollRight] = useState(false);
-  const [hasUpcomingEvents, setHasUpcomingEvents] = useState(false);
   const [hasForms, setHasForms] = useState(false);
   const [hasPendingRSVP, setHasPendingRSVP] = useState(false);
   const [trashCount, setTrashCount] = useState(0);
@@ -69,30 +96,39 @@ export default function DashboardMenus() {
   const [isOnboardingCompleted, setIsOnboardingCompleted] = useState<boolean | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const deepLinkedEventId = searchParams.get("event_id");
   const deepLinkedFormId = searchParams.get("form_id");
 
-  const updateScrollIndicators = useCallback(() => {
-    const el = navRef.current;
-    if (!el) return;
-    setCanScrollLeft(el.scrollLeft > 2);
-    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 2);
-  }, []);
+  // The URL is the source of truth for the active menu, so refreshing, sharing
+  // links, and browser back/forward all work. Authorization is enforced further
+  // down by the activeMenu fallback against the role-filtered menus list.
+  const menuParam = searchParams.get("menu");
+  const active: MenuKey = isMenuKey(menuParam) ? menuParam : "home";
 
-  useEffect(() => {
-    const el = navRef.current;
-    if (!el) return;
-    // Wait for the DOM paint so scrollWidth is correct
-    const rafId = requestAnimationFrame(() => updateScrollIndicators());
-    el.addEventListener("scroll", updateScrollIndicators, { passive: true });
-    window.addEventListener("resize", updateScrollIndicators);
-    return () => {
-      cancelAnimationFrame(rafId);
-      el.removeEventListener("scroll", updateScrollIndicators);
-      window.removeEventListener("resize", updateScrollIndicators);
-    };
-  }, [updateScrollIndicators, role, isAuthResolved]);
+  const navigateToMenu = useCallback(
+    (key: MenuKey, opts?: { replace?: boolean; keepDeepLinkParams?: boolean }) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (key === "home") {
+        params.delete("menu");
+      } else {
+        params.set("menu", key);
+      }
+      if (!opts?.keepDeepLinkParams) {
+        params.delete("event_id");
+        params.delete("form_id");
+      }
+      const qs = params.toString();
+      const url = qs ? `${pathname}?${qs}` : pathname;
+      if (opts?.replace) {
+        router.replace(url, { scroll: false });
+      } else {
+        router.push(url, { scroll: false });
+      }
+    },
+    [searchParams, pathname, router]
+  );
 
   useEffect(() => {
     const load = async () => {
@@ -100,7 +136,6 @@ export default function DashboardMenus() {
       setCurrentUser(user);
       if (!user) {
         setRole(null);
-        setActive("home");
         setIsAuthResolved(true);
         return;
       }
@@ -119,9 +154,6 @@ export default function DashboardMenus() {
       );
       setRole(resolvedRole);
       setIsAuthResolved(true);
-      if (resolvedRole === "student") {
-        setActive("home");
-      }
     };
 
     load();
@@ -171,7 +203,6 @@ export default function DashboardMenus() {
 
       if (role === "student") {
         alert("Events and forms are only accessible to executives and tutors.");
-        setActive("home");
         router.replace("/");
         return;
       }
@@ -190,8 +221,8 @@ export default function DashboardMenus() {
               return;
             }
 
-            setActive("events");
-            
+            navigateToMenu("events", { replace: true, keepDeepLinkParams: true });
+
             // Wait for the EventsMenu to render
             setTimeout(() => {
               const el = document.getElementById(`event-${deepLinkedEventId}`);
@@ -222,8 +253,8 @@ export default function DashboardMenus() {
               return;
             }
 
-            setActive("forms");
-            
+            navigateToMenu("forms", { replace: true, keepDeepLinkParams: true });
+
             // Wait for the FormsMenu to render
             setTimeout(() => {
               const el = document.getElementById(`form-${deepLinkedFormId}`);
@@ -242,11 +273,11 @@ export default function DashboardMenus() {
     };
 
     handleDeepLink();
-  }, [deepLinkedEventId, deepLinkedFormId, isAuthResolved, role, router]);
+  }, [deepLinkedEventId, deepLinkedFormId, isAuthResolved, role, router, navigateToMenu]);
 
   useEffect(() => {
     if (!role || !isExecutive(role)) {
-      setHasUpcomingEvents(false);
+      setHasPendingRSVP(false);
       return;
     }
 
@@ -256,7 +287,6 @@ export default function DashboardMenus() {
         if (response.ok) {
           const data = await response.json();
           const events = data.events || [];
-          setHasUpcomingEvents(events.length > 0);
 
           // Detect pending RSVPs for executives (non-founders)
           if (isExecutive(role) && !isFounder(role)) {
@@ -327,72 +357,74 @@ export default function DashboardMenus() {
     };
   }, [role, active]);
 
-  const menus = useMemo<MenuItem[]>(() => {
-    const items: MenuItem[] = [
-      { key: "home", label: "Home" },
-      { key: "all_courses", label: "All courses" },
+  // Grouped navigation: a handful of direct tabs plus labeled dropdown groups.
+  // Every visibility condition is preserved verbatim from the previous flat list.
+  const navEntries = useMemo<NavEntry[]>(() => {
+    const explore: MenuItem[] = [
       { key: "all_courses_table", label: "Courses table" },
       { key: "our_team", label: "Our team" },
-        { key: "donation_history", label: "Donation history" },
+      { key: "donation_history", label: "Donation history" },
+      { key: "sponsors", label: "For Sponsors" },
     ];
 
-    if (role) {
-      items.push({ key: "enrolled_courses", label: "My enrollments" });
-      items.push({ key: "my_classes", label: "My classes" });
-    }
-
+    const teaching: MenuItem[] = [];
     if (role && canManageCourses(role)) {
+      teaching.push({ key: "manage_courses", label: "My courses" });
       // Single unified requests page (founders will have approve/reject controls)
-      items.push({ key: "manage_course_requests", label: "Course requests" });
-      items.push({ key: "manage_courses", label: "My courses" });
+      teaching.push({ key: "manage_course_requests", label: "Course requests" });
     }
-
-    if (isFounder(role)) {
-      items.push({ key: "manage_enrollments", label: "Manage enrollments" });
-      items.push({ key: "founder_tools", label: "Manage accounts" });
-    }
-
-    if (role && isHighRankingChiefExecutive(role)) {
-      items.push({ key: "emails", label: "Emails" });
-      items.push({ key: "withdrawals", label: "Withdraw hours" });
-      items.push({ key: "site_settings", label: "Site Settings" });
-    }
-
     if (isExecutive(role)) {
-      items.push({ key: "events", label: "Events" });
+      teaching.push({ key: "events", label: "Events" });
     }
-
     if (isFounder(role) || (isExecutive(role) && (hasForms || active === "forms"))) {
-      items.push({ key: "forms", label: "Forms" });
+      teaching.push({ key: "forms", label: "Forms" });
     }
 
-    if (trashCount > 0 && !isExecutive(role)) {
-      items.push({ key: "trash", label: "Trash" });
+    const admin: MenuItem[] = [];
+    if (isFounder(role)) {
+      admin.push({ key: "founder_tools", label: "Manage accounts" });
+      admin.push({ key: "manage_enrollments", label: "Manage enrollments" });
+    }
+    if (role && isHighRankingChiefExecutive(role)) {
+      admin.push({ key: "emails", label: "Emails" });
+      admin.push({ key: "withdrawals", label: "Withdraw hours" });
+      admin.push({ key: "site_settings", label: "Site Settings" });
+    }
+    if (isFounder(role)) {
+      admin.push({ key: "roles_manager", label: "Roles" });
     }
     // Founders/high-level roles should always see trash if there is something in it
-    if (trashCount > 0 && isFounder(role)) {
-      items.push({ key: "trash", label: "Trash" });
+    if (trashCount > 0 && (!isExecutive(role) || isFounder(role))) {
+      admin.push({ key: "trash", label: "Trash" });
     }
 
-    if (isFounder(role)) {
-      items.push({ key: "roles_manager", label: "Roles" });
+    const entries: NavEntry[] = [
+      { type: "item", item: { key: "home", label: "Home" } },
+      { type: "item", item: { key: "all_courses", label: "Courses" } },
+    ];
+    if (role) {
+      entries.push({ type: "item", item: { key: "my_classes", label: "My classes" } });
+      entries.push({ type: "item", item: { key: "enrolled_courses", label: "My enrollments" } });
     }
+    entries.push({ type: "group", key: "explore", label: "Explore", items: explore });
+    if (teaching.length > 0) {
+      entries.push({ type: "group", key: "teaching", label: "Teaching", items: teaching });
+    }
+    if (admin.length > 0) {
+      entries.push({ type: "group", key: "admin", label: "Admin", items: admin });
+    }
+    entries.push({ type: "item", item: { key: "help", label: "Help" } });
+    return entries;
+  }, [role, hasForms, trashCount, active]);
 
-    items.push({ key: "help", label: "Help" });
-
-    items.push({ key: "sponsors", label: "For Sponsors" });
-
-    return items;
-  }, [role, hasUpcomingEvents, hasForms, trashCount, active, currentUser]);
+  const menus = useMemo<MenuItem[]>(
+    () => navEntries.flatMap((entry) => (entry.type === "item" ? [entry.item] : entry.items)),
+    [navEntries]
+  );
 
   const activeMenu: MenuKey = menus.some((item) => item.key === active)
     ? active
     : "home";
-
-  useEffect(() => {
-    const rafId = requestAnimationFrame(() => updateScrollIndicators());
-    return () => cancelAnimationFrame(rafId);
-  }, [menus, updateScrollIndicators]);
 
   if (!isAuthResolved) {
     return null;
@@ -431,85 +463,57 @@ export default function DashboardMenus() {
       )}
       {hasPendingRSVP && activeMenu !== "events" && (
         <div className="animate-in fade-in slide-in-from-top duration-500">
-          <EventReminderBanner onAction={() => setActive("events")} />
+          <EventReminderBanner onAction={() => navigateToMenu("events")} />
         </div>
       )}
       <div className="sticky top-0 z-20 -mx-6 border-b border-[var(--border)] bg-[var(--background)]/90 px-6 backdrop-blur">
-        <div className="relative">
-          <div
-            className="w-full"
-            style={{
-              maskImage:
-                canScrollLeft && canScrollRight
-                  ? "linear-gradient(to right, transparent, black 3rem, black calc(100% - 3rem), transparent)"
-                  : canScrollLeft
-                    ? "linear-gradient(to right, transparent, black 3rem)"
-                    : canScrollRight
-                      ? "linear-gradient(to right, black calc(100% - 3rem), transparent)"
-                      : undefined,
-              WebkitMaskImage:
-                canScrollLeft && canScrollRight
-                  ? "linear-gradient(to right, transparent, black 3rem, black calc(100% - 3rem), transparent)"
-                  : canScrollLeft
-                    ? "linear-gradient(to right, transparent, black 3rem)"
-                    : canScrollRight
-                      ? "linear-gradient(to right, black calc(100% - 3rem), transparent)"
-                      : undefined,
-            }}
-          >
-            <nav
-              ref={navRef}
-              className="scrollbar-hide flex overflow-x-auto"
-            >
-            {menus.map((menu) => (
-              <button
-                key={menu.key}
-                type="button"
-                onClick={() => {
-                  setActive(menu.key);
-                  if (menu.key === "home") {
-                    document.getElementById("home")?.scrollIntoView({
-                      behavior: "smooth",
-                    });
+        <nav className="scrollbar-hide flex overflow-x-auto">
+          {navEntries.map((entry) => {
+            // A group that ends up with a single item renders as a plain tab.
+            const singleItem =
+              entry.type === "item"
+                ? entry.item
+                : entry.items.length === 1
+                  ? entry.items[0]
+                  : null;
+            if (singleItem) {
+              return (
+                <button
+                  key={singleItem.key}
+                  type="button"
+                  onClick={() => {
+                    navigateToMenu(singleItem.key);
+                    if (singleItem.key === "home") {
+                      document.getElementById("home")?.scrollIntoView({
+                        behavior: "smooth",
+                      });
+                    }
+                  }}
+                  className={
+                    activeMenu === singleItem.key
+                      ? "whitespace-nowrap border-b-2 border-[var(--foreground)] px-4 py-3 text-xs font-bold text-[var(--foreground)] transition-colors"
+                      : "whitespace-nowrap border-b-2 border-transparent px-4 py-3 text-xs font-medium text-[var(--muted)] transition-colors hover:text-[var(--foreground)]"
                   }
-                }}
-                className={
-                  activeMenu === menu.key
-                    ? "whitespace-nowrap border-b-2 border-[var(--foreground)] px-4 py-3 text-xs font-bold text-[var(--foreground)] transition-colors"
-                    : "whitespace-nowrap border-b-2 border-transparent px-4 py-3 text-xs font-medium text-[var(--muted)] transition-colors hover:text-[var(--foreground)]"
-                }
-              >
-                {menu.label}
-              </button>
-            ))}
-          </nav>
-          </div>
-          {canScrollLeft && (
-            <button
-              aria-label="Scroll tabs left"
-              onClick={() => navRef.current?.scrollBy({ left: -360, behavior: "smooth" })}
-              className="pointer-events-auto absolute left-0 top-0 bottom-0 z-30 flex w-12 items-center justify-center text-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="15 18 9 12 15 6"></polyline>
-              </svg>
-            </button>
-          )}
-          {canScrollRight && (
-            <button
-              aria-label="Scroll tabs right"
-              onClick={() => navRef.current?.scrollBy({ left: 360, behavior: "smooth" })}
-              className="pointer-events-auto absolute right-0 top-0 bottom-0 z-30 flex w-12 items-center justify-center text-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="9 18 15 12 9 6"></polyline>
-              </svg>
-            </button>
-          )}
-        </div>
+                >
+                  {singleItem.label}
+                </button>
+              );
+            }
+            const group = entry as Extract<NavEntry, { type: "group" }>;
+            return (
+              <NavDropdown
+                key={group.key}
+                label={group.label}
+                items={group.items}
+                activeKey={activeMenu}
+                onSelect={(key) => navigateToMenu(key)}
+              />
+            );
+          })}
+        </nav>
       </div>
 
-      {activeMenu === "home" ? <HomeMenu isSignedIn={Boolean(role)} onOpenTeamTab={() => setActive("our_team")} /> : null}
+      {activeMenu === "home" ? <HomeMenu isSignedIn={Boolean(role)} onOpenTeamTab={() => navigateToMenu("our_team")} /> : null}
       {activeMenu === "all_courses" ? <CoursesMenu /> : null}
       {activeMenu === "all_courses_table" ? <AllCoursesTableMenu /> : null}
       {activeMenu === "our_team" ? <OurTeamMenu /> : null}
