@@ -3,6 +3,19 @@ import { createClient } from "@supabase/supabase-js";
 import { getRequestUser } from "@/lib/authServer";
 import { isHighRankingChiefExecutive, resolveUserRole } from "@/lib/roles";
 import { ensureTutorWithdrawalRequestsSchema } from "@/lib/withdrawalRequests";
+import { sendEmail as sendNotificationEmail } from "@/lib/notificationsServer";
+import {
+  certificateFileName,
+  generateServiceHoursCertificate,
+} from "@/lib/serviceHoursCertificate";
+
+const escapeHtmlValue = (value: string) =>
+  value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
@@ -295,7 +308,7 @@ export async function POST(request: NextRequest) {
   // Fetch tutor user details and check legal name
   const { data: tutorUser, error: tutorUserError } = await adminClient
     .from("app_users")
-    .select("id, full_name, legal_name, email")
+    .select("id, full_name, legal_name, email, grade")
     .eq("id", tutorId)
     .single();
 
@@ -405,8 +418,42 @@ export async function POST(request: NextRequest) {
       console.error("Failed to auto-fulfill withdrawal request:", error);
     }
 
+    // Email the filled community-service-hours form to the tutor. Non-fatal.
+    let certificateEmailSent = false;
+    try {
+      const tutorEmail = String(tutorUser.email ?? "").trim();
+      if (tutorEmail) {
+        const pdfBytes = await generateServiceHoursCertificate({
+          legalName: tutorLegalName,
+          grade: (tutorUser.grade as string | null) ?? null,
+          hours: Number(withdrawal.hours),
+          startDate: String(withdrawal.start_date),
+          endDate: String(withdrawal.end_date),
+        });
+        const fileName = certificateFileName(tutorLegalName, Number(withdrawal.hours));
+        const startLabel = new Date(String(withdrawal.start_date)).toLocaleDateString("en-US", {
+          timeZone: "America/Toronto", month: "short", day: "numeric", year: "numeric",
+        });
+        const endLabel = new Date(String(withdrawal.end_date)).toLocaleDateString("en-US", {
+          timeZone: "America/Toronto", month: "short", day: "numeric", year: "numeric",
+        });
+        certificateEmailSent = await sendNotificationEmail(
+          tutorEmail,
+          `Your community service hours form — ${Number(withdrawal.hours)} hours`,
+          `<p>Hi ${escapeHtmlValue(tutorLegalName)},</p>
+<p>Your withdrawal of <strong>${Number(withdrawal.hours)} hours</strong> (${escapeHtmlValue(startLabel)} &ndash; ${escapeHtmlValue(endLabel)}) has been completed. Your filled community service hours form is attached.</p>
+<p>The <strong>verification section at the bottom</strong> of the form is to be completed by your school.</p>
+<p>Thanks,<br/>The YanLearn Team</p>`,
+          [{ filename: fileName, content: Buffer.from(pdfBytes).toString("base64") }]
+        );
+      }
+    } catch (error) {
+      console.error("Failed to email service-hours certificate:", error);
+    }
+
     return NextResponse.json({
       success: true,
+      certificateEmailSent,
       withdrawal: {
         id: withdrawal.id,
         tutorId: withdrawal.tutor_id,

@@ -13,8 +13,14 @@ const sleep = (ms: number) =>
 /**
  * Sends an email using the Resend API.
  * This is a server-side only utility.
+ * Attachments use Resend's shape: base64 `content` + `filename`.
  */
-export const sendEmail = async (to: string, subject: string, html: string): Promise<boolean> => {
+export const sendEmail = async (
+  to: string,
+  subject: string,
+  html: string,
+  attachments?: { filename: string; content: string }[]
+): Promise<boolean> => {
   if (!resendApiKey || !resendFrom || !to) {
     console.warn("Skipping email send: Missing configuration or recipient.", { to, subject });
     return false;
@@ -34,6 +40,7 @@ export const sendEmail = async (to: string, subject: string, html: string): Prom
           to,
           subject,
           html,
+          ...(attachments && attachments.length > 0 ? { attachments } : {}),
         }),
       });
 

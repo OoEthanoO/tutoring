@@ -51,23 +51,35 @@ export async function GET(request: NextRequest) {
 
   await ensureTutorWithdrawalRequestsSchema(adminClient);
 
-  const [{ availableHours, withdrawnHours }, { data: selfRow }, { data: requests }] =
-    await Promise.all([
-      getTutorAvailability(adminClient, user.id),
-      adminClient.from("app_users").select("legal_name").eq("id", user.id).single(),
-      adminClient
-        .from("tutor_withdrawal_requests")
-        .select(requestFields)
-        .eq("tutor_id", user.id)
-        .order("created_at", { ascending: false })
-        .limit(20),
-    ]);
+  const [
+    { availableHours, withdrawnHours },
+    { data: selfRow },
+    { data: requests },
+    { data: withdrawals },
+  ] = await Promise.all([
+    getTutorAvailability(adminClient, user.id),
+    adminClient.from("app_users").select("legal_name, grade").eq("id", user.id).single(),
+    adminClient
+      .from("tutor_withdrawal_requests")
+      .select(requestFields)
+      .eq("tutor_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(20),
+    adminClient
+      .from("tutor_withdrawals")
+      .select("id, hours, start_date, end_date, created_at")
+      .eq("tutor_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(20),
+  ]);
 
   return NextResponse.json({
     availableHours,
     withdrawnHours,
     legalNameSet: Boolean(String(selfRow?.legal_name ?? "").trim()),
+    gradeSet: /^(9|10|11|12)$/.test(String(selfRow?.grade ?? "").trim()),
     requests: requests ?? [],
+    withdrawals: withdrawals ?? [],
   });
 }
 
@@ -121,7 +133,7 @@ export async function POST(request: NextRequest) {
   // Legal name is required for community-service-hour records.
   const { data: selfRow } = await adminClient
     .from("app_users")
-    .select("full_name, legal_name, email")
+    .select("full_name, legal_name, email, grade")
     .eq("id", user.id)
     .single();
 
@@ -131,6 +143,19 @@ export async function POST(request: NextRequest) {
       {
         error: "You must set your legal name before requesting an hour withdrawal.",
         code: "missing_legal_name",
+      },
+      { status: 400 }
+    );
+  }
+
+  // Grade appears on the community-service form (Grade 9-12 checkboxes).
+  const grade = String(selfRow?.grade ?? "").trim();
+  if (!/^(9|10|11|12)$/.test(grade)) {
+    return NextResponse.json(
+      {
+        error:
+          "You must set your current grade (9–12) before requesting an hour withdrawal — it appears on the community service form.",
+        code: "missing_grade",
       },
       { status: 400 }
     );

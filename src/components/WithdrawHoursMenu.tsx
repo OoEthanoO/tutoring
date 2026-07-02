@@ -760,6 +760,16 @@ export default function WithdrawHoursMenu() {
                         <span className="font-bold text-[var(--foreground)]">{w.tutor_legal_name}</span>
                       </div>
                     )}
+
+                    <div className="flex justify-end pt-1">
+                      <a
+                        href={`/api/withdrawals/${w.id}/certificate`}
+                        download
+                        className="rounded-full border border-[var(--foreground)] px-3 py-1 text-[10px] font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)]"
+                      >
+                        Download form
+                      </a>
+                    </div>
                   </div>
                 );
               })}

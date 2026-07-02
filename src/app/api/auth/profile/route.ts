@@ -11,10 +11,15 @@ export async function PATCH(request: NextRequest) {
   }
 
   const body = (await request.json().catch(() => null)) as
-    | { fullName?: string; discordUsername?: string; legalName?: string }
+    | { fullName?: string; discordUsername?: string; legalName?: string; grade?: string }
     | null;
 
-  if (body?.fullName === undefined && body?.discordUsername === undefined && body?.legalName === undefined) {
+  if (
+    body?.fullName === undefined &&
+    body?.discordUsername === undefined &&
+    body?.legalName === undefined &&
+    body?.grade === undefined
+  ) {
     return NextResponse.json(
       { error: "No profile fields provided to update." },
       { status: 400 }
@@ -43,6 +48,17 @@ export async function PATCH(request: NextRequest) {
 
   if (body?.legalName !== undefined) {
     updates.legal_name = body.legalName.trim() || null;
+  }
+
+  if (body?.grade !== undefined) {
+    const grade = String(body.grade).trim();
+    if (!/^(9|10|11|12)$/.test(grade)) {
+      return NextResponse.json(
+        { error: "Grade must be 9, 10, 11, or 12." },
+        { status: 400 }
+      );
+    }
+    updates.grade = grade;
   }
 
   const adminClient = getAdminClient();

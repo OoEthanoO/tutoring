@@ -11,6 +11,14 @@ type WithdrawalRequest = {
   resolved_at: string | null;
 };
 
+type CompletedWithdrawal = {
+  id: string;
+  hours: number;
+  start_date: string;
+  end_date: string;
+  created_at: string;
+};
+
 const formatDate = (value: string | null) => {
   if (!value) {
     return "";
@@ -44,10 +52,14 @@ export default function RequestWithdrawalCard() {
   const [availableHours, setAvailableHours] = useState(0);
   const [withdrawnHours, setWithdrawnHours] = useState(0);
   const [legalNameSet, setLegalNameSet] = useState(true);
+  const [gradeSet, setGradeSet] = useState(true);
   const [requests, setRequests] = useState<WithdrawalRequest[]>([]);
+  const [withdrawals, setWithdrawals] = useState<CompletedWithdrawal[]>([]);
   const [hoursInput, setHoursInput] = useState("");
   const [legalNameDraft, setLegalNameDraft] = useState("");
+  const [gradeDraft, setGradeDraft] = useState("");
   const [isSavingLegalName, setIsSavingLegalName] = useState(false);
+  const [isSavingGrade, setIsSavingGrade] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
@@ -69,12 +81,16 @@ export default function RequestWithdrawalCard() {
       availableHours?: number;
       withdrawnHours?: number;
       legalNameSet?: boolean;
+      gradeSet?: boolean;
       requests?: WithdrawalRequest[];
+      withdrawals?: CompletedWithdrawal[];
     };
     setAvailableHours(data.availableHours ?? 0);
     setWithdrawnHours(data.withdrawnHours ?? 0);
     setLegalNameSet(data.legalNameSet ?? true);
+    setGradeSet(data.gradeSet ?? true);
     setRequests(data.requests ?? []);
+    setWithdrawals(data.withdrawals ?? []);
     setIsLoading(false);
   }, []);
 
@@ -113,6 +129,35 @@ export default function RequestWithdrawalCard() {
     broadcastAuthChange();
   };
 
+  const saveGrade = async () => {
+    const grade = gradeDraft.trim();
+    if (!/^(9|10|11|12)$/.test(grade)) {
+      setErrorMsg("Please select your current grade.");
+      return;
+    }
+
+    setIsSavingGrade(true);
+    setErrorMsg("");
+
+    const response = await fetch("/api/auth/profile", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ grade }),
+    });
+
+    if (!response.ok) {
+      const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+      setErrorMsg(payload?.error ?? "Unable to update grade.");
+      setIsSavingGrade(false);
+      return;
+    }
+
+    setGradeSet(true);
+    setIsSavingGrade(false);
+    setSuccessMsg("Grade saved. You can now submit your withdrawal request.");
+    broadcastAuthChange();
+  };
+
   const submitRequest = async () => {
     setErrorMsg("");
     setSuccessMsg("");
@@ -145,6 +190,9 @@ export default function RequestWithdrawalCard() {
     if (!response.ok) {
       if (payload?.code === "missing_legal_name") {
         setLegalNameSet(false);
+        setErrorMsg("");
+      } else if (payload?.code === "missing_grade") {
+        setGradeSet(false);
         setErrorMsg("");
       } else {
         setErrorMsg(payload?.error ?? "Could not submit the withdrawal request.");
@@ -217,6 +265,35 @@ export default function RequestWithdrawalCard() {
             </button>
           </div>
         </div>
+      ) : !gradeSet ? (
+        <div className="space-y-2 rounded-lg border border-[var(--border)] px-3 py-3">
+          <p className="text-xs text-[var(--foreground)]">
+            Your <span className="font-semibold">current grade</span> appears on the community
+            service form (Grade 9&ndash;12 checkboxes). Please set it before requesting a
+            withdrawal.
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={gradeDraft}
+              onChange={(event) => setGradeDraft(event.target.value)}
+              className="rounded-full border border-[var(--border)] bg-[var(--surface)] px-4 py-2 text-xs text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+            >
+              <option value="">-- Select grade --</option>
+              <option value="9">Grade 9</option>
+              <option value="10">Grade 10</option>
+              <option value="11">Grade 11</option>
+              <option value="12">Grade 12</option>
+            </select>
+            <button
+              type="button"
+              disabled={isSavingGrade}
+              onClick={saveGrade}
+              className="rounded-full border border-[var(--foreground)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              {isSavingGrade ? "Saving..." : "Save grade"}
+            </button>
+          </div>
+        </div>
       ) : availableHours <= 0 ? (
         <p className="text-xs text-[var(--muted)]">
           No hours available to withdraw yet. Hours become withdrawable after you teach classes
@@ -244,6 +321,34 @@ export default function RequestWithdrawalCard() {
           </button>
         </div>
       )}
+
+      {withdrawals.length > 0 ? (
+        <div className="space-y-1">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">
+            Completed withdrawals
+          </p>
+          <div className="space-y-1">
+            {withdrawals.map((withdrawal) => (
+              <div
+                key={withdrawal.id}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--border)] px-3 py-1.5"
+              >
+                <p className="text-xs text-[var(--foreground)]">
+                  {Number(withdrawal.hours)} hours · {formatDate(withdrawal.start_date)} &ndash;{" "}
+                  {formatDate(withdrawal.end_date)}
+                </p>
+                <a
+                  href={`/api/withdrawals/${withdrawal.id}/certificate`}
+                  download
+                  className="rounded-full border border-[var(--foreground)] px-3 py-1 text-[11px] font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)]"
+                >
+                  Download form
+                </a>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       {requests.length > 0 ? (
         <div className="space-y-1">
