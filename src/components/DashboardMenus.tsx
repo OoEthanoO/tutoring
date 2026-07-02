@@ -26,6 +26,7 @@ import EventReminderBanner from "@/components/EventReminderBanner";
 import CourseRequestsMenu from "@/components/CourseRequestsMenu";
 import SiteSettingsMenu from "@/components/SiteSettingsMenu";
 import NavDropdown from "@/components/NavDropdown";
+import AnalyticsMenu from "@/components/AnalyticsMenu";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 export type MenuKey =
@@ -48,7 +49,8 @@ export type MenuKey =
   | "trash"
   | "roles_manager"
   | "sponsors"
-  | "site_settings";
+  | "site_settings"
+  | "analytics";
 
 export type MenuItem = {
   key: MenuKey;
@@ -76,6 +78,7 @@ const ALL_MENU_KEYS: readonly MenuKey[] = [
   "roles_manager",
   "sponsors",
   "site_settings",
+  "analytics",
 ];
 
 const isMenuKey = (value: string | null): value is MenuKey =>
@@ -391,6 +394,7 @@ export default function DashboardMenus() {
       admin.push({ key: "site_settings", label: "Site Settings" });
     }
     if (isFounder(role)) {
+      admin.push({ key: "analytics", label: "Analytics" });
       admin.push({ key: "roles_manager", label: "Roles" });
     }
     // Founders/high-level roles should always see trash if there is something in it
@@ -533,6 +537,7 @@ export default function DashboardMenus() {
       {activeMenu === "roles_manager" ? <RolesManagerMenu /> : null}
       {activeMenu === "sponsors" ? <SponsorsMenu /> : null}
       {activeMenu === "site_settings" ? <SiteSettingsMenu /> : null}
+      {activeMenu === "analytics" ? <AnalyticsMenu /> : null}
 
       <TutorApplicationFormModal
         isOpen={isFormOpen}
