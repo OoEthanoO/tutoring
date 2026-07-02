@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getRequestUser } from "@/lib/authServer";
 import { isHighRankingChiefExecutive, resolveUserRole } from "@/lib/roles";
+import { ensureTutorWithdrawalRequestsSchema } from "@/lib/withdrawalRequests";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
@@ -117,6 +118,8 @@ export async function GET(request: NextRequest) {
   await ensureTutorWithdrawalsSchema(adminClient);
 
   if (!tutorId) {
+    await ensureTutorWithdrawalRequestsSchema(adminClient);
+
     // Fetch all past withdrawals globally
     const { data: withdrawals, error: withdrawalsError } = await adminClient
       .from("tutor_withdrawals")
@@ -127,8 +130,23 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: withdrawalsError.message }, { status: 500 });
     }
 
-    const tutorIds = Array.from(new Set((withdrawals || []).map((w: any) => w.tutor_id)));
+    // Pending tutor-initiated withdrawal requests (oldest first for triage order)
+    const { data: pendingRequestsData } = await adminClient
+      .from("tutor_withdrawal_requests")
+      .select("id, tutor_id, tutor_legal_name, hours, created_at")
+      .eq("status", "pending")
+      .order("created_at", { ascending: true });
+
+    const pendingRequests = pendingRequestsData || [];
+
+    const tutorIds = Array.from(
+      new Set([
+        ...(withdrawals || []).map((w: any) => w.tutor_id),
+        ...pendingRequests.map((r: any) => r.tutor_id),
+      ])
+    );
     let enrichedWithdrawals = withdrawals || [];
+    let enrichedPendingRequests = pendingRequests;
 
     if (tutorIds.length > 0) {
       const { data: usersData, error: usersError } = await adminClient
@@ -142,10 +160,17 @@ export async function GET(request: NextRequest) {
           ...w,
           tutor: usersMap.get(w.tutor_id) || null
         }));
+        enrichedPendingRequests = pendingRequests.map((r: any) => ({
+          ...r,
+          tutor: usersMap.get(r.tutor_id) || null
+        }));
       }
     }
 
-    return NextResponse.json({ withdrawals: enrichedWithdrawals });
+    return NextResponse.json({
+      withdrawals: enrichedWithdrawals,
+      pendingRequests: enrichedPendingRequests,
+    });
   }
 
   // Fetch tutor user details
@@ -362,6 +387,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: `Failed to mark classes as withdrawn: ${updateError.message}` }, { status: 500 });
     }
 
+    // Auto-fulfill any pending withdrawal request from this tutor — the admin has
+    // handled their balance, regardless of whether the amounts match exactly.
+    // Non-fatal: a failure here must not fail the withdrawal itself.
+    try {
+      await ensureTutorWithdrawalRequestsSchema(adminClient);
+      await adminClient
+        .from("tutor_withdrawal_requests")
+        .update({
+          status: "fulfilled",
+          resolved_at: new Date().toISOString(),
+          resolved_by: user.id,
+        })
+        .eq("tutor_id", tutorId)
+        .eq("status", "pending");
+    } catch (error) {
+      console.error("Failed to auto-fulfill withdrawal request:", error);
+    }
+
     return NextResponse.json({
       success: true,
       withdrawal: {
@@ -385,4 +428,77 @@ export async function POST(request: NextRequest) {
     endDate,
     tutorLegalName
   });
+}
+
+// Resolve a tutor-initiated withdrawal request (decline it, or mark fulfilled
+// without performing a withdrawal).
+export async function PATCH(request: NextRequest) {
+  if (!supabaseUrl || !supabaseAnonKey || !serviceRoleKey) {
+    return NextResponse.json(
+      { error: "Missing Supabase environment configuration." },
+      { status: 500 }
+    );
+  }
+
+  const user = await getRequestUser(request);
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  }
+
+  const customRoleLevels = Array.isArray(user.custom_roles)
+    ? user.custom_roles.map((r: any) => r.role_level).filter(Boolean)
+    : [user.custom_roles?.role_level].filter(Boolean);
+
+  const role = resolveUserRole(user.email, user.role ?? null, customRoleLevels);
+  if (!isHighRankingChiefExecutive(role as any)) {
+    return NextResponse.json({ error: "Forbidden. Only high-level chief executives can resolve withdrawal requests." }, { status: 403 });
+  }
+
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
+  }
+
+  const requestId = String(body?.requestId ?? "").trim();
+  const status = String(body?.status ?? "").trim();
+
+  if (!requestId) {
+    return NextResponse.json({ error: "Missing requestId." }, { status: 400 });
+  }
+  if (status !== "fulfilled" && status !== "declined") {
+    return NextResponse.json({ error: "Status must be \"fulfilled\" or \"declined\"." }, { status: 400 });
+  }
+
+  const adminClient = createClient(supabaseUrl, serviceRoleKey, {
+    auth: { persistSession: false },
+  });
+
+  await ensureTutorWithdrawalRequestsSchema(adminClient);
+
+  // The status guard makes concurrent resolutions race-safe: only one wins.
+  const { data: updated, error: updateError } = await adminClient
+    .from("tutor_withdrawal_requests")
+    .update({
+      status,
+      resolved_at: new Date().toISOString(),
+      resolved_by: user.id,
+    })
+    .eq("id", requestId)
+    .eq("status", "pending")
+    .select("id, tutor_id, tutor_legal_name, hours, status, created_at, resolved_at");
+
+  if (updateError) {
+    return NextResponse.json({ error: updateError.message }, { status: 500 });
+  }
+
+  if (!updated || updated.length === 0) {
+    return NextResponse.json(
+      { error: "Request was already resolved or does not exist." },
+      { status: 409 }
+    );
+  }
+
+  return NextResponse.json({ success: true, request: updated[0] });
 }

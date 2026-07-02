@@ -6,6 +6,7 @@ import { canManageCourses, isExecutive, isFounder, isHighRankingChiefExecutive, 
 import { setHasUnsavedData } from "@/lib/unsavedData";
 import { MarkdownText } from "@/lib/parseMarkdown";
 import CourseAttendance from "@/components/CourseAttendance";
+import RequestWithdrawalCard from "@/components/RequestWithdrawalCard";
 
 type EnrolledStudent = {
   id: string;
@@ -1177,6 +1178,7 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
             </div>
           ) : null}
         </div>
+        {!isTrashMode && isExecutive(role) ? <RequestWithdrawalCard /> : null}
         {!isTrashMode && (
           <div className="flex flex-col gap-1">
             {isExecutive(role) && donationLink ? (

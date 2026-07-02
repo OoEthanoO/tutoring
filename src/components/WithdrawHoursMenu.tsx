@@ -41,11 +41,26 @@ type TutorInfo = {
   email: string | null;
 };
 
+type PendingRequest = {
+  id: string;
+  tutor_id: string;
+  tutor_legal_name: string;
+  hours: number;
+  created_at: string;
+  tutor?: {
+    id: string;
+    full_name: string | null;
+    email: string | null;
+  } | null;
+};
+
 export default function WithdrawHoursMenu() {
   const [tutors, setTutors] = useState<Tutor[]>([]);
   const [selectedTutorId, setSelectedTutorId] = useState<string>("");
   const [classes, setClasses] = useState<CourseClass[]>([]);
   const [globalWithdrawals, setGlobalWithdrawals] = useState<GlobalWithdrawal[]>([]);
+  const [pendingRequests, setPendingRequests] = useState<PendingRequest[]>([]);
+  const [decliningRequestId, setDecliningRequestId] = useState<string | null>(null);
   const [tutorInfo, setTutorInfo] = useState<TutorInfo | null>(null);
   const [hoursToWithdraw, setHoursToWithdraw] = useState<string>("");
   const [previewData, setPreviewData] = useState<{
@@ -88,6 +103,7 @@ export default function WithdrawHoursMenu() {
       if (res.ok) {
         const data = await res.json();
         setGlobalWithdrawals(data.withdrawals || []);
+        setPendingRequests(data.pendingRequests || []);
       }
     } catch (err) {
       console.error("Failed to load global withdrawals", err);
@@ -127,6 +143,49 @@ export default function WithdrawHoursMenu() {
       loadTutorData(id);
     } else {
       setClasses([]);
+    }
+  };
+
+  // Drop the admin into the normal withdrawal flow with the request pre-filled.
+  const reviewRequest = (request: PendingRequest) => {
+    setSelectedTutorId(request.tutor_id);
+    setHoursToWithdraw(String(Number(request.hours)));
+    setPreviewData(null);
+    setTutorInfo(null);
+    setStep("input");
+    setErrorMsg("");
+    setSuccessMsg("");
+    loadTutorData(request.tutor_id);
+  };
+
+  const declineRequest = async (request: PendingRequest) => {
+    const tutorLabel =
+      request.tutor?.full_name || request.tutor?.email || request.tutor_legal_name || "this tutor";
+    const confirmed = window.confirm(
+      `Decline the ${Number(request.hours)}-hour withdrawal request from ${tutorLabel}?`
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setDecliningRequestId(request.id);
+    setErrorMsg("");
+    try {
+      const res = await fetch("/api/admin/withdrawals", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ requestId: request.id, status: "declined" }),
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => null);
+        setErrorMsg(errData?.error || "Failed to decline the request.");
+      } else {
+        await loadGlobalWithdrawals();
+      }
+    } catch {
+      setErrorMsg("Network error declining the request.");
+    } finally {
+      setDecliningRequestId(null);
     }
   };
 
@@ -293,6 +352,56 @@ export default function WithdrawHoursMenu() {
       {errorMsg ? (
         <div className="rounded-xl border border-red-200 bg-red-50/50 px-4 py-3 text-xs text-red-700 dark:border-red-950/50 dark:bg-red-950/30 dark:text-red-400">
           {errorMsg}
+        </div>
+      ) : null}
+
+      {/* Pending tutor-initiated withdrawal requests */}
+      {pendingRequests.length > 0 ? (
+        <div className="space-y-3 rounded-xl border border-amber-500/30 bg-amber-500/5 px-5 py-4">
+          <p className="text-xs font-semibold uppercase tracking-wider text-amber-600">
+            Pending withdrawal requests ({pendingRequests.length})
+          </p>
+          <div className="space-y-2">
+            {pendingRequests.map((request) => (
+              <div
+                key={request.id}
+                className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--border)] bg-[var(--background)] px-4 py-3"
+              >
+                <div>
+                  <p className="text-sm font-semibold text-[var(--foreground)]">
+                    {request.tutor?.full_name || request.tutor?.email || "Unknown tutor"}
+                  </p>
+                  <p className="text-xs text-[var(--muted)]">
+                    Legal name: {request.tutor_legal_name || "—"} · {Number(request.hours)} hours (
+                    {Number(request.hours) / 1.5} lesson{Number(request.hours) / 1.5 !== 1 ? "s" : ""}) ·
+                    requested{" "}
+                    {new Date(request.created_at).toLocaleDateString("en-US", {
+                      month: "short",
+                      day: "numeric",
+                      year: "numeric",
+                    })}
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => reviewRequest(request)}
+                    className="rounded-full border border-[var(--foreground)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)]"
+                  >
+                    Review & prefill
+                  </button>
+                  <button
+                    type="button"
+                    disabled={decliningRequestId === request.id}
+                    onClick={() => declineRequest(request)}
+                    className="rounded-full border border-red-200 px-4 py-2 text-xs font-semibold text-red-500 transition hover:border-red-400 disabled:cursor-not-allowed disabled:opacity-70"
+                  >
+                    {decliningRequestId === request.id ? "Declining..." : "Decline"}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       ) : null}
 

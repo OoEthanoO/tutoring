@@ -95,9 +95,15 @@ export const notifyFounders = async (subject: string, html: string) => {
 };
 
 /**
- * Sends a Discord message to a channel by its name.
+ * Sends a Discord message to a channel by its name. Pass allowedRoleMentionIds to
+ * explicitly permit role pings (e.g. <@&roleId> in the content), matching the
+ * allowed_mentions pattern used by the class-reminders cron.
  */
-export const sendDiscordMessageByChannelName = async (channelName: string, content: string): Promise<boolean> => {
+export const sendDiscordMessageByChannelName = async (
+  channelName: string,
+  content: string,
+  allowedRoleMentionIds?: string[]
+): Promise<boolean> => {
   if (!discordBotToken || !discordGuildId || !channelName || !content) {
     console.warn("Skipping Discord message: Missing configuration, channel name, or content.");
     return false;
@@ -136,7 +142,12 @@ export const sendDiscordMessageByChannelName = async (channelName: string, conte
           Authorization: `Bot ${discordBotToken}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ content }),
+        body: JSON.stringify({
+          content,
+          ...(allowedRoleMentionIds && allowedRoleMentionIds.length > 0
+            ? { allowed_mentions: { parse: [], roles: allowedRoleMentionIds, users: [] } }
+            : {}),
+        }),
       }
     );
 
