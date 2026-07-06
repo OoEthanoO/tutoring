@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { resolveUserRole } from "@/lib/roles";
 import { getRequestUser } from "@/lib/authServer";
+import { notifyCourseTutorsOfNewEnrollment } from "@/lib/courseChangeNotifications";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
@@ -106,6 +107,13 @@ export async function POST(request: NextRequest) {
       status: "approved",
       decided_at: new Date().toISOString(),
     }, { onConflict: "course_id,student_id" });
+
+  await notifyCourseTutorsOfNewEnrollment(
+    adminClient,
+    body.courseId,
+    String(student.full_name ?? "").trim(),
+    student.email ?? null
+  );
 
   return NextResponse.json({ success: true });
 }

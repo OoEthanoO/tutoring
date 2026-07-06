@@ -95,6 +95,63 @@ const getCourseRecipients = async (
   return recipients;
 };
 
+export const notifyCourseTutorsOfNewEnrollment = async (
+  adminClient: SupabaseClient,
+  courseId: string,
+  studentName: string,
+  studentEmail: string | null
+) => {
+  try {
+    const { data: course, error } = await adminClient
+      .from("courses")
+      .select("id, title, created_by, created_by_name, created_by_email, co_tutor_id, co_tutor_name, co_tutor_email")
+      .eq("id", courseId)
+      .single();
+
+    if (error || !course) {
+      console.error("Failed to load course for enrollment notification:", error);
+      return;
+    }
+
+    const recipients = await getCourseRecipients(
+      adminClient,
+      course as CourseNotificationRow
+    );
+    if (recipients.length === 0) {
+      return;
+    }
+
+    const { count: enrolledCount } = await adminClient
+      .from("course_enrollments")
+      .select("id", { count: "exact", head: true })
+      .eq("course_id", courseId);
+
+    const courseTitle = String(course.title ?? "your course");
+    const discordMentions = recipients
+      .map((recipient) =>
+        recipient.discord_user_id
+          ? `<@${recipient.discord_user_id}>`
+          : `**${recipient.full_name || recipient.email || "Tutor"}**`
+      )
+      .join(" ");
+
+    const studentLabel = studentEmail
+      ? `**${studentName || studentEmail}** (${studentEmail})`
+      : `**${studentName || "A new student"}**`;
+    const countSuffix =
+      typeof enrolledCount === "number"
+        ? ` The course now has ${enrolledCount} enrolled student${enrolledCount === 1 ? "" : "s"}.`
+        : "";
+
+    await sendDiscordMessageByChannelName(
+      "executives",
+      `${discordMentions} New enrollment: ${studentLabel} just enrolled in your course **${courseTitle}**.${countSuffix}`
+    );
+  } catch (error) {
+    console.error("Failed to notify course tutors of new enrollment:", error);
+  }
+};
+
 export const notifyCourseTutorsOfChanges = async (
   adminClient: SupabaseClient,
   courseId: string,

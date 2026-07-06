@@ -500,20 +500,25 @@ const normalizeVoiceChannelName = (title: string, fallbackClassId: string) => {
   return `class-${fallbackClassId.slice(0, 8)}`;
 };
 
+// Student access is granted through the course role rather than per-user
+// overwrites, so students who enroll mid-class get in as soon as the Discord
+// sync (which runs at the start of every tick) assigns them the role. Pass a
+// null courseRoleId during the tutor-only early-access window (15 to 5 minutes
+// before start).
 const buildLiveVoicePermissionOverwrites = ({
   guildId,
   botUserId,
   ceoRoleId,
   cooRoleId,
   tutorDiscordUserId,
-  studentDiscordUserIds,
+  courseRoleId,
 }: {
   guildId: string;
   botUserId: string;
   ceoRoleId: string | null;
   cooRoleId: string | null;
   tutorDiscordUserId: string;
-  studentDiscordUserIds: string[];
+  courseRoleId: string | null;
 }): DiscordPermissionOverwrite[] => {
   const allowJoin = String(
     viewChannelPermission | connectPermission | speakPermission
@@ -556,10 +561,10 @@ const buildLiveVoicePermissionOverwrites = ({
     overwrites.push({ id: cooRoleId, type: 0, allow: allowJoin, deny: "0" });
   }
 
-  for (const studentId of studentDiscordUserIds) {
+  if (courseRoleId) {
     overwrites.push({
-      id: studentId,
-      type: 1,
+      id: courseRoleId,
+      type: 0,
       allow: allowJoin,
       deny: "0",
     });
@@ -1009,7 +1014,6 @@ export async function POST(request: NextRequest) {
   }
 
   const enrollmentsByCourseId = new Map<string, string[]>();
-  const studentDiscordIdsByCourseId = new Map<string, string[]>();
   const studentIds = new Set<string>();
   for (const enrollment of enrollments ?? []) {
     const courseId = String(enrollment.course_id ?? "").trim();
@@ -1066,13 +1070,6 @@ export async function POST(request: NextRequest) {
       const current = enrollmentsByCourseId.get(courseId) ?? [];
       current.push(canonicalEmail);
       enrollmentsByCourseId.set(courseId, current);
-
-      const discordId = studentDiscordById.get(studentId);
-      if (discordId) {
-        const currentDiscord = studentDiscordIdsByCourseId.get(courseId) ?? [];
-        currentDiscord.push(discordId);
-        studentDiscordIdsByCourseId.set(courseId, currentDiscord);
-      }
     }
 
   }
@@ -1392,7 +1389,6 @@ export async function POST(request: NextRequest) {
         new Set(recoverable.map((row) => String(row.course_id)).filter(Boolean))
       );
       const titleByCourseId = new Map<string, string>();
-      const studentDiscordIdsByCourse = new Map<string, string[]>();
 
       if (recoverCourseIds.length > 0) {
         const { data: courseRows } = await adminClient
@@ -1401,37 +1397,6 @@ export async function POST(request: NextRequest) {
           .in("id", recoverCourseIds);
         for (const courseRow of courseRows ?? []) {
           titleByCourseId.set(String(courseRow.id), String(courseRow.title ?? ""));
-        }
-
-        const { data: recoverEnrollments } = await adminClient
-          .from("course_enrollments")
-          .select("course_id, student_id")
-          .in("course_id", recoverCourseIds);
-        const recoverStudentIds = Array.from(
-          new Set((recoverEnrollments ?? []).map((e) => String(e.student_id ?? "")).filter(Boolean))
-        );
-        const discordByStudentId = new Map<string, string>();
-        if (recoverStudentIds.length > 0) {
-          const { data: studentRows } = await adminClient
-            .from("app_users")
-            .select("id, discord_user_id")
-            .in("id", recoverStudentIds);
-          for (const student of studentRows ?? []) {
-            const discordId = String(student.discord_user_id ?? "").trim();
-            if (discordId) {
-              discordByStudentId.set(String(student.id), discordId);
-            }
-          }
-        }
-        for (const enrollment of recoverEnrollments ?? []) {
-          const discordId = discordByStudentId.get(String(enrollment.student_id ?? ""));
-          if (!discordId) {
-            continue;
-          }
-          const courseId = String(enrollment.course_id ?? "");
-          const current = studentDiscordIdsByCourse.get(courseId) ?? [];
-          current.push(discordId);
-          studentDiscordIdsByCourse.set(courseId, current);
         }
       }
 
@@ -1458,9 +1423,9 @@ export async function POST(request: NextRequest) {
           // Students only get access from 5 minutes before the start; before that
           // it stays tutor-only, matching the normal early-access behaviour.
           const grantStudents = nowMs >= startsMs - studentAccessLeadMs;
-          const studentDiscordUserIds = grantStudents
-            ? Array.from(new Set(studentDiscordIdsByCourse.get(courseId) ?? []))
-            : [];
+          const courseRoleId = grantStudents
+            ? discordCourseTargetByCourseId.get(courseId)?.roleId ?? null
+            : null;
           try {
             const permissionOverwrites = buildLiveVoicePermissionOverwrites({
               guildId: discordGuildId,
@@ -1468,7 +1433,7 @@ export async function POST(request: NextRequest) {
               ceoRoleId,
               cooRoleId,
               tutorDiscordUserId: tutorDiscordId,
-              studentDiscordUserIds,
+              courseRoleId,
             });
             const recreatedChannel = await createDiscordGuildChannel(discordGuildId, {
               name: normalizeVoiceChannelName(titleByCourseId.get(courseId) || "Class", String(row.class_id)),
@@ -2077,7 +2042,7 @@ ${tutorWasPresent ? "" : "<p><strong>Note:</strong> you were not detected in the
                   ceoRoleId,
                   cooRoleId,
                   tutorDiscordUserId: tutorDiscordIdForChannel,
-                  studentDiscordUserIds: [],
+                  courseRoleId: null,
                 });
                 const createdVoiceChannel = await createDiscordGuildChannel(discordGuildId, {
                   name: normalizeVoiceChannelName(courseTitleRaw, classRow.id),
@@ -2242,16 +2207,14 @@ ${tutorWasPresent ? "" : "<p><strong>Note:</strong> you were not detected in the
               if (tutorDiscordIdForFallback) {
                 const liveCategoryId = await ensureLiveCategory();
                 if (liveCategoryId) {
-                  const enrolledDiscordIds = Array.from(
-                    new Set(studentDiscordIdsByCourseId.get(classRow.course_id) ?? [])
-                  );
                   const permissionOverwrites = buildLiveVoicePermissionOverwrites({
                     guildId: discordGuildId,
                     botUserId,
                     ceoRoleId,
                     cooRoleId,
                     tutorDiscordUserId: tutorDiscordIdForFallback,
-                    studentDiscordUserIds: enrolledDiscordIds,
+                    courseRoleId:
+                      discordCourseTargetByCourseId.get(classRow.course_id)?.roleId ?? null,
                   });
                   const createdVoiceChannel = await createDiscordGuildChannel(discordGuildId, {
                     name: normalizeVoiceChannelName(courseTitleRaw, classRow.id),
@@ -2298,16 +2261,14 @@ ${tutorWasPresent ? "" : "<p><strong>Note:</strong> you were not detected in the
                 ? tutorDiscordIdById.get(course.created_by) ?? ""
                 : "";
               if (tutorDiscordIdForUpdate) {
-                const enrolledDiscordIds = Array.from(
-                  new Set(studentDiscordIdsByCourseId.get(classRow.course_id) ?? [])
-                );
                 const fullPermissionOverwrites = buildLiveVoicePermissionOverwrites({
                   guildId: discordGuildId,
                   botUserId,
                   ceoRoleId,
                   cooRoleId,
                   tutorDiscordUserId: tutorDiscordIdForUpdate,
-                  studentDiscordUserIds: enrolledDiscordIds,
+                  courseRoleId:
+                    discordCourseTargetByCourseId.get(classRow.course_id)?.roleId ?? null,
                 });
                 await updateDiscordChannel(liveChannelId, {
                   permission_overwrites: fullPermissionOverwrites,

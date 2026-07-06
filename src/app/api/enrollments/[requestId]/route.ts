@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { isFounder, resolveUserRole } from "@/lib/roles";
 import { getRequestUser } from "@/lib/authServer";
+import { notifyCourseTutorsOfNewEnrollment } from "@/lib/courseChangeNotifications";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
@@ -141,6 +142,13 @@ export async function PATCH(
         },
         { onConflict: "course_id,student_id" }
       );
+
+    await notifyCourseTutorsOfNewEnrollment(
+      adminClient,
+      requestData.course_id,
+      String(requestData.student_name ?? "").trim(),
+      requestData.student_email ?? null
+    );
   }
 
 
