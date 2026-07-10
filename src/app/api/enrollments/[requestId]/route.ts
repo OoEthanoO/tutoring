@@ -9,8 +9,6 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 const resendApiKey = process.env.RESEND_API_KEY ?? "";
 const resendFrom = process.env.RESEND_FROM ?? "";
-const defaultZoomId = "822 9677 5321";
-const defaultZoomPassword = "youth";
 
 type Action = "approve" | "reject" | "expand_and_approve";
 
@@ -174,38 +172,15 @@ export async function PATCH(
     Array.isArray(requestData.course)
       ? requestData.course[0]?.title ?? "course"
       : (requestData.course as { title?: string } | null)?.title ?? "course";
-  const tutorName =
-    Array.isArray(requestData.course)
-      ? requestData.course[0]?.created_by_name ?? "your tutor"
-      : (requestData.course as { created_by_name?: string } | null)
-          ?.created_by_name ?? "your tutor";
-  const courseShortName =
-    Array.isArray(requestData.course)
-      ? requestData.course[0]?.short_name ?? ""
-      : (requestData.course as { short_name?: string } | null)?.short_name ?? "";
-
-  const tutorNameParts = tutorName.trim().split(/\s+/).filter(Boolean);
-  const tutorFirstName = tutorNameParts[0] ?? "Tutor";
-  const tutorLastInitial =
-    tutorNameParts.length > 1
-      ? `${tutorNameParts[tutorNameParts.length - 1][0]}`
-      : "";
-  const breakoutRoomName =
-    courseShortName.trim().length > 0
-      ? `${tutorFirstName}${tutorLastInitial ? ` ${tutorLastInitial}` : ""}: ${courseShortName.trim()}`
-      : "";
-
   const tutorId = Array.isArray(requestData.course)
     ? requestData.course[0]?.created_by
     : (requestData.course as { created_by?: string } | null)?.created_by;
 
-  const { data: tutorProfile } = await adminClient
+  await adminClient
     .from("tutor_profiles")
     .select("donation_link")
     .eq("user_id", tutorId)
     .maybeSingle();
-
-  const donationLink = tutorProfile?.donation_link ?? "";
 
   let isFounderCourse = false;
   const tutorEmail = Array.isArray(requestData.course)

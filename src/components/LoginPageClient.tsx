@@ -293,7 +293,7 @@ export default function LoginPageClient({ maintenanceEnabled = false }: { mainte
                         } else {
                           setError("Unable to resend verification. Please try again later.");
                         }
-                      } catch (e) {
+                      } catch {
                         setError("Unable to resend verification. Please try again later.");
                       } finally {
                         setResendSending(false);

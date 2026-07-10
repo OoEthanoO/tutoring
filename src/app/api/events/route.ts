@@ -55,7 +55,7 @@ export async function GET(request: NextRequest) {
   }
 
   // No longer filtering out past events for anyone, so executives can see all events
-  let filteredEvents = events || [];
+  const filteredEvents = events || [];
 
   // Filter out inactive dates for everyone (is_active may be missing initially, assume true)
   filteredEvents.forEach(event => {
@@ -64,10 +64,6 @@ export async function GET(request: NextRequest) {
 
   // Attach user details to responses for founder
   if (isFounder && filteredEvents) {
-    const responseUserIds = Array.from(new Set(
-      filteredEvents.flatMap(e => e.event_dates.flatMap((d: any) => d.event_responses.map((r: any) => r.user_id)))
-    ));
-
     const { data: allUsers } = await supabase
       .from("app_users")
       .select("id, full_name, email, is_junior, role")
@@ -184,7 +180,7 @@ export async function PATCH(request: NextRequest) {
   const supabase = createClient(supabaseUrl, serviceRoleKey);
 
   // Check deadline
-  const { data: eventDate, error: dateError } = await supabase
+  const { data: eventDate } = await supabase
     .from("event_dates")
     .select("event_id, events(deadline)")
     .eq("id", event_date_id)
@@ -229,7 +225,7 @@ export async function DELETE(request: NextRequest) {
   const supabase = createClient(supabaseUrl, serviceRoleKey);
 
   // Check deadline
-  const { data: eventDate, error: dateError } = await supabase
+  const { data: eventDate } = await supabase
     .from("event_dates")
     .select("event_id, events(deadline)")
     .eq("id", event_date_id)
@@ -319,7 +315,7 @@ export async function PUT(request: NextRequest) {
       try {
         // If it's a UTC midnight representation, the UTC date is the intended day
         return new Date(dString).toISOString().substring(0, 10);
-      } catch (e) {
+      } catch {
         return dString.substring(0, 10);
       }
     }

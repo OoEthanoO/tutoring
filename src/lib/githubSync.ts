@@ -119,7 +119,7 @@ const fetchRecentCommits = async (repo: string) => {
       return [];
     }
     return (await response.json()) as GithubCommitNode[];
-  } catch (err) {
+  } catch {
     return [];
   }
 };
@@ -186,7 +186,7 @@ const fetchCommitStats = async (repo: string, sha: string) => {
       deletions: data?.stats?.deletions,
       files: Array.isArray(data?.files) ? data.files.length : undefined
     };
-  } catch (err) {
+  } catch {
     return null;
   }
 };
@@ -300,8 +300,6 @@ export const runGithubSync = async (): Promise<GithubSyncResult> => {
     for (const commit of commitsToProcess) {
     const stats = await fetchCommitStats(repoFullName, commit.sha);
     const shortId = commit.sha.substring(0, 7);
-    const messageLines = commit.commit.message.split("\n").filter((l) => l.trim().length > 0);
-    const title = messageLines[0] ?? commit.commit.message;
     const authorName = (await fetchGithubDisplayName(commit.author?.login)) || commit.commit.author.name || "Unknown";
 
     const commitDate = commit.commit.author.date

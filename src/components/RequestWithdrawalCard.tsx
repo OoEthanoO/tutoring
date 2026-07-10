@@ -95,7 +95,10 @@ export default function RequestWithdrawalCard() {
   }, []);
 
   useEffect(() => {
-    loadData();
+    const load = async () => {
+      await loadData();
+    };
+    void load();
   }, [loadData]);
 
   const pendingRequest = requests.find((r) => r.status === "pending") ?? null;

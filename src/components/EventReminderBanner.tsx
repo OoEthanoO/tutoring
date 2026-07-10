@@ -19,7 +19,7 @@ export default function EventReminderBanner({ onAction }: EventReminderBannerPro
               Pending Event Invitations
             </p>
             <p className="text-xs text-amber-800/80 dark:text-amber-500/80">
-              You haven't selected your availability for all upcoming event dates.
+              You haven&apos;t selected your availability for all upcoming event dates.
             </p>
           </div>
         </div>

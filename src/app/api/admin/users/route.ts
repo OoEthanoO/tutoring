@@ -601,7 +601,7 @@ export async function PATCH(request: NextRequest) {
   }
 
   if (isPromotingToTutor && updated.email) {
-    let attachments: any[] = [];
+    const attachments: { filename: string; content: string }[] = [];
     try {
       const fs = require("fs");
       const path = require("path");

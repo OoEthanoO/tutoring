@@ -52,16 +52,26 @@ const isOngoingClass = (startsAt: string, durationHours: number, nowMs: number) 
 
 export default function MyClassesMenu() {
   const [userId, setUserId] = useState<string | null>(null);
-  const [classes, setClasses] = useState<UpcomingClass[]>([]);
+  // Loaded data is stored with the user it was loaded for, so a user switch
+  // never shows the previous user's data while the new user's loads.
+  const [loadedClasses, setLoadedClasses] = useState<{
+    forUserId: string | null;
+    list: UpcomingClass[];
+  }>({ forUserId: null, list: [] });
+  const classes =
+    loadedClasses.forUserId === userId ? loadedClasses.list : [];
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
   const [status, setStatus] = useState<StatusState>({
     type: "idle",
     message: "",
   });
   const [isLoading, setIsLoading] = useState(false);
-  const [pastAttendance, setPastAttendance] = useState<
-    { classId: string; courseTitle: string; classTitle: string; startsAt: string; attended: boolean }[]
-  >([]);
+  const [loadedAttendance, setLoadedAttendance] = useState<{
+    forUserId: string | null;
+    list: { classId: string; courseTitle: string; classTitle: string; startsAt: string; attended: boolean }[];
+  }>({ forUserId: null, list: [] });
+  const pastAttendance =
+    loadedAttendance.forUserId === userId ? loadedAttendance.list : [];
   const [attendanceHasDiscord, setAttendanceHasDiscord] = useState(true);
 
   useEffect(() => {
@@ -84,7 +94,6 @@ export default function MyClassesMenu() {
 
   useEffect(() => {
     if (!userId) {
-      setClasses([]);
       return;
     }
 
@@ -104,7 +113,7 @@ export default function MyClassesMenu() {
       }
 
       const data = (await response.json()) as { classes: UpcomingClass[] };
-      setClasses(data.classes ?? []);
+      setLoadedClasses({ forUserId: userId, list: data.classes ?? [] });
       setIsLoading(false);
     };
 
@@ -113,7 +122,6 @@ export default function MyClassesMenu() {
 
   useEffect(() => {
     if (!userId) {
-      setPastAttendance([]);
       return;
     }
     const loadAttendance = async () => {
@@ -126,7 +134,7 @@ export default function MyClassesMenu() {
         classes?: { classId: string; courseTitle: string; classTitle: string; startsAt: string; attended: boolean }[];
       };
       setAttendanceHasDiscord(data.hasDiscord ?? true);
-      setPastAttendance(data.classes ?? []);
+      setLoadedAttendance({ forUserId: userId, list: data.classes ?? [] });
     };
     loadAttendance();
   }, [userId]);

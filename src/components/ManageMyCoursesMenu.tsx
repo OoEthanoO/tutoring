@@ -51,22 +51,6 @@ type AvailableTutor = {
   email: string;
 };
 
-const getCourseLastClassTime = (course: Course) => {
-  if (course.is_completed && course.completed_end_date) {
-    const completedAt = new Date(`${course.completed_end_date}T00:00:00`);
-    return completedAt.getTime();
-  }
-
-  const classStarts = (course.course_classes ?? [])
-    .map((item) => new Date(item.starts_at).getTime())
-    .filter((value) => Number.isFinite(value));
-  if (classStarts.length > 0) {
-    return Math.max(...classStarts);
-  }
-
-  return Number.NEGATIVE_INFINITY;
-};
-
 const sortCoursesByCreationDateDesc = (left: Course, right: Course) => {
   const leftCreated = new Date(left.created_at).getTime();
   const rightCreated = new Date(right.created_at).getTime();
@@ -121,7 +105,7 @@ const snapDateTimeLocalToFiveMinutes = (value: string) => {
   return value;
 };
 
-const isFiveMinuteLocal = (value: string) => {
+const isFiveMinuteLocal = () => {
   return true;
 };
 
@@ -386,7 +370,7 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
       setStatus({ type: "error", message: "Class date/time is required." });
       return;
     }
-    if (!isFiveMinuteLocal(startsAtValue)) {
+    if (!isFiveMinuteLocal()) {
       setStatus({
         type: "error",
         message:
@@ -462,7 +446,7 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
     setPendingClassId(editingClassId);
     setStatus({ type: "idle", message: "" });
 
-    if (editStartsAt && !isFiveMinuteLocal(editStartsAt)) {
+    if (editStartsAt && !isFiveMinuteLocal()) {
       setStatus({
         type: "error",
         message:
@@ -1130,7 +1114,7 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
             ) {
                return true;
             }
-          } catch (e) {
+          } catch {
             // ignore parsing errors
           }
         }
@@ -1429,7 +1413,7 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
                                   await navigator.clipboard.writeText(course.description || "");
                                   setCopiedCourseId(course.id);
                                   window.setTimeout(() => setCopiedCourseId(null), 2000);
-                                } catch (e) {
+                                } catch {
                                   // ignore clipboard errors
                                 }
                               }}

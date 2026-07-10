@@ -49,7 +49,13 @@ const formatCompletedDate = (value?: string | null) => {
 
 export default function EnrolledCoursesMenu() {
   const [userId, setUserId] = useState<string | null>(null);
-  const [courses, setCourses] = useState<Course[]>([]);
+  // Courses are stored with the user they were loaded for, so a user switch
+  // never shows the previous user's list while the new one loads.
+  const [loadedCourses, setLoadedCourses] = useState<{
+    forUserId: string | null;
+    list: Course[];
+  }>({ forUserId: null, list: [] });
+  const courses = loadedCourses.forUserId === userId ? loadedCourses.list : [];
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
   const [status, setStatus] = useState<StatusState>({
     type: "idle",
@@ -77,7 +83,6 @@ export default function EnrolledCoursesMenu() {
 
   useEffect(() => {
     if (!userId) {
-      setCourses([]);
       return;
     }
 
@@ -97,7 +102,7 @@ export default function EnrolledCoursesMenu() {
       }
 
       const data = (await response.json()) as { courses: Course[] };
-      setCourses(data.courses ?? []);
+      setLoadedCourses({ forUserId: userId, list: data.courses ?? [] });
       setIsLoadingCourses(false);
     };
 

@@ -10,29 +10,6 @@ const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 // const resendApiKey = process.env.RESEND_API_KEY ?? "";
 // const resendFrom = process.env.RESEND_FROM ?? "";
 
-// Local sendEmail removed in favor of shared utility, but we keep the student email send as a simple fetch for now or we could use the new utility too.
-const sendEmail = async (to: string, subject: string, html: string) => {
-  const resendApiKey = process.env.RESEND_API_KEY ?? "";
-  const resendFrom = process.env.RESEND_FROM ?? "";
-  if (!resendApiKey || !resendFrom || !to) {
-    return;
-  }
-
-  await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${resendApiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from: resendFrom,
-      to,
-      subject,
-      html,
-    }),
-  });
-};
-
 export async function POST(
   request: NextRequest,
   { params }: { params: { courseId: string } | Promise<{ courseId: string }> }

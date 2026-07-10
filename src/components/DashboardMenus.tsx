@@ -96,10 +96,13 @@ export default function DashboardMenus() {
   const [role, setRole] = useState<UserRole | null>(null);
   const [isAuthResolved, setIsAuthResolved] = useState(false);
   const [hasForms, setHasForms] = useState(false);
-  const [hasPendingRSVP, setHasPendingRSVP] = useState(false);
-  const [trashCount, setTrashCount] = useState(0);
+  const [fetchedPendingRSVP, setFetchedPendingRSVP] = useState(false);
+  const [fetchedTrashCount, setFetchedTrashCount] = useState(0);
   const [currentUser, setCurrentUser] = useState<any>(null);
-  const [isOnboardingCompleted, setIsOnboardingCompleted] = useState<boolean | null>(null);
+  const [onboardingFetch, setOnboardingFetch] = useState<{
+    forUserId: string;
+    completed: boolean;
+  } | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
@@ -167,34 +170,42 @@ export default function DashboardMenus() {
     return onAuthChange(load);
   }, []);
 
+  const isOnboardingExempt =
+    role === "founder" || role === "CEO" || role === "COO";
+  const needsOnboardingCheck =
+    !!currentUser && !!role && isExecutive(role) && !isOnboardingExempt;
+  // null = unknown (no user, or check still in flight for this user).
+  const isOnboardingCompleted: boolean | null =
+    !currentUser || !role
+      ? null
+      : !needsOnboardingCheck
+        ? true
+        : onboardingFetch && onboardingFetch.forUserId === currentUser.id
+          ? onboardingFetch.completed
+          : null;
+
   useEffect(() => {
-    if (!currentUser || !role) {
-      setIsOnboardingCompleted(null);
+    if (!needsOnboardingCheck || !currentUser) {
       return;
     }
 
-    const isExempt = role === "founder" || role === "CEO" || role === "COO";
-
-    if (isExecutive(role) && !isExempt) {
-      const checkOnboarding = async () => {
-        try {
-          const res = await fetch("/api/tutor-application/status", { cache: "no-store" });
-          if (res.ok) {
-            const data = await res.json();
-            setIsOnboardingCompleted(data.completed);
-          } else {
-            setIsOnboardingCompleted(false);
-          }
-        } catch (err) {
-          console.error("Failed to check tutor application status:", err);
-          setIsOnboardingCompleted(false);
+    const userId = currentUser.id as string;
+    const checkOnboarding = async () => {
+      try {
+        const res = await fetch("/api/tutor-application/status", { cache: "no-store" });
+        if (res.ok) {
+          const data = await res.json();
+          setOnboardingFetch({ forUserId: userId, completed: data.completed });
+        } else {
+          setOnboardingFetch({ forUserId: userId, completed: false });
         }
-      };
-      checkOnboarding();
-    } else {
-      setIsOnboardingCompleted(true);
-    }
-  }, [currentUser, role]);
+      } catch (err) {
+        console.error("Failed to check tutor application status:", err);
+        setOnboardingFetch({ forUserId: userId, completed: false });
+      }
+    };
+    void checkOnboarding();
+  }, [needsOnboardingCheck, currentUser]);
 
   useEffect(() => {
     if (!isAuthResolved) return;
@@ -281,9 +292,11 @@ export default function DashboardMenus() {
     handleDeepLink();
   }, [deepLinkedEventId, deepLinkedFormId, isAuthResolved, role, router, navigateToMenu]);
 
+  // Only meaningful while an executive is signed in; derived so no reset is needed.
+  const hasPendingRSVP = !!role && isExecutive(role) && fetchedPendingRSVP;
+
   useEffect(() => {
     if (!role || !isExecutive(role)) {
-      setHasPendingRSVP(false);
       return;
     }
 
@@ -302,14 +315,14 @@ export default function DashboardMenus() {
                const pending = events.some((event: any) => {
                  const isPastDeadline = event.deadline && now > new Date(event.deadline);
                  if (isPastDeadline) return false;
-                 return event.event_dates.some((date: any) => 
+                 return event.event_dates.some((date: any) =>
                    !date.event_responses.some((r: any) => r.user_id === user.id)
                  );
                });
-               setHasPendingRSVP(pending);
+               setFetchedPendingRSVP(pending);
              }
           } else {
-            setHasPendingRSVP(false);
+            setFetchedPendingRSVP(false);
           }
         }
       } catch (err) {
@@ -336,9 +349,14 @@ export default function DashboardMenus() {
     }
   }, [role]);
 
+  // Only meaningful for founders/course managers; derived so no reset is needed.
+  const trashCount =
+    role && canManageCourses(role) && !(isExecutive(role) && !isFounder(role))
+      ? fetchedTrashCount
+      : 0;
+
   useEffect(() => {
     if (!role || !canManageCourses(role) || (isExecutive(role) && !isFounder(role))) {
-      setTrashCount(0);
       return;
     }
 
@@ -347,7 +365,7 @@ export default function DashboardMenus() {
         const response = await fetch("/api/courses?trash=true");
         if (response.ok) {
           const data = await response.json();
-          setTrashCount(data.courses?.length ?? 0);
+          setFetchedTrashCount(data.courses?.length ?? 0);
         }
       } catch (err) {
         console.error("Failed to check trash", err);
@@ -548,7 +566,9 @@ export default function DashboardMenus() {
         isOpen={isFormOpen}
         onClose={() => setIsFormOpen(false)}
         onSubmitSuccess={() => {
-          setIsOnboardingCompleted(true);
+          if (currentUser) {
+            setOnboardingFetch({ forUserId: currentUser.id, completed: true });
+          }
         }}
         initialEmail={currentUser?.email || ""}
         initialFullName={currentUser?.full_name || ""}

@@ -1,20 +1,12 @@
-import "react";
 import { useState, useEffect } from "react";
-import { getCurrentUser } from "@/lib/authClient";
-import { resolveUserRole } from "@/lib/roles";
 
 export default function RolesManagerMenu() {
   const [roleDefinitions, setRoleDefinitions] = useState<{name: string, role_level: string}[]>([]);
-  const [users, setUsers] = useState<any[]>([]);
   const [newRoleName, setNewRoleName] = useState("");
   const [newRoleLevel, setNewRoleLevel] = useState("Executive");
   const [status, setStatus] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
   const levels = ["CEO", "COO", "Chief Executive", "Executive", "Junior Executive", "Student"];
-
-  useEffect(() => {
-    fetchData();
-  }, []);
 
   const fetchData = async () => {
     const rolesRes = await fetch("/api/admin/roles");
@@ -22,6 +14,13 @@ export default function RolesManagerMenu() {
       setRoleDefinitions((await rolesRes.json()).roles);
     }
   };
+
+  useEffect(() => {
+    const load = async () => {
+      await fetchData();
+    };
+    void load();
+  }, []);
 
   const createRole = async () => {
     if (!newRoleName) return;

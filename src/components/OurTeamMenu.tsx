@@ -193,7 +193,7 @@ export default function OurTeamMenu() {
           </p>
           <p className="font-semibold">Students Helping Students</p>
           <p>
-            We believe every student who needs academic support should be able to access it without financial pressure. On our platform, students help students — and together, they give back to the community. All proceeds are donated to SickKids Hospital through our "Coding for SickKids" fundraising campaign, turning academic value into tangible support for sick kids' healthcare in our community.
+            We believe every student who needs academic support should be able to access it without financial pressure. On our platform, students help students — and together, they give back to the community. All proceeds are donated to SickKids Hospital through our &quot;Coding for SickKids&quot; fundraising campaign, turning academic value into tangible support for sick kids&apos; healthcare in our community.
           </p>
         </div>
       </section>

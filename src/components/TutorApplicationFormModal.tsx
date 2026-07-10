@@ -305,10 +305,10 @@ export default function TutorApplicationFormModal({
                   I agree that tutoring sessions will not be audio-recorded and videotaped.
                 </p>
                 <p className="mb-2">
-                  I am willing to accept other tutors to sit in or assist me in during tutoring, under the condition that it will not impact the effectiveness of the session. I agree to participate in the tutors' experience exchange meetings regularly, share my experience and actively improve my comprehensive tutoring ability.
+                  I am willing to accept other tutors to sit in or assist me in during tutoring, under the condition that it will not impact the effectiveness of the session. I agree to participate in the tutors&apos; experience exchange meetings regularly, share my experience and actively improve my comprehensive tutoring ability.
                 </p>
                 <p className="mb-2">
-                  I agree to participate in the YanLearn under the condition that it will not affect my daily life and academics. I understand that YanLearn will only use my tutoring logs as the basis for calculating the amount of tutoring sessions and providing volunteer hours. I agree to use only publicly available or copyrighted material for tutoring. I agree that YanLearn is not responsible for the content, effectiveness and copyright of the tutoring material. I release, waive, discharge and covenant not to sue the YanLearn, its governors, volunteers from any and all liability to the participant, me, or the participant's heirs and next of kin for any and all claims, demands, losses or damages.
+                  I agree to participate in the YanLearn under the condition that it will not affect my daily life and academics. I understand that YanLearn will only use my tutoring logs as the basis for calculating the amount of tutoring sessions and providing volunteer hours. I agree to use only publicly available or copyrighted material for tutoring. I agree that YanLearn is not responsible for the content, effectiveness and copyright of the tutoring material. I release, waive, discharge and covenant not to sue the YanLearn, its governors, volunteers from any and all liability to the participant, me, or the participant&apos;s heirs and next of kin for any and all claims, demands, losses or damages.
                 </p>
               </div>
               <p className="text-[10px] text-[var(--muted)]">

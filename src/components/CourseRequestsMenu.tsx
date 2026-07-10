@@ -26,9 +26,6 @@ type RequestRecord = {
   co_tutor?: { full_name: string; email: string };
 };
 
-const snapDateTimeLocalToFiveMinutes = (value: string) => value;
-const isFiveMinuteLocal = (value: string) => true;
-
 const dayOrder: Record<string, number> = {
   Sunday: 0,
   Monday: 1,
@@ -46,7 +43,7 @@ export default function CourseRequestsMenu() {
   const [isCreatorModalOpen, setIsCreatorModalOpen] = useState(false);
   const [editData, setEditData] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [, setError] = useState("");
   const [actioningId, setActioningId] = useState<string | null>(null);
   
   // Approval state for a specific request
@@ -99,7 +96,7 @@ export default function CourseRequestsMenu() {
       } else {
         setError("Failed to fetch requests.");
       }
-    } catch (e) {
+    } catch {
       setError("An error occurred.");
     } finally {
       setIsLoading(false);
@@ -133,7 +130,7 @@ export default function CourseRequestsMenu() {
         const err = await res.json().catch(() => null);
         alert(err?.error || "Failed to reject request.");
       }
-    } catch (e) {
+    } catch {
       alert("An error occurred.");
     } finally {
       setActioningId(null);
@@ -159,7 +156,7 @@ export default function CourseRequestsMenu() {
         const err = await res.json().catch(() => null);
         alert(err?.error || "Failed to delete request.");
       }
-    } catch (e) {
+    } catch {
       alert("An error occurred.");
     } finally {
       setActioningId(null);
@@ -189,7 +186,7 @@ export default function CourseRequestsMenu() {
       } else {
         alert("Failed to resubmit request.");
       }
-    } catch (e) {
+    } catch {
       alert("An error occurred.");
     } finally {
       setActioningId(null);
@@ -227,7 +224,7 @@ export default function CourseRequestsMenu() {
         const err = await res.json();
         alert(err.error || "Failed to approve request.");
       }
-    } catch (err) {
+    } catch {
       alert("An error occurred.");
     } finally {
       setActioningId(null);
@@ -280,15 +277,6 @@ export default function CourseRequestsMenu() {
       }
       setDraftClassStartsAt(suggested);
     }
-  };
-
-  const toLocalDateTimeInputValue = (value: Date) => {
-    const year = value.getFullYear();
-    const month = String(value.getMonth() + 1).padStart(2, "0");
-    const day = String(value.getDate()).padStart(2, "0");
-    const hours = String(value.getHours()).padStart(2, "0");
-    const minutes = String(value.getMinutes()).padStart(2, "0");
-    return `${year}-${month}-${day}T${hours}:${minutes}`;
   };
 
   if (!role) return null;
@@ -440,12 +428,12 @@ export default function CourseRequestsMenu() {
                   )}
                 </div>
                 
-                {Object.keys(req.timeframes || {}).filter(([_, v]) => v).length > 0 && (
+                {Object.keys(req.timeframes || {}).filter(([, v]) => v).length > 0 && (
                   <div className="pt-2">
                     <p className="text-[0.65rem] font-bold uppercase tracking-[0.2em] text-[var(--muted)] mb-2">Timeframes</p>
                     <div className="flex flex-wrap gap-2">
                       {Object.entries(req.timeframes || {})
-                        .filter(([_, v]) => v)
+                        .filter(([, v]) => v)
                         .sort(([dayA], [dayB]) => (dayOrder[dayA] ?? 7) - (dayOrder[dayB] ?? 7))
                         .map(([day, time]) => (
                         <div key={day} className="px-3 py-1.5 rounded-lg bg-[var(--background)] border border-[var(--border)] text-xs text-[var(--foreground)]">
@@ -691,12 +679,12 @@ export default function CourseRequestsMenu() {
                       )}
                     </div>
                     
-                    {Object.keys(req.timeframes || {}).filter(([_, v]) => v).length > 0 && (
+                    {Object.keys(req.timeframes || {}).filter(([, v]) => v).length > 0 && (
                       <div className="pt-2">
                         <p className="text-[0.65rem] font-bold uppercase tracking-[0.2em] text-[var(--muted)] mb-2">Timeframes</p>
                         <div className="flex flex-wrap gap-2">
                           {Object.entries(req.timeframes || {})
-                            .filter(([_, v]) => v)
+                            .filter(([, v]) => v)
                             .sort(([dayA], [dayB]) => (dayOrder[dayA] ?? 7) - (dayOrder[dayB] ?? 7))
                             .map(([day, time]) => (
                             <div key={day} className="px-3 py-1.5 rounded-lg bg-[var(--background)] border border-[var(--border)] text-xs text-[var(--foreground)]">

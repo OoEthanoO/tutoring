@@ -11,10 +11,15 @@ import { createClient } from "@supabase/supabase-js";
 import { createZoomMeeting, deleteZoomMeeting } from "@/lib/zoom";
 import { jwtDecode } from "jwt-decode";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
+
+function getSupabase() {
+  if (!supabaseUrl || !serviceRoleKey) {
+    return null;
+  }
+  return createClient(supabaseUrl, serviceRoleKey);
+}
 
 interface JwtPayload {
   sub: string;
@@ -43,6 +48,14 @@ export async function POST(
   { params }: { params: Promise<{ courseId: string; classId: string }> }
 ) {
   try {
+    const supabase = getSupabase();
+    if (!supabase) {
+      return NextResponse.json(
+        { error: "Missing Supabase environment configuration." },
+        { status: 500 }
+      );
+    }
+
     const userId = getUserIdFromRequest(req);
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -223,6 +236,14 @@ export async function GET(
   { params }: { params: Promise<{ courseId: string; classId: string }> }
 ) {
   try {
+    const supabase = getSupabase();
+    if (!supabase) {
+      return NextResponse.json(
+        { error: "Missing Supabase environment configuration." },
+        { status: 500 }
+      );
+    }
+
     const { classId } = await params;
 
     // Get class and meeting info
@@ -300,6 +321,14 @@ export async function DELETE(
   { params }: { params: Promise<{ courseId: string; classId: string }> }
 ) {
   try {
+    const supabase = getSupabase();
+    if (!supabase) {
+      return NextResponse.json(
+        { error: "Missing Supabase environment configuration." },
+        { status: 500 }
+      );
+    }
+
     const userId = getUserIdFromRequest(req);
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

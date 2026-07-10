@@ -46,7 +46,7 @@ export default function AdminBannedEmails() {
         } else {
           setStatus({ type: "error", message: "Failed to load banned emails." });
         }
-      } catch (err) {
+      } catch {
         setStatus({ type: "error", message: "Network error loading banned emails." });
       } finally {
         setIsLoading(false);
@@ -89,7 +89,7 @@ export default function AdminBannedEmails() {
         const payload = await response.json().catch(() => null);
         setStatus({ type: "error", message: payload?.error || "Failed to ban email." });
       }
-    } catch (err) {
+    } catch {
       setStatus({ type: "error", message: "Network error banning email." });
     } finally {
       setIsSubmitting(false);
@@ -117,7 +117,7 @@ export default function AdminBannedEmails() {
         const payload = await response.json().catch(() => null);
         setStatus({ type: "error", message: payload?.error || "Failed to remove email." });
       }
-    } catch (err) {
+    } catch {
       setStatus({ type: "error", message: "Network error removing email." });
     }
   };

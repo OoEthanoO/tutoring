@@ -3,10 +3,8 @@ import { createClient } from "@supabase/supabase-js";
 import { registerZoomParticipant } from "@/lib/zoom";
 import { jwtDecode } from "jwt-decode";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 
 interface JwtPayload {
   sub: string;
@@ -45,6 +43,14 @@ export async function GET(
   { params }: { params: Promise<{ courseId: string }> }
 ) {
   try {
+    if (!supabaseUrl || !serviceRoleKey) {
+      return NextResponse.json(
+        { error: "Missing Supabase environment configuration." },
+        { status: 500 }
+      );
+    }
+    const supabase = createClient(supabaseUrl, serviceRoleKey);
+
     const userId = getUserIdFromRequest(req);
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

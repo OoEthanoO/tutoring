@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
         "Verify your email",
         `<p>Click the link below to verify your email:</p><p><a href="${verifyUrl}">${verifyUrl}</a></p>`
       );
-    } catch (e) {
+    } catch {
       // ignore
     }
 

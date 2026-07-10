@@ -53,7 +53,7 @@ export async function GET(request: NextRequest) {
   const studentIds = requests.map(r => r.student_id);
   const courseIds = requests.map(r => r.course_id);
 
-  const { data: applications, error: appsError } = await adminClient
+  const { data: applications } = await adminClient
     .from("student_applications")
     .select("*")
     .in("student_id", studentIds)

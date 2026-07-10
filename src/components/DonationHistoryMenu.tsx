@@ -3,6 +3,12 @@
 import { useEffect, useState } from "react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+// Placeholder x-axis dates for the dummy graph shown before any data exists.
+const placeholderDates = [3, 2, 1, 0].map(
+  (daysAgo) => new Date(Date.now() - daysAgo * DAY_MS).toISOString()
+);
+
 export default function DonationHistoryMenu() {
   const [raised, setRaised] = useState<number | null>(null);
   const [donationHistory, setDonationHistory] = useState<{ date: string; amount: number }[]>([]);
@@ -35,10 +41,10 @@ export default function DonationHistoryMenu() {
   const displayData = donationHistory.length > 0 
     ? donationHistory 
     : [
-        { date: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(), amount: 0 },
-        { date: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(), amount: 0 },
-        { date: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(), amount: 0 },
-        { date: new Date().toISOString(), amount: raised ?? 0 }
+        { date: placeholderDates[0], amount: 0 },
+        { date: placeholderDates[1], amount: 0 },
+        { date: placeholderDates[2], amount: 0 },
+        { date: placeholderDates[3], amount: raised ?? 0 }
       ];
 
   return (
@@ -90,7 +96,7 @@ export default function DonationHistoryMenu() {
                 contentStyle={{ borderRadius: '8px', border: '1px solid var(--border)', backgroundColor: 'var(--surface)' }}
                 labelStyle={{ color: 'var(--muted)' }}
                 itemStyle={{ color: 'var(--foreground)' }}
-                formatter={(value: any) => [`$${Number(value)}`, 'Amount']}
+                formatter={(value) => [`$${Number(value)}`, 'Amount']}
                 labelFormatter={(label) => {
                   const d = new Date(label);
                   d.setDate(d.getDate() + 1);

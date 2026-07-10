@@ -34,13 +34,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  let filteredForms = forms || [];
+  const filteredForms = forms || [];
 
   if (isFounder && filteredForms) {
-    const responseUserIds = Array.from(new Set(
-      filteredForms.flatMap(f => f.form_responses.map((r: any) => r.user_id))
-    ));
-
     const { data: allUsers } = await supabase
       .from("app_users")
       .select("id, full_name, email, is_junior, role")

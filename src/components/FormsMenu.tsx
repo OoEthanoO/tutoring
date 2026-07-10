@@ -35,7 +35,7 @@ export default function FormsMenu() {
   const [userId, setUserId] = useState<string | null>(null);
   const [forms, setForms] = useState<Form[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [, setError] = useState("");
 
   // Create Form State
   const [title, setTitle] = useState("");
@@ -73,7 +73,7 @@ export default function FormsMenu() {
         const data = await res.json();
         setError(data.error || "Failed to load forms");
       }
-    } catch (err) {
+    } catch {
       setError("Failed to load forms");
     } finally {
       setIsLoading(false);
@@ -129,7 +129,7 @@ export default function FormsMenu() {
       } else {
         alert(data.error || `Failed to ${editingFormId ? "update" : "create"} form`);
       }
-    } catch (err) {
+    } catch {
       alert("An unexpected error occurred.");
     } finally {
       setIsCreating(false);
@@ -151,7 +151,7 @@ export default function FormsMenu() {
         const data = await res.json();
         alert(data.error || "Failed to submit response");
       }
-    } catch (err) {
+    } catch {
       alert("Failed to submit response");
     }
   };
@@ -188,7 +188,7 @@ export default function FormsMenu() {
       } else {
         alert("Failed to delete form.");
       }
-    } catch (e) {
+    } catch {
       alert("An unexpected error occurred.");
     }
   };

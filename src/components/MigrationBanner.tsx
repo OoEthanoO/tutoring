@@ -1,32 +1,34 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { useSearchParams } from "next/navigation";
+
+const DISMISSED_KEY = "yanlearn_migration_banner_dismissed";
+
+function subscribeToStorage(callback: () => void) {
+    window.addEventListener("storage", callback);
+    return () => window.removeEventListener("storage", callback);
+}
 
 export default function MigrationBanner() {
     const searchParams = useSearchParams();
-    const [isVisible, setIsVisible] = useState(false);
-    const [isDismissed, setIsDismissed] = useState(false);
+    const [dismissedNow, setDismissedNow] = useState(false);
+    // Reads as dismissed during SSR/hydration, so the banner only appears
+    // after mount — avoids a layout jump on initial paint.
+    const dismissedStored = useSyncExternalStore(
+        subscribeToStorage,
+        () => localStorage.getItem(DISMISSED_KEY) === "true",
+        () => true
+    );
 
-    useEffect(() => {
-        // Check if the user was redirected and verify their dismissal preference
-        const redirected = searchParams.get("redirected") === "true";
-        const dismissed = localStorage.getItem("yanlearn_migration_banner_dismissed") === "true";
-
-        if (redirected) {
-            setIsDismissed(dismissed);
-            // Give a slight delay before showing to ensure layout doesn't overly jump or look jarring on initial pain
-            setIsVisible(!dismissed);
-        }
-    }, [searchParams]);
+    const redirected = searchParams.get("redirected") === "true";
 
     const handleDismiss = () => {
-        localStorage.setItem("yanlearn_migration_banner_dismissed", "true");
-        setIsDismissed(true);
-        setIsVisible(false);
+        localStorage.setItem(DISMISSED_KEY, "true");
+        setDismissedNow(true);
     };
 
-    if (!isVisible || isDismissed) {
+    if (!redirected || dismissedStored || dismissedNow) {
         return null;
     }
 

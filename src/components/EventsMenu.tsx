@@ -42,7 +42,7 @@ export default function EventsMenu() {
   const [userId, setUserId] = useState<string | null>(null);
   const [events, setEvents] = useState<Event[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [, setError] = useState("");
   
   // Create Event Form State
   const [title, setTitle] = useState("");
@@ -84,7 +84,7 @@ export default function EventsMenu() {
         const data = await res.json();
         setError(data.error || "Failed to load events");
       }
-    } catch (err) {
+    } catch {
       setError("Failed to load events");
     } finally {
       setIsLoading(false);
@@ -154,7 +154,7 @@ export default function EventsMenu() {
       } else {
         alert(data.error || `Failed to ${editingEventId ? "update" : "create"} event`);
       }
-    } catch (err) {
+    } catch {
       alert("An unexpected error occurred.");
     } finally {
       setIsCreating(false);
@@ -178,7 +178,7 @@ export default function EventsMenu() {
         const data = await res.json();
         alert(data.error || "Failed to update RSVP");
       }
-    } catch (err) {
+    } catch {
       alert("Failed to update RSVP");
     }
   };
@@ -233,7 +233,7 @@ export default function EventsMenu() {
       } else {
         alert("Failed to delete event.");
       }
-    } catch (e) {
+    } catch {
       alert("An unexpected error occurred.");
     }
   };

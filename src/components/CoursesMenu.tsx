@@ -364,7 +364,9 @@ export default function CoursesMenu() {
 
           return sortCoursesByCreationDateDesc(a, b);
         }),
-    [courses, isAvailableSectionCourse, nowMs]
+    // nowMs is covered transitively: isAvailableSectionCourse's identity
+    // changes with nowMs via hasGrayClass/hasYellowClass.
+    [courses, isAvailableSectionCourse]
   );
 
   const upcomingCourses = useMemo(
@@ -437,12 +439,6 @@ export default function CoursesMenu() {
   }, [courses, nowMs]);
 
   const requiresDonationLink = Boolean(selectedCourse?.donation_link);
-  const hasClickedBothLinks = hasOpenedDonationLink && hasOpenedApplicationLink;
-  const canConfirmEnrollment = selectedCourse
-    ? requiresDonationLink
-      ? hasClickedBothLinks
-      : hasOpenedApplicationLink
-    : false;
   const isGuest = !userId;
 
   const openEnrollmentModal = (course: Course) => {

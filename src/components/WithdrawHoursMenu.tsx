@@ -87,7 +87,7 @@ export default function WithdrawHoursMenu() {
         } else {
           setErrorMsg("Failed to load tutors list.");
         }
-      } catch (err) {
+      } catch {
         setErrorMsg("Network error loading tutors.");
       } finally {
         setIsLoading(false);
@@ -123,7 +123,7 @@ export default function WithdrawHoursMenu() {
         const errData = await res.json().catch(() => null);
         setErrorMsg(errData?.error || "Failed to load tutor data.");
       }
-    } catch (err) {
+    } catch {
       setErrorMsg("Network error loading tutor details.");
     } finally {
       setIsLoading(false);
@@ -232,7 +232,7 @@ export default function WithdrawHoursMenu() {
         const errData = await res.json().catch(() => null);
         setErrorMsg(errData?.error || "Validation failed.");
       }
-    } catch (err) {
+    } catch {
       setErrorMsg("Network error verifying withdrawal.");
     } finally {
       setIsLoading(false);
@@ -266,7 +266,7 @@ export default function WithdrawHoursMenu() {
         const errData = await res.json().catch(() => null);
         setErrorMsg(errData?.error || "Withdrawal failed.");
       }
-    } catch (err) {
+    } catch {
       setErrorMsg("Network error confirming withdrawal.");
     } finally {
       setIsLoading(false);
@@ -609,7 +609,7 @@ export default function WithdrawHoursMenu() {
                           Withdrawal Finalized
                         </h3>
                         <p className="text-xs text-[var(--muted)]">
-                          The withdrawal record has been permanently added to the tutor's history, and the associated lessons have been locked under their legal name.
+                          The withdrawal record has been permanently added to the tutor&apos;s history, and the associated lessons have been locked under their legal name.
                         </p>
                       </div>
 

@@ -155,7 +155,7 @@ export default function CourseCreator({ editData, onSuccess, onCancel }: CourseC
       if (onSuccess) {
         onSuccess();
       }
-    } catch (err) {
+    } catch {
       setStatus({ type: "error", message: "An unexpected error occurred." });
     } finally {
       setIsSubmitting(false);
@@ -258,7 +258,7 @@ export default function CourseCreator({ editData, onSuccess, onCancel }: CourseC
                 Available Timeframes
               </p>
               <p className="text-xs text-[var(--muted)]">
-                Enter the set of time intervals you are available to teach for each day. Separate multiple intervals with commas (e.g. "9:30am-11am, 3pm-5pm"). Partial hours are allowed. Leave blank if you are not available on that day.
+                Enter the set of time intervals you are available to teach for each day. Separate multiple intervals with commas (e.g. &quot;9:30am-11am, 3pm-5pm&quot;). Partial hours are allowed. Leave blank if you are not available on that day.
               </p>
               <p className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
                 Tip: The wider your available timeframes are, the higher the chance to have more students. Please put your full availability.
@@ -293,7 +293,7 @@ export default function CourseCreator({ editData, onSuccess, onCancel }: CourseC
               placeholder="e.g. Weekly, Twice per week"
               className="mt-2 w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
             />
-            <p className="px-1 mt-1 text-xs text-[var(--muted)]">You can enter multiple frequencies separated by commas (e.g., "Weekly, Twice per week").</p>
+            <p className="px-1 mt-1 text-xs text-[var(--muted)]">You can enter multiple frequencies separated by commas (e.g., &quot;Weekly, Twice per week&quot;).</p>
           </div>
 
           <div>
@@ -383,7 +383,7 @@ export default function CourseCreator({ editData, onSuccess, onCancel }: CourseC
                 onClick={proceedWithSubmission}
                 className="rounded-full bg-[var(--foreground)] px-4 py-2 text-xs font-semibold text-[var(--background)] hover:opacity-90 transition"
               >
-                I'm sure, submit request
+                I&apos;m sure, submit request
               </button>
             </div>
           </div>

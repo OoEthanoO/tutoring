@@ -35,7 +35,6 @@ const roleNameLimit = 100;
 
 const viewChannelPermission = 1024;
 const sendMessagesPermission = 2048;
-const addReactionsPermission = 64;
 const readMessageHistoryPermission = 65536;
 const connectPermission = 1048576;
 const manageChannelsPermission = 16;
@@ -312,7 +311,6 @@ const buildCoursePermissionOverwrites = (
   cooRoleId: string,
   chiefExecutiveRoleId: string
 ): DiscordPermissionOverwrite[] => {
-  const readOnlyAllow = String(viewChannelPermission | readMessageHistoryPermission);
   const activeAllow = String(
     viewChannelPermission | sendMessagesPermission | readMessageHistoryPermission
   );
@@ -791,8 +789,7 @@ const buildFoundersPermissionOverwrites = (
   founderRoleId: string,
   botUserId: string,
   cooRoleId: string,
-  ceoRoleId: string,
-  chiefExecutiveRoleId: string
+  ceoRoleId: string
 ): DiscordPermissionOverwrite[] => {
   const activeAllow = String(
     viewChannelPermission | readMessageHistoryPermission | sendMessagesPermission
@@ -804,58 +801,6 @@ const buildFoundersPermissionOverwrites = (
     { id: cooRoleId, type: 0, allow: activeAllow, deny: "0" },
     { id: ceoRoleId, type: 0, allow: activeAllow, deny: "0" },
     { id: botUserId, type: 1, allow: activeAllow, deny: "0" },
-  ];
-};
-
-const buildExecutivesOnlyPermissionOverwrites = (
-  guildId: string,
-  executiveRoleId: string,
-  botUserId: string,
-  ceoRoleId: string,
-  cooRoleId: string,
-  chiefExecutiveRoleId: string
-): DiscordPermissionOverwrite[] => {
-  const activeAllow = String(
-    viewChannelPermission | sendMessagesPermission | readMessageHistoryPermission
-  );
-
-  return [
-    {
-      id: guildId,
-      type: 0,
-      allow: "0",
-      deny: String(viewChannelPermission),
-    },
-    {
-      id: executiveRoleId,
-      type: 0,
-      allow: activeAllow,
-      deny: "0",
-    },
-    {
-      id: ceoRoleId,
-      type: 0,
-      allow: activeAllow,
-      deny: "0",
-    },
-    {
-      id: cooRoleId,
-      type: 0,
-      allow: activeAllow,
-      deny: "0",
-    },
-    {
-      id: chiefExecutiveRoleId,
-      type: 0,
-      allow: activeAllow,
-      deny: "0",
-    },
-    {
-      id: botUserId,
-      type: 1,
-      allow: (BigInt(activeAllow) | BigInt(manageChannelsPermission)).toString(),
-      deny: "0",
-    },
   ];
 };
 
@@ -1694,8 +1639,6 @@ export const runDiscordSync = async ({
     const websiteRole = resolveUserRole(websiteUser.email, websiteUser.role, customRoleLevels);
     const isHardcodedFounder = founderDiscordUserIds.has(memberId) && customRoleLevels.length === 0;
 
-    const isChiefExecCategory = ["CEO", "COO", "Chief Executive", "founder"].includes(websiteRole);
-
     let primaryHierarchyRoleId = studentRole.id;
     if (isHardcodedFounder || websiteRole === "founder") primaryHierarchyRoleId = founderRole.id;
     else if (websiteRole === "CEO") primaryHierarchyRoleId = ceoRole.id;
@@ -1799,11 +1742,6 @@ export const runDiscordSync = async ({
     enrollmentsByCourseId.set(courseId, current);
   }
 
-  const roleNamesToKeep = new Set(
-    websiteCourses.map((course) =>
-      normalizeRoleName(course.title, course.id)
-    )
-  );
   const createCourseRole = async (course: CourseRow) => {
     const baseName = normalizeRoleName(course.title, course.id);
     const uniqueName = buildUniqueCourseRoleName(baseName, course.id, mutableRoles);
@@ -1953,7 +1891,7 @@ export const runDiscordSync = async ({
   const expectedCourseRoleIdSet = new Set(
     Array.from(courseRoleIdByCourseId.entries())
       .filter(([courseId]) => activeCourseIdSet.has(courseId))
-      .map(([_, roleId]) => roleId)
+      .map(([, roleId]) => roleId)
   );
   const activeRoles = mutableRoles.filter((role) => {
     if (baseRoleIds.has(role.id) || customRoleIds.has(role.id)) {
@@ -2705,8 +2643,7 @@ export const runDiscordSync = async ({
       founderRole.id,
       botUser.id,
       cooRole.id,
-      ceoRole.id,
-      chiefExecutiveRole.id
+      ceoRole.id
     ),
   });
 
