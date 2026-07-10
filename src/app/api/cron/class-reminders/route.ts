@@ -2462,7 +2462,7 @@ ${tutorWasPresent ? "" : "<p><strong>Note:</strong> you were not detected in the
 
       if (reminderType === "ten_minutes") {
         founderContent = [
-          `<@&${pingRoleId}> A class is starting in **10 minutes**. **Please open the Zoom meeting!**`,
+          `<@&${pingRoleId}> A class is starting in **10 minutes**.`,
           `**Course:** ${escapeDiscordText(courseTitleRaw)}`,
           isStandardClassTitle ? `**${escapeDiscordText(classTitleRaw)}**` : `**Class:** ${escapeDiscordText(classTitleRaw)}`,
           `**Tutor:** ${escapeDiscordText(tutorNameRaw)}`,
