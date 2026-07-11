@@ -14,8 +14,22 @@ type StatusState = {
 
 const DAYS_OF_WEEK = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
+// Fields of an existing course request that this form reads when editing
+// (matches the records returned by /api/course-requests).
+type CourseRequestEditData = {
+  id?: string;
+  title?: string;
+  description?: string;
+  timeframes?: Record<string, string>;
+  frequency?: string;
+  total_classes?: number;
+  start_date?: string;
+  notes?: string;
+  status?: string;
+};
+
 type CourseCreatorProps = {
-  editData?: any | null;
+  editData?: CourseRequestEditData | null;
   onSuccess?: () => void;
   onCancel?: () => void;
 };

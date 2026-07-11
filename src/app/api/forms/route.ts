@@ -6,6 +6,19 @@ import { isExecutive as checkIsExecutive, isFounder as checkIsFounder, resolveUs
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 
+type FormResponseUser = {
+  id: string;
+  full_name: string | null;
+  email: string;
+  is_junior: boolean | null;
+  role: string | null;
+};
+
+type FormResponseRow = {
+  user_id: string;
+  user?: FormResponseUser;
+};
+
 export async function GET(request: NextRequest) {
   const user = await getRequestUser(request);
   if (!user) {
@@ -42,10 +55,10 @@ export async function GET(request: NextRequest) {
       .select("id, full_name, email, is_junior, role")
       .in("role", ["executive", "tutor", "founder"]);
 
-    const userMap = new Map(allUsers?.map(u => [u.id, u]) ?? []);
+    const userMap = new Map<string, FormResponseUser>(allUsers?.map(u => [u.id, u]) ?? []);
 
     filteredForms.forEach(form => {
-      form.form_responses.forEach((resp: any) => {
+      form.form_responses.forEach((resp: FormResponseRow) => {
         resp.user = userMap.get(resp.user_id);
       });
 
@@ -56,7 +69,7 @@ export async function GET(request: NextRequest) {
   } else {
     // For executives, only return their own responses
     filteredForms.forEach(form => {
-      form.form_responses = form.form_responses.filter((r: any) => r.user_id === user.id);
+      form.form_responses = form.form_responses.filter((r: FormResponseRow) => r.user_id === user.id);
     });
   }
 

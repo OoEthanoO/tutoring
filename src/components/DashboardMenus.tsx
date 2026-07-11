@@ -2,13 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import DonationHistoryMenu from "./DonationHistoryMenu";
-import { getCurrentUser, onAuthChange } from "@/lib/authClient";
+import { getCurrentUser, onAuthChange, type ClientUser } from "@/lib/authClient";
 import { canManageCourses, isExecutive, isFounder, isHighRankingChiefExecutive, resolveUserRole, type UserRole } from "@/lib/roles";
 import TutorApplicationFormModal from "./TutorApplicationFormModal";
 import WithdrawHoursMenu from "@/components/WithdrawHoursMenu";
 import AdminUserManager from "@/components/AdminUserManager";
 import EmailHistoryMenu from "@/components/EmailHistoryMenu";
-import CourseCreator from "@/components/CourseCreator";
 import CoursesMenu from "@/components/CoursesMenu";
 import EnrolledCoursesMenu from "@/components/EnrolledCoursesMenu";
 import AllCoursesTableMenu from "@/components/AllCoursesTableMenu";
@@ -92,13 +91,25 @@ type NavEntry =
   | { type: "item"; item: MenuItem }
   | { type: "group"; key: string; label: string; items: MenuItem[] };
 
+// Shape returned by /api/events (fields this component reads).
+type EventRecord = {
+  id: string;
+  deadline: string | null;
+  event_dates: { event_responses: { user_id: string }[] }[];
+};
+
+// Shape returned by /api/forms (fields this component reads).
+type FormRecord = {
+  id: string;
+};
+
 export default function DashboardMenus() {
   const [role, setRole] = useState<UserRole | null>(null);
   const [isAuthResolved, setIsAuthResolved] = useState(false);
   const [hasForms, setHasForms] = useState(false);
   const [fetchedPendingRSVP, setFetchedPendingRSVP] = useState(false);
   const [fetchedTrashCount, setFetchedTrashCount] = useState(0);
-  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [currentUser, setCurrentUser] = useState<ClientUser | null>(null);
   const [onboardingFetch, setOnboardingFetch] = useState<{
     forUserId: string;
     completed: boolean;
@@ -150,8 +161,10 @@ export default function DashboardMenus() {
       }
 
       const customRoleLevels = Array.isArray(user.custom_roles)
-        ? user.custom_roles.map((r: any) => r.role_level).filter(Boolean)
-        : [user.custom_roles?.role_level].filter(Boolean);
+        ? user.custom_roles.map((r) => r.role_level).filter(Boolean)
+        : [user.custom_roles?.role_level].filter(
+            (level): level is string => Boolean(level)
+          );
       if (user.custom_role) {
         customRoleLevels.push(user.custom_role);
       }
@@ -229,8 +242,8 @@ export default function DashboardMenus() {
           const response = await fetch("/api/events");
           if (response.ok) {
             const data = await response.json();
-            const events = data.events || [];
-            const event = events.find((e: any) => e.id === deepLinkedEventId);
+            const events: EventRecord[] = data.events || [];
+            const event = events.find((e) => e.id === deepLinkedEventId);
 
             if (!event) {
               alert("Event not found or you don't have permission to view it.");
@@ -261,8 +274,8 @@ export default function DashboardMenus() {
           const response = await fetch("/api/forms");
           if (response.ok) {
             const data = await response.json();
-            const forms = data.forms || [];
-            const form = forms.find((f: any) => f.id === deepLinkedFormId);
+            const forms: FormRecord[] = data.forms || [];
+            const form = forms.find((f) => f.id === deepLinkedFormId);
 
             if (!form) {
               alert("Form not found or you don't have permission to view it.");
@@ -305,18 +318,18 @@ export default function DashboardMenus() {
         const response = await fetch("/api/events");
         if (response.ok) {
           const data = await response.json();
-          const events = data.events || [];
+          const events: EventRecord[] = data.events || [];
 
           // Detect pending RSVPs for executives (non-founders)
           if (isExecutive(role) && !isFounder(role)) {
              const user = await getCurrentUser();
              if (user) {
                const now = new Date();
-               const pending = events.some((event: any) => {
+               const pending = events.some((event) => {
                  const isPastDeadline = event.deadline && now > new Date(event.deadline);
                  if (isPastDeadline) return false;
-                 return event.event_dates.some((date: any) =>
-                   !date.event_responses.some((r: any) => r.user_id === user.id)
+                 return event.event_dates.some((date) =>
+                   !date.event_responses.some((r) => r.user_id === user.id)
                  );
                });
                setFetchedPendingRSVP(pending);

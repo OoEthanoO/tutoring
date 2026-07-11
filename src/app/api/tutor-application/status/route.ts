@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { getRequestUser } from "@/lib/authServer";
 
 export const dynamic = "force-dynamic";
@@ -9,7 +9,7 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 
 // Automatically ensure the database schema exists for tutor_applications
-async function ensureTutorApplicationsSchema(adminClient: any) {
+async function ensureTutorApplicationsSchema(adminClient: SupabaseClient) {
   try {
     await adminClient.rpc("execute_sql", {
       sql: `

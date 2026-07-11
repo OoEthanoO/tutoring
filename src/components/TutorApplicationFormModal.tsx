@@ -73,8 +73,9 @@ export default function TutorApplicationFormModal({
 
       onSubmitSuccess();
       onClose();
-    } catch (err: any) {
-      setError(err.message || "An unexpected error occurred.");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "";
+      setError(message || "An unexpected error occurred.");
     } finally {
       setIsSubmitting(false);
     }

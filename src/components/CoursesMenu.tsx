@@ -182,7 +182,6 @@ export default function CoursesMenu() {
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
   const [isEnrolling, setIsEnrolling] = useState(false);
   const [hasOpenedDonationLink, setHasOpenedDonationLink] = useState(false);
-  const [hasOpenedApplicationLink, setHasOpenedApplicationLink] = useState(false);
   const [nowMs, setNowMs] = useState<number>(() => new Date().getTime());
   const [status, setStatus] = useState<StatusState>({
     type: "idle",
@@ -443,7 +442,6 @@ export default function CoursesMenu() {
 
   const openEnrollmentModal = (course: Course) => {
     setHasOpenedDonationLink(false);
-    setHasOpenedApplicationLink(false);
     setSelectedCourse(course);
   };
 
@@ -819,7 +817,6 @@ export default function CoursesMenu() {
                   onCancel={() => {
                     setSelectedCourse(null);
                     setHasOpenedDonationLink(false);
-                    setHasOpenedApplicationLink(false);
                   }}
                   onSubmit={async (formData) => {
                     setIsEnrolling(true);
@@ -858,7 +855,6 @@ export default function CoursesMenu() {
                     );
                     setSelectedCourse(null);
                     setHasOpenedDonationLink(false);
-                    setHasOpenedApplicationLink(false);
                     setIsEnrolling(false);
                   }}
                 />

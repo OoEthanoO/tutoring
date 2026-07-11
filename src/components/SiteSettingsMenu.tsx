@@ -32,8 +32,11 @@ export default function SiteSettingsMenu() {
       if (!res.ok) throw new Error(data.error || "Failed to update contact email");
 
       setMessage({ type: "success", text: "Contact email updated successfully!" });
-    } catch (err: any) {
-      setMessage({ type: "error", text: err.message });
+    } catch (err: unknown) {
+      setMessage({
+        type: "error",
+        text: err instanceof Error ? err.message : String(err),
+      });
     } finally {
       setIsSaving(false);
     }

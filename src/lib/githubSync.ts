@@ -27,6 +27,12 @@ interface GithubUserProfile {
   name: string | null;
 }
 
+type DiscordGuildChannel = {
+  id: string;
+  type: number;
+  name: string;
+};
+
 const listDiscordGuildChannels = async () => {
   const maxAttempts = 3;
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
@@ -46,7 +52,7 @@ const listDiscordGuildChannels = async () => {
       }
       throw new Error(`Failed to list Discord channels (${response.status})`);
     }
-    return response.json() as Promise<any[]>;
+    return response.json() as Promise<DiscordGuildChannel[]>;
   }
   throw new Error("Discord API retry limit exceeded.");
 };
@@ -219,8 +225,10 @@ export const runGithubSync = async (): Promise<GithubSyncResult> => {
   let channels;
   try {
     channels = await listDiscordGuildChannels();
-  } catch (err: any) {
-    result.errors.push(`Failed to load guild channels: ${err?.message}`);
+  } catch (err) {
+    result.errors.push(
+      `Failed to load guild channels: ${err instanceof Error ? err.message : "Unknown error."}`
+    );
     return result;
   }
 
@@ -336,8 +344,10 @@ export const runGithubSync = async (): Promise<GithubSyncResult> => {
         successfulPushes += 1;
       // Sleep slightly longer inside background sync
       await new Promise((resolve) => setTimeout(resolve, 1000));
-    } catch (err: any) {
-      result.errors.push(`Failed to stream commit ${shortId}: ${err?.message}`);
+    } catch (err) {
+      result.errors.push(
+        `Failed to stream commit ${shortId}: ${err instanceof Error ? err.message : "Unknown error."}`
+      );
     }
   }
 

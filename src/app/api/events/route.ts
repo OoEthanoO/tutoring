@@ -6,6 +6,27 @@ import { isExecutive as checkIsExecutive, isFounder as checkIsFounder, resolveUs
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 
+type EventResponseRow = {
+  user_id: string;
+  user?: { id: string; full_name: string | null; email: string; is_junior: boolean | null; role: string | null };
+};
+
+type EventDateRow = {
+  is_active?: boolean | null;
+  event_responses: EventResponseRow[];
+};
+
+// A date in a POST/PUT body: either a bare timestamp string or an object.
+type EventDateInput = string | { id?: string; starts_at: string; is_time_specified?: boolean };
+
+type EventDateWithDeadline = {
+  event_id: string;
+  events: { deadline: string | null } | null;
+};
+
+type EventDateUpdate = { existingId: string; starts_at: string; is_time_specified: boolean };
+type EventDateInsert = { event_id: string; starts_at: string; is_time_specified: boolean };
+
 export async function GET(request: NextRequest) {
   const user = await getRequestUser(request);
   if (!user) {
@@ -59,7 +80,7 @@ export async function GET(request: NextRequest) {
 
   // Filter out inactive dates for everyone (is_active may be missing initially, assume true)
   filteredEvents.forEach(event => {
-    event.event_dates = event.event_dates.filter((d: any) => d.is_active !== false);
+    event.event_dates = event.event_dates.filter((d: EventDateRow) => d.is_active !== false);
   });
 
   // Attach user details to responses for founder
@@ -72,8 +93,8 @@ export async function GET(request: NextRequest) {
     const userMap = new Map(allUsers?.map(u => [u.id, u]) ?? []);
 
     filteredEvents.forEach(event => {
-      event.event_dates.forEach((date: any) => {
-        date.event_responses.forEach((resp: any) => {
+      event.event_dates.forEach((date: EventDateRow) => {
+        date.event_responses.forEach((resp: EventResponseRow) => {
           resp.user = userMap.get(resp.user_id);
         });
       });
@@ -140,7 +161,7 @@ export async function POST(request: NextRequest) {
   }
 
   // 2. Create the dates
-  const datesToInsert = dates.map((d: any) => ({
+  const datesToInsert = dates.map((d: EventDateInput) => ({
     event_id: event.id,
     starts_at: typeof d === 'string' ? d : d.starts_at,
     is_time_specified: typeof d === 'string' ? true : !!d.is_time_specified
@@ -186,7 +207,8 @@ export async function PATCH(request: NextRequest) {
     .eq("id", event_date_id)
     .single();
 
-  const deadline = (eventDate as any)?.events?.deadline;
+  // Supabase's client types nested to-one relations loosely; at runtime this is a single object.
+  const deadline = (eventDate as EventDateWithDeadline | null)?.events?.deadline;
   if (deadline && new Date() > new Date(deadline)) {
     return NextResponse.json({ error: "The deadline for this event has passed." }, { status: 403 });
   }
@@ -231,7 +253,8 @@ export async function DELETE(request: NextRequest) {
     .eq("id", event_date_id)
     .single();
 
-  const deadline = (eventDate as any)?.events?.deadline;
+  // Supabase's client types nested to-one relations loosely; at runtime this is a single object.
+  const deadline = (eventDate as EventDateWithDeadline | null)?.events?.deadline;
   if (deadline && new Date() > new Date(deadline)) {
     return NextResponse.json({ error: "The deadline for this event has passed." }, { status: 403 });
   }
@@ -326,8 +349,8 @@ export async function PUT(request: NextRequest) {
 
   const unmappedExisting = [...(existingDates || [])];
   
-  const updates: any[] = [];
-  const inserts: any[] = [];
+  const updates: EventDateUpdate[] = [];
+  const inserts: EventDateInsert[] = [];
 
   for (const d of dates) {
     const startObj = normalizeDate(typeof d === 'string' ? d : d.starts_at);

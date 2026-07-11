@@ -55,7 +55,7 @@ export default function ManageEnrollmentsMenu() {
     const load = async () => {
       const user = await getCurrentUser();
       const role = resolveUserRole(user?.email ?? null, user?.role ?? null);
-      setIsFounderAccess(isFounder(role as any));
+      setIsFounderAccess(isFounder(role));
     };
 
     load();

@@ -1,17 +1,17 @@
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 import { getRequestUser } from "@/lib/authServer";
 import { getAdminClient } from "@/lib/authServer";
 import { resolveUserRole, isFounder } from "@/lib/roles";
 
-export async function GET(request: Request) {
-  const user = await getRequestUser(request as any);
+export async function GET(request: NextRequest) {
+  const user = await getRequestUser(request);
   if (!user) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const customRoleLevels = Array.isArray(user.custom_roles)
-    ? user.custom_roles.map((r: any) => r.role_level).filter(Boolean)
-    : [user.custom_roles?.role_level].filter(Boolean);
+    ? user.custom_roles.map((r) => r.role_level).filter(Boolean)
+    : [user.custom_roles?.role_level].filter((value): value is string => Boolean(value));
 
   const role = resolveUserRole(user.email, user.role, customRoleLevels);
   if (!isFounder(role)) {
@@ -27,15 +27,15 @@ export async function GET(request: Request) {
   return NextResponse.json({ roles: data || [] });
 }
 
-export async function POST(request: Request) {
-  const user = await getRequestUser(request as any);
+export async function POST(request: NextRequest) {
+  const user = await getRequestUser(request);
   if (!user) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const customRoleLevels = Array.isArray(user.custom_roles)
-    ? user.custom_roles.map((r: any) => r.role_level).filter(Boolean)
-    : [user.custom_roles?.role_level].filter(Boolean);
+    ? user.custom_roles.map((r) => r.role_level).filter(Boolean)
+    : [user.custom_roles?.role_level].filter((value): value is string => Boolean(value));
 
   const role = resolveUserRole(user.email, user.role, customRoleLevels);
   if (!isFounder(role)) {

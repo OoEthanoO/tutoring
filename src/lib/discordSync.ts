@@ -1630,11 +1630,11 @@ export const runDiscordSync = async ({
     }
 
     const customRoleNames = Array.isArray(websiteUser.custom_roles)
-      ? websiteUser.custom_roles.map((r: any) => r.name).filter(Boolean)
-      : [websiteUser.custom_roles?.name].filter(Boolean);
+      ? websiteUser.custom_roles.map((r) => r.name).filter(Boolean)
+      : [websiteUser.custom_roles?.name].filter((name): name is string => Boolean(name));
     const customRoleLevels = Array.isArray(websiteUser.custom_roles)
-      ? websiteUser.custom_roles.map((r: any) => r.role_level).filter(Boolean)
-      : [websiteUser.custom_roles?.role_level].filter(Boolean);
+      ? websiteUser.custom_roles.map((r) => r.role_level).filter(Boolean)
+      : [websiteUser.custom_roles?.role_level].filter((level): level is string => Boolean(level));
 
     const websiteRole = resolveUserRole(websiteUser.email, websiteUser.role, customRoleLevels);
     const isHardcodedFounder = founderDiscordUserIds.has(memberId) && customRoleLevels.length === 0;

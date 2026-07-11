@@ -83,8 +83,8 @@ export const getRequestUser = async (
   }
 
   const customRoleLevels = Array.isArray(actor.custom_roles)
-    ? actor.custom_roles.map((r: any) => r.role_level).filter(Boolean)
-    : [actor.custom_roles?.role_level].filter(Boolean);
+    ? actor.custom_roles.map((r) => r.role_level).filter(Boolean)
+    : [actor.custom_roles?.role_level].filter((level): level is string => Boolean(level));
   const actorRole = resolveUserRole(actor.email, actor.role ?? null, customRoleLevels);
   const impersonatedUserId =
     request.cookies.get(IMPERSONATE_COOKIE)?.value?.trim() ?? "";
@@ -122,8 +122,8 @@ export const getRequestAuthContext = async (
   }
 
   const customRoleLevels = Array.isArray(actor.custom_roles)
-    ? actor.custom_roles.map((r: any) => r.role_level).filter(Boolean)
-    : [actor.custom_roles?.role_level].filter(Boolean);
+    ? actor.custom_roles.map((r) => r.role_level).filter(Boolean)
+    : [actor.custom_roles?.role_level].filter((level): level is string => Boolean(level));
   const actorRole = resolveUserRole(actor.email, actor.role ?? null, customRoleLevels);
   const impersonatedUserId =
     request.cookies.get(IMPERSONATE_COOKIE)?.value?.trim() ?? "";

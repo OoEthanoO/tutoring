@@ -80,6 +80,22 @@ type StudentApplication = {
   created_at: string;
 };
 
+// Shape returned by /api/admin/tutor-applications (fields the UI reads).
+type TutorApplication = {
+  user_id: string;
+  full_name: string;
+  email: string;
+  phone_number: string;
+  current_grade: string;
+  parents_phone_number: string;
+  subject_grades: string | null;
+  programming_proficiency: string | null;
+  debate_experience: string | null;
+  other_courses_experience: string | null;
+  consent_signature: string;
+  created_at: string;
+};
+
 export default function AdminUserManager() {
   const router = useRouter();
   const backdropClickedRef = useRef(false);
@@ -140,8 +156,8 @@ export default function AdminUserManager() {
   const [isLoadingApplication, setIsLoadingApplication] = useState(false);
   const [applicationError, setApplicationError] = useState("");
 
-  const [tutorApplications, setTutorApplications] = useState<any[]>([]);
-  const [selectedTutorApp, setSelectedTutorApp] = useState<any>(null);
+  const [tutorApplications, setTutorApplications] = useState<TutorApplication[]>([]);
+  const [selectedTutorApp, setSelectedTutorApp] = useState<TutorApplication | null>(null);
   const [onboardingFilter, setOnboardingFilter] = useState<"all" | "pending" | "completed" | "exempt">("all");
   const [isPreviewFormOpen, setIsPreviewFormOpen] = useState(false);
 
@@ -193,8 +209,8 @@ export default function AdminUserManager() {
       const auth = await getAuthContext();
       const user = auth.user;
       const role = resolveUserRole(user?.email ?? null, user?.role ?? null);
-      setIsFounderAccess(isFounder(role as any));
-      if (isFounder(role as any)) {
+      setIsFounderAccess(isFounder(role));
+      if (isFounder(role)) {
         setImpersonatedUserId(auth.impersonatedUserId);
         const rolesRes = await fetch("/api/admin/roles");
         if (rolesRes.ok) {
@@ -358,7 +374,7 @@ export default function AdminUserManager() {
   }, [isFounderAccess]);
 
   const applicationsByUserId = useMemo(() => {
-    const map = new Map<string, any>();
+    const map = new Map<string, TutorApplication>();
     tutorApplications.forEach((app) => map.set(app.user_id, app));
     return map;
   }, [tutorApplications]);
@@ -370,7 +386,7 @@ export default function AdminUserManager() {
     let exempt = 0;
 
     users.forEach((user) => {
-      if (!isExecutive(user.role as any)) {
+      if (!isExecutive(user.role)) {
         return;
       }
 
@@ -411,7 +427,7 @@ export default function AdminUserManager() {
           return true;
         }
 
-        const isUserExec = isExecutive(user.role as any);
+        const isUserExec = isExecutive(user.role);
         const email = user.email || "";
         const baseRole = user.role || null;
         const customRoleLevels = user.customRole ? [user.customRole] : [];
@@ -499,7 +515,7 @@ export default function AdminUserManager() {
     const target = users.find((user) => user.id === userId);
     const name = target?.fullName || target?.email || "this user";
     const action =
-      isExecutive(role as any)
+      isExecutive(role)
         ? `Promote ${name} to executive?`
         : `Demote ${name} to student?`;
     if (!window.confirm(action)) {
@@ -1592,7 +1608,9 @@ export default function AdminUserManager() {
         <select
           value={onboardingFilter}
           onChange={(event) =>
-            setOnboardingFilter(event.target.value as any)
+            setOnboardingFilter(
+              event.target.value as "all" | "pending" | "completed" | "exempt"
+            )
           }
           className="w-full rounded-full border border-[var(--border)] bg-[var(--surface)] px-4 py-2 text-xs text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)] sm:w-48"
         >
@@ -1702,12 +1720,12 @@ export default function AdminUserManager() {
                   <p className="text-sm font-semibold text-[var(--foreground)]">
                     {user.fullName || "Unnamed user"}
                   </p>
-                  {user.legalName && isExecutive(user.role as any) ? (
+                  {user.legalName && isExecutive(user.role) ? (
                     <span className="rounded bg-[var(--border)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--foreground)]">
                       Legal: {user.legalName}
                     </span>
                   ) : null}
-                  {isExecutive(user.role as any) ? (() => {
+                  {isExecutive(user.role) ? (() => {
                     const email = user.email || "";
                     const baseRole = user.role || null;
                     const customRoleLevels = user.customRole ? [user.customRole] : [];
@@ -1758,7 +1776,7 @@ export default function AdminUserManager() {
                     <span>Connected{user.discordUsername ? ` (${user.discordUsername})` : ""}</span>
                   )}
                 </p>
-                {isExecutive(user.role as any) ? (
+                {isExecutive(user.role) ? (
                   <p className="text-xs text-[var(--muted)]">
                     Promoted: {formatPromotedDate(user.tutorPromotedAt)}
                   </p>
@@ -1773,7 +1791,7 @@ export default function AdminUserManager() {
                 </p>
               </div>
               <div className="flex flex-col gap-2">
-                {!isFounder(user.role as any) ? (
+                {!isFounder(user.role) ? (
                   <button
                     type="button"
                     disabled={isPending}
@@ -1791,7 +1809,7 @@ export default function AdminUserManager() {
                 >
                   {isPending ? "Working..." : "Transfer Discord here"}
                 </button>
-                {!isExecutive(user.role as any) && !isFounder(user.role as any) ? (
+                {!isExecutive(user.role) && !isFounder(user.role) ? (
                   <button
                     type="button"
                     disabled={isPending}
@@ -1802,7 +1820,7 @@ export default function AdminUserManager() {
                   </button>
                 ) : (
                   <>
-                    {!isFounder(user.role as any) ? (
+                    {!isFounder(user.role) ? (
                       <button
                         type="button"
                         disabled={isPending}
@@ -1815,7 +1833,7 @@ export default function AdminUserManager() {
                     <div className="space-y-4 rounded-xl border border-[var(--border)]/70 bg-[var(--surface)] px-3 py-3">
                       <div className="space-y-2">
                         <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
-                          {isFounder(user.role as any) ? "Founder settings" : "Executive settings"}
+                          {isFounder(user.role) ? "Founder settings" : "Executive settings"}
                         </p>
                         
                         {availableCustomRoles.length > 0 && (
@@ -2017,12 +2035,12 @@ export default function AdminUserManager() {
                         {isLoadingApplication && pendingId === user.id ? "Loading..." : "View Applications"}
                       </button>
                     ) : null}
-                    {isExecutive(user.role as any) && applicationsByUserId.has(user.id) ? (
+                    {isExecutive(user.role) && applicationsByUserId.has(user.id) ? (
                       <button
                         type="button"
                         onClick={() => {
                           const app = applicationsByUserId.get(user.id);
-                          setSelectedTutorApp(app);
+                          setSelectedTutorApp(app ?? null);
                         }}
                         className="rounded-full border border-emerald-500/30 text-emerald-500 hover:bg-emerald-500/10 px-4 py-2 text-xs font-semibold transition"
                       >

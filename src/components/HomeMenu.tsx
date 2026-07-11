@@ -9,6 +9,17 @@ type HomeMenuProps = {
   onOpenTeamTab: () => void;
 };
 
+// Shape returned by /api/admin/users (fields this component reads; the
+// snake_case variants are kept as fallbacks for older payload shapes).
+type AdminUserRecord = {
+  id: string;
+  role?: string | null;
+  customRole?: string | null;
+  custom_role?: string | null;
+  isJunior?: boolean | null;
+  is_junior?: boolean | null;
+};
+
 export default function HomeMenu({ isSignedIn, onOpenTeamTab }: HomeMenuProps) {
   const [teamCount, setTeamCount] = useState<number | null>(null);
   const [raised, setRaised] = useState<number | null>(null);
@@ -22,8 +33,10 @@ export default function HomeMenu({ isSignedIn, onOpenTeamTab }: HomeMenuProps) {
       }
 
       const customRoleLevels = Array.isArray(currentUser.custom_roles)
-        ? currentUser.custom_roles.map((r: any) => r.role_level).filter(Boolean)
-        : [currentUser.custom_roles?.role_level].filter(Boolean);
+        ? currentUser.custom_roles.map((r) => r.role_level).filter(Boolean)
+        : [currentUser.custom_roles?.role_level].filter(
+            (level): level is string => Boolean(level)
+          );
       const resolvedRole = resolveUserRole(currentUser.email, currentUser.role ?? null, customRoleLevels);
 
       if (!isFounder(resolvedRole)) {
@@ -41,7 +54,7 @@ export default function HomeMenu({ isSignedIn, onOpenTeamTab }: HomeMenuProps) {
         return;
       }
 
-      const usersData = (await usersResponse.json()) as { users?: any[] };
+      const usersData = (await usersResponse.json()) as { users?: AdminUserRecord[] };
       const coursesData = (await coursesResponse.json()) as { courses?: Array<{ created_by?: string | null }> };
 
       const activeCreatorIds = new Set(
@@ -73,7 +86,7 @@ export default function HomeMenu({ isSignedIn, onOpenTeamTab }: HomeMenuProps) {
       };
 
       const users = (usersData.users ?? [])
-        .map((u: any) => {
+        .map((u) => {
           const rawCustomRoleLabel = formatCustomRoleLabel(u.customRole ?? u.custom_role ?? null);
           const customRoleLabel = isCustomOnlyRole(rawCustomRoleLabel) ? rawCustomRoleLabel : null;
           const customRole = normalizeStandardRole(rawCustomRoleLabel);
@@ -86,7 +99,7 @@ export default function HomeMenu({ isSignedIn, onOpenTeamTab }: HomeMenuProps) {
             isJunior: Boolean(u.isJunior ?? u.is_junior),
           };
         })
-        .filter((u: any) => {
+        .filter((u) => {
           if (u.isJunior) {
             return activeCreatorIds.has(u.id);
           }

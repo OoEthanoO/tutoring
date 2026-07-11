@@ -5,6 +5,17 @@ const resendFrom = process.env.RESEND_FROM ?? "";
 const discordBotToken = process.env.DISCORD_BOT_TOKEN ?? "";
 const discordGuildId = process.env.DISCORD_GUILD_ID ?? "";
 
+type DiscordChannel = {
+  id: string;
+  type: number;
+  name: string;
+};
+
+type DiscordRole = {
+  id: string;
+  name: string;
+};
+
 const sleep = (ms: number) =>
   new Promise<void>((resolve) => {
     setTimeout(resolve, ms);
@@ -130,7 +141,7 @@ export const sendDiscordMessageByChannelName = async (
       return false;
     }
 
-    const channels = (await channelsRes.json()) as any[];
+    const channels = (await channelsRes.json()) as DiscordChannel[];
     const targetChannel = channels.find(
       (ch) => (ch.type === 0 || ch.type === 5) && ch.name === channelName
     );
@@ -177,7 +188,7 @@ export const getDiscordRoleIdByName = async (roleName: string): Promise<string |
       headers: { Authorization: `Bot ${discordBotToken}` }
     });
     if (!res.ok) return null;
-    const roles = await res.json() as any[];
+    const roles = await res.json() as DiscordRole[];
     const role = roles.find(r => r.name.toLowerCase() === roleName.toLowerCase());
     return role ? role.id : null;
   } catch {

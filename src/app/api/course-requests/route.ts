@@ -8,6 +8,19 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 
+type CourseRequestUpdatePayload = {
+  status: string;
+  title?: string;
+  description?: string;
+  timeframes?: Record<string, string>;
+  frequency?: string;
+  notes?: string;
+  total_classes?: number;
+  start_date?: string;
+  is_co_taught?: boolean;
+  co_tutor_id?: string | null;
+};
+
 export async function POST(request: NextRequest) {
   if (!supabaseUrl || !supabaseAnonKey) {
     return NextResponse.json(
@@ -221,7 +234,7 @@ export async function PATCH(request: NextRequest) {
     .eq("id", requestId)
     .maybeSingle();
 
-  if (!existing || (existing.created_by !== user.id && !isExecutive(role as any))) {
+  if (!existing || (existing.created_by !== user.id && !isExecutive(role))) {
     return NextResponse.json({ error: "Forbidden." }, { status: 403 });
   }
 
@@ -229,14 +242,14 @@ export async function PATCH(request: NextRequest) {
   let newStatus = existing.status === "rejected" ? "draft" : existing.status;
   
   // Admins can explicitly set any status
-  if (isExecutive(role as any) && body?.status) {
+  if (isExecutive(role) && body?.status) {
     newStatus = body.status;
   } else if (body?.status === "in_review" && (existing.status === "draft" || existing.status === "rejected")) {
     // Normal users can only resubmit
     newStatus = "in_review";
   }
 
-  const updatePayload: Record<string, any> = { status: newStatus };
+  const updatePayload: CourseRequestUpdatePayload = { status: newStatus };
 
   if (body?.title !== undefined) updatePayload.title = body.title.trim();
   if (body?.description !== undefined) updatePayload.description = body.description.trim();

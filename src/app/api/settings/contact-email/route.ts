@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 import { getAdminClient, getRequestUser } from "@/lib/authServer";
 import { resolveUserRole, isHighRankingChiefExecutive } from "@/lib/roles";
 
@@ -17,15 +17,15 @@ export async function GET() {
   return NextResponse.json({ contact_email: data.contact_email });
 }
 
-export async function PUT(request: Request) {
-  const user = await getRequestUser(request as any);
+export async function PUT(request: NextRequest) {
+  const user = await getRequestUser(request);
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const customRoleLevels = Array.isArray(user.custom_roles)
-    ? user.custom_roles.map((r: any) => r.role_level).filter(Boolean)
-    : [user.custom_roles?.role_level].filter(Boolean);
+    ? user.custom_roles.map((r) => r.role_level).filter(Boolean)
+    : [user.custom_roles?.role_level].filter((level): level is string => Boolean(level));
 
   const role = resolveUserRole(user.email, user.role, customRoleLevels);
   if (!isHighRankingChiefExecutive(role)) {
@@ -49,7 +49,10 @@ export async function PUT(request: Request) {
     }
 
     return NextResponse.json({ success: true, contact_email });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+  } catch (err) {
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "An unexpected error occurred." },
+      { status: 500 }
+    );
   }
 }

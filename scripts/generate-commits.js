@@ -18,7 +18,7 @@ function getGitInfoLocal() {
     const branch = execSync("git branch --show-current").toString().trim() || "main";
     
     return { owner, repo, branch };
-  } catch (e) {
+  } catch {
     return null;
   }
 }

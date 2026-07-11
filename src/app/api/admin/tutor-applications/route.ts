@@ -23,8 +23,8 @@ export async function GET(request: NextRequest) {
 
   // Resolve user role using custom roles
   const customRoleLevels = Array.isArray(user.custom_roles)
-    ? user.custom_roles.map((r: any) => r.role_level).filter(Boolean)
-    : [user.custom_roles?.role_level].filter(Boolean);
+    ? user.custom_roles.map((r) => r.role_level).filter(Boolean)
+    : [user.custom_roles?.role_level].filter((level): level is string => Boolean(level));
   
   const userRole = resolveUserRole(user.email, user.role ?? null, customRoleLevels);
 

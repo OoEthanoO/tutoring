@@ -113,9 +113,9 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({ success: true });
-  } catch (error: any) {
+  } catch (error) {
     return NextResponse.json(
-      { error: error?.message ?? "An unexpected error occurred." },
+      { error: error instanceof Error ? error.message : "An unexpected error occurred." },
       { status: 500 }
     );
   }

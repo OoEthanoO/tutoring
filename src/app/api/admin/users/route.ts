@@ -1,6 +1,8 @@
+import fs from "fs";
+import path from "path";
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { isExecutive, isFounder, resolveUserRole } from "@/lib/roles";
+import { isExecutive, isFounder, resolveUserRole, type UserRole } from "@/lib/roles";
 import { getRequestUser } from "@/lib/authServer";
 import { fetchDiscordGuildMemberIds } from "@/lib/discordSync";
 
@@ -114,7 +116,7 @@ const postResendEmail = async (payload: Record<string, unknown>) => {
   return { ok: false as const, error: "Unknown email failure." };
 };
 
-const sendEmail = async (to: string, subject: string, html: string, attachments?: any[]) => {
+const sendEmail = async (to: string, subject: string, html: string, attachments?: { filename: string; content: string }[]) => {
   if (!to) {
     return { ok: false as const, error: "Missing email configuration." };
   }
@@ -417,7 +419,7 @@ export async function PATCH(request: NextRequest) {
     );
   }
 
-  if (body.role && !isExecutive(body.role as any) && body.role !== "tutor" && body.role !== "student") {
+  if (body.role && !isExecutive(body.role as UserRole) && body.role !== "tutor" && body.role !== "student") {
     return NextResponse.json({ error: "Invalid role." }, { status: 400 });
   }
 
@@ -523,12 +525,12 @@ export async function PATCH(request: NextRequest) {
     );
   }
 
-  const existingRole = existingUser?.data?.role ?? null;
+  const existingRole: string | null = existingUser?.data?.role ?? null;
   const isPromotingToTutor =
-    isExecutive(body.role as any) && !isExecutive(existingRole as any) && existingRole !== "tutor";
+    isExecutive(body.role as UserRole) && !isExecutive(existingRole as UserRole | null) && existingRole !== "tutor";
 
   const isDemotingFromTutor =
-    body.role === "student" && (existingRole === "tutor" || isExecutive(existingRole as any));
+    body.role === "student" && (existingRole === "tutor" || isExecutive(existingRole as UserRole | null));
 
   const shouldUpdatePromotedAt = body.tutorPromotedAt !== undefined;
   const normalizedPromotedAt =
@@ -537,7 +539,7 @@ export async function PATCH(request: NextRequest) {
   const updatePayload =
     body.role || shouldUpdatePromotedAt || body.isJunior !== undefined || body.grade !== undefined || body.school !== undefined || body.strikeCount !== undefined || body.customRole !== undefined || body.generation !== undefined
       ? {
-        role: body.role !== undefined ? (isExecutive(body.role as any) ? "tutor" : body.role) : undefined,
+        role: body.role !== undefined ? (isExecutive(body.role as UserRole) ? "tutor" : body.role) : undefined,
         tutor_promoted_at: isPromotingToTutor
           ? new Date().toISOString()
           : shouldUpdatePromotedAt
@@ -603,8 +605,6 @@ export async function PATCH(request: NextRequest) {
   if (isPromotingToTutor && updated.email) {
     const attachments: { filename: string; content: string }[] = [];
     try {
-      const fs = require("fs");
-      const path = require("path");
       const imagePath = path.join(process.cwd(), "public", "Waterloo Tutor Application Form.png");
       if (fs.existsSync(imagePath)) {
         const content = fs.readFileSync(imagePath).toString("base64");

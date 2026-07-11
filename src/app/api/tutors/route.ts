@@ -68,16 +68,16 @@ export async function GET() {
     })
     .filter(
       (user) =>
-        isExecutive(user.role as any) &&
+        isExecutive(user.role) &&
         (!user.isJunior || activeCreatorIds.has(user.id)) &&
         user.email !== "jingqu2018@gmail.com" &&
         user.email !== "ethanxucoder@gmail.com"
     )
     .sort((a, b) => {
-      if (isFounder(a.role as any) && !isFounder(b.role as any)) {
+      if (isFounder(a.role) && !isFounder(b.role)) {
         return -1;
       }
-      if (isFounder(b.role as any) && !isFounder(a.role as any)) {
+      if (isFounder(b.role) && !isFounder(a.role)) {
         return 1;
       }
       const promotedA = new Date(a.promotedAt).getTime();

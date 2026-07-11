@@ -41,7 +41,7 @@ export default function CourseRequestsMenu() {
   const [isFounderAccess, setIsFounderAccess] = useState(false);
   const [requests, setRequests] = useState<RequestRecord[]>([]);
   const [isCreatorModalOpen, setIsCreatorModalOpen] = useState(false);
-  const [editData, setEditData] = useState<any>(null);
+  const [editData, setEditData] = useState<RequestRecord | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [, setError] = useState("");
   const [actioningId, setActioningId] = useState<string | null>(null);
@@ -68,7 +68,7 @@ export default function CourseRequestsMenu() {
 
       const resolvedRole = resolveUserRole(user.email, user.role ?? null);
       setRole(resolvedRole);
-      setIsFounderAccess(isFounder(resolvedRole as any));
+      setIsFounderAccess(isFounder(resolvedRole));
 
       fetchRequests();
     };
@@ -245,8 +245,8 @@ export default function CourseRequestsMenu() {
         const errorData = await res.json().catch(() => ({}));
         alert(`Failed to change status: ${errorData.error || 'Unknown error'}`);
       }
-    } catch (e: any) {
-      alert(`An error occurred: ${e.message}`);
+    } catch (e: unknown) {
+      alert(`An error occurred: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setActioningId(null);
     }

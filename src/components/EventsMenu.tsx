@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { getCurrentUser } from "@/lib/authClient";
-import { isExecutive, isFounder, resolveUserRole } from "@/lib/roles";
+import { isExecutive, isFounder, resolveUserRole, type UserRole } from "@/lib/roles";
 
 type EventResponse = {
   user_id: string;
@@ -38,7 +38,7 @@ type Event = {
 };
 
 export default function EventsMenu() {
-   const [role, setRole] = useState<string | null>(null);
+   const [role, setRole] = useState<UserRole | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [events, setEvents] = useState<Event[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -92,7 +92,7 @@ export default function EventsMenu() {
   };
 
   useEffect(() => {
-    if (role && isExecutive(role as any)) {
+    if (role && isExecutive(role)) {
       fetchEvents();
     }
   }, [role]);
@@ -246,7 +246,7 @@ export default function EventsMenu() {
     );
   }
 
-  const isFounderUser = role ? isFounder(role as any) : false;
+  const isFounderUser = role ? isFounder(role) : false;
 
   return (
     <div className="space-y-8">

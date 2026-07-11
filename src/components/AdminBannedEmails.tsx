@@ -27,7 +27,7 @@ export default function AdminBannedEmails() {
       const auth = await getAuthContext();
       const user = auth.user;
       const role = resolveUserRole(user?.email ?? null, user?.role ?? null);
-      setIsFounderAccess(isFounder(role as any));
+      setIsFounderAccess(isFounder(role));
     };
     load();
     return onAuthChange(load);

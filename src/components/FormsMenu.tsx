@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { getCurrentUser } from "@/lib/authClient";
-import { isExecutive, isFounder, resolveUserRole } from "@/lib/roles";
+import { isExecutive, isFounder, resolveUserRole, type UserRole } from "@/lib/roles";
 
 type FormResponse = {
   user_id: string;
@@ -31,7 +31,7 @@ type Form = {
 };
 
 export default function FormsMenu() {
-  const [role, setRole] = useState<string | null>(null);
+  const [role, setRole] = useState<UserRole | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [forms, setForms] = useState<Form[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -81,7 +81,7 @@ export default function FormsMenu() {
   };
 
   useEffect(() => {
-    if (role && isExecutive(role as any)) {
+    if (role && isExecutive(role)) {
       fetchForms();
     }
   }, [role]);
@@ -201,7 +201,7 @@ export default function FormsMenu() {
     );
   }
 
-  const isFounderUser = role ? isFounder(role as any) : false;
+  const isFounderUser = role ? isFounder(role) : false;
 
   return (
     <div className="space-y-8">

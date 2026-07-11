@@ -13,6 +13,21 @@ interface TeamMember {
   generation: number | null;
 }
 
+// Shape returned by /api/admin/users (fields this component reads; the
+// snake_case variants are kept as fallbacks for older payload shapes).
+type AdminUserRecord = {
+  id: string;
+  email?: string | null;
+  fullName?: string | null;
+  full_name?: string | null;
+  role?: string | null;
+  customRole?: string | null;
+  custom_role?: string | null;
+  isJunior?: boolean | null;
+  is_junior?: boolean | null;
+  generation?: string | number | null;
+};
+
 const roleOrder: { [key: string]: number } = {
   founder: 0,
   CEO: 1,
@@ -72,7 +87,7 @@ export default function OurTeamMenu() {
         if (!usersResponse.ok || !coursesResponse.ok) {
           throw new Error("Failed to fetch team members");
         }
-        const data = (await usersResponse.json()) as { users?: any[] };
+        const data = (await usersResponse.json()) as { users?: AdminUserRecord[] };
         const coursesData = (await coursesResponse.json()) as { courses?: Array<{ created_by?: string | null }> };
         const activeCreatorIds = new Set(
           (coursesData.courses ?? [])
@@ -81,7 +96,7 @@ export default function OurTeamMenu() {
         );
 
         const users = (data.users ?? [])
-          .map((u: any) => {
+          .map((u) => {
             const rawCustomRoleLabel = formatCustomRoleLabel(u.customRole ?? u.custom_role ?? null);
             const customRoleLabel = isCustomOnlyRole(rawCustomRoleLabel) ? rawCustomRoleLabel : null;
             const customRole = normalizeStandardRole(rawCustomRoleLabel);

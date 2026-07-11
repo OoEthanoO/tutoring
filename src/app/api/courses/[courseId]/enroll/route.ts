@@ -106,7 +106,7 @@ export async function POST(
     const role = resolveUserRole(user.email, user.role ?? null);
 
     if (existingRequest.status === "rejected") {
-      if (isFounder(role as any)) {
+      if (isFounder(role)) {
         // Founders can re-enroll after rejection.
         await adminClient
           .from("course_enrollment_requests")

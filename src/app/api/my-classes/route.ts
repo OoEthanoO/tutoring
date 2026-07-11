@@ -7,6 +7,39 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 
+type CourseClassRow = {
+  id: string;
+  title: string;
+  starts_at: string;
+  duration_hours: number | string | null;
+};
+
+type EnrolledCourse = {
+  id: string;
+  title: string;
+  deleted_at: string | null;
+  created_by_name: string | null;
+  created_by_email: string | null;
+  course_classes: CourseClassRow[] | null;
+};
+
+type EnrollmentStudentRow = {
+  student_name: string | null;
+  student_email: string | null;
+};
+
+type UpcomingClass = {
+  id: string;
+  course_id: string;
+  course_title: string;
+  class_title: string;
+  starts_at: string;
+  duration_hours: number;
+  role_in_course: "student" | "tutor" | "founder";
+  tutor_name: string;
+  students?: { name: string | null; email: string | null }[];
+};
+
 export async function GET(request: NextRequest) {
   if (!supabaseUrl || !supabaseAnonKey || !serviceRoleKey) {
     return NextResponse.json(
@@ -25,10 +58,10 @@ export async function GET(request: NextRequest) {
   });
 
   const role = resolveUserRole(user.email, user.role ?? null);
-  const isFounderUser = isFounder(role as any);
+  const isFounderUser = isFounder(role);
 
   const nowMs = Date.now();
-  const upcomingClasses: any[] = [];
+  const upcomingClasses: UpcomingClass[] = [];
   const seenClassIds = new Set<string>();
 
   // Fetch classes where user is enrolled as a student
@@ -41,7 +74,8 @@ export async function GET(request: NextRequest) {
 
   if (!enrolledError && enrolledData) {
     for (const item of enrolledData) {
-      const course = item.course as any;
+      // Supabase types a to-one embed as an array; it is a single object at runtime.
+      const course = item.course as unknown as EnrolledCourse | null;
       if (!course || course.deleted_at) continue;
       const classes = course.course_classes || [];
       for (const cls of classes) {
@@ -85,7 +119,7 @@ export async function GET(request: NextRequest) {
       const isUsuallyTutor = course.created_by === user.id;
       const classes = course.course_classes || [];
       const enrollments = course.course_enrollments || [];
-      const students = enrollments.map((e: any) => ({
+      const students = enrollments.map((e: EnrollmentStudentRow) => ({
         name: e.student_name,
         email: e.student_email,
       }));

@@ -30,9 +30,11 @@ export default function AccountCard({ onClick }: { onClick?: () => void }) {
 
       const fullName =
         String(user.full_name ?? "").trim() || "Unnamed user";
-      const customRoleLevels = Array.isArray((user as any).custom_roles)
-        ? (user as any).custom_roles.map((r: any) => r.role_level).filter(Boolean)
-        : [(user as any).custom_roles?.role_level].filter(Boolean);
+      const customRoleLevels = Array.isArray(user.custom_roles)
+        ? user.custom_roles.map((r) => r.role_level).filter(Boolean)
+        : [user.custom_roles?.role_level].filter(
+            (level): level is string => Boolean(level)
+          );
 
       const role = resolveUserRole(user.email, user.role ?? null, customRoleLevels);
 

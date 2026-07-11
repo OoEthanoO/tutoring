@@ -12,6 +12,17 @@ const resendFrom = process.env.RESEND_FROM ?? "";
 
 type Action = "approve" | "reject" | "expand_and_approve";
 
+type EnrollmentRequestCourse = {
+  id: string;
+  title: string | null;
+  short_name: string | null;
+  created_by_name: string | null;
+  created_by: string | null;
+  created_by_email: string | null;
+  max_students: number | null;
+  course_enrollments: { count: number }[] | null;
+};
+
 const sendEmail = async (to: string, subject: string, html: string) => {
   if (!resendApiKey || !resendFrom) {
     return;
@@ -110,10 +121,12 @@ export async function PATCH(
   const now = new Date().toISOString();
 
   if (action === "approve" || action === "expand_and_approve") {
-    const course = Array.isArray(requestData.course) ? requestData.course[0] : requestData.course;
-    const maxStudents = (course as any)?.max_students;
-    const enrollmentCount = (course as any)?.course_enrollments?.[0]?.count ?? 0;
-    const courseId = (course as any)?.id;
+    const course: EnrollmentRequestCourse | null | undefined = Array.isArray(requestData.course)
+      ? requestData.course[0]
+      : requestData.course;
+    const maxStudents = course?.max_students;
+    const enrollmentCount = course?.course_enrollments?.[0]?.count ?? 0;
+    const courseId = course?.id;
 
     if (action === "approve" && maxStudents && enrollmentCount >= maxStudents) {
       return NextResponse.json(

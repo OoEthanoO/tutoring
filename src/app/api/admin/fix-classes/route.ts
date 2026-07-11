@@ -54,9 +54,9 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({ success: true, count: courses.length });
-  } catch (error: any) {
+  } catch (error) {
     return NextResponse.json(
-      { error: error?.message ?? "An error occurred during class relabeling." },
+      { error: error instanceof Error ? error.message : "An error occurred during class relabeling." },
       { status: 500 }
     );
   }

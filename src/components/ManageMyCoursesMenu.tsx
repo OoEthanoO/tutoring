@@ -295,10 +295,10 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
       }
 
       const data = (await response.json()) as {
-        users: { id: string; fullName: string; email: string; role: string }[];
+        users: { id: string; fullName: string; email: string; role: UserRole }[];
       };
       const tutors = (data.users ?? [])
-        .filter((u) => isExecutive(u.role as any))
+        .filter((u) => isExecutive(u.role))
         .map((u) => ({ id: u.id, fullName: u.fullName, email: u.email }));
       setAvailableTutors(tutors);
 
@@ -456,7 +456,9 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
       return;
     }
 
-    let bulkClassUpdates: { classId: string; startsAt: string }[] | undefined;
+    let bulkClassUpdates:
+      | { classId: string; startsAt?: string; durationHours?: number }[]
+      | undefined;
 
     let targetCourse: Course | undefined;
     let targetClass: CourseClass | undefined;
@@ -515,7 +517,7 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
                 classId: subClass.id,
                 startsAt: timeChanged ? new Date(newLocalStr).toISOString() : undefined,
                 durationHours: durationChanged ? newDuration : undefined,
-              } as any; // Type assertion since our type definition earlier didn't explicitly add durationHours but the API expects it
+              };
             });
           }
         }

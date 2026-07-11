@@ -12,7 +12,7 @@ export default async function Home() {
   const token = cookieStore.get("session")?.value;
   const user = await getSessionUser(token);
   const role = resolveUserRole(user?.email ?? null, user?.role ?? null);
-  const isFounderUser = isFounder(role as any);
+  const isFounderUser = isFounder(role);
   const maintenanceEnabled = await getMaintenanceMode();
   const showMaintenance = maintenanceEnabled && !isFounderUser;
 

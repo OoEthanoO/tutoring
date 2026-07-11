@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { getRequestUser } from "@/lib/authServer";
 import { isHighRankingChiefExecutive, resolveUserRole } from "@/lib/roles";
 import { ensureTutorWithdrawalRequestsSchema } from "@/lib/withdrawalRequests";
@@ -21,8 +21,47 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 
+type WithdrawalRow = {
+  id: string;
+  tutor_id: string;
+  hours: number;
+  start_date: string;
+  end_date: string;
+  created_at: string;
+  created_by: string | null;
+  tutor_legal_name: string;
+};
+
+type PendingRequestRow = {
+  id: string;
+  tutor_id: string;
+  tutor_legal_name: string;
+  hours: number;
+  created_at: string;
+};
+
+type TutorUserRow = {
+  id: string;
+  full_name: string | null;
+  email: string | null;
+};
+
+type CourseRow = {
+  id: string;
+  title: string;
+};
+
+type CourseClassRow = {
+  id: string;
+  title: string;
+  starts_at: string;
+  duration_hours: number;
+  course_id: string;
+  tutor_withdrawal_id: string | null;
+};
+
 // Automatically ensure the database schema exists
-async function ensureTutorWithdrawalsSchema(adminClient: any) {
+async function ensureTutorWithdrawalsSchema(adminClient: SupabaseClient) {
   try {
     await adminClient.rpc("execute_sql", {
       sql: `
@@ -116,11 +155,11 @@ export async function GET(request: NextRequest) {
   });
 
   const customRoleLevels = Array.isArray(user.custom_roles)
-    ? user.custom_roles.map((r: any) => r.role_level).filter(Boolean)
-    : [user.custom_roles?.role_level].filter(Boolean);
+    ? user.custom_roles.map((r) => r.role_level).filter(Boolean)
+    : [user.custom_roles?.role_level].filter((value): value is string => Boolean(value));
 
   const role = resolveUserRole(user.email, user.role ?? null, customRoleLevels);
-  if (!isHighRankingChiefExecutive(role as any)) {
+  if (!isHighRankingChiefExecutive(role)) {
     return NextResponse.json({ error: "Forbidden. Only high-level chief executives can access withdrawals." }, { status: 403 });
   }
 
@@ -154,8 +193,8 @@ export async function GET(request: NextRequest) {
 
     const tutorIds = Array.from(
       new Set([
-        ...(withdrawals || []).map((w: any) => w.tutor_id),
-        ...pendingRequests.map((r: any) => r.tutor_id),
+        ...(withdrawals || []).map((w: WithdrawalRow) => w.tutor_id),
+        ...pendingRequests.map((r: PendingRequestRow) => r.tutor_id),
       ])
     );
     let enrichedWithdrawals = withdrawals || [];
@@ -168,12 +207,12 @@ export async function GET(request: NextRequest) {
         .in("id", tutorIds);
 
       if (!usersError && usersData) {
-        const usersMap = new Map(usersData.map((u: any) => [u.id, u]));
-        enrichedWithdrawals = withdrawals.map((w: any) => ({
+        const usersMap = new Map(usersData.map((u: TutorUserRow) => [u.id, u]));
+        enrichedWithdrawals = withdrawals.map((w: WithdrawalRow) => ({
           ...w,
           tutor: usersMap.get(w.tutor_id) || null
         }));
-        enrichedPendingRequests = pendingRequests.map((r: any) => ({
+        enrichedPendingRequests = pendingRequests.map((r: PendingRequestRow) => ({
           ...r,
           tutor: usersMap.get(r.tutor_id) || null
         }));
@@ -210,9 +249,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: coursesError.message }, { status: 500 });
   }
 
-  const courseIds = courses?.map((c: any) => c.id) || [];
+  const courseIds = courses?.map((c: CourseRow) => c.id) || [];
 
-  let classes: any[] = [];
+  let classes: (CourseClassRow & { course_title: string })[] = [];
   if (courseIds.length > 0) {
     const { data: classesData, error: classesError } = await adminClient
       .from("course_classes")
@@ -225,8 +264,8 @@ export async function GET(request: NextRequest) {
     }
 
     // Attach course title to each class
-    const coursesMap = new Map(courses.map((c: any) => [c.id, c.title]));
-    classes = (classesData || []).map((cls: any) => ({
+    const coursesMap = new Map(courses.map((c: CourseRow) => [c.id, c.title]));
+    classes = (classesData || []).map((cls: CourseClassRow) => ({
       ...cls,
       course_title: coursesMap.get(cls.course_id) || "Unknown Course"
     }));
@@ -273,11 +312,11 @@ export async function POST(request: NextRequest) {
   });
 
   const customRoleLevels = Array.isArray(user.custom_roles)
-    ? user.custom_roles.map((r: any) => r.role_level).filter(Boolean)
-    : [user.custom_roles?.role_level].filter(Boolean);
+    ? user.custom_roles.map((r) => r.role_level).filter(Boolean)
+    : [user.custom_roles?.role_level].filter((value): value is string => Boolean(value));
 
   const role = resolveUserRole(user.email, user.role ?? null, customRoleLevels);
-  if (!isHighRankingChiefExecutive(role as any)) {
+  if (!isHighRankingChiefExecutive(role)) {
     return NextResponse.json({ error: "Forbidden. Only high-level chief executives can perform withdrawals." }, { status: 403 });
   }
 
@@ -335,7 +374,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: coursesError.message }, { status: 500 });
   }
 
-  const courseIds = courses?.map((c: any) => c.id) || [];
+  const courseIds = courses?.map((c: Pick<CourseRow, "id">) => c.id) || [];
   if (courseIds.length === 0) {
     return NextResponse.json({ error: "This tutor has not taught any courses." }, { status: 400 });
   }
@@ -367,7 +406,7 @@ export async function POST(request: NextRequest) {
   const selectedClasses = (availableClasses || []).slice(0, numClassesToWithdraw);
   const startDate = selectedClasses[0].starts_at;
   const endDate = selectedClasses[selectedClasses.length - 1].starts_at;
-  const selectedClassIds = selectedClasses.map((c: any) => c.id);
+  const selectedClassIds = selectedClasses.map((c: Pick<CourseClassRow, "id">) => c.id);
 
   if (confirm) {
     // Perform withdrawal with legal name audit
@@ -493,11 +532,11 @@ export async function PATCH(request: NextRequest) {
   }
 
   const customRoleLevels = Array.isArray(user.custom_roles)
-    ? user.custom_roles.map((r: any) => r.role_level).filter(Boolean)
-    : [user.custom_roles?.role_level].filter(Boolean);
+    ? user.custom_roles.map((r) => r.role_level).filter(Boolean)
+    : [user.custom_roles?.role_level].filter((value): value is string => Boolean(value));
 
   const role = resolveUserRole(user.email, user.role ?? null, customRoleLevels);
-  if (!isHighRankingChiefExecutive(role as any)) {
+  if (!isHighRankingChiefExecutive(role)) {
     return NextResponse.json({ error: "Forbidden. Only high-level chief executives can resolve withdrawal requests." }, { status: 403 });
   }
 
