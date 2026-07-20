@@ -133,7 +133,7 @@ export default function AdminApprovedDiscordAccounts() {
   if (!isFounderAccess) return null;
 
   return (
-    <div className="mt-8 rounded-xl border border-[var(--border)] bg-[var(--background)] p-6 shadow-sm">
+    <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-6 shadow-sm">
       <div className="mb-6 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div>
           <h2 className="text-xl font-bold">Approved Discord Accounts</h2>

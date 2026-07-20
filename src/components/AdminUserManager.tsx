@@ -124,7 +124,9 @@ export default function AdminUserManager() {
   const [isSendingDiscordTransition, setIsSendingDiscordTransition] =
     useState(false);
   const [isSendingJoinReminder, setIsSendingJoinReminder] = useState(false);
-  const [activeTab, setActiveTab] = useState<"accounts" | "tools">("accounts");
+  const [activeTab, setActiveTab] = useState<
+    "accounts" | "tools" | "feedback" | "discord" | "banned"
+  >("accounts");
   const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
   const [userCoursesById, setUserCoursesById] = useState<Record<string, UserCourses>>({});
   const [coursesLoadingId, setCoursesLoadingId] = useState<string | null>(null);
@@ -1419,28 +1421,31 @@ export default function AdminUserManager() {
       </header>
 
       <div className="flex flex-wrap gap-1 border-b border-[var(--border)]">
-        <button
-          type="button"
-          onClick={() => setActiveTab("accounts")}
-          className={
-            activeTab === "accounts"
-              ? "rounded-t-lg border-b-2 border-[var(--foreground)] px-4 py-2 text-xs font-semibold text-[var(--foreground)]"
-              : "rounded-t-lg border-b-2 border-transparent px-4 py-2 text-xs font-semibold text-[var(--muted)] transition hover:text-[var(--foreground)]"
-          }
-        >
-          Accounts
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveTab("tools")}
-          className={
-            activeTab === "tools"
-              ? "rounded-t-lg border-b-2 border-[var(--foreground)] px-4 py-2 text-xs font-semibold text-[var(--foreground)]"
-              : "rounded-t-lg border-b-2 border-transparent px-4 py-2 text-xs font-semibold text-[var(--muted)] transition hover:text-[var(--foreground)]"
-          }
-        >
-          Admin Tools
-        </button>
+        {(
+          [
+            { key: "accounts", label: "Accounts" },
+            { key: "tools", label: "Admin Tools" },
+            {
+              key: "feedback",
+              label: feedback.length > 0 ? `Feedback (${feedback.length})` : "Feedback",
+            },
+            { key: "discord", label: "Approved Discord" },
+            { key: "banned", label: "Banned Emails" },
+          ] as const
+        ).map((tab) => (
+          <button
+            key={tab.key}
+            type="button"
+            onClick={() => setActiveTab(tab.key)}
+            className={
+              activeTab === tab.key
+                ? "rounded-t-lg border-b-2 border-[var(--foreground)] px-4 py-2 text-xs font-semibold text-[var(--foreground)]"
+                : "rounded-t-lg border-b-2 border-transparent px-4 py-2 text-xs font-semibold text-[var(--muted)] transition hover:text-[var(--foreground)]"
+            }
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
 
       {status.type !== "idle" ? (
@@ -2093,7 +2098,10 @@ export default function AdminUserManager() {
           );
         })}
       </div>
+      </>
+      ) : null}
 
+      {activeTab === "feedback" ? (
       <div className="space-y-3 rounded-xl border border-[var(--border)] px-4 py-4">
         <div className="space-y-1">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
@@ -2143,11 +2151,10 @@ export default function AdminUserManager() {
           </div>
         ) : null}
       </div>
-
-      <AdminApprovedDiscordAccounts />
-      <AdminBannedEmails />
-      </>
       ) : null}
+
+      {activeTab === "discord" ? <AdminApprovedDiscordAccounts /> : null}
+      {activeTab === "banned" ? <AdminBannedEmails /> : null}
     </section >
 
       {/* Student Application Modal */}
