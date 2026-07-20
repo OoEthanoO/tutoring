@@ -511,6 +511,7 @@ const buildLiveVoicePermissionOverwrites = ({
   ceoRoleId,
   cooRoleId,
   tutorDiscordUserId,
+  extraMemberDiscordUserIds,
   courseRoleId,
 }: {
   guildId: string;
@@ -518,6 +519,9 @@ const buildLiveVoicePermissionOverwrites = ({
   ceoRoleId: string | null;
   cooRoleId: string | null;
   tutorDiscordUserId: string;
+  // Approved extra accounts owned by the tutor (e.g. a second Discord account
+  // used in lesson calls); they get the same access window as the tutor.
+  extraMemberDiscordUserIds?: string[];
   courseRoleId: string | null;
 }): DiscordPermissionOverwrite[] => {
   const allowJoin = String(
@@ -553,6 +557,12 @@ const buildLiveVoicePermissionOverwrites = ({
       deny: "0",
     },
   ];
+
+  for (const extraMemberId of new Set(extraMemberDiscordUserIds ?? [])) {
+    if (extraMemberId && extraMemberId !== tutorDiscordUserId) {
+      overwrites.push({ id: extraMemberId, type: 1, allow: allowJoin, deny: "0" });
+    }
+  }
 
   if (ceoRoleId) {
     overwrites.push({ id: ceoRoleId, type: 0, allow: allowJoin, deny: "0" });
@@ -1190,6 +1200,50 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // Approved extra Discord accounts (e.g. a tutor's second account for lesson
+  // calls) keyed by the owner's main Discord id, so live voice channels can
+  // grant them the same access as the tutor. Missing table or query failure
+  // degrades to "no extra accounts" rather than blocking reminders.
+  const approvedExtraIdsByOwnerDiscordId = new Map<string, string[]>();
+  {
+    const { data: approvedRows } = await adminClient
+      .from("approved_discord_accounts")
+      .select("discord_user_id, owner_user_id")
+      .not("owner_user_id", "is", null);
+    const ownerIds = Array.from(
+      new Set(
+        (approvedRows ?? [])
+          .map((row) => String(row.owner_user_id ?? "").trim())
+          .filter(Boolean)
+      )
+    );
+    if (ownerIds.length > 0) {
+      const { data: ownerRows } = await adminClient
+        .from("app_users")
+        .select("id, discord_user_id")
+        .in("id", ownerIds);
+      const ownerDiscordIdById = new Map<string, string>();
+      for (const owner of ownerRows ?? []) {
+        const ownerId = String(owner.id ?? "").trim();
+        const ownerDiscordId = String(owner.discord_user_id ?? "").trim();
+        if (ownerId && ownerDiscordId) {
+          ownerDiscordIdById.set(ownerId, ownerDiscordId);
+        }
+      }
+      for (const row of approvedRows ?? []) {
+        const ownerDiscordId =
+          ownerDiscordIdById.get(String(row.owner_user_id ?? "").trim()) ?? "";
+        const extraDiscordId = String(row.discord_user_id ?? "").trim();
+        if (!ownerDiscordId || !extraDiscordId) {
+          continue;
+        }
+        const extraIds = approvedExtraIdsByOwnerDiscordId.get(ownerDiscordId) ?? [];
+        extraIds.push(extraDiscordId);
+        approvedExtraIdsByOwnerDiscordId.set(ownerDiscordId, extraIds);
+      }
+    }
+  }
+
   const ensureLiveCategory = async (): Promise<string | null> => {
     if (!discordRemindersEnabled || discordReminderSkippedReason || !discordGuildId) {
       return null;
@@ -1433,6 +1487,8 @@ export async function POST(request: NextRequest) {
               ceoRoleId,
               cooRoleId,
               tutorDiscordUserId: tutorDiscordId,
+              extraMemberDiscordUserIds:
+                approvedExtraIdsByOwnerDiscordId.get(tutorDiscordId) ?? [],
               courseRoleId,
             });
             const recreatedChannel = await createDiscordGuildChannel(discordGuildId, {
@@ -2042,6 +2098,8 @@ ${tutorWasPresent ? "" : "<p><strong>Note:</strong> you were not detected in the
                   ceoRoleId,
                   cooRoleId,
                   tutorDiscordUserId: tutorDiscordIdForChannel,
+                  extraMemberDiscordUserIds:
+                    approvedExtraIdsByOwnerDiscordId.get(tutorDiscordIdForChannel) ?? [],
                   courseRoleId: null,
                 });
                 const createdVoiceChannel = await createDiscordGuildChannel(discordGuildId, {
@@ -2213,6 +2271,8 @@ ${tutorWasPresent ? "" : "<p><strong>Note:</strong> you were not detected in the
                     ceoRoleId,
                     cooRoleId,
                     tutorDiscordUserId: tutorDiscordIdForFallback,
+                    extraMemberDiscordUserIds:
+                      approvedExtraIdsByOwnerDiscordId.get(tutorDiscordIdForFallback) ?? [],
                     courseRoleId:
                       discordCourseTargetByCourseId.get(classRow.course_id)?.roleId ?? null,
                   });
@@ -2267,6 +2327,8 @@ ${tutorWasPresent ? "" : "<p><strong>Note:</strong> you were not detected in the
                   ceoRoleId,
                   cooRoleId,
                   tutorDiscordUserId: tutorDiscordIdForUpdate,
+                  extraMemberDiscordUserIds:
+                    approvedExtraIdsByOwnerDiscordId.get(tutorDiscordIdForUpdate) ?? [],
                   courseRoleId:
                     discordCourseTargetByCourseId.get(classRow.course_id)?.roleId ?? null,
                 });

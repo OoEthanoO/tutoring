@@ -9,6 +9,7 @@ import {
 } from "@/lib/authClient";
 import { isExecutive, isFounder, resolveUserRole } from "@/lib/roles";
 import AdminBannedEmails from "@/components/AdminBannedEmails";
+import AdminApprovedDiscordAccounts from "@/components/AdminApprovedDiscordAccounts";
 import CourseAttendance from "@/components/CourseAttendance";
 import TutorApplicationFormModal from "@/components/TutorApplicationFormModal";
 
@@ -2143,6 +2144,7 @@ export default function AdminUserManager() {
         ) : null}
       </div>
 
+      <AdminApprovedDiscordAccounts />
       <AdminBannedEmails />
       </>
       ) : null}

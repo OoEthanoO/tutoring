@@ -69,6 +69,11 @@ type CourseEnrollmentRow = {
   student_id: string;
 };
 
+type ApprovedDiscordAccountRow = {
+  discord_user_id: string;
+  owner_user_id: string | null;
+};
+
 type CourseClassRow = {
   starts_at: string;
   duration_hours: number | string;
@@ -1400,7 +1405,7 @@ export const runDiscordSync = async ({
     result.errors.push(`Failed to decay strikes: ${toErrorMessage(error, "Unknown auto-decay error.")}`);
   }
 
-  const [{ data: users, error: usersError }, { data: courses, error: coursesError }, { data: enrollments, error: enrollmentsError }] =
+  const [{ data: users, error: usersError }, { data: courses, error: coursesError }, { data: enrollments, error: enrollmentsError }, { data: approvedAccounts, error: approvedAccountsError }] =
     await Promise.all([
       adminClient
         .from("app_users")
@@ -1413,6 +1418,9 @@ export const runDiscordSync = async ({
       adminClient
         .from("course_enrollments")
         .select("course_id, student_id"),
+      adminClient
+        .from("approved_discord_accounts")
+        .select("discord_user_id, owner_user_id"),
     ]);
 
   if (usersError) {
@@ -1426,6 +1434,14 @@ export const runDiscordSync = async ({
       enrollmentsError.message ?? "Failed to load enrollments for Discord sync."
     );
   }
+  if (approvedAccountsError) {
+    // Abort rather than fall back to an empty list: running without the
+    // approved list would kick every approved account from the guild.
+    throw new Error(
+      approvedAccountsError.message ??
+      "Failed to load approved Discord accounts for Discord sync."
+    );
+  }
 
   const websiteUsers = (users ?? []) as WebsiteUserRow[];
   const websiteCourses = (courses ?? []) as CourseRow[];
@@ -1434,6 +1450,24 @@ export const runDiscordSync = async ({
   const endedAtMsByCourseId = new Map<string, number>();
   for (const course of websiteCourses) {
     endedAtMsByCourseId.set(course.id, getCourseEndedAtMs(course));
+  }
+
+  const approvedAccountRows = (approvedAccounts ?? []) as ApprovedDiscordAccountRow[];
+  const approvedDiscordUserIds = new Set<string>();
+  const approvedAccountIdsByOwnerUserId = new Map<string, string[]>();
+  for (const account of approvedAccountRows) {
+    const accountDiscordUserId = String(account.discord_user_id ?? "").trim();
+    if (!accountDiscordUserId) {
+      continue;
+    }
+    approvedDiscordUserIds.add(accountDiscordUserId);
+
+    const ownerUserId = String(account.owner_user_id ?? "").trim();
+    if (ownerUserId) {
+      const ownedIds = approvedAccountIdsByOwnerUserId.get(ownerUserId) ?? [];
+      ownedIds.push(accountDiscordUserId);
+      approvedAccountIdsByOwnerUserId.set(ownerUserId, ownedIds);
+    }
   }
 
   const websiteUserByDiscordUserId = new Map<string, WebsiteUserRow>();
@@ -1551,6 +1585,13 @@ export const runDiscordSync = async ({
     const websiteUser = websiteUserByDiscordUserId.get(memberUserId);
 
     if (!websiteUser) {
+      if (approvedDiscordUserIds.has(memberUserId)) {
+        // Approved extra account (e.g. a tutor's second account for lesson
+        // calls): allowed to stay without a linked website user. Base role and
+        // nickname management do not apply; course roles are mirrored from the
+        // owner in the course role loop below.
+        continue;
+      }
       try {
         await apiClient.kickGuildMember(discordGuildId, memberUserId);
         result.kickedMemberCount += 1;
@@ -2072,19 +2113,25 @@ export const runDiscordSync = async ({
     }
 
     const expectedDiscordMemberIds = new Set<string>();
-    const tutorId = String(course.created_by ?? "").trim();
-    if (tutorId) {
-      const discordUserId = discordUserIdByWebsiteUserId.get(tutorId);
+    // A website user expects the course role on their linked account and on any
+    // approved extra accounts they own (e.g. a tutor's second lesson account).
+    const addExpectedWebsiteUser = (userId: string) => {
+      const discordUserId = discordUserIdByWebsiteUserId.get(userId);
       if (discordUserId) {
         expectedDiscordMemberIds.add(discordUserId);
       }
+      for (const approvedId of approvedAccountIdsByOwnerUserId.get(userId) ?? []) {
+        expectedDiscordMemberIds.add(approvedId);
+      }
+    };
+
+    const tutorId = String(course.created_by ?? "").trim();
+    if (tutorId) {
+      addExpectedWebsiteUser(tutorId);
     }
 
     for (const studentId of enrollmentsByCourseId.get(course.id) ?? []) {
-      const discordUserId = discordUserIdByWebsiteUserId.get(studentId);
-      if (discordUserId) {
-        expectedDiscordMemberIds.add(discordUserId);
-      }
+      addExpectedWebsiteUser(studentId);
     }
 
     for (const member of humanMembers) {
