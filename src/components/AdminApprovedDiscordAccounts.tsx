@@ -12,6 +12,12 @@ type ApprovedAccount = {
   owner_email: string | null;
 };
 
+type TutorOption = {
+  id: string;
+  name: string;
+  email: string;
+};
+
 type StatusState = {
   type: "idle" | "error" | "success";
   message: string;
@@ -20,10 +26,11 @@ type StatusState = {
 export default function AdminApprovedDiscordAccounts() {
   const [isFounderAccess, setIsFounderAccess] = useState(false);
   const [approvedAccounts, setApprovedAccounts] = useState<ApprovedAccount[]>([]);
+  const [tutorOptions, setTutorOptions] = useState<TutorOption[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [discordIdInput, setDiscordIdInput] = useState("");
   const [labelInput, setLabelInput] = useState("");
-  const [ownerEmailInput, setOwnerEmailInput] = useState("");
+  const [ownerUserIdInput, setOwnerUserIdInput] = useState("");
   const [status, setStatus] = useState<StatusState>({ type: "idle", message: "" });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -48,6 +55,7 @@ export default function AdminApprovedDiscordAccounts() {
         if (response.ok) {
           const data = await response.json();
           setApprovedAccounts(data.approvedAccounts || []);
+          setTutorOptions(data.tutors || []);
         } else {
           setStatus({ type: "error", message: "Failed to load approved Discord accounts." });
         }
@@ -64,7 +72,7 @@ export default function AdminApprovedDiscordAccounts() {
   const handleAddAccount = async (e: React.FormEvent) => {
     e.preventDefault();
     const discordUserId = discordIdInput.trim();
-    if (!discordUserId) return;
+    if (!discordUserId || !ownerUserIdInput) return;
 
     setIsSubmitting(true);
     setStatus({ type: "idle", message: "" });
@@ -76,7 +84,7 @@ export default function AdminApprovedDiscordAccounts() {
         body: JSON.stringify({
           discordUserId,
           label: labelInput.trim(),
-          ownerEmail: ownerEmailInput.trim(),
+          ownerUserId: ownerUserIdInput,
         }),
       });
 
@@ -84,7 +92,7 @@ export default function AdminApprovedDiscordAccounts() {
         setStatus({ type: "success", message: `Approved Discord account ${discordUserId}.` });
         setDiscordIdInput("");
         setLabelInput("");
-        setOwnerEmailInput("");
+        setOwnerUserIdInput("");
         // Reload list
         const reloadResponse = await fetch("/api/admin/approved-discord-accounts");
         if (reloadResponse.ok) {
@@ -138,10 +146,11 @@ export default function AdminApprovedDiscordAccounts() {
         <div>
           <h2 className="text-xl font-bold">Approved Discord Accounts</h2>
           <p className="text-sm text-[var(--muted)]">
-            These Discord accounts can stay in the server without a linked website account
-            (any other unlinked account is kicked by the Discord sync). Set an owner to give
-            the account the owner&apos;s course roles and access to their live lesson channels
-            — for tutors who need a second account in lesson calls.
+            Extra Discord accounts for tutors who need a second account in lesson calls.
+            Each approved account is tied to a tutor and gets the same course channels and
+            live lesson voice channels as that tutor&apos;s main account, and it can stay in
+            the server without a linked website account (any other unlinked account is
+            kicked by the Discord sync).
           </p>
         </div>
       </div>
@@ -157,13 +166,19 @@ export default function AdminApprovedDiscordAccounts() {
           className="flex-1 rounded-lg border border-[var(--border)] bg-transparent px-4 py-2 text-sm focus:border-[var(--foreground)] focus:outline-none"
           required
         />
-        <input
-          type="email"
-          value={ownerEmailInput}
-          onChange={(e) => setOwnerEmailInput(e.target.value)}
-          placeholder="Owner email (optional)"
-          className="flex-1 rounded-lg border border-[var(--border)] bg-transparent px-4 py-2 text-sm focus:border-[var(--foreground)] focus:outline-none"
-        />
+        <select
+          value={ownerUserIdInput}
+          onChange={(e) => setOwnerUserIdInput(e.target.value)}
+          className="flex-1 rounded-lg border border-[var(--border)] bg-[var(--background)] px-4 py-2 text-sm focus:border-[var(--foreground)] focus:outline-none"
+          required
+        >
+          <option value="">Select tutor...</option>
+          {tutorOptions.map((tutor) => (
+            <option key={tutor.id} value={tutor.id}>
+              {tutor.name ? `${tutor.name} (${tutor.email})` : tutor.email}
+            </option>
+          ))}
+        </select>
         <input
           type="text"
           value={labelInput}
@@ -173,7 +188,7 @@ export default function AdminApprovedDiscordAccounts() {
         />
         <button
           type="submit"
-          disabled={isSubmitting || !discordIdInput.trim()}
+          disabled={isSubmitting || !discordIdInput.trim() || !ownerUserIdInput}
           className="rounded-lg bg-[var(--foreground)] px-4 py-2 text-sm font-semibold text-[var(--background)] transition hover:opacity-80 disabled:opacity-50"
         >
           {isSubmitting ? "Approving..." : "Approve Account"}
@@ -207,7 +222,7 @@ export default function AdminApprovedDiscordAccounts() {
               <tr>
                 <th className="px-4 py-3 font-medium">Discord User ID</th>
                 <th className="px-4 py-3 font-medium">Label</th>
-                <th className="px-4 py-3 font-medium">Owner</th>
+                <th className="px-4 py-3 font-medium">Tutor</th>
                 <th className="px-4 py-3 font-medium">Approved On</th>
                 <th className="px-4 py-3 font-medium text-right">Actions</th>
               </tr>

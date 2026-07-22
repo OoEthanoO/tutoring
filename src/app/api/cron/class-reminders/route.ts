@@ -1208,8 +1208,7 @@ export async function POST(request: NextRequest) {
   {
     const { data: approvedRows } = await adminClient
       .from("approved_discord_accounts")
-      .select("discord_user_id, owner_user_id")
-      .not("owner_user_id", "is", null);
+      .select("discord_user_id, owner_user_id");
     const ownerIds = Array.from(
       new Set(
         (approvedRows ?? [])

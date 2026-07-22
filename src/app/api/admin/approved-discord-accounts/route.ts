@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getAdminClient, getRequestAuthContext } from "@/lib/authServer";
-import { resolveUserRole } from "@/lib/roles";
+import { isExecutive, resolveUserRole } from "@/lib/roles";
 
 const discordUserIdPattern = /^\d{17,20}$/;
 
@@ -24,32 +24,33 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const ownerIds = Array.from(
-    new Set(
-      (accounts ?? [])
-        .map((account) => String(account.owner_user_id ?? "").trim())
-        .filter(Boolean)
-    )
-  );
+  // Verified executive-tier users double as both the owner lookup for the list
+  // and the tutor options for the "approve" form.
+  const { data: userRows } = await adminClient
+    .from("app_users")
+    .select("id, full_name, email, role")
+    .not("email_verified_at", "is", null)
+    .order("full_name", { ascending: true });
 
-  const ownerById = new Map<string, { full_name: string | null; email: string | null }>();
-  if (ownerIds.length > 0) {
-    const { data: owners } = await adminClient
-      .from("app_users")
-      .select("id, full_name, email")
-      .in("id", ownerIds);
-    for (const owner of owners ?? []) {
-      ownerById.set(String(owner.id), {
-        full_name: owner.full_name ?? null,
-        email: owner.email ?? null,
+  const userById = new Map<string, { full_name: string | null; email: string | null }>();
+  const tutors: { id: string; name: string; email: string }[] = [];
+  for (const user of userRows ?? []) {
+    userById.set(String(user.id), {
+      full_name: user.full_name ?? null,
+      email: user.email ?? null,
+    });
+    if (isExecutive(resolveUserRole(user.email, user.role ?? null))) {
+      tutors.push({
+        id: String(user.id),
+        name: String(user.full_name ?? "").trim(),
+        email: String(user.email ?? "").trim(),
       });
     }
   }
 
   return NextResponse.json({
     approvedAccounts: (accounts ?? []).map((account) => {
-      const ownerId = String(account.owner_user_id ?? "").trim();
-      const owner = ownerId ? ownerById.get(ownerId) ?? null : null;
+      const owner = userById.get(String(account.owner_user_id ?? "").trim()) ?? null;
       return {
         discord_user_id: account.discord_user_id,
         label: account.label ?? null,
@@ -58,6 +59,7 @@ export async function GET(request: NextRequest) {
         owner_email: owner?.email ?? null,
       };
     }),
+    tutors,
   });
 }
 
@@ -71,7 +73,7 @@ export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => null);
   const discordUserId = String(body?.discordUserId ?? "").trim();
   const label = String(body?.label ?? "").trim();
-  const ownerEmail = String(body?.ownerEmail ?? "").trim().toLowerCase();
+  const ownerUserId = String(body?.ownerUserId ?? "").trim();
 
   if (!discordUserIdPattern.test(discordUserId)) {
     return NextResponse.json(
@@ -80,22 +82,25 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  if (!ownerUserId) {
+    return NextResponse.json(
+      { error: "An associated tutor is required." },
+      { status: 400 }
+    );
+  }
+
   const adminClient = getAdminClient();
 
-  let ownerUserId: string | null = null;
-  if (ownerEmail) {
-    const { data: owner } = await adminClient
-      .from("app_users")
-      .select("id")
-      .eq("email", ownerEmail)
-      .maybeSingle();
-    if (!owner) {
-      return NextResponse.json(
-        { error: `No account found with email ${ownerEmail}.` },
-        { status: 400 }
-      );
-    }
-    ownerUserId = owner.id;
+  const { data: owner } = await adminClient
+    .from("app_users")
+    .select("id")
+    .eq("id", ownerUserId)
+    .maybeSingle();
+  if (!owner) {
+    return NextResponse.json(
+      { error: "The selected tutor account was not found." },
+      { status: 400 }
+    );
   }
 
   const { error } = await adminClient.from("approved_discord_accounts").insert({
