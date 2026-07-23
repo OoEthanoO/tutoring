@@ -1,14 +1,14 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getAdminClient, getRequestAuthContext } from "@/lib/authServer";
 import { fetchDiscordGuildMemberIds } from "@/lib/discordSync";
-import { isExecutive, resolveUserRole } from "@/lib/roles";
+import { isExecutive, isFounder, resolveUserRole } from "@/lib/roles";
 
 const discordUserIdPattern = /^\d{17,20}$/;
 
 export async function GET(request: NextRequest) {
   const { actor } = await getRequestAuthContext(request);
 
-  if (!actor || resolveUserRole(actor.email, actor.role ?? null) !== "founder") {
+  if (!actor || !isFounder(resolveUserRole(actor.email, actor.role ?? null))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
 
@@ -77,7 +77,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const { actor } = await getRequestAuthContext(request);
 
-  if (!actor || resolveUserRole(actor.email, actor.role ?? null) !== "founder") {
+  if (!actor || !isFounder(resolveUserRole(actor.email, actor.role ?? null))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
 
@@ -158,7 +158,7 @@ export async function POST(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   const { actor } = await getRequestAuthContext(request);
 
-  if (!actor || resolveUserRole(actor.email, actor.role ?? null) !== "founder") {
+  if (!actor || !isFounder(resolveUserRole(actor.email, actor.role ?? null))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
 

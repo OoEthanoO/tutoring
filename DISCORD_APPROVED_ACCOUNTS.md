@@ -7,7 +7,8 @@ account; approval is the explicit allowlist for these extra accounts.
 
 ## How to approve an account
 
-1. Go to **Admin → Manage accounts → Approved Discord tab** (founder only).
+1. Go to **Admin → Manage accounts → Approved Discord tab** (founder tier:
+   founder/CEO/COO).
 2. Enter the extra account's **Discord user ID** (17–20 digits; in Discord:
    Settings → Advanced → Developer Mode, then right-click the user → Copy User ID).
 3. Pick the **tutor** who owns the account (required) and an optional label.

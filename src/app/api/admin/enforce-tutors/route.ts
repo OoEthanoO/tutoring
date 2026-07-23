@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { resolveUserRole } from "@/lib/roles";
+import { isFounder, resolveUserRole } from "@/lib/roles";
 import { getRequestUser } from "@/lib/authServer";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
   }
 
   const role = resolveUserRole(user.email, user.role ?? null);
-  if (role !== "founder") {
+  if (!isFounder(role)) {
     return NextResponse.json({ error: "Only founders can perform this action." }, { status: 403 });
   }
 

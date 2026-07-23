@@ -24,8 +24,10 @@ bearer (see the `cron:reminders:*` npm scripts).
 ## Architecture
 
 - `src/app/api/**` — route handlers. Admin routes gate on
-  `resolveUserRole(actor.email, actor.role) === "founder"` via
-  `getRequestAuthContext` + `getAdminClient` from `src/lib/authServer.ts`.
+  `isFounder(resolveUserRole(...))` — the founder/CEO/COO trio — via
+  `getRequestAuthContext`/`getRequestUser` + `getAdminClient` from
+  `src/lib/authServer.ts`. Client admin components use the same `isFounder`
+  gate; keep both sides trio-aligned (decided July 2026).
 - `src/lib/discordSync.ts` — single owner of Discord guild state. Each run
   kicks human members not linked to a website account (unless listed in
   `approved_discord_accounts`), manages roles (base + per-course), channels,

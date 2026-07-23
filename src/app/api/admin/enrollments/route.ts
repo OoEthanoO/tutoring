@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { resolveUserRole } from "@/lib/roles";
+import { isFounder, resolveUserRole } from "@/lib/roles";
 import { getRequestUser } from "@/lib/authServer";
 import { notifyCourseTutorsOfNewEnrollment } from "@/lib/courseChangeNotifications";
 
@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
-  if (resolveUserRole(user.email, user.role ?? null) !== "founder") {
+  if (!isFounder(resolveUserRole(user.email, user.role ?? null))) {
     return NextResponse.json({ error: "Forbidden." }, { status: 403 });
   }
 

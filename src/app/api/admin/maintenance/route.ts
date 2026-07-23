@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getRequestUser } from "@/lib/authServer";
-import { resolveUserRole } from "@/lib/roles";
+import { isFounder, resolveUserRole } from "@/lib/roles";
 import { getMaintenanceMode, setMaintenanceMode } from "@/lib/siteSettings";
 
 export async function GET(request: NextRequest) {
@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
-  if (resolveUserRole(user.email, user.role ?? null) !== "founder") {
+  if (!isFounder(resolveUserRole(user.email, user.role ?? null))) {
     return NextResponse.json({ error: "Forbidden." }, { status: 403 });
   }
 
@@ -23,7 +23,7 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
-  if (resolveUserRole(user.email, user.role ?? null) !== "founder") {
+  if (!isFounder(resolveUserRole(user.email, user.role ?? null))) {
     return NextResponse.json({ error: "Forbidden." }, { status: 403 });
   }
 

@@ -67,10 +67,9 @@ describe("role predicates", () => {
     expect(isExecutive(null)).toBe(false);
   });
 
-  // NOTE: isFounder intentionally (per current implementation) includes CEO
-  // and COO. The admin API routes are stricter — they compare the resolved
-  // role to the literal "founder" — so CEO/COO users pass client-side
-  // isFounder gates but are rejected by the admin APIs.
+  // NOTE: isFounder intentionally includes CEO and COO — the founder-tier
+  // admin trio. Admin API routes and admin client gates both rely on this
+  // (aligned July 2026; per Ethan, CEO/COO get full founder-level access).
   it("isFounder covers founder, CEO, and COO", () => {
     expect(isFounder("founder")).toBe(true);
     expect(isFounder("CEO")).toBe(true);

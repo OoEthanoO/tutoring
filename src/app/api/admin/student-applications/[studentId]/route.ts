@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getAdminClient, getRequestUser } from "@/lib/authServer";
-import { resolveUserRole } from "@/lib/roles";
+import { isFounder, resolveUserRole } from "@/lib/roles";
 
 export async function GET(
   request: NextRequest,
@@ -12,7 +12,7 @@ export async function GET(
   }
 
   const role = resolveUserRole(user.email, user.role);
-  if (role !== "founder" && role !== "executive") {
+  if (!isFounder(role) && role !== "executive") {
     return NextResponse.json({ error: "Forbidden." }, { status: 403 });
   }
 
