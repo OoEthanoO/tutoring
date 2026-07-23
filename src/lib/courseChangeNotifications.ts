@@ -1,5 +1,13 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 import { sendDiscordMessageByChannelName, sendEmail } from "./notificationsServer";
+import { formatDiscordTimestamp } from "./discordTimestamp";
+
+// A change line can carry a Discord-specific variant so times render as
+// dynamic timestamps in Discord while emails keep static Toronto-time text.
+export type CourseChangeItem = {
+  text: string;
+  discordText?: string;
+};
 
 type CourseChangeRecipient = {
   id: string;
@@ -37,6 +45,23 @@ export const formatCourseChangeDateTime = (value: string | null | undefined) => 
     hour: "numeric",
     minute: "2-digit",
   });
+};
+
+// Discord counterpart of formatCourseChangeDateTime: dynamic timestamp markup
+// that renders in each viewer's local timezone.
+export const formatCourseChangeDiscordDateTime = (
+  value: string | null | undefined
+) => {
+  if (!value) {
+    return "Not set";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return formatDiscordTimestamp(date);
 };
 
 const escapeHtml = (value: string) =>
@@ -155,10 +180,19 @@ export const notifyCourseTutorsOfNewEnrollment = async (
 export const notifyCourseTutorsOfChanges = async (
   adminClient: SupabaseClient,
   courseId: string,
-  changes: string[],
+  changes: (string | CourseChangeItem)[],
   changedBy: string
 ) => {
-  const cleanChanges = changes.map((item) => item.trim()).filter(Boolean);
+  const cleanChanges = changes
+    .map((item) =>
+      typeof item === "string"
+        ? { text: item.trim(), discordText: item.trim() }
+        : {
+          text: item.text.trim(),
+          discordText: (item.discordText ?? item.text).trim(),
+        }
+    )
+    .filter((item) => Boolean(item.text));
   if (cleanChanges.length === 0) {
     return;
   }
@@ -191,7 +225,9 @@ export const notifyCourseTutorsOfChanges = async (
           : `**${recipient.full_name || recipient.email || "Tutor"}**`
       )
       .join(" ");
-    const discordChangeList = cleanChanges.map((item) => `- ${item}`).join("\n");
+    const discordChangeList = cleanChanges
+      .map((item) => `- ${item.discordText}`)
+      .join("\n");
 
     await sendDiscordMessageByChannelName(
       "executives",
@@ -199,7 +235,7 @@ export const notifyCourseTutorsOfChanges = async (
     );
 
     const htmlChangeList = cleanChanges
-      .map((item) => `<li>${escapeHtml(item)}</li>`)
+      .map((item) => `<li>${escapeHtml(item.text)}</li>`)
       .join("");
     const emailHtml = `
       <p>A course you tutor, <strong>${escapeHtml(courseTitle)}</strong>, was updated by ${escapeHtml(changedBy)}.</p>

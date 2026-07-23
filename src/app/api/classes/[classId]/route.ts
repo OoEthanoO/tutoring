@@ -3,7 +3,12 @@ import { createClient } from "@supabase/supabase-js";
 import { canManageCourses, isFounder, resolveUserRole } from "@/lib/roles";
 import { getRequestUser } from "@/lib/authServer";
 import { relabelClassesForCourse } from "@/lib/classTools";
-import { formatCourseChangeDateTime, notifyCourseTutorsOfChanges } from "@/lib/courseChangeNotifications";
+import {
+  formatCourseChangeDateTime,
+  formatCourseChangeDiscordDateTime,
+  notifyCourseTutorsOfChanges,
+  type CourseChangeItem,
+} from "@/lib/courseChangeNotifications";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
@@ -133,12 +138,16 @@ export async function PATCH(
 
   const primaryUpdatedClass = latestClass || updated;
   const allUpdatedClasses = [primaryUpdatedClass];
-  const notificationChanges: string[] = [];
+  const notificationChanges: (string | CourseChangeItem)[] = [];
   if (nextTitle && nextTitle !== classRow.title) {
     notificationChanges.push(`Class name changed from "${classRow.title ?? "Untitled"}" to "${nextTitle}".`);
   }
   if (nextStartsAt && new Date(nextStartsAt).toISOString() !== new Date(classRow.starts_at).toISOString()) {
-    notificationChanges.push(`${primaryUpdatedClass.title || "A class"} was moved from ${formatCourseChangeDateTime(classRow.starts_at)} to ${formatCourseChangeDateTime(primaryUpdatedClass.starts_at)}.`);
+    const movedLabel = `${primaryUpdatedClass.title || "A class"} was moved from`;
+    notificationChanges.push({
+      text: `${movedLabel} ${formatCourseChangeDateTime(classRow.starts_at)} to ${formatCourseChangeDateTime(primaryUpdatedClass.starts_at)}.`,
+      discordText: `${movedLabel} ${formatCourseChangeDiscordDateTime(classRow.starts_at)} to ${formatCourseChangeDiscordDateTime(primaryUpdatedClass.starts_at)}.`,
+    });
   }
   if (
     isFounder(role) &&
@@ -278,7 +287,10 @@ export async function DELETE(
 
   const changedBy = String(user.full_name ?? "").trim() || user.email || "a YanLearn admin";
   await notifyCourseTutorsOfChanges(adminClient, classRow.course_id, [
-    `${classRow.title || "A class"} scheduled for ${formatCourseChangeDateTime(classRow.starts_at)} was removed.`,
+    {
+      text: `${classRow.title || "A class"} scheduled for ${formatCourseChangeDateTime(classRow.starts_at)} was removed.`,
+      discordText: `${classRow.title || "A class"} scheduled for ${formatCourseChangeDiscordDateTime(classRow.starts_at)} was removed.`,
+    },
   ], changedBy);
 
   return NextResponse.json({ success: true });

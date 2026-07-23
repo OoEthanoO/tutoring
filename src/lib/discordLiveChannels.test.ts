@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { buildLiveVoicePermissionOverwrites } from "@/lib/discordLiveChannels";
+import {
+  buildLiveVoicePermissionOverwrites,
+  normalizeVoiceChannelName,
+} from "@/lib/discordLiveChannels";
 
 const viewChannel = 1024;
 const connect = 1048576;
@@ -90,5 +93,29 @@ describe("buildLiveVoicePermissionOverwrites", () => {
 
     expect(overwrites).toContainEqual({ id: "ceo", type: 0, allow: allowJoin, deny: "0" });
     expect(overwrites).toContainEqual({ id: "coo", type: 0, allow: allowJoin, deny: "0" });
+  });
+});
+
+describe("normalizeVoiceChannelName", () => {
+  it("lowercases and dashes titles", () => {
+    expect(normalizeVoiceChannelName("Intro to Python", "class-1")).toBe(
+      "intro-to-python"
+    );
+  });
+
+  it("keeps existing hyphens and collapses punctuation runs", () => {
+    expect(normalizeVoiceChannelName("Pre-Calc: Unit 2!", "class-1")).toBe(
+      "pre-calc-unit-2"
+    );
+  });
+
+  it("falls back to a class-id-derived name for empty titles", () => {
+    expect(normalizeVoiceChannelName("!!!", "abcdefgh-rest")).toBe(
+      "class-abcdefgh"
+    );
+  });
+
+  it("caps the name at Discord's 100-character limit", () => {
+    expect(normalizeVoiceChannelName("a".repeat(150), "class-1")).toHaveLength(100);
   });
 });

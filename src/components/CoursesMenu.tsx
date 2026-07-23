@@ -7,7 +7,7 @@ import { setHasUnsavedData } from "@/lib/unsavedData";
 import { MarkdownText } from "@/lib/parseMarkdown";
 import { useNotification } from "./Notification";
 import StudentApplicationForm from "./StudentApplicationForm";
-import { resolveUserRole } from "@/lib/roles";
+import { isFounder, resolveUserRole } from "@/lib/roles";
 
 type StatusState = {
   type: "idle" | "error";
@@ -190,10 +190,10 @@ export default function CoursesMenu() {
   const { showNotification } = useNotification();
   const [isLoadingCourses, setIsLoadingCourses] = useState(false);
   const [hideTutorNames, setHideTutorNames] = useState(false);
-  const isFounder = user ? resolveUserRole(user.email, user.role) === "founder" : false;
+  const isFounderUser = user ? isFounder(resolveUserRole(user.email, user.role)) : false;
 
   const getTutorDisplayName = (course: Course) => {
-    if (isFounder && hideTutorNames) return "Tutor Hidden";
+    if (isFounderUser && hideTutorNames) return "Tutor Hidden";
     
     const primaryName = course.created_by_name || course.created_by_email || "Not Determined";
     if (course.co_tutor_name || course.co_tutor_email) {
@@ -469,7 +469,7 @@ export default function CoursesMenu() {
           </p>
         </div>
         
-        {isFounder && (
+        {isFounderUser && (
           <label className="flex items-center gap-2 text-xs font-medium text-[var(--muted)] cursor-pointer hover:text-[var(--foreground)] transition-colors">
             <input
               type="checkbox"

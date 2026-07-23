@@ -201,7 +201,9 @@ export async function PATCH(
     : (requestData.course as { created_by_email?: string } | null)?.created_by_email;
     
   if (tutorEmail) {
-    isFounderCourse = resolveUserRole(tutorEmail, null) === "founder";
+    // Founder-tier tutors teach on Schoolhouse instead of Discord; keep this
+    // aligned with the class-reminders cron, which uses the same trio check.
+    isFounderCourse = isFounder(resolveUserRole(tutorEmail, null));
   }
 
   let hasDiscordConnected = false;

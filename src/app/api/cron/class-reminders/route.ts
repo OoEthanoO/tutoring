@@ -1,7 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { runDiscordSync, type DiscordSyncResult } from "@/lib/discordSync";
-import { buildLiveVoicePermissionOverwrites } from "@/lib/discordLiveChannels";
+import {
+  buildLiveVoicePermissionOverwrites,
+  normalizeVoiceChannelName,
+} from "@/lib/discordLiveChannels";
+import { formatDiscordTimestampWithRelative } from "@/lib/discordTimestamp";
 import { runGithubSync, type GithubSyncResult } from "@/lib/githubSync";
 import { fetchFundraisingRaisedAmount } from "@/lib/fundraising";
 import {
@@ -492,19 +496,6 @@ const getDiscordUserVoiceChannelId = async (
     }
     throw error;
   }
-};
-
-const normalizeVoiceChannelName = (title: string, fallbackClassId: string) => {
-  const normalized = title
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, " ")
-    .replace(/\s+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-+|-+$/g, "");
-  if (normalized) {
-    return normalized.slice(0, 100);
-  }
-  return `class-${fallbackClassId.slice(0, 8)}`;
 };
 
 const sendEmail = async (to: string, subject: string, html: string) => {
@@ -2162,9 +2153,7 @@ ${tutorWasPresent ? "" : "<p><strong>Note:</strong> you were not detected in the
             `**Course:** ${escapeDiscordText(courseTitleRaw)}`,
             isStandardClassTitle ? `**${escapeDiscordText(classTitleRaw)}**` : `**Class:** ${escapeDiscordText(classTitleRaw)}`,
             `**Tutor:** ${escapeDiscordText(tutorNameRaw)}`,
-            `**Start time (${torontoTimeZone}):** ${escapeDiscordText(
-              formatTorontoDateTime(classRow.starts_at)
-            )}`,
+            `**Start time:** ${formatDiscordTimestampWithRelative(classRow.starts_at)}`,
             "This class will be held on **Discord**.",
             "You will receive a notification in this server with a link to the voice channel 5 minutes before the class starts.",
             "Please make sure you are in the voice channel 5 minutes before the start time."
@@ -2206,9 +2195,7 @@ ${tutorWasPresent ? "" : "<p><strong>Note:</strong> you were not detected in the
             `**Course:** ${escapeDiscordText(courseTitleRaw)}`,
             isStandardClassTitle ? `**${escapeDiscordText(classTitleRaw)}**` : `**Class:** ${escapeDiscordText(classTitleRaw)}`,
             `**Tutor:** ${escapeDiscordText(tutorNameRaw)}`,
-            `**Start time (${torontoTimeZone}):** ${escapeDiscordText(
-              formatTorontoDateTime(classRow.starts_at)
-            )}`,
+            `**Start time:** ${formatDiscordTimestampWithRelative(classRow.starts_at)}`,
             isFounderTaughtClass
               ? "Please attend the class 5 minutes before the start time on the Schoolhouse platform."
               : nonFounderDiscordInstruction,
@@ -2348,9 +2335,7 @@ ${tutorWasPresent ? "" : "<p><strong>Note:</strong> you were not detected in the
             `**Course:** ${escapeDiscordText(courseTitleRaw)}`,
             isStandardClassTitle ? `**${escapeDiscordText(classTitleRaw)}**` : `**Class:** ${escapeDiscordText(classTitleRaw)}`,
             `**Tutor:** ${escapeDiscordText(tutorNameRaw)}`,
-            `**Start time (${torontoTimeZone}):** ${escapeDiscordText(
-              formatTorontoDateTime(classRow.starts_at)
-            )}`,
+            `**Start time:** ${formatDiscordTimestampWithRelative(classRow.starts_at)}`,
             isFounderTaughtClass
               ? "Please join the meeting on the Schoolhouse platform immediately!"
               : nonFounderFiveMinInstruction,
@@ -2512,7 +2497,7 @@ ${tutorWasPresent ? "" : "<p><strong>Note:</strong> you were not detected in the
           `**Course:** ${escapeDiscordText(courseTitleRaw)}`,
           isStandardClassTitle ? `**${escapeDiscordText(classTitleRaw)}**` : `**Class:** ${escapeDiscordText(classTitleRaw)}`,
           `**Tutor:** ${escapeDiscordText(tutorNameRaw)}`,
-          `**Start time (${torontoTimeZone}):** ${escapeDiscordText(formatTorontoDateTime(classRow.starts_at))}`,
+          `**Start time:** ${formatDiscordTimestampWithRelative(classRow.starts_at)}`,
         ].join("\n");
       } else {
         founderContent = [
@@ -2520,7 +2505,7 @@ ${tutorWasPresent ? "" : "<p><strong>Note:</strong> you were not detected in the
           `**Course:** ${escapeDiscordText(courseTitleRaw)}`,
           isStandardClassTitle ? `**${escapeDiscordText(classTitleRaw)}**` : `**Class:** ${escapeDiscordText(classTitleRaw)}`,
           `**Tutor:** ${escapeDiscordText(tutorNameRaw)}`,
-          `**Start time (${torontoTimeZone}):** ${escapeDiscordText(formatTorontoDateTime(classRow.starts_at))}`,
+          `**Start time:** ${formatDiscordTimestampWithRelative(classRow.starts_at)}`,
         ].join("\n");
       }
 

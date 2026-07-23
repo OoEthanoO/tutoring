@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { resolveUserRole } from "@/lib/roles";
+import { isFounder, resolveUserRole } from "@/lib/roles";
 import { getRequestUser } from "@/lib/authServer";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
@@ -26,8 +26,8 @@ export async function DELETE(
   }
 
   const role = resolveUserRole(user.email, user.role ?? null);
-  // Only founder/CEO/COO can delete course requests. Note: 'founder' is the canonical role for CEO/COO/Founder here.
-  if (role !== "founder" && role !== "CEO" && role !== "COO") {
+  // Only the founder tier (founder/CEO/COO) can delete course requests.
+  if (!isFounder(role)) {
     return NextResponse.json({ error: "Forbidden. Only founders, CEOs, and COOs can delete course requests." }, { status: 403 });
   }
 

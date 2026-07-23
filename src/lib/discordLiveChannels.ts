@@ -14,6 +14,19 @@ export type DiscordPermissionOverwrite = {
   deny: string;
 };
 
+export const normalizeVoiceChannelName = (title: string, fallbackClassId: string) => {
+  const normalized = title
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, " ")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  if (normalized) {
+    return normalized.slice(0, 100);
+  }
+  return `class-${fallbackClassId.slice(0, 8)}`;
+};
+
 // Student access is granted through the course role rather than per-user
 // overwrites, so students who enroll mid-class get in as soon as the Discord
 // sync (which runs at the start of every tick) assigns them the role. Pass a

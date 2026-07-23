@@ -3,7 +3,11 @@ import { createClient } from "@supabase/supabase-js";
 import { canManageCourses, isFounder, resolveUserRole } from "@/lib/roles";
 import { getRequestUser } from "@/lib/authServer";
 import { relabelClassesForCourse } from "@/lib/classTools";
-import { formatCourseChangeDateTime, notifyCourseTutorsOfChanges } from "@/lib/courseChangeNotifications";
+import {
+  formatCourseChangeDateTime,
+  formatCourseChangeDiscordDateTime,
+  notifyCourseTutorsOfChanges,
+} from "@/lib/courseChangeNotifications";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
@@ -129,7 +133,10 @@ export async function POST(
   const finalClass = updatedClass || data;
   const changedBy = String(user.full_name ?? "").trim() || user.email || "a YanLearn admin";
   await notifyCourseTutorsOfChanges(adminClient, courseId, [
-    `${finalClass.title || "A class"} was added on ${formatCourseChangeDateTime(finalClass.starts_at)}.`,
+    {
+      text: `${finalClass.title || "A class"} was added on ${formatCourseChangeDateTime(finalClass.starts_at)}.`,
+      discordText: `${finalClass.title || "A class"} was added on ${formatCourseChangeDiscordDateTime(finalClass.starts_at)}.`,
+    },
   ], changedBy);
 
   return NextResponse.json({ class: finalClass });

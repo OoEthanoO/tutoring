@@ -183,8 +183,7 @@ export default function DashboardMenus() {
     return onAuthChange(load);
   }, []);
 
-  const isOnboardingExempt =
-    role === "founder" || role === "CEO" || role === "COO";
+  const isOnboardingExempt = isFounder(role);
   const needsOnboardingCheck =
     !!currentUser && !!role && isExecutive(role) && !isOnboardingExempt;
   // null = unknown (no user, or check still in flight for this user).

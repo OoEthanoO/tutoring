@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import { getAdminClient, hashToken, IMPERSONATE_COOKIE } from "@/lib/authServer";
-import { founderEmails, resolveUserRole } from "@/lib/roles";
+import { founderEmails, isFounder, resolveUserRole } from "@/lib/roles";
 import { getMaintenanceMode } from "@/lib/siteSettings";
 
 const SESSION_COOKIE = "session";
@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
   const maintenanceEnabled = await getMaintenanceMode();
   const userRole = resolveUserRole(user.email, user.role ?? null);
   const isFounderAccount =
-    userRole === "founder" ||
+    isFounder(userRole) ||
     String(user.role ?? "").toLowerCase() === "founder" ||
     founderEmails.some(f => f.toLowerCase() === user.email.toLowerCase());
   if (maintenanceEnabled && !isFounderAccount) {

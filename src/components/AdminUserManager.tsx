@@ -443,7 +443,7 @@ export default function AdminUserManager() {
       const customRoleLevels = user.customRole ? [user.customRole] : [];
       const resolved = resolveUserRole(email, baseRole, customRoleLevels);
 
-      const isExemptRole = resolved === "founder" || resolved === "CEO" || resolved === "COO";
+      const isExemptRole = isFounder(resolved);
 
       if (isExemptRole) {
         exempt++;
@@ -480,7 +480,7 @@ export default function AdminUserManager() {
         const baseRole = user.role || null;
         const customRoleLevels = user.customRole ? [user.customRole] : [];
         const resolved = resolveUserRole(email, baseRole, customRoleLevels);
-        const isExemptRole = resolved === "founder" || resolved === "CEO" || resolved === "COO";
+        const isExemptRole = isFounder(resolved);
 
         if (onboardingFilter === "completed") {
           return isUserExec && applicationsByUserId.has(user.id);
@@ -1844,7 +1844,7 @@ export default function AdminUserManager() {
                     const baseRole = user.role || null;
                     const customRoleLevels = user.customRole ? [user.customRole] : [];
                     const resolved = resolveUserRole(email, baseRole, customRoleLevels);
-                    const isExemptRole = resolved === "founder" || resolved === "CEO" || resolved === "COO";
+                    const isExemptRole = isFounder(resolved);
 
                     if (isExemptRole) {
                       return (

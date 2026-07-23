@@ -4,7 +4,7 @@ import {
   getRequestActor,
   IMPERSONATE_COOKIE,
 } from "@/lib/authServer";
-import { resolveUserRole } from "@/lib/roles";
+import { isFounder, resolveUserRole } from "@/lib/roles";
 
 const maxCookieAgeSeconds = 60 * 60 * 24 * 30;
 
@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
-  if (resolveUserRole(actor.email, actor.role ?? null) !== "founder") {
+  if (!isFounder(resolveUserRole(actor.email, actor.role ?? null))) {
     return NextResponse.json({ error: "Forbidden." }, { status: 403 });
   }
 
@@ -56,7 +56,7 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
-  if (resolveUserRole(actor.email, actor.role ?? null) !== "founder") {
+  if (!isFounder(resolveUserRole(actor.email, actor.role ?? null))) {
     return NextResponse.json({ error: "Forbidden." }, { status: 403 });
   }
 

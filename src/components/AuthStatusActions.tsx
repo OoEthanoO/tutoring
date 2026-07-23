@@ -8,7 +8,7 @@ import {
   onAuthChange,
   broadcastAuthChange,
 } from "@/lib/authClient";
-import { resolveUserRole } from "@/lib/roles";
+import { isFounder, resolveUserRole } from "@/lib/roles";
 import AccountCard from "@/components/AccountCard";
 
 const discordServerInviteUrl = "https://discord.gg/yDMdWcs64R";
@@ -73,7 +73,7 @@ export default function AuthStatusActions() {
         auth.actor?.email ?? null,
         auth.actor?.role ?? null
       );
-      setIsActorFounder(actorRole === "founder");
+      setIsActorFounder(isFounder(actorRole));
 
       const userRole = resolveUserRole(
         auth.user?.email ?? null,

@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
-import { resolveUserRole } from "@/lib/roles";
+import { isFounder, resolveUserRole } from "@/lib/roles";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
@@ -88,7 +88,7 @@ export const getRequestUser = async (
   const actorRole = resolveUserRole(actor.email, actor.role ?? null, customRoleLevels);
   const impersonatedUserId =
     request.cookies.get(IMPERSONATE_COOKIE)?.value?.trim() ?? "";
-  if (actorRole !== "founder" || !impersonatedUserId) {
+  if (!isFounder(actorRole) || !impersonatedUserId) {
     return actor;
   }
 
@@ -128,7 +128,7 @@ export const getRequestAuthContext = async (
   const impersonatedUserId =
     request.cookies.get(IMPERSONATE_COOKIE)?.value?.trim() ?? "";
 
-  if (actorRole !== "founder" || !impersonatedUserId) {
+  if (!isFounder(actorRole) || !impersonatedUserId) {
     return {
       actor,
       user: actor,

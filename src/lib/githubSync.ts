@@ -1,4 +1,5 @@
 import commitsData from "@/generated/commits.json";
+import { formatDiscordTimestamp } from "@/lib/discordTimestamp";
 const discordBotToken = process.env.DISCORD_BOT_TOKEN ?? "";
 const discordGuildId = process.env.DISCORD_GUILD_ID ?? "";
 const githubToken = process.env.GITHUB_TOKEN ?? "";
@@ -311,14 +312,7 @@ export const runGithubSync = async (): Promise<GithubSyncResult> => {
     const authorName = (await fetchGithubDisplayName(commit.author?.login)) || commit.commit.author.name || "Unknown";
 
     const commitDate = commit.commit.author.date
-      ? new Date(commit.commit.author.date).toLocaleString("en-US", {
-          timeZone: "America/Toronto",
-          month: "short",
-          day: "numeric",
-          year: "numeric",
-          hour: "numeric",
-          minute: "2-digit",
-        })
+      ? formatDiscordTimestamp(commit.commit.author.date, "f")
       : null;
 
     const commitNumber = getCommitNumber(commit.sha);

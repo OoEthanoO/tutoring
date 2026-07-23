@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { resolveUserRole } from "@/lib/roles";
+import { isFounder, resolveUserRole } from "@/lib/roles";
 import { getRequestUser } from "@/lib/authServer";
 import { relabelClassesForCourse } from "@/lib/classTools";
 import { sendEmail, sendDiscordMessageByChannelName } from "@/lib/notificationsServer";
@@ -34,7 +34,7 @@ export async function POST(
   }
 
   const role = resolveUserRole(user.email, user.role ?? null);
-  if (role !== "founder") {
+  if (!isFounder(role)) {
     return NextResponse.json({ error: "Forbidden. Only founders can approve." }, { status: 403 });
   }
 
