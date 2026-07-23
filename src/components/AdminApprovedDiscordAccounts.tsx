@@ -4,12 +4,17 @@ import { useEffect, useState } from "react";
 import { isFounder, resolveUserRole } from "@/lib/roles";
 import { getAuthContext, onAuthChange } from "@/lib/authClient";
 
+const discordServerInviteUrl =
+  process.env.NEXT_PUBLIC_DISCORD_SERVER_INVITE_URL || "https://discord.gg/yDMdWcs64R";
+
 type ApprovedAccount = {
   discord_user_id: string;
   label: string | null;
   created_at: string;
   owner_name: string | null;
   owner_email: string | null;
+  // true/false from the guild lookup, null when Discord is not configured.
+  in_server: boolean | null;
 };
 
 type TutorOption = {
@@ -152,6 +157,17 @@ export default function AdminApprovedDiscordAccounts() {
             the server without a linked website account (any other unlinked account is
             kicked by the Discord sync).
           </p>
+          <p className="text-sm text-[var(--muted)]">
+            After approving, have the tutor join the second account via the server invite:{" "}
+            <a
+              href={discordServerInviteUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-medium text-[var(--foreground)] underline"
+            >
+              {discordServerInviteUrl.replace("https://", "")}
+            </a>
+          </p>
         </div>
       </div>
 
@@ -223,6 +239,7 @@ export default function AdminApprovedDiscordAccounts() {
                 <th className="px-4 py-3 font-medium">Discord User ID</th>
                 <th className="px-4 py-3 font-medium">Label</th>
                 <th className="px-4 py-3 font-medium">Tutor</th>
+                <th className="px-4 py-3 font-medium">Status</th>
                 <th className="px-4 py-3 font-medium">Approved On</th>
                 <th className="px-4 py-3 font-medium text-right">Actions</th>
               </tr>
@@ -242,6 +259,19 @@ export default function AdminApprovedDiscordAccounts() {
                       </span>
                     ) : (
                       <span className="text-[var(--muted)]">None</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    {item.in_server === true ? (
+                      <span className="rounded-full bg-green-50 px-2.5 py-1 text-xs font-semibold text-green-700 dark:bg-green-950/30 dark:text-green-400">
+                        In server
+                      </span>
+                    ) : item.in_server === false ? (
+                      <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700 dark:bg-amber-950/30 dark:text-amber-400">
+                        Not joined yet
+                      </span>
+                    ) : (
+                      <span className="text-[var(--muted)]">Unknown</span>
                     )}
                   </td>
                   <td className="px-4 py-3 text-[var(--muted)]">

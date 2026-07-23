@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import MigrationBanner from "@/components/MigrationBanner";
+import DiscordConnectBanner from "@/components/DiscordConnectBanner";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -42,6 +43,7 @@ export default function RootLayout({
         <NotificationProvider>
           <Suspense fallback={null}>
             <MigrationBanner />
+            <DiscordConnectBanner />
           </Suspense>
           {children}
         </NotificationProvider>

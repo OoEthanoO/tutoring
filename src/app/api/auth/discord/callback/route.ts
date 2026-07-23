@@ -168,6 +168,24 @@ export async function GET(request: NextRequest) {
   }
 
   const adminClient = getAdminClient();
+
+  // An approved extra account (a tutor's second Discord account) must stay
+  // unlinked: linking it to a website login would give the same Discord user
+  // two identities in the sync. The admin POST enforces the same invariant in
+  // the other direction.
+  const { data: approvedAccount, error: approvedLookupError } = await adminClient
+    .from("approved_discord_accounts")
+    .select("discord_user_id")
+    .eq("discord_user_id", discordUserId)
+    .maybeSingle();
+
+  if (approvedLookupError) {
+    return redirectWithStatus("lookup_failed");
+  }
+  if (approvedAccount) {
+    return redirectWithStatus("account_reserved");
+  }
+
   const { data: existingUser, error: existingUserError } = await adminClient
     .from("app_users")
     .select("id")

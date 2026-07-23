@@ -335,8 +335,10 @@ export default function OurTeamMenu() {
             >
               <div className="relative">
                 <img
-                  src={`/images/${image}`}
+                  src={`/images/thumbs/${image}`}
                   alt={`SickKids moment ${idx + 1}`}
+                  loading="lazy"
+                  decoding="async"
                   className="h-40 w-full object-cover transition-transform duration-300 group-hover:scale-[1.04] group-hover:brightness-95"
                 />
                 <div className="pointer-events-none absolute inset-0 flex items-end justify-end bg-gradient-to-t from-black/30 via-transparent to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100">

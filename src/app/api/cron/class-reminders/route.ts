@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { runDiscordSync, type DiscordSyncResult } from "@/lib/discordSync";
+import { buildLiveVoicePermissionOverwrites } from "@/lib/discordLiveChannels";
 import { runGithubSync, type GithubSyncResult } from "@/lib/githubSync";
 import { fetchFundraisingRaisedAmount } from "@/lib/fundraising";
 import {
@@ -29,10 +30,6 @@ const defaultLiveCategoryName = "Live";
 const torontoTimeZone = "America/Toronto";
 const defaultZoomId = "822 9677 5321";
 const defaultZoomPassword = "youth";
-const viewChannelPermission = 1024;
-const connectPermission = 1048576;
-const speakPermission = 2097152;
-const manageChannelsPermission = 16;
 type ReminderType =
   | "twenty_four_hours"
   | "six_hours"
@@ -390,6 +387,16 @@ const listDiscordGuildRoles = async (guildId: string) =>
     path: `/guilds/${guildId}/roles`,
   });
 
+const sendDiscordChannelMessage = async (channelId: string, content: string) =>
+  requestDiscord<void>({
+    method: "POST",
+    path: `/channels/${channelId}/messages`,
+    body: {
+      content,
+      allowed_mentions: { parse: [], roles: [], users: [] },
+    },
+  });
+
 const sendDiscordCourseReminderMessage = async (
   channelId: string,
   roleId: string,
@@ -498,89 +505,6 @@ const normalizeVoiceChannelName = (title: string, fallbackClassId: string) => {
     return normalized.slice(0, 100);
   }
   return `class-${fallbackClassId.slice(0, 8)}`;
-};
-
-// Student access is granted through the course role rather than per-user
-// overwrites, so students who enroll mid-class get in as soon as the Discord
-// sync (which runs at the start of every tick) assigns them the role. Pass a
-// null courseRoleId during the tutor-only early-access window (15 to 5 minutes
-// before start).
-const buildLiveVoicePermissionOverwrites = ({
-  guildId,
-  botUserId,
-  ceoRoleId,
-  cooRoleId,
-  tutorDiscordUserId,
-  extraMemberDiscordUserIds,
-  courseRoleId,
-}: {
-  guildId: string;
-  botUserId: string;
-  ceoRoleId: string | null;
-  cooRoleId: string | null;
-  tutorDiscordUserId: string;
-  // Approved extra accounts owned by the tutor (e.g. a second Discord account
-  // used in lesson calls); they get the same access window as the tutor.
-  extraMemberDiscordUserIds?: string[];
-  courseRoleId: string | null;
-}): DiscordPermissionOverwrite[] => {
-  const allowJoin = String(
-    viewChannelPermission | connectPermission | speakPermission
-  );
-  const allowBot = String(
-    viewChannelPermission |
-      connectPermission |
-      speakPermission |
-      manageChannelsPermission
-  );
-  const denyEveryone = String(
-    viewChannelPermission | connectPermission | speakPermission
-  );
-
-  const overwrites: DiscordPermissionOverwrite[] = [
-    {
-      id: guildId,
-      type: 0,
-      allow: "0",
-      deny: denyEveryone,
-    },
-    {
-      id: botUserId,
-      type: 1,
-      allow: allowBot,
-      deny: "0",
-    },
-    {
-      id: tutorDiscordUserId,
-      type: 1,
-      allow: allowJoin,
-      deny: "0",
-    },
-  ];
-
-  for (const extraMemberId of new Set(extraMemberDiscordUserIds ?? [])) {
-    if (extraMemberId && extraMemberId !== tutorDiscordUserId) {
-      overwrites.push({ id: extraMemberId, type: 1, allow: allowJoin, deny: "0" });
-    }
-  }
-
-  if (ceoRoleId) {
-    overwrites.push({ id: ceoRoleId, type: 0, allow: allowJoin, deny: "0" });
-  }
-  if (cooRoleId) {
-    overwrites.push({ id: cooRoleId, type: 0, allow: allowJoin, deny: "0" });
-  }
-
-  if (courseRoleId) {
-    overwrites.push({
-      id: courseRoleId,
-      type: 0,
-      allow: allowJoin,
-      deny: "0",
-    });
-  }
-
-  return overwrites;
 };
 
 const sendEmail = async (to: string, subject: string, html: string) => {
@@ -838,6 +762,67 @@ export async function POST(request: NextRequest) {
           ? `Failed to load Discord channels: ${error.message}`
           : "Failed to load Discord channels.";
     }
+  }
+
+  // Persist a compact Discord sync health snapshot for the admin panel — the
+  // cron response body is not surfaced anywhere. On OK <-> failing transitions
+  // also ping the founders channel so breakage is noticed without opening the
+  // admin panel. Best-effort: this must never break the reminder run (it also
+  // no-ops until the discord_sync_status migration is applied).
+  try {
+    const syncOk =
+      discordSync.errors.length === 0 && discordSync.skippedReason === null;
+
+    const { data: previousStatusRow, error: previousStatusError } =
+      await adminClient
+        .from("site_settings")
+        .select("discord_sync_status")
+        .eq("id", true)
+        .single();
+
+    if (!previousStatusError) {
+      const previousStatus =
+        (previousStatusRow?.discord_sync_status as { ok?: boolean } | null) ??
+        null;
+
+      await adminClient
+        .from("site_settings")
+        .update({
+          discord_sync_status: {
+            ran_at: new Date().toISOString(),
+            ok: syncOk,
+            skipped_reason: discordSync.skippedReason,
+            error_count: discordSync.errors.length,
+            errors: discordSync.errors.slice(0, 10),
+            kicked_member_count: discordSync.kickedMemberCount,
+          },
+        })
+        .eq("id", true);
+
+      if (
+        previousStatus &&
+        typeof previousStatus.ok === "boolean" &&
+        previousStatus.ok !== syncOk &&
+        foundersChannelId
+      ) {
+        const content = syncOk
+          ? "✅ **Discord sync recovered** — the previous sync errors have cleared."
+          : [
+              "⚠️ **Discord sync is failing.**",
+              ...discordSync.errors
+                .slice(0, 3)
+                .map((item) => `- ${item.slice(0, 300)}`),
+              discordSync.errors.length > 3
+                ? `…and ${discordSync.errors.length - 3} more (see Admin Tools on the website).`
+                : "",
+            ]
+              .filter(Boolean)
+              .join("\n");
+        await sendDiscordChannelMessage(foundersChannelId, content);
+      }
+    }
+  } catch {
+    // Sync health reporting is best-effort only.
   }
 
   const base = floorToMinuteBoundary(new Date());

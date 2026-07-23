@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getAdminClient, getRequestAuthContext } from "@/lib/authServer";
+import { fetchDiscordGuildMemberIds } from "@/lib/discordSync";
 import { isExecutive, resolveUserRole } from "@/lib/roles";
 
 const discordUserIdPattern = /^\d{17,20}$/;
@@ -12,10 +13,24 @@ export async function GET(request: NextRequest) {
   }
 
   const adminClient = getAdminClient();
-  const { data: accounts, error } = await adminClient
-    .from("approved_discord_accounts")
-    .select("discord_user_id, owner_user_id, label, created_at")
-    .order("created_at", { ascending: false });
+
+  // Verified executive-tier users double as both the owner lookup for the list
+  // and the tutor options for the "approve" form. The guild member list powers
+  // the "in server" status (null when Discord is not configured); a short cache
+  // window keeps panel reloads from re-walking the whole guild.
+  const [{ data: accounts, error }, { data: userRows }, guildMemberIds] =
+    await Promise.all([
+      adminClient
+        .from("approved_discord_accounts")
+        .select("discord_user_id, owner_user_id, label, created_at")
+        .order("created_at", { ascending: false }),
+      adminClient
+        .from("app_users")
+        .select("id, full_name, email, role")
+        .not("email_verified_at", "is", null)
+        .order("full_name", { ascending: true }),
+      fetchDiscordGuildMemberIds({ maxAgeMs: 30_000 }),
+    ]);
 
   if (error) {
     return NextResponse.json(
@@ -23,14 +38,6 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
-
-  // Verified executive-tier users double as both the owner lookup for the list
-  // and the tutor options for the "approve" form.
-  const { data: userRows } = await adminClient
-    .from("app_users")
-    .select("id, full_name, email, role")
-    .not("email_verified_at", "is", null)
-    .order("full_name", { ascending: true });
 
   const userById = new Map<string, { full_name: string | null; email: string | null }>();
   const tutors: { id: string; name: string; email: string }[] = [];
@@ -57,6 +64,10 @@ export async function GET(request: NextRequest) {
         created_at: account.created_at,
         owner_name: owner?.full_name ?? null,
         owner_email: owner?.email ?? null,
+        // true/false when the guild lookup succeeded, null when unknown.
+        in_server: guildMemberIds
+          ? guildMemberIds.has(String(account.discord_user_id))
+          : null,
       };
     }),
     tutors,
@@ -91,14 +102,32 @@ export async function POST(request: NextRequest) {
 
   const adminClient = getAdminClient();
 
-  const { data: owner } = await adminClient
-    .from("app_users")
-    .select("id")
-    .eq("id", ownerUserId)
-    .maybeSingle();
+  const [{ data: owner }, { data: linkedUsers }] = await Promise.all([
+    adminClient.from("app_users").select("id").eq("id", ownerUserId).maybeSingle(),
+    // A Discord ID already linked to a website account is managed through that
+    // account; approving it here is almost certainly a mistyped ID.
+    adminClient
+      .from("app_users")
+      .select("email")
+      .eq("discord_user_id", discordUserId)
+      .limit(1),
+  ]);
+
   if (!owner) {
     return NextResponse.json(
       { error: "The selected tutor account was not found." },
+      { status: 400 }
+    );
+  }
+
+  const linkedUser = linkedUsers?.[0] ?? null;
+  if (linkedUser) {
+    return NextResponse.json(
+      {
+        error: `This Discord account is already linked to the website account ${
+          linkedUser.email ?? "(unknown email)"
+        }. Approval is only for extra accounts without a website login.`,
+      },
       { status: 400 }
     );
   }

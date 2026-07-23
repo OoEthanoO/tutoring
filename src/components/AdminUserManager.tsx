@@ -57,6 +57,15 @@ type UserCourses = {
 
 type DiscordEmailRecipientMode = "blacklist" | "whitelist";
 
+type DiscordSyncStatus = {
+  ran_at: string;
+  ok: boolean;
+  skipped_reason: string | null;
+  error_count: number;
+  errors: string[];
+  kicked_member_count: number;
+};
+
 type FeedbackEntry = {
   id: string;
   userId: string | null;
@@ -127,6 +136,12 @@ export default function AdminUserManager() {
   const [activeTab, setActiveTab] = useState<
     "accounts" | "tools" | "feedback" | "discord" | "banned"
   >("accounts");
+  // Rendering every account card at once makes the tab sluggish with hundreds
+  // of users, so the list renders in pages with a "Show all" escape hatch.
+  const userListPageSize = 60;
+  const [visibleUserCount, setVisibleUserCount] = useState(userListPageSize);
+  const [discordSyncStatus, setDiscordSyncStatus] = useState<DiscordSyncStatus | null>(null);
+  const [isLoadingDiscordSyncStatus, setIsLoadingDiscordSyncStatus] = useState(false);
   const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
   const [userCoursesById, setUserCoursesById] = useState<Record<string, UserCourses>>({});
   const [coursesLoadingId, setCoursesLoadingId] = useState<string | null>(null);
@@ -162,6 +177,36 @@ export default function AdminUserManager() {
   const [tutorApplications, setTutorApplications] = useState<TutorApplication[]>([]);
   const [selectedTutorApp, setSelectedTutorApp] = useState<TutorApplication | null>(null);
   const [onboardingFilter, setOnboardingFilter] = useState<"all" | "pending" | "completed" | "exempt">("all");
+
+  useEffect(() => {
+    setVisibleUserCount(userListPageSize);
+  }, [searchQuery, roleFilter, verifiedFilter, onboardingFilter, discordFilter, classesFilter]);
+
+  useEffect(() => {
+    if (!isFounderAccess) {
+      return;
+    }
+
+    const fetchDiscordSyncStatus = async () => {
+      setIsLoadingDiscordSyncStatus(true);
+      try {
+        const response = await fetch("/api/admin/discord-sync-status");
+        if (response.ok) {
+          const data = (await response.json()) as {
+            syncStatus?: DiscordSyncStatus | null;
+          };
+          setDiscordSyncStatus(data.syncStatus ?? null);
+        }
+      } catch {
+        // Leave the status unknown on network errors.
+      } finally {
+        setIsLoadingDiscordSyncStatus(false);
+      }
+    };
+
+    fetchDiscordSyncStatus();
+  }, [isFounderAccess]);
+
   const [isPreviewFormOpen, setIsPreviewFormOpen] = useState(false);
 
   const toLocalDateTimeInput = (value: string) => {
@@ -1461,6 +1506,66 @@ export default function AdminUserManager() {
       ) : null}
 
       {activeTab === "tools" ? (
+      <>
+      <div className="space-y-3 rounded-xl border border-[var(--border)] px-4 py-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
+            Discord sync health
+          </p>
+          {isLoadingDiscordSyncStatus ? (
+            <span className="text-xs text-[var(--muted)]">Loading...</span>
+          ) : discordSyncStatus ? (
+            discordSyncStatus.ok ? (
+              <span className="rounded-full bg-green-50 px-2.5 py-1 text-xs font-semibold text-green-700 dark:bg-green-950/30 dark:text-green-400">
+                OK
+              </span>
+            ) : (
+              <span className="rounded-full bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700 dark:bg-red-950/30 dark:text-red-400">
+                Failing
+              </span>
+            )
+          ) : (
+            <span className="text-xs text-[var(--muted)]">
+              No status recorded yet — it appears after the next cron run.
+            </span>
+          )}
+        </div>
+        {discordSyncStatus ? (
+          <div className="space-y-2">
+            <p className="text-xs text-[var(--muted)]">
+              Last run: {new Date(discordSyncStatus.ran_at).toLocaleString()}
+              {discordSyncStatus.kicked_member_count > 0
+                ? ` · kicked ${discordSyncStatus.kicked_member_count} member${
+                    discordSyncStatus.kicked_member_count !== 1 ? "s" : ""
+                  }`
+                : ""}
+            </p>
+            {discordSyncStatus.skipped_reason ? (
+              <p className="text-xs text-amber-600 dark:text-amber-400">
+                Skipped: {discordSyncStatus.skipped_reason}
+              </p>
+            ) : null}
+            {discordSyncStatus.errors.length > 0 ? (
+              <ul className="space-y-1">
+                {discordSyncStatus.errors.map((message, index) => (
+                  <li
+                    key={index}
+                    className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700 dark:bg-red-950/30 dark:text-red-400"
+                  >
+                    {message}
+                  </li>
+                ))}
+                {discordSyncStatus.error_count > discordSyncStatus.errors.length ? (
+                  <li className="text-xs text-[var(--muted)]">
+                    …and {discordSyncStatus.error_count - discordSyncStatus.errors.length} more
+                    errors not shown.
+                  </li>
+                ) : null}
+              </ul>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
       <div className="space-y-3 rounded-xl border border-[var(--border)] px-4 py-3">
         <div className="flex flex-wrap items-center gap-2">
           <p className="text-xs text-[var(--muted)]">
@@ -1575,6 +1680,7 @@ export default function AdminUserManager() {
           />
         </div>
       </div>
+      </>
       ) : null}
 
       {activeTab === "accounts" ? (
@@ -1696,12 +1802,14 @@ export default function AdminUserManager() {
 
       {!isLoading && filteredUsers.length > 0 && (
         <p className="text-sm text-[var(--muted)] mb-2">
-          Showing {filteredUsers.length} account{filteredUsers.length !== 1 ? 's' : ''}
+          {filteredUsers.length > visibleUserCount
+            ? `Showing first ${visibleUserCount} of ${filteredUsers.length} accounts`
+            : `Showing ${filteredUsers.length} account${filteredUsers.length !== 1 ? "s" : ""}`}
         </p>
       )}
 
       <div className="space-y-3">
-        {filteredUsers.map((user) => {
+        {filteredUsers.slice(0, visibleUserCount).map((user) => {
           const isPending = pendingId === user.id;
           return (
             <div
@@ -2098,6 +2206,25 @@ export default function AdminUserManager() {
           );
         })}
       </div>
+
+      {filteredUsers.length > visibleUserCount ? (
+        <div className="flex items-center justify-center gap-3">
+          <button
+            type="button"
+            onClick={() => setVisibleUserCount((count) => count + userListPageSize)}
+            className="rounded-full border border-[var(--border)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)]"
+          >
+            Show {Math.min(userListPageSize, filteredUsers.length - visibleUserCount)} more
+          </button>
+          <button
+            type="button"
+            onClick={() => setVisibleUserCount(filteredUsers.length)}
+            className="rounded-full border border-[var(--border)] px-4 py-2 text-xs font-semibold text-[var(--muted)] transition hover:bg-[var(--border)]"
+          >
+            Show all {filteredUsers.length}
+          </button>
+        </div>
+      ) : null}
       </>
       ) : null}
 

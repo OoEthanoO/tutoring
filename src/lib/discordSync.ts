@@ -159,7 +159,8 @@ const sleep = (ms: number) =>
     setTimeout(resolve, ms);
   });
 
-const normalizeChannelName = (title: string, fallbackCourseId: string): string => {
+// Exported for tests.
+export const normalizeChannelName = (title: string, fallbackCourseId: string): string => {
   const withoutDash = title.toLowerCase().replaceAll("-", "");
   const withOnlyWordCharacters = withoutDash.replace(/[^a-z0-9\s]/g, " ");
   const collapsed = withOnlyWordCharacters
@@ -174,7 +175,7 @@ const normalizeChannelName = (title: string, fallbackCourseId: string): string =
   return `course-${fallbackCourseId.replace(/[^a-z0-9]/gi, "").toLowerCase().slice(0, 10)}`;
 };
 
-const normalizeRoleName = (title: string, fallbackCourseId: string): string => {
+export const normalizeRoleName = (title: string, fallbackCourseId: string): string => {
   const trimmed = title.trim();
   if (trimmed.length > 0) {
     return trimmed.slice(0, roleNameLimit);
@@ -208,7 +209,7 @@ const roleNameExists = (
   });
 };
 
-const buildUniqueCourseRoleName = (
+export const buildUniqueCourseRoleName = (
   baseName: string,
   courseId: string,
   roles: DiscordRole[],
@@ -232,12 +233,12 @@ const buildUniqueCourseRoleName = (
   return `${normalizedBase.slice(0, roleNameLimit - 4)}-alt`;
 };
 
-const getCourseTopicMarker = (courseId: string, flags: string = "") => {
+export const getCourseTopicMarker = (courseId: string, flags: string = "") => {
   const suffix = flags ? `|${flags}` : "";
   return `${courseTopicPrefix}${courseId}${suffix}`;
 };
 
-const readCourseIdFromTopic = (topic?: string | null) => {
+export const readCourseIdFromTopic = (topic?: string | null) => {
   const value = String(topic ?? "").trim();
   if (!value.startsWith(courseTopicPrefix)) {
     return { id: "", flags: "" };
@@ -247,7 +248,7 @@ const readCourseIdFromTopic = (topic?: string | null) => {
   return { id: id ?? "", flags: flags ?? "" };
 };
 
-const getCourseEndedAtMs = (course: CourseRow) => {
+export const getCourseEndedAtMs = (course: CourseRow) => {
   if (course.is_completed) {
     return 0;
   }
@@ -902,7 +903,7 @@ const sortOverwriteKeys = (overwrites: DiscordPermissionOverwrite[] | undefined)
     )
     .sort();
 
-const areOverwritesEqual = (
+export const areOverwritesEqual = (
   current: DiscordPermissionOverwrite[] | undefined,
   expected: DiscordPermissionOverwrite[] | undefined
 ) => {
@@ -1133,17 +1134,38 @@ class DiscordApiClient {
   }
 }
 
+let cachedGuildMemberIds: {
+  guildId: string;
+  ids: Set<string>;
+  fetchedAtMs: number;
+} | null = null;
+
 /**
  * Returns the set of Discord user IDs that are currently members of the guild,
  * or null when Discord is not configured or the lookup fails. Used to tell whether
  * a website user who connected their Discord account has actually joined the server.
+ *
+ * The lookup pages through every guild member with sequential rate-limited
+ * Discord REST calls, so callers that tolerate slightly stale data can pass
+ * maxAgeMs to reuse the last successful result within that window.
  */
-export const fetchDiscordGuildMemberIds = async (): Promise<Set<string> | null> => {
+export const fetchDiscordGuildMemberIds = async (options?: {
+  maxAgeMs?: number;
+}): Promise<Set<string> | null> => {
   const discordBotToken = String(process.env.DISCORD_BOT_TOKEN ?? "").trim();
   const discordGuildId = String(process.env.DISCORD_GUILD_ID ?? "").trim();
 
   if (!discordBotToken || !discordGuildId) {
     return null;
+  }
+
+  const maxAgeMs = options?.maxAgeMs ?? 0;
+  if (
+    cachedGuildMemberIds &&
+    cachedGuildMemberIds.guildId === discordGuildId &&
+    Date.now() - cachedGuildMemberIds.fetchedAtMs < maxAgeMs
+  ) {
+    return cachedGuildMemberIds.ids;
   }
 
   try {
@@ -1156,6 +1178,11 @@ export const fetchDiscordGuildMemberIds = async (): Promise<Set<string> | null> 
         memberIds.add(memberId);
       }
     }
+    cachedGuildMemberIds = {
+      guildId: discordGuildId,
+      ids: memberIds,
+      fetchedAtMs: Date.now(),
+    };
     return memberIds;
   } catch {
     return null;
