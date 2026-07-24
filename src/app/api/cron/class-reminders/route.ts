@@ -6,6 +6,12 @@ import {
   normalizeVoiceChannelName,
 } from "@/lib/discordLiveChannels";
 import { formatDiscordTimestampWithRelative } from "@/lib/discordTimestamp";
+import {
+  floorToMinuteBoundary,
+  getReminderWindow,
+  reminderTargets,
+  type ReminderType,
+} from "@/lib/reminderSchedule";
 import { runGithubSync, type GithubSyncResult } from "@/lib/githubSync";
 import { fetchFundraisingRaisedAmount } from "@/lib/fundraising";
 import {
@@ -34,59 +40,6 @@ const defaultLiveCategoryName = "Live";
 const torontoTimeZone = "America/Toronto";
 const defaultZoomId = "822 9677 5321";
 const defaultZoomPassword = "youth";
-type ReminderType =
-  | "twenty_four_hours"
-  | "six_hours"
-  | "one_hour"
-  | "fifteen_minutes"
-  | "ten_minutes"
-  | "five_minutes";
-
-type ReminderTarget = {
-  type: ReminderType;
-  minutesBeforeStart: number;
-  label: string;
-  lowerBoundDriftMinutes: number;
-};
-
-const reminderTargets: ReminderTarget[] = [
-  {
-    type: "twenty_four_hours",
-    minutesBeforeStart: 24 * 60,
-    label: "24 hours",
-    lowerBoundDriftMinutes: 0,
-  },
-  {
-    type: "six_hours",
-    minutesBeforeStart: 6 * 60,
-    label: "6 hours",
-    lowerBoundDriftMinutes: 0,
-  },
-  {
-    type: "one_hour",
-    minutesBeforeStart: 60,
-    label: "1 hour",
-    lowerBoundDriftMinutes: 0,
-  },
-  {
-    type: "fifteen_minutes",
-    minutesBeforeStart: 15,
-    label: "15 minutes",
-    lowerBoundDriftMinutes: 0,
-  },
-  {
-    type: "ten_minutes",
-    minutesBeforeStart: 10,
-    label: "10 minutes",
-    lowerBoundDriftMinutes: 0,
-  },
-  {
-    type: "five_minutes",
-    minutesBeforeStart: 5,
-    label: "5 minutes",
-    lowerBoundDriftMinutes: 0,
-  },
-];
 
 type CourseRow = {
   id: string;
@@ -211,12 +164,6 @@ const buildFirstClassDateMap = async (
   }
 
   return map;
-};
-
-const floorToMinuteBoundary = (value: Date) => {
-  const rounded = new Date(value.getTime());
-  rounded.setSeconds(0, 0);
-  return rounded;
 };
 
 const formatTorontoDateTime = (value: string) =>
@@ -820,15 +767,7 @@ export async function POST(request: NextRequest) {
   let candidates: CandidateReminder[] = [];
 
   for (const target of reminderTargets) {
-    const targetTime = new Date(
-      base.getTime() + target.minutesBeforeStart * 60 * 1000
-    );
-    // GitHub cron can drift a few minutes. We include a small catch-up window
-    // and rely on dedupe logs to prevent duplicate sends.
-    const windowStart = new Date(
-      targetTime.getTime() - target.lowerBoundDriftMinutes * 60 * 1000
-    );
-    const windowEnd = new Date(targetTime.getTime() + 1 * 60 * 1000);
+    const { windowStart, windowEnd } = getReminderWindow(base, target);
 
     const { data: classes, error: classError } = await adminClient
       .from("course_classes")
