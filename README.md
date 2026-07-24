@@ -1,36 +1,47 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# YanLearn
 
-## Getting Started
+Free online tutoring platform for students in grades 6–12, run by high school
+students — live at [learn.ethanyanxu.com](https://learn.ethanyanxu.com).
+Classes are taught over Discord; the website handles accounts, courses,
+enrollments, scheduling, reminders, and admin tooling.
 
-First, run the development server:
+## Stack
+
+- **Next.js (App Router)** on Vercel — note `vercel.json` disables git
+  auto-deploy; deploys are triggered manually.
+- **Supabase (Postgres)** — all tables are RLS-locked with deny-all policies;
+  access is service-role only through the API routes.
+- **Discord bot integration** — `src/lib/discordSync.ts` continuously
+  reconciles the Discord server (membership, roles, channels, nicknames)
+  against website data, and the class-reminders cron creates temporary live
+  class voice channels and sends reminders.
+
+## Development
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm ci --allow-remote=all   # xlsx is a remote tarball
+npm run dev                 # needs .env.local (Supabase + Discord credentials)
+npm test                    # vitest unit tests for pure logic in src/lib/
+./node_modules/.bin/tsc --noEmit
+./node_modules/.bin/eslint src
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+The build runs `scripts/generate-commits.js` first (creates
+`src/generated/commits.json`, which the typecheck also needs).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+The class-reminders tick is invoked externally with a `CRON_SECRET` bearer —
+see the `cron:reminders:*` npm scripts.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Documentation
 
-## Learn More
+- `CLAUDE.md` — architecture map and conventions.
+- Feature/ops docs are root-level markdown files, e.g.
+  `DISCORD_APPROVED_ACCOUNTS.md`, `ZOOM_INTEGRATION.md`,
+  `ZOOM_CRON_SETUP.md`.
+- Migrations live in `supabase/migrations/` and must be applied to Supabase
+  before deploying code that references the new schema.
 
-To learn more about Next.js, take a look at the following resources:
+## Fundraising
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+The "Coding for SickKids" campaign donates directly to hospitals through the
+SickKids Foundation platform — see the site's home page for the live total.

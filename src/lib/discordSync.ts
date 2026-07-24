@@ -58,6 +58,7 @@ type CourseRow = {
   title: string;
   is_completed: boolean;
   created_by: string | null;
+  co_tutor_id?: string | null;
   created_by_name?: string | null;
   created_by_email?: string | null;
   created_at?: string | null;
@@ -1440,7 +1441,7 @@ export const runDiscordSync = async ({
         .not("email_verified_at", "is", null),
       adminClient
         .from("courses")
-        .select("id, title, is_completed, created_by, created_by_name, created_by_email, created_at, course_classes(starts_at, duration_hours)")
+        .select("id, title, is_completed, created_by, co_tutor_id, created_by_name, created_by_email, created_at, course_classes(starts_at, duration_hours)")
         .is("deleted_at", null),
       adminClient
         .from("course_enrollments")
@@ -1669,7 +1670,51 @@ export const runDiscordSync = async ({
   };
 
   const customRoleIds = new Set<string>();
-  const chiefExecutiveCustomRoleIds = new Set<string>();
+
+  const isCustomOrgRoleName = (name: string) => {
+    const lowerName = name.trim().toLowerCase();
+    const isOrgRole = ["ceo", "coo", "executive", "founder", "student", "tutor", "team", "media", "strike"].some(
+      (keyword) => lowerName.includes(keyword)
+    );
+    const isActuallyCourseRole = !isOrgRole || websiteCourses.some((course) => {
+      const baseName = normalizeRoleName(course.title, course.id);
+      return lowerName === baseName.trim().toLowerCase();
+    });
+    return !isActuallyCourseRole;
+  };
+
+  // Resolve every linked member's custom roles into customRoleIds BEFORE the
+  // per-member pass. The removal branch below needs the complete set: when it
+  // was built incrementally inside the same loop, a role revoked from a member
+  // processed before the remaining holders was never removed. Only existing
+  // guild roles matter here (a role that doesn't exist can't be held); role
+  // creation still happens in the per-member pass.
+  for (const member of humanMembers) {
+    const memberId = member.user?.id ?? "";
+    if (!memberId || !websiteMemberIds.has(memberId)) {
+      continue;
+    }
+    const websiteUser = websiteUserByDiscordMemberId.get(memberId);
+    if (!websiteUser) {
+      continue;
+    }
+    const userCustomRoles = Array.isArray(websiteUser.custom_roles)
+      ? websiteUser.custom_roles
+      : [websiteUser.custom_roles].filter(Boolean);
+    for (const r of userCustomRoles) {
+      if (!r?.name) {
+        continue;
+      }
+      if (r.role_level !== "Chief Executive" && !isCustomOrgRoleName(r.name)) {
+        continue;
+      }
+      const existing = findRoleByName(mutableRoles, r.name.trim());
+      if (existing) {
+        customRoleIds.add(existing.id);
+      }
+    }
+  }
+
   for (const member of humanMembers) {
     const memberId = member.user?.id ?? "";
     if (!memberId || !websiteMemberIds.has(memberId)) {
@@ -1693,7 +1738,6 @@ export const runDiscordSync = async ({
         const customRole = await ensureRole(r.name.trim(), false);
         requiredBaseRoleIds.add(customRole.id);
         customRoleIds.add(customRole.id);
-        chiefExecutiveCustomRoleIds.add(customRole.id);
       }
     }
 
@@ -1723,17 +1767,7 @@ export const runDiscordSync = async ({
     }
 
     for (const name of customRoleNames) {
-      const lowerName = name.trim().toLowerCase();
-      const isOrgRole = ["ceo", "coo", "executive", "founder", "student", "tutor", "team", "media", "strike"].some(
-        (keyword) => lowerName.includes(keyword)
-      );
-
-      const isActuallyCourseRole = !isOrgRole || websiteCourses.some((course) => {
-        const baseName = normalizeRoleName(course.title, course.id);
-        return lowerName === baseName.trim().toLowerCase();
-      });
-
-      if (isActuallyCourseRole) {
+      if (!isCustomOrgRoleName(name)) {
         continue;
       }
 
@@ -1748,7 +1782,10 @@ export const runDiscordSync = async ({
     ];
 
     const isExecTier = [ceoRole.id, cooRole.id, chiefExecutiveRole.id, executiveRole.id, juniorExecutiveRole.id].some(id => requiredBaseRoleIds.has(id));
-    const expectedNick = primaryHierarchyRoleId !== studentRole.id ? null : (websiteUser.full_name || null);
+    // Discord caps server nicknames at 32 characters; compare the clamped
+    // value so over-long names don't fail (and retry) on every run.
+    const rawExpectedNick = primaryHierarchyRoleId !== studentRole.id ? null : (websiteUser.full_name || null);
+    const expectedNick = rawExpectedNick ? rawExpectedNick.slice(0, 32) : null;
 
     if (expectedNick !== (member.nick ?? null)) {
       try {
@@ -1776,7 +1813,10 @@ export const runDiscordSync = async ({
       }
     }
 
-    for (const rId of chiefExecutiveCustomRoleIds) {
+    // Covers Chief Executive custom roles and every other website-managed
+    // custom role: anything in the (complete) set the member holds but no
+    // longer requires was revoked on the website.
+    for (const rId of customRoleIds) {
       if (!requiredBaseRoleIds.has(rId) && roleSet.has(rId)) {
         await addRoleToMember(memberId, rId, roleSet, "baseRoleRemovedCount", true);
       }
@@ -2155,6 +2195,13 @@ export const runDiscordSync = async ({
     const tutorId = String(course.created_by ?? "").trim();
     if (tutorId) {
       addExpectedWebsiteUser(tutorId);
+    }
+
+    // Co-tutors teach the course too but are not enrolled as students, so they
+    // need the course role through the same path as the primary tutor.
+    const coTutorId = String(course.co_tutor_id ?? "").trim();
+    if (coTutorId) {
+      addExpectedWebsiteUser(coTutorId);
     }
 
     for (const studentId of enrollmentsByCourseId.get(course.id) ?? []) {

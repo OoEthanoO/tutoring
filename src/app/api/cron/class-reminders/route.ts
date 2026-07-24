@@ -8,6 +8,7 @@ import {
 import { formatDiscordTimestampWithRelative } from "@/lib/discordTimestamp";
 import {
   floorToMinuteBoundary,
+  formatOrdinalClass,
   getReminderWindow,
   reminderTargets,
   type ReminderType,
@@ -106,18 +107,6 @@ const escapeHtml = (value: string) =>
     .replaceAll("'", "&#39;");
 
 const escapeDiscordText = (value: string) => value.replaceAll("@", "@\u200b");
-
-const formatOrdinalClass = (title: string) => {
-  const match = title.match(/^Class\s+(\d+)$/i);
-  if (!match) return title;
-  const num = parseInt(match[1], 10);
-  const j = num % 10;
-  const k = num % 100;
-  if (j === 1 && k !== 11) return `${num}st class`;
-  if (j === 2 && k !== 12) return `${num}nd class`;
-  if (j === 3 && k !== 13) return `${num}rd class`;
-  return `${num}th class`;
-};
 
 const readCourse = (value: ClassRow["course"]): CourseRow | null => {
   if (Array.isArray(value)) {
@@ -1158,49 +1147,56 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // Never throws: a Discord failure here must degrade to "no live category"
+  // (callers already handle null) rather than aborting the whole tick and
+  // dropping every remaining reminder for the minute.
   const ensureLiveCategory = async (): Promise<string | null> => {
     if (!discordRemindersEnabled || discordReminderSkippedReason || !discordGuildId) {
       return null;
     }
 
-    let liveCategory = guildChannels.find(
-      (ch) => ch.type === discordCategoryChannelType && ch.name === defaultLiveCategoryName
-    );
+    try {
+      let liveCategory = guildChannels.find(
+        (ch) => ch.type === discordCategoryChannelType && ch.name === defaultLiveCategoryName
+      );
 
-    if (!liveCategory) {
-      liveCategory = await createDiscordGuildChannel(discordGuildId, {
-        name: defaultLiveCategoryName,
-        type: discordCategoryChannelType,
-      });
-      guildChannels.push(liveCategory);
+      if (!liveCategory) {
+        liveCategory = await createDiscordGuildChannel(discordGuildId, {
+          name: defaultLiveCategoryName,
+          type: discordCategoryChannelType,
+        });
+        guildChannels.push(liveCategory);
+      }
+
+      const textCategory = guildChannels.find(
+        (ch) => ch.type === discordCategoryChannelType && ch.name === defaultTextCategoryName
+      );
+
+      const topLevelChannels = guildChannels
+        .filter((ch) => !ch.parent_id)
+        .sort((left, right) => {
+          const positionDiff = Number(left.position ?? 0) - Number(right.position ?? 0);
+          return positionDiff || left.id.localeCompare(right.id);
+        });
+      const liveIndex = topLevelChannels.findIndex((ch) => ch.id === liveCategory.id);
+      const textIndex = textCategory
+        ? topLevelChannels.findIndex((ch) => ch.id === textCategory.id)
+        : -1;
+      const isLiveDirectlyAboveText = liveIndex >= 0 && textIndex >= 0 && liveIndex + 1 === textIndex;
+
+      if (textCategory && !isLiveDirectlyAboveText) {
+        const textPos = Number(textCategory.position ?? 1);
+        await reorderDiscordChannels(discordGuildId, [
+          { id: liveCategory.id, position: Math.max(0, textPos) },
+          { id: textCategory.id, position: Math.max(1, textPos + 1) },
+        ]);
+        guildChannels = await listDiscordGuildChannels(discordGuildId);
+      }
+
+      return liveCategory.id;
+    } catch {
+      return null;
     }
-
-    const textCategory = guildChannels.find(
-      (ch) => ch.type === discordCategoryChannelType && ch.name === defaultTextCategoryName
-    );
-
-    const topLevelChannels = guildChannels
-      .filter((ch) => !ch.parent_id)
-      .sort((left, right) => {
-        const positionDiff = Number(left.position ?? 0) - Number(right.position ?? 0);
-        return positionDiff || left.id.localeCompare(right.id);
-      });
-    const liveIndex = topLevelChannels.findIndex((ch) => ch.id === liveCategory.id);
-    const textIndex = textCategory
-      ? topLevelChannels.findIndex((ch) => ch.id === textCategory.id)
-      : -1;
-    const isLiveDirectlyAboveText = liveIndex >= 0 && textIndex >= 0 && liveIndex + 1 === textIndex;
-
-    if (textCategory && !isLiveDirectlyAboveText) {
-      const textPos = Number(textCategory.position ?? 1);
-      await reorderDiscordChannels(discordGuildId, [
-        { id: liveCategory.id, position: Math.max(0, textPos) },
-        { id: textCategory.id, position: Math.max(1, textPos + 1) },
-      ]);
-      guildChannels = await listDiscordGuildChannels(discordGuildId);
-    }
-
-    return liveCategory.id;
   };
 
   if (discordRemindersEnabled && !discordReminderSkippedReason && discordGuildId) {
@@ -1231,14 +1227,70 @@ export async function POST(request: NextRequest) {
 
       try {
         await deleteDiscordChannel(String(liveChannel.discord_channel_id));
-      } catch {
-        // Channel may already be gone; mark as deleted regardless.
+      } catch (error) {
+        // "Unknown Channel" means it is already gone — safe to mark deleted.
+        // Any other failure (rate limit, outage) leaves the row active so the
+        // next tick retries instead of silently leaking the channel.
+        const message = error instanceof Error ? error.message.toLowerCase() : "";
+        if (!message.includes("unknown channel")) {
+          continue;
+        }
       }
 
       await adminClient
         .from("discord_live_class_channels")
         .update({ deleted_at: new Date().toISOString() })
         .eq("id", String(liveChannel.id));
+    }
+
+    // Orphan sweep: hard-deleting a class cascades away its
+    // discord_live_class_channels row, leaving its voice channel with no
+    // record that any cleanup path would ever visit. Remove voice channels
+    // under "Live" that no in-window or active row references and that are
+    // old enough (channel ids are snowflakes carrying a creation timestamp)
+    // to rule out an in-flight creation.
+    try {
+      const liveCategory = guildChannels.find(
+        (ch) =>
+          ch.type === discordCategoryChannelType &&
+          ch.name === defaultLiveCategoryName
+      );
+      if (liveCategory) {
+        const referencedChannelIds = new Set(
+          (activeLiveChannels ?? []).map((row) => String(row.discord_channel_id))
+        );
+        const { data: inWindowRows } = await adminClient
+          .from("discord_live_class_channels")
+          .select("discord_channel_id")
+          .gt("ends_at", new Date().toISOString());
+        for (const row of inWindowRows ?? []) {
+          referencedChannelIds.add(String(row.discord_channel_id));
+        }
+
+        const discordEpochMs = 1420070400000;
+        const minOrphanAgeMs = 10 * 60 * 1000;
+        for (const channel of guildChannels) {
+          if (
+            channel.type !== discordVoiceChannelType ||
+            channel.parent_id !== liveCategory.id ||
+            referencedChannelIds.has(channel.id)
+          ) {
+            continue;
+          }
+          const createdAtMs =
+            Number(BigInt(channel.id) >> BigInt(22)) + discordEpochMs;
+          if (Date.now() - createdAtMs < minOrphanAgeMs) {
+            continue;
+          }
+          try {
+            await deleteDiscordChannel(channel.id);
+          } catch {
+            // Retried on the next tick.
+          }
+        }
+      }
+    } catch {
+      // The sweep is best-effort and must never break the tick.
     }
   }
 
@@ -1984,82 +2036,91 @@ ${tutorWasPresent ? "" : "<p><strong>Note:</strong> you were not detected in the
 
       if (isTutorEarlyAccessReminder) {
         if (discordRemindersEnabled && !discordReminderSkippedReason && discordGuildId && botUserId) {
-          const tutorDiscordIdForChannel = course.created_by
-            ? tutorDiscordIdById.get(course.created_by) ?? ""
-            : "";
-          if (tutorDiscordIdForChannel) {
-            const liveCategoryId = await ensureLiveCategory();
-            if (liveCategoryId) {
-              const { data: existingLiveRow } = await adminClient
-                .from("discord_live_class_channels")
-                .select("id, discord_channel_id, deleted_at")
-                .eq("class_id", classRow.id)
-                .single();
+          try {
+            const tutorDiscordIdForChannel = course.created_by
+              ? tutorDiscordIdById.get(course.created_by) ?? ""
+              : "";
+            if (tutorDiscordIdForChannel) {
+              const liveCategoryId = await ensureLiveCategory();
+              if (liveCategoryId) {
+                const { data: existingLiveRow } = await adminClient
+                  .from("discord_live_class_channels")
+                  .select("id, discord_channel_id, deleted_at")
+                  .eq("class_id", classRow.id)
+                  .single();
 
-              let liveChannelId = "";
-              if (existingLiveRow && !existingLiveRow.deleted_at) {
-                liveChannelId = String(existingLiveRow.discord_channel_id ?? "").trim();
-              }
+                let liveChannelId = "";
+                if (existingLiveRow && !existingLiveRow.deleted_at) {
+                  liveChannelId = String(existingLiveRow.discord_channel_id ?? "").trim();
+                }
 
-              const existingChannel = liveChannelId
-                ? guildChannels.find((ch) => ch.id === liveChannelId)
-                : null;
+                const existingChannel = liveChannelId
+                  ? guildChannels.find((ch) => ch.id === liveChannelId)
+                  : null;
 
-              if (!existingChannel) {
-                const permissionOverwrites = buildLiveVoicePermissionOverwrites({
-                  guildId: discordGuildId,
-                  botUserId,
-                  ceoRoleId,
-                  cooRoleId,
-                  tutorDiscordUserId: tutorDiscordIdForChannel,
-                  extraMemberDiscordUserIds:
-                    approvedExtraIdsByOwnerDiscordId.get(tutorDiscordIdForChannel) ?? [],
-                  courseRoleId: null,
-                });
-                const createdVoiceChannel = await createDiscordGuildChannel(discordGuildId, {
-                  name: normalizeVoiceChannelName(courseTitleRaw, classRow.id),
-                  type: discordVoiceChannelType,
-                  parent_id: liveCategoryId,
-                  permission_overwrites: permissionOverwrites,
-                });
-                guildChannels.push(createdVoiceChannel);
-                liveChannelId = createdVoiceChannel.id;
+                if (!existingChannel) {
+                  const permissionOverwrites = buildLiveVoicePermissionOverwrites({
+                    guildId: discordGuildId,
+                    botUserId,
+                    ceoRoleId,
+                    cooRoleId,
+                    tutorDiscordUserId: tutorDiscordIdForChannel,
+                    extraMemberDiscordUserIds:
+                      approvedExtraIdsByOwnerDiscordId.get(tutorDiscordIdForChannel) ?? [],
+                    courseRoleId: null,
+                  });
+                  const createdVoiceChannel = await createDiscordGuildChannel(discordGuildId, {
+                    name: normalizeVoiceChannelName(courseTitleRaw, classRow.id),
+                    type: discordVoiceChannelType,
+                    parent_id: liveCategoryId,
+                    permission_overwrites: permissionOverwrites,
+                  });
+                  guildChannels.push(createdVoiceChannel);
+                  liveChannelId = createdVoiceChannel.id;
 
-                const startsAtMs = new Date(classRow.starts_at).getTime();
-                const durationHoursRaw =
-                  typeof classRow.duration_hours === "number"
-                    ? classRow.duration_hours
-                    : Number.parseFloat(String(classRow.duration_hours || 1));
-                const durationHours = Number.isFinite(durationHoursRaw) ? durationHoursRaw : 1;
-                const endsAt = new Date(startsAtMs + durationHours * 60 * 60 * 1000);
+                  const startsAtMs = new Date(classRow.starts_at).getTime();
+                  const durationHoursRaw =
+                    typeof classRow.duration_hours === "number"
+                      ? classRow.duration_hours
+                      : Number.parseFloat(String(classRow.duration_hours || 1));
+                  const durationHours = Number.isFinite(durationHoursRaw) ? durationHoursRaw : 1;
+                  const endsAt = new Date(startsAtMs + durationHours * 60 * 60 * 1000);
 
-                if (existingLiveRow) {
-                  await adminClient
-                    .from("discord_live_class_channels")
-                    .update({
+                  if (existingLiveRow) {
+                    await adminClient
+                      .from("discord_live_class_channels")
+                      .update({
+                        discord_channel_id: liveChannelId,
+                        tutor_discord_user_id: tutorDiscordIdForChannel,
+                        starts_at: classRow.starts_at,
+                        ends_at: endsAt.toISOString(),
+                        deleted_at: null,
+                      })
+                      .eq("id", existingLiveRow.id);
+                  } else {
+                    await adminClient.from("discord_live_class_channels").insert({
+                      class_id: classRow.id,
+                      course_id: classRow.course_id,
                       discord_channel_id: liveChannelId,
                       tutor_discord_user_id: tutorDiscordIdForChannel,
                       starts_at: classRow.starts_at,
                       ends_at: endsAt.toISOString(),
-                      deleted_at: null,
-                    })
-                    .eq("id", existingLiveRow.id);
-                } else {
-                  await adminClient.from("discord_live_class_channels").insert({
-                    class_id: classRow.id,
-                    course_id: classRow.course_id,
-                    discord_channel_id: liveChannelId,
-                    tutor_discord_user_id: tutorDiscordIdForChannel,
-                    starts_at: classRow.starts_at,
-                    ends_at: endsAt.toISOString(),
-                  });
+                    });
+                  }
+                }
+
+                if (liveChannelId) {
+                  voiceChannelLinkForTutor = `https://discord.com/channels/${discordGuildId}/${liveChannelId}`;
                 }
               }
-
-              if (liveChannelId) {
-                voiceChannelLinkForTutor = `https://discord.com/channels/${discordGuildId}/${liveChannelId}`;
-              }
             }
+          } catch (error) {
+            failedClasses.push({
+              classId: classRow.id,
+              reason: `Failed to prepare the live voice channel for tutor early access: ${
+                error instanceof Error ? error.message : "Unknown Discord error."
+              }`,
+            });
           }
         }
 
@@ -2149,107 +2210,116 @@ ${tutorWasPresent ? "" : "<p><strong>Note:</strong> you were not detected in the
           let voiceChannelLink = "";
 
           if (discordRemindersEnabled && !discordReminderSkippedReason && discordGuildId) {
-            const { data: existingLiveRow } = await adminClient
-              .from("discord_live_class_channels")
-              .select("id, discord_channel_id, deleted_at")
-              .eq("class_id", classRow.id)
-              .single();
+            try {
+              const { data: existingLiveRow } = await adminClient
+                .from("discord_live_class_channels")
+                .select("id, discord_channel_id, deleted_at")
+                .eq("class_id", classRow.id)
+                .single();
 
-            let liveChannelId = "";
-            let channelFoundInDb = false;
-            if (existingLiveRow && !existingLiveRow.deleted_at) {
-              const recordedChannelId = String(existingLiveRow.discord_channel_id ?? "").trim();
-              // Only reuse the recorded channel if it still exists in the guild. If it
-              // was removed (e.g. deleted while the server was in a bad state), fall
-              // through to recreate it below instead of pointing at a dead channel.
-              if (recordedChannelId && guildChannels.some((ch) => ch.id === recordedChannelId)) {
-                liveChannelId = recordedChannelId;
-                channelFoundInDb = true;
+              let liveChannelId = "";
+              let channelFoundInDb = false;
+              if (existingLiveRow && !existingLiveRow.deleted_at) {
+                const recordedChannelId = String(existingLiveRow.discord_channel_id ?? "").trim();
+                // Only reuse the recorded channel if it still exists in the guild. If it
+                // was removed (e.g. deleted while the server was in a bad state), fall
+                // through to recreate it below instead of pointing at a dead channel.
+                if (recordedChannelId && guildChannels.some((ch) => ch.id === recordedChannelId)) {
+                  liveChannelId = recordedChannelId;
+                  channelFoundInDb = true;
+                }
               }
-            }
 
-            if (!liveChannelId && botUserId) {
-              const tutorDiscordIdForFallback = course.created_by
-                ? tutorDiscordIdById.get(course.created_by) ?? ""
-                : "";
-              if (tutorDiscordIdForFallback) {
-                const liveCategoryId = await ensureLiveCategory();
-                if (liveCategoryId) {
-                  const permissionOverwrites = buildLiveVoicePermissionOverwrites({
-                    guildId: discordGuildId,
-                    botUserId,
-                    ceoRoleId,
-                    cooRoleId,
-                    tutorDiscordUserId: tutorDiscordIdForFallback,
-                    extraMemberDiscordUserIds:
-                      approvedExtraIdsByOwnerDiscordId.get(tutorDiscordIdForFallback) ?? [],
-                    courseRoleId:
-                      discordCourseTargetByCourseId.get(classRow.course_id)?.roleId ?? null,
-                  });
-                  const createdVoiceChannel = await createDiscordGuildChannel(discordGuildId, {
-                    name: normalizeVoiceChannelName(courseTitleRaw, classRow.id),
-                    type: discordVoiceChannelType,
-                    parent_id: liveCategoryId,
-                    permission_overwrites: permissionOverwrites,
-                  });
-                  guildChannels.push(createdVoiceChannel);
-                  liveChannelId = createdVoiceChannel.id;
-                  const startsAtMs = new Date(classRow.starts_at).getTime();
-                  const durationHoursRaw =
-                    typeof classRow.duration_hours === "number"
-                      ? classRow.duration_hours
-                      : Number.parseFloat(String(classRow.duration_hours || 1));
-                  const durationHours = Number.isFinite(durationHoursRaw) ? durationHoursRaw : 1;
-                  const endsAt = new Date(startsAtMs + durationHours * 60 * 60 * 1000);
-                  if (existingLiveRow) {
-                    await adminClient
-                      .from("discord_live_class_channels")
-                      .update({
+              if (!liveChannelId && botUserId) {
+                const tutorDiscordIdForFallback = course.created_by
+                  ? tutorDiscordIdById.get(course.created_by) ?? ""
+                  : "";
+                if (tutorDiscordIdForFallback) {
+                  const liveCategoryId = await ensureLiveCategory();
+                  if (liveCategoryId) {
+                    const permissionOverwrites = buildLiveVoicePermissionOverwrites({
+                      guildId: discordGuildId,
+                      botUserId,
+                      ceoRoleId,
+                      cooRoleId,
+                      tutorDiscordUserId: tutorDiscordIdForFallback,
+                      extraMemberDiscordUserIds:
+                        approvedExtraIdsByOwnerDiscordId.get(tutorDiscordIdForFallback) ?? [],
+                      courseRoleId:
+                        discordCourseTargetByCourseId.get(classRow.course_id)?.roleId ?? null,
+                    });
+                    const createdVoiceChannel = await createDiscordGuildChannel(discordGuildId, {
+                      name: normalizeVoiceChannelName(courseTitleRaw, classRow.id),
+                      type: discordVoiceChannelType,
+                      parent_id: liveCategoryId,
+                      permission_overwrites: permissionOverwrites,
+                    });
+                    guildChannels.push(createdVoiceChannel);
+                    liveChannelId = createdVoiceChannel.id;
+                    const startsAtMs = new Date(classRow.starts_at).getTime();
+                    const durationHoursRaw =
+                      typeof classRow.duration_hours === "number"
+                        ? classRow.duration_hours
+                        : Number.parseFloat(String(classRow.duration_hours || 1));
+                    const durationHours = Number.isFinite(durationHoursRaw) ? durationHoursRaw : 1;
+                    const endsAt = new Date(startsAtMs + durationHours * 60 * 60 * 1000);
+                    if (existingLiveRow) {
+                      await adminClient
+                        .from("discord_live_class_channels")
+                        .update({
+                          discord_channel_id: liveChannelId,
+                          tutor_discord_user_id: tutorDiscordIdForFallback,
+                          starts_at: classRow.starts_at,
+                          ends_at: endsAt.toISOString(),
+                          deleted_at: null,
+                        })
+                        .eq("id", existingLiveRow.id);
+                    } else {
+                      await adminClient.from("discord_live_class_channels").insert({
+                        class_id: classRow.id,
+                        course_id: classRow.course_id,
                         discord_channel_id: liveChannelId,
                         tutor_discord_user_id: tutorDiscordIdForFallback,
                         starts_at: classRow.starts_at,
                         ends_at: endsAt.toISOString(),
-                        deleted_at: null,
-                      })
-                      .eq("id", existingLiveRow.id);
-                  } else {
-                    await adminClient.from("discord_live_class_channels").insert({
-                      class_id: classRow.id,
-                      course_id: classRow.course_id,
-                      discord_channel_id: liveChannelId,
-                      tutor_discord_user_id: tutorDiscordIdForFallback,
-                      starts_at: classRow.starts_at,
-                      ends_at: endsAt.toISOString(),
-                    });
+                      });
+                    }
                   }
                 }
               }
-            }
 
-            if (liveChannelId && channelFoundInDb && botUserId) {
-              const tutorDiscordIdForUpdate = course.created_by
-                ? tutorDiscordIdById.get(course.created_by) ?? ""
-                : "";
-              if (tutorDiscordIdForUpdate) {
-                const fullPermissionOverwrites = buildLiveVoicePermissionOverwrites({
-                  guildId: discordGuildId,
-                  botUserId,
-                  ceoRoleId,
-                  cooRoleId,
-                  tutorDiscordUserId: tutorDiscordIdForUpdate,
-                  extraMemberDiscordUserIds:
-                    approvedExtraIdsByOwnerDiscordId.get(tutorDiscordIdForUpdate) ?? [],
-                  courseRoleId:
-                    discordCourseTargetByCourseId.get(classRow.course_id)?.roleId ?? null,
-                });
-                await updateDiscordChannel(liveChannelId, {
-                  permission_overwrites: fullPermissionOverwrites,
-                });
+              if (liveChannelId && channelFoundInDb && botUserId) {
+                const tutorDiscordIdForUpdate = course.created_by
+                  ? tutorDiscordIdById.get(course.created_by) ?? ""
+                  : "";
+                if (tutorDiscordIdForUpdate) {
+                  const fullPermissionOverwrites = buildLiveVoicePermissionOverwrites({
+                    guildId: discordGuildId,
+                    botUserId,
+                    ceoRoleId,
+                    cooRoleId,
+                    tutorDiscordUserId: tutorDiscordIdForUpdate,
+                    extraMemberDiscordUserIds:
+                      approvedExtraIdsByOwnerDiscordId.get(tutorDiscordIdForUpdate) ?? [],
+                    courseRoleId:
+                      discordCourseTargetByCourseId.get(classRow.course_id)?.roleId ?? null,
+                  });
+                  await updateDiscordChannel(liveChannelId, {
+                    permission_overwrites: fullPermissionOverwrites,
+                  });
+                }
               }
-            }
 
-            if (liveChannelId) {
-              voiceChannelLink = `https://discord.com/channels/${discordGuildId}/${liveChannelId}`;
+              if (liveChannelId) {
+                voiceChannelLink = `https://discord.com/channels/${discordGuildId}/${liveChannelId}`;
+              }
+            } catch (error) {
+              failedClasses.push({
+                classId: classRow.id,
+                reason: `Failed to prepare the live voice channel for the 5-minute reminder: ${
+                  error instanceof Error ? error.message : "Unknown Discord error."
+                }`,
+              });
             }
           }
 
