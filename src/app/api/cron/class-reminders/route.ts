@@ -22,6 +22,7 @@ import {
   type UserRole,
 } from "@/lib/roles";
 import { deleteZoomMeeting } from "@/lib/zoom";
+import { sendBccEmail } from "@/lib/notificationsServer";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
@@ -1827,27 +1828,42 @@ export async function POST(request: NextRequest) {
           }
         };
 
-        for (const student of absent) {
-          const sent = await trySend(
-            student.email,
-            `We missed you in class today (${courseTitleRaw})`,
-            `<p>Hi there,</p>
+        // One BCC'd email per group instead of one send per student — the
+        // content is identical for every student in a group.
+        const trySendGroup = async (
+          emails: string[],
+          groupSubject: string,
+          groupHtml: string
+        ) => {
+          if (emails.length === 0) {
+            return 0;
+          }
+          attemptedSends += emails.length;
+          const { sentCount, failed } = await sendBccEmail(
+            emails,
+            groupSubject,
+            groupHtml
+          );
+          successfulSends += sentCount;
+          failedRecipients.push(...failed);
+          return sentCount;
+        };
+
+        absenceFollowUps.absentEmails += await trySendGroup(
+          absent.map((student) => student.email),
+          `We missed you in class today (${courseTitleRaw})`,
+          `<p>Hi there,</p>
 <p>Our attendance system didn't detect you in the Discord voice channel for your class:</p>
 ${classDetailsHtml}
 <p>We understand things come up. To catch up on what was covered, please reach out to your tutor, <strong>${tutorName}</strong>.</p>
 <p>If you did attend and believe this is an error, please contact your tutor so we can look into it &mdash; no further action is needed on your part.</p>
 <p>Thanks,<br/>The YanLearn Team</p>`
-          );
-          if (sent) {
-            absenceFollowUps.absentEmails += 1;
-          }
-        }
+        );
 
-        for (const student of unverifiable) {
-          const sent = await trySend(
-            student.email,
-            `Action required: connect & join Discord — we couldn't verify your attendance (${courseTitleRaw})`,
-            `<p>Hi there,</p>
+        absenceFollowUps.unverifiedEmails += await trySendGroup(
+          unverifiable.map((student) => student.email),
+          `Action required: connect & join Discord — we couldn't verify your attendance (${courseTitleRaw})`,
+          `<p>Hi there,</p>
 <p>Your class recently ended, but we <strong>could not verify your attendance</strong> because your Discord account is not connected to your YanLearn profile:</p>
 ${classDetailsHtml}
 <p>Classes are held in our Discord server, so you must complete <strong>both</strong> of the following to attend:</p>
@@ -1865,11 +1881,7 @@ ${classDetailsHtml}
 <p>If you connected Discord but closed that tab before joining, open your profile card and click <strong>Join Discord Server</strong> to retry.</p>
 <p><strong>Please complete both steps before your next class</strong>, otherwise you will not be able to attend and your attendance cannot be recorded.</p>
 <p>Thanks,<br/>The YanLearn Team</p>`
-          );
-          if (sent) {
-            absenceFollowUps.unverifiedEmails += 1;
-          }
-        }
+        );
 
         if (tutorEmail) {
           const renderStudents = (list: typeof students) =>
@@ -2391,20 +2403,14 @@ ${tutorWasPresent ? "" : "<p><strong>Note:</strong> you were not detected in the
     let successfulSends = 0;
 
     if (emailRemindersEnabled && recipientList.length > 0) {
-      for (const recipient of recipientList) {
-        try {
-          await sendEmail(recipient, subject, html);
-          successfulSends += 1;
-          // Pace requests to reduce email provider throttling on bursts.
-          await sleep(150);
-        } catch (error) {
-          failedRecipients.push({
-            email: recipient,
-            reason:
-              error instanceof Error ? error.message : "Failed to send email.",
-          });
-        }
-      }
+      // One BCC'd email per class instead of one send per recipient.
+      const { sentCount, failed } = await sendBccEmail(
+        recipientList,
+        subject,
+        html
+      );
+      successfulSends += sentCount;
+      failedRecipients.push(...failed);
     }
 
     if (failedRecipients.length > 0) {

@@ -26,18 +26,16 @@ const sleep = (ms: number) =>
  * This is a server-side only utility.
  * Attachments use Resend's shape: base64 `content` + `filename`.
  */
-export const sendEmail = async (
-  to: string,
-  subject: string,
-  html: string,
-  attachments?: { filename: string; content: string }[]
-): Promise<boolean> => {
-  if (!resendApiKey || !resendFrom || !to) {
-    console.warn("Skipping email send: Missing configuration or recipient.", { to, subject });
-    return false;
+const postResendEmail = async (
+  payload: Record<string, unknown>
+): Promise<{ ok: boolean; error: string }> => {
+  if (!resendApiKey || !resendFrom) {
+    console.warn("Skipping email send: Missing configuration.", { subject: payload.subject });
+    return { ok: false, error: "Missing email configuration." };
   }
 
   const maxAttempts = 3;
+  let lastError = "Unknown error";
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
       const response = await fetch("https://api.resend.com/emails", {
@@ -46,70 +44,135 @@ export const sendEmail = async (
           Authorization: `Bearer ${resendApiKey}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          from: resendFrom,
-          to,
-          subject,
-          html,
-          ...(attachments && attachments.length > 0 ? { attachments } : {}),
-        }),
+        body: JSON.stringify({ from: resendFrom, ...payload }),
       });
 
       if (response.ok) {
-        return true;
+        return { ok: true, error: "" };
       }
 
-      const errorText = await response.text().catch(() => "Unknown error");
-      console.error(`Failed to send email to ${to} (Attempt ${attempt}):`, errorText);
+      lastError = await response.text().catch(() => "Unknown error");
+      console.error(`Failed to send email (Attempt ${attempt}):`, lastError);
 
       if (response.status !== 429 && response.status < 500) {
         // Non-retriable error
         break;
       }
+
+      if (attempt < maxAttempts) {
+        // Honor the provider's retry-after hint when present.
+        const retryAfterSeconds = Number.parseFloat(
+          response.headers.get("retry-after") ?? ""
+        );
+        await sleep(
+          Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+            ? Math.ceil(retryAfterSeconds * 1000)
+            : 1000 * 2 ** (attempt - 1)
+        );
+      }
+      continue;
     } catch (error) {
-      console.error(`Error sending email to ${to} (Attempt ${attempt}):`, error);
+      lastError = error instanceof Error ? error.message : "Unknown error";
+      console.error(`Error sending email (Attempt ${attempt}):`, error);
     }
 
     if (attempt < maxAttempts) {
-      await sleep(1000 * Math.pow(2, attempt - 1)); // Exponential backoff
+      await sleep(1000 * 2 ** (attempt - 1)); // Exponential backoff
     }
   }
-  
-  return false;
+
+  return { ok: false, error: lastError };
+};
+
+export const sendEmail = async (
+  to: string,
+  subject: string,
+  html: string,
+  attachments?: { filename: string; content: string }[]
+): Promise<boolean> => {
+  if (!to) {
+    console.warn("Skipping email send: Missing recipient.", { subject });
+    return false;
+  }
+  const result = await postResendEmail({
+    to,
+    subject,
+    html,
+    ...(attachments && attachments.length > 0 ? { attachments } : {}),
+  });
+  return result.ok;
+};
+
+// Resend allows at most 50 recipients (to + cc + bcc combined) per email.
+const RESEND_MAX_RECIPIENTS = 50;
+
+export type BccSendResult = {
+  sentCount: number;
+  failed: { email: string; reason: string }[];
 };
 
 /**
- * Notifies all founder emails sequentially.
- * Waits for each email to succeed before moving to the next.
+ * Sends ONE email to many recipients via BCC (chunked to respect Resend's
+ * per-message recipient limit) instead of one email per recipient. The
+ * visible "to" is the sender address, so recipients cannot see each other.
+ * Only use this for content that is identical for every recipient.
+ */
+export const sendBccEmail = async (
+  bccEmails: string[],
+  subject: string,
+  html: string
+): Promise<BccSendResult> => {
+  const recipients = Array.from(
+    new Set(bccEmails.map((email) => email.trim().toLowerCase()).filter(Boolean))
+  );
+  const result: BccSendResult = { sentCount: 0, failed: [] };
+  if (recipients.length === 0) {
+    return result;
+  }
+
+  // Leave one recipient slot for the "to" address (the sender).
+  const chunkSize = RESEND_MAX_RECIPIENTS - 1;
+  for (let start = 0; start < recipients.length; start += chunkSize) {
+    const chunk = recipients.slice(start, start + chunkSize);
+    const outcome = await postResendEmail({
+      to: resendFrom,
+      bcc: chunk,
+      subject,
+      html,
+    });
+    if (outcome.ok) {
+      result.sentCount += chunk.length;
+    } else {
+      for (const email of chunk) {
+        result.failed.push({ email, reason: outcome.error });
+      }
+    }
+    // Pace requests to stay under the email provider's rate limit.
+    await sleep(150);
+  }
+  return result;
+};
+
+/**
+ * Notifies all founder emails with a single BCC'd email instead of one
+ * send per founder.
  */
 export const notifyFounders = async (subject: string, html: string) => {
   if (!founderEmails || founderEmails.length === 0) {
     return;
   }
 
-  for (const email of founderEmails) {
-    let success = false;
-    let notifyAttempts = 0;
-    
-    // Keep retrying until success to guarantee sequential delivery
-    // after each subsequent email requests have been made successfully
-    while (!success && notifyAttempts < 5) {
-      notifyAttempts++;
-      success = await sendEmail(email, subject, html);
-      
-      if (!success) {
-        // Wait longer on failure before retrying to prevent rate limiting
-        await sleep(2000); 
-      }
+  const maxAttempts = 5;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const { failed } = await sendBccEmail(founderEmails, subject, html);
+    if (failed.length === 0) {
+      return;
     }
-    
-    if (!success) {
-      console.error(`Failed to notify founder ${email} after all retries.`);
-    }
-
-    // Sequential delay to ensure delivery and avoid throttling (2 req/sec rate limit)
-    await sleep(1000);
+    // Wait longer on failure before retrying to prevent rate limiting
+    await sleep(2000);
   }
+
+  console.error("Failed to notify founders after all retries.");
 };
 
 /**

@@ -1,5 +1,5 @@
 import { SupabaseClient } from "@supabase/supabase-js";
-import { sendDiscordMessageByChannelName, sendEmail } from "./notificationsServer";
+import { sendDiscordMessageByChannelName, sendBccEmail } from "./notificationsServer";
 import { formatDiscordTimestamp } from "./discordTimestamp";
 
 // A change line can carry a Discord-specific variant so times render as
@@ -244,16 +244,14 @@ export const notifyCourseTutorsOfChanges = async (
       <p>Please check YanLearn for the latest course details.</p>
     `;
 
-    for (const recipient of recipients) {
-      if (!recipient.email) {
-        continue;
-      }
-      await sendEmail(
-        recipient.email,
-        `Course Updated: ${courseTitle}`,
-        emailHtml
-      );
-    }
+    // One BCC'd email to all tutors instead of one send per tutor.
+    await sendBccEmail(
+      recipients
+        .map((recipient) => recipient.email)
+        .filter((email): email is string => Boolean(email)),
+      `Course Updated: ${courseTitle}`,
+      emailHtml
+    );
   } catch (error) {
     console.error("Failed to notify course tutors of changes:", error);
   }
