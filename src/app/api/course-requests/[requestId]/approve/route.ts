@@ -4,6 +4,7 @@ import { isFounder, resolveUserRole } from "@/lib/roles";
 import { getRequestUser } from "@/lib/authServer";
 import { relabelClassesForCourse } from "@/lib/classTools";
 import { sendEmail, sendDiscordMessageByChannelName } from "@/lib/notificationsServer";
+import { normalizeGradeLevel } from "@/lib/serviceHours";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
@@ -49,6 +50,7 @@ export async function POST(
     classes?: { title?: string; startsAt?: string; durationHours?: number; tutorId?: string }[];
     maxStudents?: number | null;
     donationFee?: number | null;
+    gradeLevel?: number | string | null;
   } | null;
 
   const classes = Array.isArray(body?.classes) ? body?.classes ?? [] : [];
@@ -57,6 +59,8 @@ export async function POST(
       ? Math.floor(body.maxStudents)
       : null;
   const donationFee = typeof body?.donationFee === "number" && body.donationFee >= 0 ? body.donationFee : null;
+  // Grade 11/12 courses earn their tutors 2 service hours per class instead of 1.5.
+  const gradeLevel = normalizeGradeLevel(body?.gradeLevel);
 
   const adminClient = createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false },
@@ -102,6 +106,7 @@ export async function POST(
       is_completed: false,
       max_students: maxStudents,
       donation_fee: donationFee,
+      grade_level: gradeLevel,
       created_by: requestRecord.created_by,
       created_by_name: creatorName,
       created_by_email: creatorUser?.email ?? null,

@@ -10,6 +10,7 @@ import {
   getDiscordRoleIdByName,
   sendDiscordMessageByChannelName,
 } from "@/lib/notificationsServer";
+import { classCountForHours, describeHourSteps } from "@/lib/serviceHours";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
@@ -52,7 +53,7 @@ export async function GET(request: NextRequest) {
   await ensureTutorWithdrawalRequestsSchema(adminClient);
 
   const [
-    { availableHours, withdrawnHours },
+    { availableHours, withdrawnHours, hourSteps },
     { data: selfRow },
     { data: requests },
     { data: withdrawals },
@@ -76,6 +77,9 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     availableHours,
     withdrawnHours,
+    // Valid request amounts: classes are withdrawn oldest-first and are worth
+    // 1.5 or 2 hours depending on the course's grade level.
+    hourSteps,
     legalNameSet: Boolean(String(selfRow?.legal_name ?? "").trim()),
     gradeSet: /^(9|10|11|12)$/.test(String(selfRow?.grade ?? "").trim()),
     requests: requests ?? [],
@@ -117,12 +121,6 @@ export async function POST(request: NextRequest) {
   if (typeof hours !== "number" || !Number.isFinite(hours) || hours <= 0) {
     return NextResponse.json({ error: "Hours must be a positive number." }, { status: 400 });
   }
-  if (hours % 1.5 !== 0) {
-    return NextResponse.json(
-      { error: "Requested hours must be a multiple of 1.5 hours." },
-      { status: 400 }
-    );
-  }
 
   const adminClient = createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false },
@@ -161,11 +159,26 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const { availableHours } = await getTutorAvailability(adminClient, user.id);
+  const { availableHours, availableClassHours } = await getTutorAvailability(
+    adminClient,
+    user.id
+  );
   if (hours > availableHours) {
     return NextResponse.json(
       {
         error: `You only have ${availableHours} withdrawable hours available, which is less than the requested ${hours} hours.`,
+      },
+      { status: 400 }
+    );
+  }
+
+  // Classes are withdrawn oldest-first at 1.5 or 2 hours each (grade 11/12
+  // courses earn 2), so the amount has to land on a class boundary.
+  const requestedClassCount = classCountForHours(availableClassHours, hours);
+  if (requestedClassCount === null) {
+    return NextResponse.json(
+      {
+        error: `${hours} hours does not match a whole number of classes. Valid amounts: ${describeHourSteps(availableClassHours)}.`,
       },
       { status: 400 }
     );
@@ -232,7 +245,7 @@ export async function POST(request: NextRequest) {
       "",
       `**Tutor:** ${fullName}${email ? ` (${email})` : ""}`,
       `**Legal name:** ${legalName}`,
-      `**Requested:** ${hours} hours (${hours / 1.5} lesson${hours / 1.5 !== 1 ? "s" : ""})`,
+      `**Requested:** ${hours} hours (${requestedClassCount} lesson${requestedClassCount !== 1 ? "s" : ""})`,
       `**Available balance:** ${availableHours} hours`,
       "",
       `Fulfill or decline it in the dashboard under "Withdraw hours".`,

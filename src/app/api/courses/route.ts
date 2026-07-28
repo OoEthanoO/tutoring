@@ -4,6 +4,7 @@ import { canManageCourses, isExecutive, isFounder, isHighRankingChiefExecutive, 
 import { getRequestUser } from "@/lib/authServer";
 import { relabelClassesForCourse } from "@/lib/classTools";
 import { notifyCourseTutorsOfChanges } from "@/lib/courseChangeNotifications";
+import { hoursPerClassForGrade, normalizeGradeLevel } from "@/lib/serviceHours";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
@@ -45,6 +46,7 @@ export async function POST(request: NextRequest) {
       completedEndDate?: string;
       completedClassCount?: number;
       maxStudents?: number;
+      gradeLevel?: number | string | null;
       classes?: { title?: string; startsAt?: string; durationHours?: number }[];
     }
     | null;
@@ -62,6 +64,9 @@ export async function POST(request: NextRequest) {
     typeof body?.maxStudents === "number" && body.maxStudents > 0
       ? Math.floor(body.maxStudents)
       : null;
+  // Drives the tutor's service-hour rate (grade 11/12 courses earn 2 hours per
+  // class), so only the founder trio may set it.
+  const gradeLevel = normalizeGradeLevel(body?.gradeLevel);
   const classes = Array.isArray(body?.classes) ? body?.classes ?? [] : [];
   const creatorName =
     String(user.full_name ?? "").trim() || user.email || "Unknown tutor";
@@ -116,12 +121,13 @@ export async function POST(request: NextRequest) {
       completed_end_date: isCompleted ? completedEndDate : null,
       completed_class_count: isCompleted ? completedClassCount : null,
       max_students: isFounder(role) ? maxStudents : null,
+      grade_level: isFounder(role) ? gradeLevel : null,
       created_by: user.id,
       created_by_name: creatorName,
       created_by_email: user.email ?? null,
     })
     .select(
-      "id, title, short_name, description, is_completed, completed_start_date, completed_end_date, completed_class_count, max_students, donation_fee, created_by, created_by_name, created_by_email, is_co_taught, co_tutor_id, co_tutor_name, co_tutor_email, created_at, deleted_at"
+      "id, title, short_name, description, is_completed, completed_start_date, completed_end_date, completed_class_count, max_students, donation_fee, grade_level, created_by, created_by_name, created_by_email, is_co_taught, co_tutor_id, co_tutor_name, co_tutor_email, created_at, deleted_at"
     )
     .single();
 
@@ -212,7 +218,7 @@ export async function GET(request: NextRequest) {
   let query = adminClient
     .from("courses")
     .select(
-      "id, title, short_name, description, is_completed, completed_start_date, completed_end_date, completed_class_count, max_students, donation_fee, created_by, created_by_name, created_by_email, is_co_taught, co_tutor_id, co_tutor_name, co_tutor_email, created_at, deleted_at, course_classes(id, title, starts_at, duration_hours, created_at), course_enrollments(count)"
+      "id, title, short_name, description, is_completed, completed_start_date, completed_end_date, completed_class_count, max_students, donation_fee, grade_level, created_by, created_by_name, created_by_email, is_co_taught, co_tutor_id, co_tutor_name, co_tutor_email, created_at, deleted_at, course_classes(id, title, starts_at, duration_hours, created_at), course_enrollments(count)"
     );
 
   if (trash) {
@@ -430,6 +436,7 @@ export async function PATCH(request: NextRequest) {
       createdBy?: string | null;
       maxStudents?: number | null;
       donationFee?: number | null;
+      gradeLevel?: number | string | null;
       completedStartDate?: string | null;
       completedEndDate?: string | null;
       completedClassCount?: number | null;
@@ -469,6 +476,10 @@ export async function PATCH(request: NextRequest) {
       : typeof body.donationFee === "number" && body.donationFee >= 0
         ? body.donationFee
         : undefined;
+  // Grade level drives the tutor's service-hour rate: grade 11/12 courses are
+  // worth 2 hours per class instead of 1.5.
+  const gradeLevel =
+    body.gradeLevel === undefined ? undefined : normalizeGradeLevel(body.gradeLevel);
   const completedStartDate =
     typeof body.completedStartDate === "string" ? body.completedStartDate.trim() : undefined;
   const completedEndDate =
@@ -487,6 +498,7 @@ export async function PATCH(request: NextRequest) {
     createdBy === undefined &&
     maxStudents === undefined &&
     donationFee === undefined &&
+    gradeLevel === undefined &&
     body.restore !== true
   ) {
     return NextResponse.json(
@@ -501,7 +513,7 @@ export async function PATCH(request: NextRequest) {
 
   const { data: previousCourse } = await adminClient
     .from("courses")
-    .select("id, title, description, short_name, max_students, donation_fee, completed_start_date, completed_end_date, completed_class_count, created_by, created_by_name, created_by_email")
+    .select("id, title, description, short_name, max_students, donation_fee, grade_level, completed_start_date, completed_end_date, completed_class_count, created_by, created_by_name, created_by_email")
     .eq("id", body.courseId)
     .maybeSingle();
 
@@ -511,6 +523,7 @@ export async function PATCH(request: NextRequest) {
     description?: string | null;
     max_students?: number | null;
     donation_fee?: number | null;
+    grade_level?: number | null;
     created_by?: string | null;
     created_by_name?: string | null;
     created_by_email?: string | null;
@@ -554,6 +567,15 @@ export async function PATCH(request: NextRequest) {
       );
     }
     updatePayload.donation_fee = donationFee;
+  }
+  if (gradeLevel !== undefined) {
+    if (!isFounder(role)) {
+      return NextResponse.json(
+        { error: "Only the founder, CEO, or COO can set the course grade level." },
+        { status: 403 }
+      );
+    }
+    updatePayload.grade_level = gradeLevel;
   }
   if (completedStartDate !== undefined || completedEndDate !== undefined || completedClassCount !== undefined) {
     if (!isFounder(role)) {
@@ -616,7 +638,7 @@ export async function PATCH(request: NextRequest) {
 
   const { data, error: updateError } = await updateQuery
     .select(
-      "id, title, short_name, description, is_completed, completed_start_date, completed_end_date, completed_class_count, max_students, donation_fee, created_by, created_by_name, created_by_email, is_co_taught, co_tutor_id, co_tutor_name, co_tutor_email, created_at, deleted_at"
+      "id, title, short_name, description, is_completed, completed_start_date, completed_end_date, completed_class_count, max_students, donation_fee, grade_level, created_by, created_by_name, created_by_email, is_co_taught, co_tutor_id, co_tutor_name, co_tutor_email, created_at, deleted_at"
     )
     .single();
 
@@ -660,6 +682,14 @@ export async function PATCH(request: NextRequest) {
       donationFee !== (previousCourse.donation_fee ?? null)
     ) {
       changes.push(`Donation fee changed from ${previousCourse.donation_fee ?? "None"} to ${donationFee ?? "None"}.`);
+    }
+    if (
+      gradeLevel !== undefined &&
+      gradeLevel !== (previousCourse.grade_level ?? null)
+    ) {
+      changes.push(
+        `Course grade level changed from ${previousCourse.grade_level ?? "None"} to ${gradeLevel ?? "None"} — each class is now worth ${hoursPerClassForGrade(gradeLevel)} community service hours.`
+      );
     }
     if (
       createdBy !== undefined &&

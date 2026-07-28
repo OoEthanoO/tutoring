@@ -8,6 +8,12 @@ import {
   certificateFileName,
   generateServiceHoursCertificate,
 } from "@/lib/serviceHoursCertificate";
+import {
+  classCountForHours,
+  describeHourSteps,
+  hoursPerClassForGrade,
+  sumHours,
+} from "@/lib/serviceHours";
 
 const escapeHtmlValue = (value: string) =>
   value
@@ -49,6 +55,7 @@ type TutorUserRow = {
 type CourseRow = {
   id: string;
   title: string;
+  grade_level: number | null;
 };
 
 type CourseClassRow = {
@@ -241,7 +248,7 @@ export async function GET(request: NextRequest) {
   // Fetch tutor's taught courses
   const { data: courses, error: coursesError } = await adminClient
     .from("courses")
-    .select("id, title")
+    .select("id, title, grade_level")
     .is("deleted_at", null)
     .or(`created_by.eq.${tutorId},co_tutor_id.eq.${tutorId}`);
 
@@ -251,7 +258,11 @@ export async function GET(request: NextRequest) {
 
   const courseIds = courses?.map((c: CourseRow) => c.id) || [];
 
-  let classes: (CourseClassRow & { course_title: string })[] = [];
+  let classes: (CourseClassRow & {
+    course_title: string;
+    course_grade_level: number | null;
+    service_hours: number;
+  })[] = [];
   if (courseIds.length > 0) {
     const { data: classesData, error: classesError } = await adminClient
       .from("course_classes")
@@ -263,12 +274,18 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: classesError.message }, { status: 500 });
     }
 
-    // Attach course title to each class
-    const coursesMap = new Map(courses.map((c: CourseRow) => [c.id, c.title]));
-    classes = (classesData || []).map((cls: CourseClassRow) => ({
-      ...cls,
-      course_title: coursesMap.get(cls.course_id) || "Unknown Course"
-    }));
+    // Attach course title and the service-hour rate that the course's grade
+    // level earns to each class.
+    const coursesMap = new Map(courses.map((c: CourseRow) => [c.id, c]));
+    classes = (classesData || []).map((cls: CourseClassRow) => {
+      const course = coursesMap.get(cls.course_id);
+      return {
+        ...cls,
+        course_title: course?.title || "Unknown Course",
+        course_grade_level: course?.grade_level ?? null,
+        service_hours: hoursPerClassForGrade(course?.grade_level ?? null),
+      };
+    });
   }
 
   // Fetch past withdrawals for the specific tutor (including tutor_legal_name at time of withdrawal)
@@ -337,10 +354,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Hours must be a positive number." }, { status: 400 });
   }
 
-  if (hours % 1.5 !== 0) {
-    return NextResponse.json({ error: "Withdrawn hours must be a multiple of 1.5 hours." }, { status: 400 });
-  }
-
   // Ensure database schema exists
   await ensureTutorWithdrawalsSchema(adminClient);
 
@@ -366,7 +379,7 @@ export async function POST(request: NextRequest) {
   // Fetch tutor's taught courses
   const { data: courses, error: coursesError } = await adminClient
     .from("courses")
-    .select("id")
+    .select("id, grade_level")
     .is("deleted_at", null)
     .or(`created_by.eq.${tutorId},co_tutor_id.eq.${tutorId}`);
 
@@ -379,11 +392,18 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "This tutor has not taught any courses." }, { status: 400 });
   }
 
+  const hoursByCourse = new Map(
+    (courses ?? []).map((course: Pick<CourseRow, "id" | "grade_level">) => [
+      course.id,
+      hoursPerClassForGrade(course.grade_level),
+    ])
+  );
+
   // Fetch classes belonging to these courses that have started and are not yet withdrawn
   const nowStr = new Date().toISOString();
   const { data: availableClasses, error: classesError } = await adminClient
     .from("course_classes")
-    .select("id, title, starts_at, duration_hours")
+    .select("id, title, starts_at, duration_hours, course_id")
     .in("course_id", courseIds)
     .lte("starts_at", nowStr)
     .is("tutor_withdrawal_id", null)
@@ -393,12 +413,25 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: classesError.message }, { status: 500 });
   }
 
+  // Classes are consumed oldest-first, and each is worth 1.5 or 2 hours
+  // depending on its course's grade level, so a valid request is one of the
+  // running totals over that chronological list.
   const classesCount = availableClasses?.length || 0;
-  const numClassesToWithdraw = hours / 1.5;
+  const perClassHours = (availableClasses || []).map(
+    (cls: Pick<CourseClassRow, "course_id">) => hoursByCourse.get(cls.course_id) ?? 0
+  );
+  const availableHours = sumHours(perClassHours);
+  const numClassesToWithdraw = classCountForHours(perClassHours, hours);
 
-  if (classesCount < numClassesToWithdraw) {
+  if (hours > availableHours) {
     return NextResponse.json({
-      error: `Tutor has only ${classesCount * 1.5} hours available (${classesCount} taught classes), which is less than the requested ${hours} hours.`
+      error: `Tutor has only ${availableHours} hours available (${classesCount} taught classes), which is less than the requested ${hours} hours.`
+    }, { status: 400 });
+  }
+
+  if (numClassesToWithdraw === null) {
+    return NextResponse.json({
+      error: `${hours} hours does not match a whole number of classes. Valid amounts for this tutor: ${describeHourSteps(perClassHours)}.`
     }, { status: 400 });
   }
 

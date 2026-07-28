@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import { sumHours, withdrawableHourSteps } from "@/lib/serviceHours";
 
 type Tutor = {
   id: string;
@@ -16,7 +17,18 @@ type CourseClass = {
   duration_hours: number;
   course_id: string;
   course_title: string;
+  course_grade_level: number | null;
+  // Service hours this class earns the tutor: 2 for grade 11/12 courses, else 1.5.
+  service_hours: number;
   tutor_withdrawal_id: string | null;
+};
+
+type TutorWithdrawal = {
+  id: string;
+  hours: number;
+  start_date: string;
+  end_date: string;
+  created_at: string;
 };
 
 type GlobalWithdrawal = {
@@ -58,6 +70,7 @@ export default function WithdrawHoursMenu() {
   const [tutors, setTutors] = useState<Tutor[]>([]);
   const [selectedTutorId, setSelectedTutorId] = useState<string>("");
   const [classes, setClasses] = useState<CourseClass[]>([]);
+  const [tutorWithdrawals, setTutorWithdrawals] = useState<TutorWithdrawal[]>([]);
   const [globalWithdrawals, setGlobalWithdrawals] = useState<GlobalWithdrawal[]>([]);
   const [pendingRequests, setPendingRequests] = useState<PendingRequest[]>([]);
   const [decliningRequestId, setDecliningRequestId] = useState<string | null>(null);
@@ -118,6 +131,7 @@ export default function WithdrawHoursMenu() {
       if (res.ok) {
         const data = await res.json();
         setClasses(data.classes || []);
+        setTutorWithdrawals(data.withdrawals || []);
         setTutorInfo(data.tutor || null);
       } else {
         const errData = await res.json().catch(() => null);
@@ -143,6 +157,7 @@ export default function WithdrawHoursMenu() {
       loadTutorData(id);
     } else {
       setClasses([]);
+      setTutorWithdrawals([]);
     }
   };
 
@@ -201,8 +216,10 @@ export default function WithdrawHoursMenu() {
       return;
     }
 
-    if (hours % 1.5 !== 0) {
-      setErrorMsg("Withdraw hours must be a multiple of 1.5 hours.");
+    if (!availableHourSteps.some((step) => Math.abs(step - hours) < 1e-9)) {
+      setErrorMsg(
+        "Withdrawals cover whole classes — pick one of the listed amounts."
+      );
       return;
     }
 
@@ -290,10 +307,20 @@ export default function WithdrawHoursMenu() {
 
   const totalClassesTaughtCount = lessonsTaught.length;
   const withdrawnClassesCount = lessonsTaught.filter((c) => c.tutor_withdrawal_id !== null).length;
-  const availableClassesCount = totalClassesTaughtCount - withdrawnClassesCount;
+  // Oldest-first, matching the order the server consumes them in.
+  const availableLessons = lessonsTaught.filter((c) => c.tutor_withdrawal_id === null);
+  const availableClassesCount = availableLessons.length;
 
-  const totalHoursWithdrawn = withdrawnClassesCount * 1.5;
-  const availableHours = availableClassesCount * 1.5;
+  const totalHoursTaught = sumHours(lessonsTaught.map((c) => Number(c.service_hours) || 0));
+  // Past withdrawals are read from their records, not recomputed, so the figures
+  // keep matching the forms that were already issued.
+  const totalHoursWithdrawn = sumHours(tutorWithdrawals.map((w) => Number(w.hours) || 0));
+  const availableHourSteps = withdrawableHourSteps(
+    availableLessons.map((c) => Number(c.service_hours) || 0)
+  );
+  const availableHours = availableHourSteps.length
+    ? availableHourSteps[availableHourSteps.length - 1]
+    : 0;
 
   const isLegalNameMissing = selectedTutorId && tutorInfo && !tutorInfo.legalName;
 
@@ -325,7 +352,7 @@ export default function WithdrawHoursMenu() {
           Withdraw community service hours
         </h2>
         <p className="text-xs text-[var(--muted)] max-w-2xl">
-          Help tutors withdraw their community service hours. Each lesson taught counts as exactly 1.5 hours. Withdrawals must start chronologically from the oldest available class. Legal names are required to perform withdrawals.
+          Help tutors withdraw their community service hours. Each lesson taught counts as 1.5 hours, or 2 hours when the course is set to grade 11 or 12. Withdrawals must start chronologically from the oldest available class. Legal names are required to perform withdrawals.
         </p>
       </header>
 
@@ -372,8 +399,7 @@ export default function WithdrawHoursMenu() {
                     {request.tutor?.full_name || request.tutor?.email || "Unknown tutor"}
                   </p>
                   <p className="text-xs text-[var(--muted)]">
-                    Legal name: {request.tutor_legal_name || "—"} · {Number(request.hours)} hours (
-                    {Number(request.hours) / 1.5} lesson{Number(request.hours) / 1.5 !== 1 ? "s" : ""}) ·
+                    Legal name: {request.tutor_legal_name || "—"} · {Number(request.hours)} hours ·
                     requested{" "}
                     {new Date(request.created_at).toLocaleDateString("en-US", {
                       month: "short",
@@ -436,7 +462,7 @@ export default function WithdrawHoursMenu() {
                     {totalClassesTaughtCount}
                   </p>
                   <p className="text-[10px] text-[var(--muted)]">
-                    ({totalClassesTaughtCount * 1.5} total hrs)
+                    ({totalHoursTaught} total hrs)
                   </p>
                 </div>
 
@@ -487,25 +513,26 @@ export default function WithdrawHoursMenu() {
                           New Hour Withdrawal
                         </h3>
                         <p className="text-xs text-[var(--muted)]">
-                          Input the total amount of hours to withdraw. It must be a multiple of 1.5.
+                          Pick the total amount of hours to withdraw. Amounts cover whole
+                          classes, taken oldest first.
                         </p>
                       </div>
 
                       <div className="flex flex-wrap items-center gap-3">
-                        <div className="relative w-full max-w-[200px]">
-                          <input
-                            type="number"
-                            step="1.5"
-                            min="1.5"
+                        <div className="w-full max-w-[260px]">
+                          <select
                             required
                             value={hoursToWithdraw}
                             onChange={(e) => setHoursToWithdraw(e.target.value)}
-                            placeholder="e.g. 3.0"
                             className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-2 text-sm font-medium text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]/30"
-                          />
-                          <span className="absolute right-3 top-2 text-xs text-[var(--muted)]">
-                            hours
-                          </span>
+                          >
+                            <option value="">-- Hours to withdraw --</option>
+                            {availableHourSteps.map((step, index) => (
+                              <option key={step} value={step}>
+                                {step} hours ({index + 1} lesson{index === 0 ? "" : "s"})
+                              </option>
+                            ))}
+                          </select>
                         </div>
 
                         <button
@@ -672,7 +699,9 @@ export default function WithdrawHoursMenu() {
                               {cls.course_title}
                             </p>
                             <p className="text-[10px] text-[var(--muted)]">
-                              {cls.title} • {formatDateTime(cls.starts_at)}
+                              {cls.title} • {formatDateTime(cls.starts_at)} •{" "}
+                              {Number(cls.service_hours)} hrs
+                              {cls.course_grade_level ? ` (grade ${cls.course_grade_level})` : ""}
                             </p>
                           </div>
 

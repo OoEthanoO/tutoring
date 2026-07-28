@@ -50,6 +50,7 @@ export default function CourseRequestsMenu() {
   const [approvingId, setApprovingId] = useState<string | null>(null);
   const [maxStudents, setMaxStudents] = useState<string>("");
   const [donationFee, setDonationFee] = useState<string>("");
+  const [gradeLevel, setGradeLevel] = useState<string>("");
   const [draftClassStartsAt, setDraftClassStartsAt] = useState<Date | null>(new Date());
   const [draftClassDurationMinutes, setDraftClassDurationMinutes] = useState<string>("60");
   const [draftClassTutorId, setDraftClassTutorId] = useState<string>("");
@@ -205,6 +206,7 @@ export default function CourseRequestsMenu() {
         body: JSON.stringify({
           maxStudents: maxStudents ? parseInt(maxStudents) : null,
           donationFee: donationFee ? parseInt(donationFee) : null,
+          gradeLevel: gradeLevel ? parseInt(gradeLevel) : null,
           classes: draftClasses.map((item, index) => ({
             title: `Class ${index + 1}`,
             startsAt: new Date(item.startsAt).toISOString(),
@@ -220,6 +222,7 @@ export default function CourseRequestsMenu() {
         setDraftClasses([]);
         setMaxStudents("");
         setDonationFee("");
+        setGradeLevel("");
       } else {
         const err = await res.json();
         alert(err.error || "Failed to approve request.");
@@ -464,6 +467,18 @@ export default function CourseRequestsMenu() {
                     <div>
                       <label className="text-[0.65rem] font-bold uppercase tracking-[0.2em] text-[var(--muted)]">Donation Fee</label>
                       <input type="number" min="0" value={donationFee} onChange={(e) => setDonationFee(e.target.value)} placeholder="0 or leave blank for none" className="mt-2 w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-4 py-3 text-sm text-[var(--foreground)] outline-none" />
+                    </div>
+
+                    <div>
+                      <label className="text-[0.65rem] font-bold uppercase tracking-[0.2em] text-[var(--muted)]">Grade Level</label>
+                      <select value={gradeLevel} onChange={(e) => setGradeLevel(e.target.value)} className="mt-2 w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-4 py-3 text-sm text-[var(--foreground)] outline-none">
+                        <option value="">Not specified (1.5 service hrs / class)</option>
+                        {[6, 7, 8, 9, 10, 11, 12].map((grade) => (
+                          <option key={grade} value={grade}>
+                            Grade {grade} ({grade >= 11 ? "2" : "1.5"} service hrs / class)
+                          </option>
+                        ))}
+                      </select>
                     </div>
 
                     <div className="space-y-3 rounded-xl border border-[var(--border)] bg-[var(--background)] p-4">

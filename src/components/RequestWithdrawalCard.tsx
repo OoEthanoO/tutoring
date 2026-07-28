@@ -51,6 +51,9 @@ export default function RequestWithdrawalCard() {
   const [isForbidden, setIsForbidden] = useState(false);
   const [availableHours, setAvailableHours] = useState(0);
   const [withdrawnHours, setWithdrawnHours] = useState(0);
+  // Valid request amounts, from withdrawing the oldest 1..n classes. Classes are
+  // worth 1.5 hours, or 2 for grade 11/12 courses, so amounts are not uniform.
+  const [hourSteps, setHourSteps] = useState<number[]>([]);
   const [legalNameSet, setLegalNameSet] = useState(true);
   const [gradeSet, setGradeSet] = useState(true);
   const [requests, setRequests] = useState<WithdrawalRequest[]>([]);
@@ -80,6 +83,7 @@ export default function RequestWithdrawalCard() {
     const data = (await response.json()) as {
       availableHours?: number;
       withdrawnHours?: number;
+      hourSteps?: number[];
       legalNameSet?: boolean;
       gradeSet?: boolean;
       requests?: WithdrawalRequest[];
@@ -87,6 +91,7 @@ export default function RequestWithdrawalCard() {
     };
     setAvailableHours(data.availableHours ?? 0);
     setWithdrawnHours(data.withdrawnHours ?? 0);
+    setHourSteps(data.hourSteps ?? []);
     setLegalNameSet(data.legalNameSet ?? true);
     setGradeSet(data.gradeSet ?? true);
     setRequests(data.requests ?? []);
@@ -167,15 +172,11 @@ export default function RequestWithdrawalCard() {
 
     const hours = Number.parseFloat(hoursInput);
     if (Number.isNaN(hours) || hours <= 0) {
-      setErrorMsg("Please enter a valid positive number of hours.");
+      setErrorMsg("Please select how many hours to withdraw.");
       return;
     }
-    if (hours % 1.5 !== 0) {
-      setErrorMsg("Requested hours must be a multiple of 1.5 hours.");
-      return;
-    }
-    if (hours > availableHours) {
-      setErrorMsg(`You only have ${availableHours} withdrawable hours available.`);
+    if (!hourSteps.some((step) => Math.abs(step - hours) < 1e-9)) {
+      setErrorMsg("Please pick one of the listed amounts — withdrawals cover whole classes.");
       return;
     }
 
@@ -300,20 +301,24 @@ export default function RequestWithdrawalCard() {
       ) : availableHours <= 0 ? (
         <p className="text-xs text-[var(--muted)]">
           No hours available to withdraw yet. Hours become withdrawable after you teach classes
-          (1.5 hours per class).
+          (1.5 hours per class, or 2 hours for grade 11&ndash;12 courses).
         </p>
       ) : (
         <div className="flex flex-wrap items-center gap-2">
-          <input
-            type="number"
-            step={1.5}
-            min={1.5}
-            max={availableHours}
+          {/* Withdrawals consume your oldest classes first, and a class is worth
+              1.5 hours (2 for grade 11-12 courses), so only these totals are valid. */}
+          <select
             value={hoursInput}
             onChange={(event) => setHoursInput(event.target.value)}
-            placeholder={`Hours (multiple of 1.5, up to ${availableHours})`}
             className="min-w-[14rem] flex-1 rounded-full border border-[var(--border)] bg-[var(--surface)] px-4 py-2 text-xs text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
-          />
+          >
+            <option value="">-- Hours to withdraw --</option>
+            {hourSteps.map((step, index) => (
+              <option key={step} value={step}>
+                {step} hours ({index + 1} class{index === 0 ? "" : "es"})
+              </option>
+            ))}
+          </select>
           <button
             type="button"
             disabled={isSubmitting}

@@ -37,6 +37,7 @@ type Course = {
   completed_class_count?: number | null;
   max_students?: number | null;
   donation_fee?: number | null;
+  grade_level?: number | null;
   created_by?: string | null;
   created_by_name?: string | null;
   created_by_email?: string | null;
@@ -128,6 +129,7 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
   const [editCourseDescription, setEditCourseDescription] = useState("");
   const [editCourseMaxStudents, setEditCourseMaxStudents] = useState<string>("");
   const [editCourseDonationFee, setEditCourseDonationFee] = useState<string>("");
+  const [editCourseGradeLevel, setEditCourseGradeLevel] = useState<string>("");
   const [editCompletedStartDate, setEditCompletedStartDate] = useState("");
   const [editCompletedEndDate, setEditCompletedEndDate] = useState("");
   const [editCompletedClassCount, setEditCompletedClassCount] = useState("");
@@ -815,6 +817,7 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
     setEditCourseDescription(course.description ?? "");
     setEditCourseMaxStudents(course.max_students ? String(course.max_students) : "");
     setEditCourseDonationFee(course.donation_fee ? String(course.donation_fee) : "");
+    setEditCourseGradeLevel(course.grade_level ? String(course.grade_level) : "");
     setEditCompletedStartDate(course.completed_start_date ?? "");
     setEditCompletedEndDate(course.completed_end_date ?? "");
     setEditCompletedClassCount(course.completed_class_count ? String(course.completed_class_count) : "");
@@ -827,6 +830,7 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
     setEditCourseDescription("");
     setEditCourseMaxStudents("");
     setEditCourseDonationFee("");
+    setEditCourseGradeLevel("");
     setEditCompletedStartDate("");
     setEditCompletedEndDate("");
     setEditCompletedClassCount("");
@@ -854,6 +858,7 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
         description: editCourseDescription.trim(),
         maxStudents: isFounder(role) ? (editCourseMaxStudents ? Number(editCourseMaxStudents) : null) : undefined,
         donationFee: isHighRankingChiefExecutive(role) ? (editCourseDonationFee ? Number(editCourseDonationFee) : null) : undefined,
+        gradeLevel: isFounder(role) ? (editCourseGradeLevel ? Number(editCourseGradeLevel) : null) : undefined,
         completedStartDate: isFounder(role) ? (editCompletedStartDate || null) : undefined,
         completedEndDate: isFounder(role) ? (editCompletedEndDate || null) : undefined,
         completedClassCount: isFounder(role) ? (editCompletedClassCount ? Number(editCompletedClassCount) : null) : undefined,
@@ -1341,6 +1346,25 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
                         placeholder="Donation Fee (Leave blank for none)"
                         className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
                       />
+                    ) : null}
+                    {isFounder(role) ? (
+                      <div className="space-y-1">
+                        <label className="px-1 text-[0.6rem] font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
+                          Grade level
+                        </label>
+                        <select
+                          value={editCourseGradeLevel}
+                          onChange={(event) => setEditCourseGradeLevel(event.target.value)}
+                          className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+                        >
+                          <option value="">Not specified (1.5 service hrs / class)</option>
+                          {[6, 7, 8, 9, 10, 11, 12].map((grade) => (
+                            <option key={grade} value={grade}>
+                              Grade {grade} ({grade >= 11 ? "2" : "1.5"} service hrs / class)
+                            </option>
+                          ))}
+                        </select>
+                      </div>
                     ) : null}
                     {isFounder(role) ? (
                       <input
