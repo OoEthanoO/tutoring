@@ -61,6 +61,16 @@ export async function ensureTutorWithdrawalRequestsSchema(adminClient: SupabaseC
           END IF;
         END $$;
 
+        -- Add grade_level to courses if it does not exist. It sets the per-class
+        -- service-hour rate, and reading it is how availability is calculated, so
+        -- a missing column would silently report zero withdrawable hours.
+        DO $$
+        BEGIN
+          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='courses' AND column_name='grade_level') THEN
+            ALTER TABLE public.courses ADD COLUMN grade_level smallint;
+          END IF;
+        END $$;
+
         NOTIFY pgrst, 'reload schema';
       `,
     });
@@ -73,7 +83,6 @@ export type TutorAvailability = {
   availableHours: number;
   withdrawnHours: number;
   taughtClassCount: number;
-  availableClassCount: number;
   /** Per-class hours of the available classes, oldest first. */
   availableClassHours: number[];
   /** Valid withdrawal amounts: the running totals of `availableClassHours`. */
@@ -94,7 +103,6 @@ export async function getTutorAvailability(
     availableHours: 0,
     withdrawnHours: 0,
     taughtClassCount: 0,
-    availableClassCount: 0,
     availableClassHours: [],
     hourSteps: [],
   };
@@ -146,7 +154,6 @@ export async function getTutorAvailability(
     availableHours: sumHours(availableClassHours),
     withdrawnHours,
     taughtClassCount: taught.length,
-    availableClassCount: availableClassHours.length,
     availableClassHours,
     hourSteps: withdrawableHourSteps(availableClassHours),
   };

@@ -287,6 +287,69 @@ export const getCourseEndedAtMs = (course: CourseRow) => {
   return latestClassEndMs;
 };
 
+/**
+ * One member of the join/leave snapshot persisted to
+ * `site_settings.discord_member_snapshot` between sync runs.
+ *
+ * `name` is the member's YanLearn full name (or email). It is stored alongside
+ * the Discord username so a leave notice can still name someone whose website
+ * account is gone by the time we notice they left — deleting the account is
+ * itself a reason the sync kicks them.
+ */
+export type DiscordMemberSnapshotEntry = {
+  username: string;
+  name: string;
+};
+
+export type DiscordMemberSnapshot = Record<string, DiscordMemberSnapshotEntry>;
+
+/**
+ * Read one snapshot entry. Snapshots written before this stored a bare Discord
+ * username string per member, so those stay readable (without a name).
+ */
+export const parseMemberSnapshotEntry = (
+  value: unknown
+): DiscordMemberSnapshotEntry => {
+  if (typeof value === "string") {
+    return { username: value, name: "" };
+  }
+
+  if (value && typeof value === "object") {
+    const entry = value as { username?: unknown; name?: unknown };
+    return {
+      username: typeof entry.username === "string" ? entry.username : "",
+      name: typeof entry.name === "string" ? entry.name : "",
+    };
+  }
+
+  return { username: "", name: "" };
+};
+
+export const parseMemberSnapshot = (value: unknown): DiscordMemberSnapshot | null => {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const snapshot: DiscordMemberSnapshot = {};
+  for (const [memberId, entry] of Object.entries(value as Record<string, unknown>)) {
+    snapshot[memberId] = parseMemberSnapshotEntry(entry);
+  }
+  return snapshot;
+};
+
+/** "Ada Lovelace @ada (<@123>)" — falls back through handle, then raw id. */
+export const formatMemberLabel = (input: {
+  memberId: string;
+  username?: string | null;
+  name?: string | null;
+}): string => {
+  const name = String(input.name ?? "").trim();
+  const username = String(input.username ?? "").trim();
+  const handle = username ? `@${username}` : "";
+  const display = [name, handle].filter(Boolean).join(" ") || input.memberId;
+  return `${display} (<@${input.memberId}>)`;
+};
+
 const getCourseStartedAtMs = (course: CourseRow) => {
   const classRows = Array.isArray(course.course_classes)
     ? course.course_classes
@@ -2781,19 +2844,35 @@ export const runDiscordSync = async ({
         }
       }
 
-      const buildMemberLabel = (memberId: string, fallbackUsername?: string) => {
-        const websiteUser = websiteUserByDiscordMemberId.get(memberId);
-        const username = discordUsernameByMemberId.get(memberId) ?? fallbackUsername ?? "";
-        const name = websiteUser?.full_name?.trim() || websiteUser?.email?.trim() || "";
-        const handle = username ? `@${username}` : "";
-        const display = [name, handle].filter(Boolean).join(" ") || memberId;
-        return `${display} (<@${memberId}>)`;
+      // A member who left is no longer in `humanMembers`, so their name cannot
+      // come from `websiteUserByDiscordMemberId` (guild members only) — fall back
+      // to the full website user table, which is keyed the same way.
+      const websiteDisplayName = (memberId: string) => {
+        const websiteUser =
+          websiteUserByDiscordMemberId.get(memberId) ??
+          websiteUserByDiscordUserId.get(memberId);
+        return websiteUser?.full_name?.trim() || websiteUser?.email?.trim() || "";
       };
 
-      // Current membership snapshot: { [discordUserId]: discordUsername }.
-      const currentSnapshot: Record<string, string> = {};
+      const buildMemberLabel = (
+        memberId: string,
+        previousEntry?: DiscordMemberSnapshotEntry
+      ) =>
+        formatMemberLabel({
+          memberId,
+          username:
+            discordUsernameByMemberId.get(memberId) || previousEntry?.username || "",
+          // Last resort is the name recorded when they were last seen: someone who
+          // left because their website account was deleted has no row to read.
+          name: websiteDisplayName(memberId) || previousEntry?.name || "",
+        });
+
+      const currentSnapshot: DiscordMemberSnapshot = {};
       for (const memberId of websiteMemberIds) {
-        currentSnapshot[memberId] = discordUsernameByMemberId.get(memberId) ?? "";
+        currentSnapshot[memberId] = {
+          username: discordUsernameByMemberId.get(memberId) ?? "",
+          name: websiteDisplayName(memberId),
+        };
       }
 
       const { data: settingsRow, error: snapshotReadError } = await adminClient
@@ -2807,8 +2886,9 @@ export const runDiscordSync = async ({
           `Failed to read Discord member snapshot (is the migration applied?): ${snapshotReadError.message}`
         );
       } else {
-        const previousSnapshot =
-          (settingsRow?.discord_member_snapshot as Record<string, string> | null) ?? null;
+        const previousSnapshot = parseMemberSnapshot(
+          settingsRow?.discord_member_snapshot
+        );
 
         // Skip notifications on the very first run (no baseline yet) to avoid a flood.
         if (previousSnapshot) {

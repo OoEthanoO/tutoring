@@ -2,10 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
   areOverwritesEqual,
   buildUniqueCourseRoleName,
+  formatMemberLabel,
   getCourseEndedAtMs,
   getCourseTopicMarker,
   normalizeChannelName,
   normalizeRoleName,
+  parseMemberSnapshot,
+  parseMemberSnapshotEntry,
   readCourseIdFromTopic,
 } from "@/lib/discordSync";
 
@@ -192,5 +195,69 @@ describe("areOverwritesEqual", () => {
 
   it("treats undefined and empty as equal", () => {
     expect(areOverwritesEqual(undefined, [])).toBe(true);
+  });
+});
+
+describe("formatMemberLabel", () => {
+  it("shows the YanLearn name ahead of the Discord handle", () => {
+    expect(
+      formatMemberLabel({ memberId: "123", username: "ada", name: "Ada Lovelace" })
+    ).toBe("Ada Lovelace @ada (<@123>)");
+  });
+
+  it("falls back to the handle alone when no name is known", () => {
+    expect(formatMemberLabel({ memberId: "123", username: "ada" })).toBe(
+      "@ada (<@123>)"
+    );
+  });
+
+  it("keeps the name when the handle is missing", () => {
+    expect(formatMemberLabel({ memberId: "123", name: "Ada Lovelace" })).toBe(
+      "Ada Lovelace (<@123>)"
+    );
+  });
+
+  it("falls back to the raw id when nothing else is known", () => {
+    expect(formatMemberLabel({ memberId: "123", username: "  ", name: null })).toBe(
+      "123 (<@123>)"
+    );
+  });
+});
+
+describe("parseMemberSnapshotEntry", () => {
+  it("reads the legacy bare-username format", () => {
+    expect(parseMemberSnapshotEntry("ada")).toEqual({ username: "ada", name: "" });
+  });
+
+  it("reads the current object format", () => {
+    expect(parseMemberSnapshotEntry({ username: "ada", name: "Ada Lovelace" })).toEqual(
+      { username: "ada", name: "Ada Lovelace" }
+    );
+  });
+
+  it("tolerates missing or non-string fields", () => {
+    expect(parseMemberSnapshotEntry({ username: 7 })).toEqual({
+      username: "",
+      name: "",
+    });
+    expect(parseMemberSnapshotEntry(null)).toEqual({ username: "", name: "" });
+  });
+});
+
+describe("parseMemberSnapshot", () => {
+  it("upgrades a legacy snapshot in place", () => {
+    expect(parseMemberSnapshot({ "1": "ada", "2": { username: "bob", name: "Bob" } })).toEqual({
+      "1": { username: "ada", name: "" },
+      "2": { username: "bob", name: "Bob" },
+    });
+  });
+
+  it("returns null when there is no snapshot yet", () => {
+    expect(parseMemberSnapshot(null)).toBeNull();
+    expect(parseMemberSnapshot(undefined)).toBeNull();
+  });
+
+  it("preserves an empty snapshot as a real baseline", () => {
+    expect(parseMemberSnapshot({})).toEqual({});
   });
 });

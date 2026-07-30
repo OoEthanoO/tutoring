@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { getCurrentUser, onAuthChange } from "@/lib/authClient";
 import { canManageCourses, isExecutive, isFounder, isHighRankingChiefExecutive, resolveUserRole, type UserRole } from "@/lib/roles";
 import { setHasUnsavedData } from "@/lib/unsavedData";
+import { hoursPerClassForGrade } from "@/lib/serviceHours";
 import { MarkdownText } from "@/lib/parseMarkdown";
 import CourseAttendance from "@/components/CourseAttendance";
 import RequestWithdrawalCard from "@/components/RequestWithdrawalCard";
@@ -1497,6 +1498,15 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
                     {isFounder(role) && course.max_students ? (
                       <p className="text-xs text-[var(--muted)]">
                         Max Students: {course.max_students}
+                      </p>
+                    ) : null}
+                    {/* Shown to every tutor, not just founders: it is what each of
+                        their classes is worth in community service hours. */}
+                    {course.grade_level ? (
+                      <p className="text-xs text-[var(--muted)]">
+                        Grade {course.grade_level} ·{" "}
+                        {hoursPerClassForGrade(course.grade_level)} community service hours
+                        per class
                       </p>
                     ) : null}
                   </div>

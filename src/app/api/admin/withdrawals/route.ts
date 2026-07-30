@@ -135,6 +135,16 @@ async function ensureTutorWithdrawalsSchema(adminClient: SupabaseClient) {
           END IF;
         END $$;
 
+        -- Add grade_level to courses if it does not exist. It sets the per-class
+        -- service-hour rate, and reading it is how availability is calculated, so
+        -- a missing column would silently report zero withdrawable hours.
+        DO $$
+        BEGIN
+          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='courses' AND column_name='grade_level') THEN
+            ALTER TABLE public.courses ADD COLUMN grade_level smallint;
+          END IF;
+        END $$;
+
         -- Notify PostgREST to reload schema
         NOTIFY pgrst, 'reload schema';
       `
@@ -460,16 +470,32 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: withdrawalError.message }, { status: 500 });
     }
 
-    // Mark classes as withdrawn
-    const { error: updateError } = await adminClient
+    // Mark classes as withdrawn. The tutor_withdrawal_id guard makes this
+    // race-safe: a concurrent withdrawal for the same tutor (two admins, or a
+    // double-clicked Confirm) selects the same oldest classes, and without it the
+    // second write would silently re-stamp them — leaving two withdrawal records,
+    // and two certificates, backed by one set of classes.
+    const { data: stampedClasses, error: updateError } = await adminClient
       .from("course_classes")
       .update({ tutor_withdrawal_id: withdrawal.id })
-      .in("id", selectedClassIds);
+      .in("id", selectedClassIds)
+      .is("tutor_withdrawal_id", null)
+      .select("id");
 
-    if (updateError) {
-      // Rollback withdrawal record if class update fails
+    if (updateError || (stampedClasses?.length ?? 0) !== selectedClassIds.length) {
+      // Roll back: release whatever this withdrawal did claim, then drop it.
+      await adminClient
+        .from("course_classes")
+        .update({ tutor_withdrawal_id: null })
+        .eq("tutor_withdrawal_id", withdrawal.id);
       await adminClient.from("tutor_withdrawals").delete().eq("id", withdrawal.id);
-      return NextResponse.json({ error: `Failed to mark classes as withdrawn: ${updateError.message}` }, { status: 500 });
+
+      if (updateError) {
+        return NextResponse.json({ error: `Failed to mark classes as withdrawn: ${updateError.message}` }, { status: 500 });
+      }
+      return NextResponse.json({
+        error: "Some of these classes were withdrawn by another request just now. Reload the tutor's hours and try again."
+      }, { status: 409 });
     }
 
     // Auto-fulfill any pending withdrawal request from this tutor — the admin has

@@ -212,7 +212,7 @@ export default function WithdrawHoursMenu() {
     const hours = Number.parseFloat(hoursToWithdraw);
 
     if (Number.isNaN(hours) || hours <= 0) {
-      setErrorMsg("Please enter a valid positive number for hours.");
+      setErrorMsg("Please select the amount of hours to withdraw.");
       return;
     }
 
@@ -282,6 +282,12 @@ export default function WithdrawHoursMenu() {
       } else {
         const errData = await res.json().catch(() => null);
         setErrorMsg(errData?.error || "Withdrawal failed.");
+        if (res.status === 409) {
+          // Another withdrawal claimed these classes — the preview is stale.
+          setPreviewData(null);
+          setStep("input");
+          await loadTutorData(selectedTutorId);
+        }
       }
     } catch {
       setErrorMsg("Network error confirming withdrawal.");
@@ -321,6 +327,15 @@ export default function WithdrawHoursMenu() {
   const availableHours = availableHourSteps.length
     ? availableHourSteps[availableHourSteps.length - 1]
     : 0;
+
+  // "Review & prefill" copies a tutor's requested amount into the form, but that
+  // amount only lands on a class boundary if their available classes still add up
+  // to it — grade levels change and classes get withdrawn in between.
+  const prefilledHours = Number.parseFloat(hoursToWithdraw);
+  const isPrefillUnavailable =
+    Number.isFinite(prefilledHours) &&
+    availableHourSteps.length > 0 &&
+    !availableHourSteps.some((step) => Math.abs(step - prefilledHours) < 1e-9);
 
   const isLegalNameMissing = selectedTutorId && tutorInfo && !tutorInfo.legalName;
 
@@ -546,6 +561,12 @@ export default function WithdrawHoursMenu() {
                       {availableHours <= 0 ? (
                         <p className="text-xs text-amber-600 dark:text-amber-500 font-medium">
                           Tutor has no available hours to withdraw at this time.
+                        </p>
+                      ) : isPrefillUnavailable ? (
+                        <p className="text-xs text-amber-600 dark:text-amber-500 font-medium">
+                          The requested {prefilledHours} hours does not add up to a whole
+                          number of this tutor&apos;s available classes. Pick the closest
+                          amount above instead.
                         </p>
                       ) : null}
                     </form>
