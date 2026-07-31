@@ -8,7 +8,6 @@ import {
 import {
   buildLiveVoicePermissionOverwrites,
   decideLiveChannelCleanup,
-  liveChannelGraceAfterEndMs,
   normalizeVoiceChannelName,
 } from "@/lib/discordLiveChannels";
 import { formatDiscordTimestampWithRelative } from "@/lib/discordTimestamp";
@@ -1323,9 +1322,9 @@ export async function POST(request: NextRequest) {
 
     for (const liveChannel of activeLiveChannels ?? []) {
       const endsAtMs = new Date(String(liveChannel.ends_at)).getTime();
-      // Classes routinely run a few minutes over. Nothing is even considered for
-      // deletion until well past the scheduled end.
-      if (Number.isNaN(endsAtMs) || Date.now() <= endsAtMs + liveChannelGraceAfterEndMs) {
+      // Nothing before the scheduled end is ever a candidate. Past it, deletion
+      // still requires proving the call is empty (see decideLiveChannelCleanup).
+      if (Number.isNaN(endsAtMs) || Date.now() <= endsAtMs) {
         continue;
       }
 
@@ -1559,10 +1558,7 @@ export async function POST(request: NextRequest) {
         liveChannelRecovery.skipped.push({ classId, reason: "more than 15 min before start" });
         return false;
       }
-      // Recovery covers the overrun window too: a class running past its
-      // scheduled end whose channel went missing (deleted by hand, a Discord
-      // hiccup) must be able to get it back rather than losing the lesson.
-      if (nowMs > endsMs + liveChannelGraceAfterEndMs) {
+      if (nowMs > endsMs) {
         liveChannelRecovery.skipped.push({ classId, reason: "class already ended" });
         return false;
       }

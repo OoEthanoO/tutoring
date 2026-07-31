@@ -10,10 +10,6 @@
 // the call rather than from waiting a long time, so this window is short.
 export const liveChannelEmptyConfirmMs = 5 * 60 * 1000;
 
-// Recovery (recreating a channel that went missing) still covers the overrun
-// window, so a class running late can always get its room back.
-export const liveChannelGraceAfterEndMs = 15 * 60 * 1000;
-
 export type LiveChannelCleanupDecision = "keep" | "mark-empty" | "clear-empty" | "delete";
 
 /**

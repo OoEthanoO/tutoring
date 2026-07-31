@@ -3,7 +3,6 @@ import {
   buildLiveVoicePermissionOverwrites,
   decideLiveChannelCleanup,
   liveChannelEmptyConfirmMs,
-  liveChannelGraceAfterEndMs,
   normalizeVoiceChannelName,
 } from "@/lib/discordLiveChannels";
 
@@ -262,9 +261,4 @@ describe("decideLiveChannelCleanup", () => {
     ).toBe("mark-empty");
   });
 
-  it("leaves the recovery window wide enough to recreate a channel mid-overrun", () => {
-    // A channel deleted just after the earliest possible moment can still be
-    // recovered while the class runs late.
-    expect(liveChannelGraceAfterEndMs).toBeGreaterThan(liveChannelEmptyConfirmMs);
-  });
 });
