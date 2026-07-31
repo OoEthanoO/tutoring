@@ -1,8 +1,14 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { runDiscordSync, type DiscordSyncResult } from "@/lib/discordSync";
+import {
+  fetchDiscordGuildMembersWithRoles,
+  runDiscordSync,
+  type DiscordSyncResult,
+} from "@/lib/discordSync";
 import {
   buildLiveVoicePermissionOverwrites,
+  decideLiveChannelCleanup,
+  liveChannelGraceAfterEndMs,
   normalizeVoiceChannelName,
 } from "@/lib/discordLiveChannels";
 import { formatDiscordTimestampWithRelative } from "@/lib/discordTimestamp";
@@ -1201,33 +1207,192 @@ export async function POST(request: NextRequest) {
   };
 
   if (discordRemindersEnabled && !discordReminderSkippedReason && discordGuildId) {
-    const { data: activeLiveChannels } = await adminClient
+    const { data: activeLiveChannels, error: activeLiveChannelsError } = await adminClient
       .from("discord_live_class_channels")
-      .select("id, class_id, discord_channel_id, tutor_discord_user_id, ends_at")
+      .select(
+        "id, class_id, course_id, discord_channel_id, tutor_discord_user_id, ends_at, empty_since"
+      )
       .is("deleted_at", null);
+
+    // Everyone who could legitimately still be in a live channel. The stored
+    // tutor_discord_user_id is only ever the course's primary tutor, so on a
+    // co-taught course the person actually running the lesson was invisible to
+    // this check and the channel was torn down on top of them.
+    const occupantIdsByCourseId = new Map<string, string[]>();
+    let guildMembersForOccupancy: { id: string; roles: string[] }[] | null = null;
+    // Only rows past their scheduled end can be deleted, so a class that is
+    // simply in progress costs no extra queries and no extra Discord calls —
+    // nothing here runs until there is something that could be cleaned up.
+    const rowsPastEnd = (activeLiveChannels ?? []).filter((row) => {
+      const endsAtMs = new Date(String(row.ends_at)).getTime();
+      return Number.isFinite(endsAtMs) && Date.now() > endsAtMs;
+    });
+    const courseIdsToResolve = Array.from(
+      new Set(rowsPastEnd.map((row) => String(row.course_id)).filter(Boolean))
+    );
+
+    if (courseIdsToResolve.length > 0) {
+      const { data: liveCourseRows } = await adminClient
+        .from("courses")
+        .select("id, created_by, co_tutor_id")
+        .in("id", courseIdsToResolve);
+      const { data: liveEnrollmentRows } = await adminClient
+        .from("course_enrollments")
+        .select("course_id, student_id")
+        .in("course_id", courseIdsToResolve);
+
+      const memberIdsByCourseId = new Map<string, Set<string>>();
+      for (const row of liveCourseRows ?? []) {
+        const set = new Set<string>();
+        for (const id of [row.created_by, row.co_tutor_id]) {
+          if (id) {
+            set.add(String(id));
+          }
+        }
+        memberIdsByCourseId.set(String(row.id), set);
+      }
+      for (const row of liveEnrollmentRows ?? []) {
+        if (!row.student_id) {
+          continue;
+        }
+        const set = memberIdsByCourseId.get(String(row.course_id)) ?? new Set<string>();
+        set.add(String(row.student_id));
+        memberIdsByCourseId.set(String(row.course_id), set);
+      }
+
+      const allMemberIds = Array.from(
+        new Set([...memberIdsByCourseId.values()].flatMap((set) => [...set]))
+      );
+      const discordIdByUserId = new Map<string, string>();
+      if (allMemberIds.length > 0) {
+        const { data: memberRows } = await adminClient
+          .from("app_users")
+          .select("id, discord_user_id")
+          .in("id", allMemberIds)
+          .not("discord_user_id", "is", null);
+        for (const row of memberRows ?? []) {
+          const discordId = String(row.discord_user_id ?? "").trim();
+          if (discordId) {
+            discordIdByUserId.set(String(row.id), discordId);
+          }
+        }
+      }
+
+      for (const [courseId, memberIds] of memberIdsByCourseId) {
+        const discordIds = new Set<string>();
+        for (const memberId of memberIds) {
+          const discordId = discordIdByUserId.get(memberId);
+          if (!discordId) {
+            continue;
+          }
+          discordIds.add(discordId);
+          // An approved second account counts as that person being present.
+          for (const extraId of approvedExtraIdsByOwnerDiscordId.get(discordId) ?? []) {
+            discordIds.add(extraId);
+          }
+        }
+        occupantIdsByCourseId.set(courseId, [...discordIds]);
+      }
+
+      // "Absolutely nobody" has to mean nobody at all, not merely nobody we
+      // expected. Anyone holding the course role, or the CEO/COO roles that the
+      // live-channel overwrites also admit, can be sitting in the call without
+      // appearing in the enrollment table — so fold the guild's actual role
+      // holders into the candidate list. A null here means the member list could
+      // not be read, which must count as "unknown", never as "empty".
+      guildMembersForOccupancy = await fetchDiscordGuildMembersWithRoles();
+      if (guildMembersForOccupancy) {
+        for (const [courseId, discordIds] of occupantIdsByCourseId) {
+          const target = discordCourseTargetByCourseId.get(courseId);
+          const admittedRoleIds = new Set(
+            [target?.roleId, ceoRoleId, cooRoleId].filter((id): id is string => Boolean(id))
+          );
+          if (admittedRoleIds.size === 0) {
+            continue;
+          }
+          const merged = new Set(discordIds);
+          for (const member of guildMembersForOccupancy) {
+            if (member.roles.some((roleId) => admittedRoleIds.has(roleId))) {
+              merged.add(member.id);
+            }
+          }
+          occupantIdsByCourseId.set(courseId, [...merged]);
+        }
+      }
+    }
 
     for (const liveChannel of activeLiveChannels ?? []) {
       const endsAtMs = new Date(String(liveChannel.ends_at)).getTime();
-      if (Number.isNaN(endsAtMs) || Date.now() <= endsAtMs) {
+      // Classes routinely run a few minutes over. Nothing is even considered for
+      // deletion until well past the scheduled end.
+      if (Number.isNaN(endsAtMs) || Date.now() <= endsAtMs + liveChannelGraceAfterEndMs) {
         continue;
       }
 
-      let tutorVoiceChannelId: string | null;
+      const channelId = String(liveChannel.discord_channel_id);
+      const candidateIds = new Set<string>(
+        occupantIdsByCourseId.get(String(liveChannel.course_id)) ?? []
+      );
+      const storedTutorId = String(liveChannel.tutor_discord_user_id ?? "").trim();
+      if (storedTutorId) {
+        candidateIds.add(storedTutorId);
+        for (const extraId of approvedExtraIdsByOwnerDiscordId.get(storedTutorId) ?? []) {
+          candidateIds.add(extraId);
+        }
+      }
+
+      // Any single voice-state read failing means we do not know whether the
+      // channel is empty, and "unknown" must never lead to deleting it. The same
+      // applies if the guild member list was unreadable: without it we cannot
+      // claim the candidate list is complete.
+      let someonePresent = false;
+      let lookupFailed = guildMembersForOccupancy === null;
+      for (const candidateId of lookupFailed ? [] : candidateIds) {
+        try {
+          const voiceChannelId = await getDiscordUserVoiceChannelId(discordGuildId, candidateId);
+          if (voiceChannelId === channelId) {
+            someonePresent = true;
+            break;
+          }
+        } catch {
+          lookupFailed = true;
+          break;
+        }
+      }
+
+      const decision = decideLiveChannelCleanup({
+        nowMs: Date.now(),
+        endsAtMs,
+        someonePresent,
+        lookupFailed,
+        emptySinceMs: liveChannel.empty_since
+          ? new Date(String(liveChannel.empty_since)).getTime()
+          : null,
+      });
+
+      if (decision === "keep") {
+        continue;
+      }
+
+      if (decision === "clear-empty") {
+        // The lesson is still going — reset the emptiness clock.
+        await adminClient
+          .from("discord_live_class_channels")
+          .update({ empty_since: null })
+          .eq("id", String(liveChannel.id));
+        continue;
+      }
+
+      if (decision === "mark-empty") {
+        await adminClient
+          .from("discord_live_class_channels")
+          .update({ empty_since: new Date().toISOString() })
+          .eq("id", String(liveChannel.id));
+        continue;
+      }
+
       try {
-        tutorVoiceChannelId = await getDiscordUserVoiceChannelId(
-          discordGuildId,
-          String(liveChannel.tutor_discord_user_id)
-        );
-      } catch {
-        continue;
-      }
-
-      if (tutorVoiceChannelId === String(liveChannel.discord_channel_id)) {
-        continue;
-      }
-
-      try {
-        await deleteDiscordChannel(String(liveChannel.discord_channel_id));
+        await deleteDiscordChannel(channelId);
       } catch (error) {
         // "Unknown Channel" means it is already gone — safe to mark deleted.
         // Any other failure (rate limit, outage) leaves the row active so the
@@ -1256,7 +1421,9 @@ export async function POST(request: NextRequest) {
           ch.type === discordCategoryChannelType &&
           ch.name === defaultLiveCategoryName
       );
-      if (liveCategory) {
+      // If the active-rows query failed we cannot tell which channels are in use,
+      // and sweeping on an empty reference set would delete live lessons. Skip.
+      if (liveCategory && !activeLiveChannelsError) {
         const referencedChannelIds = new Set(
           (activeLiveChannels ?? []).map((row) => String(row.discord_channel_id))
         );
@@ -1392,7 +1559,10 @@ export async function POST(request: NextRequest) {
         liveChannelRecovery.skipped.push({ classId, reason: "more than 15 min before start" });
         return false;
       }
-      if (nowMs > endsMs) {
+      // Recovery covers the overrun window too: a class running past its
+      // scheduled end whose channel went missing (deleted by hand, a Discord
+      // hiccup) must be able to get it back rather than losing the lesson.
+      if (nowMs > endsMs + liveChannelGraceAfterEndMs) {
         liveChannelRecovery.skipped.push({ classId, reason: "class already ended" });
         return false;
       }

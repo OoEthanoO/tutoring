@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   buildLiveVoicePermissionOverwrites,
+  decideLiveChannelCleanup,
+  liveChannelEmptyConfirmMs,
+  liveChannelGraceAfterEndMs,
   normalizeVoiceChannelName,
 } from "@/lib/discordLiveChannels";
 
@@ -117,5 +120,151 @@ describe("normalizeVoiceChannelName", () => {
 
   it("caps the name at Discord's 100-character limit", () => {
     expect(normalizeVoiceChannelName("a".repeat(150), "class-1")).toHaveLength(100);
+  });
+});
+
+describe("decideLiveChannelCleanup", () => {
+  const MIN = 60 * 1000;
+  // A 7:00-8:00 PM class — the shape of the lesson that was cut off at ~8:03 PM.
+  const endsAtMs = new Date("2026-07-30T20:00:00-04:00").getTime();
+  const at = (minutesAfterEnd: number) => endsAtMs + minutesAfterEnd * MIN;
+  const decide = decideLiveChannelCleanup;
+
+  it("never deletes before the scheduled end", () => {
+    expect(
+      decide({
+        nowMs: at(-1),
+        endsAtMs,
+        someonePresent: false,
+        lookupFailed: false,
+        emptySinceMs: at(-30),
+      })
+    ).toBe("keep");
+  });
+
+  it("keeps the channel while anyone at all is in the call, however long the overrun", () => {
+    // The incident: students were still in the call at 8:03 PM.
+    expect(
+      decide({
+        nowMs: at(3),
+        endsAtMs,
+        someonePresent: true,
+        lookupFailed: false,
+        emptySinceMs: null,
+      })
+    ).toBe("keep");
+
+    expect(
+      decide({
+        nowMs: at(240),
+        endsAtMs,
+        someonePresent: true,
+        lookupFailed: false,
+        emptySinceMs: null,
+      })
+    ).toBe("keep");
+  });
+
+  it("starts the clock rather than deleting on first sight of an empty call", () => {
+    expect(
+      decide({
+        nowMs: at(3),
+        endsAtMs,
+        someonePresent: false,
+        lookupFailed: false,
+        emptySinceMs: null,
+      })
+    ).toBe("mark-empty");
+  });
+
+  it("never deletes when occupancy could not be determined", () => {
+    // Covers both a failed voice-state read and an unreadable guild member list:
+    // "we could not tell" must never be treated as "nobody is there".
+    expect(
+      decide({
+        nowMs: at(600),
+        endsAtMs,
+        someonePresent: false,
+        lookupFailed: true,
+        emptySinceMs: at(0),
+      })
+    ).toBe("keep");
+  });
+
+  it("resets the clock the moment anyone reappears, so a flaky connection never accumulates", () => {
+    expect(
+      decide({
+        nowMs: at(4),
+        endsAtMs,
+        someonePresent: true,
+        lookupFailed: false,
+        emptySinceMs: at(1),
+      })
+    ).toBe("clear-empty");
+  });
+
+  it("holds while the call has been empty for 5 minutes or less", () => {
+    expect(
+      decide({
+        nowMs: at(5),
+        endsAtMs,
+        someonePresent: false,
+        lookupFailed: false,
+        emptySinceMs: at(1),
+      })
+    ).toBe("keep");
+
+    // Exactly 5 minutes is not "more than 5 minutes".
+    expect(
+      decide({
+        nowMs: at(1) + liveChannelEmptyConfirmMs,
+        endsAtMs,
+        someonePresent: false,
+        lookupFailed: false,
+        emptySinceMs: at(1),
+      })
+    ).toBe("keep");
+  });
+
+  it("deletes once the call has been empty for more than 5 minutes", () => {
+    expect(
+      decide({
+        nowMs: at(1) + liveChannelEmptyConfirmMs + 1,
+        endsAtMs,
+        someonePresent: false,
+        lookupFailed: false,
+        emptySinceMs: at(1),
+      })
+    ).toBe("delete");
+  });
+
+  it("keeps the channel when the end time is unparseable", () => {
+    expect(
+      decide({
+        nowMs: at(600),
+        endsAtMs: Number.NaN,
+        someonePresent: false,
+        lookupFailed: false,
+        emptySinceMs: at(0),
+      })
+    ).toBe("keep");
+  });
+
+  it("re-marks rather than deletes when the stored empty_since is unusable", () => {
+    expect(
+      decide({
+        nowMs: at(600),
+        endsAtMs,
+        someonePresent: false,
+        lookupFailed: false,
+        emptySinceMs: Number.NaN,
+      })
+    ).toBe("mark-empty");
+  });
+
+  it("leaves the recovery window wide enough to recreate a channel mid-overrun", () => {
+    // A channel deleted just after the earliest possible moment can still be
+    // recovered while the class runs late.
+    expect(liveChannelGraceAfterEndMs).toBeGreaterThan(liveChannelEmptyConfirmMs);
   });
 });

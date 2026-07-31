@@ -2,6 +2,67 @@
 // the class-reminders cron. Lives in lib (rather than the route file) so the
 // logic can be unit-tested — route files may only export route handlers.
 
+// A live class voice channel is only ever deleted once it is past its scheduled
+// end AND has been provably empty — absolutely nobody in the call — for more
+// than this long. Tearing one down mid-lesson interrupts real teaching, while
+// leaving an empty one up costs nothing, so every check is biased towards
+// keeping the channel. The safety here comes from genuinely knowing who is in
+// the call rather than from waiting a long time, so this window is short.
+export const liveChannelEmptyConfirmMs = 5 * 60 * 1000;
+
+// Recovery (recreating a channel that went missing) still covers the overrun
+// window, so a class running late can always get its room back.
+export const liveChannelGraceAfterEndMs = 15 * 60 * 1000;
+
+export type LiveChannelCleanupDecision = "keep" | "mark-empty" | "clear-empty" | "delete";
+
+/**
+ * Whether a live class voice channel may be deleted yet.
+ *
+ * Deletion requires ALL of:
+ *  - the class is past its scheduled end;
+ *  - every occupancy lookup succeeded, so the emptiness is known rather than
+ *    assumed (`lookupFailed` covers an unreadable member list too, not just a
+ *    failed voice-state read);
+ *  - absolutely nobody was found in the call;
+ *  - and it has been continuously empty for MORE than liveChannelEmptyConfirmMs.
+ *
+ * Anything short of that keeps the channel. A single sighting of anyone resets
+ * the clock, so a flaky connection can never accumulate towards deletion.
+ */
+export const decideLiveChannelCleanup = ({
+  nowMs,
+  endsAtMs,
+  someonePresent,
+  lookupFailed,
+  emptySinceMs,
+}: {
+  nowMs: number;
+  endsAtMs: number;
+  someonePresent: boolean;
+  lookupFailed: boolean;
+  emptySinceMs: number | null;
+}): LiveChannelCleanupDecision => {
+  if (!Number.isFinite(endsAtMs) || nowMs <= endsAtMs) {
+    return "keep";
+  }
+
+  if (lookupFailed) {
+    return "keep";
+  }
+
+  if (someonePresent) {
+    return emptySinceMs === null ? "keep" : "clear-empty";
+  }
+
+  if (emptySinceMs === null || !Number.isFinite(emptySinceMs)) {
+    return "mark-empty";
+  }
+
+  // Strictly greater: "more than 5 minutes", not "at least".
+  return nowMs - emptySinceMs > liveChannelEmptyConfirmMs ? "delete" : "keep";
+};
+
 const viewChannelPermission = 1024;
 const connectPermission = 1048576;
 const speakPermission = 2097152;

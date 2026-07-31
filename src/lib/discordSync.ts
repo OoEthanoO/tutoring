@@ -1213,6 +1213,37 @@ let cachedGuildMemberIds: {
  * Discord REST calls, so callers that tolerate slightly stale data can pass
  * maxAgeMs to reuse the last successful result within that window.
  */
+/**
+ * Guild members with their role ids. Used by the live-class cleanup to work out
+ * everyone who is permitted inside a live voice channel — deleting one requires
+ * proving nobody is in it, and that proof is only as good as the candidate list.
+ * Returns null when the guild cannot be read, which callers must treat as
+ * "unknown", never as "empty".
+ */
+export const fetchDiscordGuildMembersWithRoles = async (): Promise<
+  { id: string; roles: string[] }[] | null
+> => {
+  const discordBotToken = String(process.env.DISCORD_BOT_TOKEN ?? "").trim();
+  const discordGuildId = String(process.env.DISCORD_GUILD_ID ?? "").trim();
+
+  if (!discordBotToken || !discordGuildId) {
+    return null;
+  }
+
+  try {
+    const apiClient = new DiscordApiClient(discordBotToken);
+    const members = await apiClient.listGuildMembers(discordGuildId);
+    return members
+      .map((member) => ({
+        id: String(member.user?.id ?? ""),
+        roles: Array.isArray(member.roles) ? member.roles.map(String) : [],
+      }))
+      .filter((member) => member.id);
+  } catch {
+    return null;
+  }
+};
+
 export const fetchDiscordGuildMemberIds = async (options?: {
   maxAgeMs?: number;
 }): Promise<Set<string> | null> => {
