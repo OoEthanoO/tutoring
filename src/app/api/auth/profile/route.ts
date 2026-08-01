@@ -1,7 +1,47 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getAdminClient, getSessionUser } from "@/lib/authServer";
+import { isExecutive, resolveUserRole } from "@/lib/roles";
 
 const SESSION_COOKIE = "session";
+
+// Only tutors may opt out of class reminder emails; students always receive them.
+const canToggleClassReminderEmails = (user: {
+  email?: string | null;
+  role?: string | null;
+  custom_roles?: { role_level?: string } | { role_level?: string }[] | null;
+}) => {
+  const customRoleLevels = Array.isArray(user.custom_roles)
+    ? user.custom_roles.map((r) => r.role_level).filter((v): v is string => Boolean(v))
+    : [user.custom_roles?.role_level].filter((v): v is string => Boolean(v));
+  return isExecutive(resolveUserRole(user.email, user.role ?? null, customRoleLevels));
+};
+
+/**
+ * Current notification preferences. Served separately from the session payload
+ * so a missing column can never break authentication — an unreadable preference
+ * simply reports the default (opted in).
+ */
+export async function GET(request: NextRequest) {
+  const token = request.cookies.get(SESSION_COOKIE)?.value;
+  const user = await getSessionUser(token);
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  }
+
+  const canToggle = canToggleClassReminderEmails(user);
+
+  const { data, error } = await getAdminClient()
+    .from("app_users")
+    .select("class_reminder_emails")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  return NextResponse.json({
+    canToggleClassReminderEmails: canToggle,
+    // Default to opted in whenever the value is absent or unreadable.
+    classReminderEmails: error ? true : data?.class_reminder_emails !== false,
+  });
+}
 
 export async function PATCH(request: NextRequest) {
   const token = request.cookies.get(SESSION_COOKIE)?.value;
@@ -11,14 +51,21 @@ export async function PATCH(request: NextRequest) {
   }
 
   const body = (await request.json().catch(() => null)) as
-    | { fullName?: string; discordUsername?: string; legalName?: string; grade?: string }
+    | {
+      fullName?: string;
+      discordUsername?: string;
+      legalName?: string;
+      grade?: string;
+      classReminderEmails?: boolean;
+    }
     | null;
 
   if (
     body?.fullName === undefined &&
     body?.discordUsername === undefined &&
     body?.legalName === undefined &&
-    body?.grade === undefined
+    body?.grade === undefined &&
+    body?.classReminderEmails === undefined
   ) {
     return NextResponse.json(
       { error: "No profile fields provided to update." },
@@ -36,7 +83,24 @@ export async function PATCH(request: NextRequest) {
     );
   }
 
-  const updates: Record<string, string | null> = {};
+  const updates: Record<string, string | boolean | null> = {};
+
+  if (body?.classReminderEmails !== undefined) {
+    if (typeof body.classReminderEmails !== "boolean") {
+      return NextResponse.json(
+        { error: "classReminderEmails must be true or false." },
+        { status: 400 }
+      );
+    }
+    // Students are always reminded about their classes — only tutors may opt out.
+    if (!canToggleClassReminderEmails(user)) {
+      return NextResponse.json(
+        { error: "Only tutors can change class reminder emails." },
+        { status: 403 }
+      );
+    }
+    updates.class_reminder_emails = body.classReminderEmails;
+  }
 
   if (body?.fullName !== undefined) {
     const fullName = body.fullName.trim();
@@ -68,10 +132,19 @@ export async function PATCH(request: NextRequest) {
     .eq("id", user.id);
 
   if (error) {
-    return NextResponse.json(
-      { error: error.message ?? "Failed to update profile." },
-      { status: 500 }
-    );
+    const message = error.message ?? "Failed to update profile.";
+    // The column is added by a migration; without it the save cannot succeed and
+    // the raw Postgres error tells the user nothing useful.
+    if (/class_reminder_emails/i.test(message)) {
+      return NextResponse.json(
+        {
+          error:
+            "Reminder email settings aren't available yet — the database migration has not been applied.",
+        },
+        { status: 503 }
+      );
+    }
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 
   if (updates.full_name) {

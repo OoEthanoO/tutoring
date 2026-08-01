@@ -22,6 +22,13 @@ export default function AuthStatusActions() {
   const [isImpersonating, setIsImpersonating] = useState(false);
   const [isStoppingImpersonation, setIsStoppingImpersonation] = useState(false);
   const [isDiscordLinked, setIsDiscordLinked] = useState(false);
+  // Class reminder emails: tutors may opt out, students always receive them.
+  // Whether the option is offered comes from the server so the client can never
+  // disagree with who is actually allowed to change it.
+  const [canToggleReminderEmails, setCanToggleReminderEmails] = useState(false);
+  const [reminderEmailsOn, setReminderEmailsOn] = useState(true);
+  const [isSavingReminderEmails, setIsSavingReminderEmails] = useState(false);
+  const [reminderEmailsError, setReminderEmailsError] = useState("");
   const [isDisconnectingDiscord, setIsDisconnectingDiscord] = useState(false);
   const [isDisconnectConfirmOpen, setIsDisconnectConfirmOpen] = useState(false);
   const [isConnectConfirmOpen, setIsConnectConfirmOpen] = useState(false);
@@ -123,6 +130,40 @@ export default function AuthStatusActions() {
     };
   }, [isMenuOpen]);
 
+  // Load notification preferences when the menu opens, so the toggle shows the
+  // real current value rather than an optimistic guess.
+  useEffect(() => {
+    if (!isMenuOpen) {
+      return;
+    }
+
+    let cancelled = false;
+    const loadPreferences = async () => {
+      try {
+        const response = await fetch("/api/auth/profile");
+        if (!response.ok) {
+          return;
+        }
+        const payload = (await response.json()) as {
+          canToggleClassReminderEmails?: boolean;
+          classReminderEmails?: boolean;
+        };
+        if (cancelled) {
+          return;
+        }
+        setCanToggleReminderEmails(payload.canToggleClassReminderEmails === true);
+        setReminderEmailsOn(payload.classReminderEmails !== false);
+      } catch {
+        // Leave the option hidden if preferences cannot be read.
+      }
+    };
+
+    void loadPreferences();
+    return () => {
+      cancelled = true;
+    };
+  }, [isMenuOpen]);
+
   useEffect(() => {
     if (discordStatus.type !== "success") {
       return;
@@ -205,6 +246,37 @@ export default function AuthStatusActions() {
         setIsSavingName(false);
         broadcastAuthChange();
       }, 500);
+    };
+
+    const toggleReminderEmails = async () => {
+      const next = !reminderEmailsOn;
+      setIsSavingReminderEmails(true);
+      setReminderEmailsError("");
+      // Optimistic, reverted below if the server rejects it.
+      setReminderEmailsOn(next);
+
+      try {
+        const response = await fetch("/api/auth/profile", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ classReminderEmails: next }),
+        });
+        if (!response.ok) {
+          const payload = (await response.json().catch(() => null)) as
+            | { error?: string }
+            | null;
+          // Reverting without saying why reads as the click doing nothing.
+          setReminderEmailsOn(!next);
+          setReminderEmailsError(payload?.error ?? `Could not save (HTTP ${response.status}).`);
+        }
+      } catch (error) {
+        setReminderEmailsOn(!next);
+        setReminderEmailsError(
+          error instanceof Error ? error.message : "Could not reach the server."
+        );
+      } finally {
+        setIsSavingReminderEmails(false);
+      }
     };
 
     const openLegalNameEditor = async () => {
@@ -328,7 +400,7 @@ export default function AuthStatusActions() {
       <div className="relative" ref={menuRef}>
         <AccountCard onClick={() => setIsMenuOpen((open) => !open)} />
         {isMenuOpen ? (
-          <div className="absolute right-0 z-30 mt-2 w-44 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-2 shadow-lg">
+          <div className="absolute right-0 z-30 mt-2 w-52 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-2 shadow-lg">
             {isActorFounder && isImpersonating ? (
               <button
                 type="button"
@@ -354,6 +426,30 @@ export default function AuthStatusActions() {
               >
                 Edit legal name
               </button>
+            ) : null}
+            {canToggleReminderEmails ? (
+              <button
+                type="button"
+                onClick={toggleReminderEmails}
+                disabled={isSavingReminderEmails}
+                title="The 24-hour, 1-hour and 15-minute reminder emails for classes you teach. Your students always receive theirs."
+                className="flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                <span className="whitespace-nowrap">Reminder emails</span>
+                <span
+                  className={`shrink-0 whitespace-nowrap rounded-full border px-2 py-0.5 text-[10px] font-semibold ${reminderEmailsOn
+                    ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-500"
+                    : "border-[var(--border)] text-[var(--muted)]"
+                    }`}
+                >
+                  {isSavingReminderEmails ? "..." : reminderEmailsOn ? "On" : "Off"}
+                </span>
+              </button>
+            ) : null}
+            {reminderEmailsError ? (
+              <p className="px-3 pb-1 text-[11px] leading-snug text-red-500">
+                {reminderEmailsError}
+              </p>
             ) : null}
             {isDiscordLinked ? (
               <button

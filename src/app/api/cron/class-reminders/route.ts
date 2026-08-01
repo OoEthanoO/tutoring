@@ -1082,6 +1082,12 @@ export async function POST(request: NextRequest) {
   const tutorDiscordIdById = new Map<string, string>();
   const tutorStrikeCountById = new Map<string, number>();
   const tutorRoleById = new Map<string, UserRole>();
+  // Tutors who have turned class reminder emails off. Queried on its own rather
+  // than joined into the tutor lookup below: if the column is missing the query
+  // fails in isolation, leaving this set empty so everyone still gets reminders,
+  // instead of taking tutor emails, roles and Discord ids down with it.
+  const reminderEmailOptOutTutorIds = new Set<string>();
+  const reminderEmailOptOutEmails = new Set<string>();
   if (allTutorIds.length > 0) {
     const { data: tutorDiscordRows } = await adminClient
       .from("app_users")
@@ -1106,6 +1112,22 @@ export async function POST(request: NextRequest) {
       const strikeCount = Number(tutor.strike_count) || 0;
       if (tutorId && strikeCount > 0) {
         tutorStrikeCountById.set(tutorId, strikeCount);
+      }
+    }
+
+    const { data: reminderPrefRows } = await adminClient
+      .from("app_users")
+      .select("id, email, class_reminder_emails")
+      .in("id", allTutorIds)
+      .eq("class_reminder_emails", false);
+    for (const row of reminderPrefRows ?? []) {
+      const tutorId = String(row.id ?? "").trim();
+      const email = String(row.email ?? "").trim().toLowerCase();
+      if (tutorId) {
+        reminderEmailOptOutTutorIds.add(tutorId);
+      }
+      if (email) {
+        reminderEmailOptOutEmails.add(email);
       }
     }
   }
@@ -2171,7 +2193,17 @@ ${tutorWasPresent ? "" : "<p><strong>Note:</strong> you were not detected in the
       }
     }
 
-    if (tutorEmail && (isStandardReminder || isTutorEarlyAccessReminder)) {
+    // Tutors can opt out of reminder emails; students always receive them.
+    const tutorWantsReminderEmails = !(
+      (course.created_by && reminderEmailOptOutTutorIds.has(String(course.created_by))) ||
+      reminderEmailOptOutEmails.has(tutorEmail.toLowerCase())
+    );
+
+    if (
+      tutorEmail &&
+      tutorWantsReminderEmails &&
+      (isStandardReminder || isTutorEarlyAccessReminder)
+    ) {
       recipients.add(tutorEmail.toLowerCase());
     }
 
