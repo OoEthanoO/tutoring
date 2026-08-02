@@ -4,7 +4,7 @@ import { canManageCourses, isExecutive, isFounder, isHighRankingChiefExecutive, 
 import { getRequestUser } from "@/lib/authServer";
 import { relabelClassesForCourse } from "@/lib/classTools";
 import { notifyCourseTutorsOfChanges } from "@/lib/courseChangeNotifications";
-import { hoursPerClassForGrade, normalizeGradeLevel } from "@/lib/serviceHours";
+import { normalizeGradeLevel, serviceHourMultiplierForGrade } from "@/lib/serviceHours";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
@@ -688,7 +688,7 @@ export async function PATCH(request: NextRequest) {
       gradeLevel !== (previousCourse.grade_level ?? null)
     ) {
       changes.push(
-        `Course grade level changed from ${previousCourse.grade_level ?? "None"} to ${gradeLevel ?? "None"} — each class is now worth ${hoursPerClassForGrade(gradeLevel)} community service hours.`
+        `Course grade level changed from ${previousCourse.grade_level ?? "None"} to ${gradeLevel ?? "None"} — every hour taught is now worth ${serviceHourMultiplierForGrade(gradeLevel)} community service hours.`
       );
     }
     if (

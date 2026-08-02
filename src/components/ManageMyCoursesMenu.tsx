@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { getCurrentUser, onAuthChange } from "@/lib/authClient";
 import { canManageCourses, isExecutive, isFounder, isHighRankingChiefExecutive, resolveUserRole, type UserRole } from "@/lib/roles";
 import { setHasUnsavedData } from "@/lib/unsavedData";
-import { hoursPerClassForGrade } from "@/lib/serviceHours";
+import { serviceHourMultiplierForGrade } from "@/lib/serviceHours";
 import { MarkdownText } from "@/lib/parseMarkdown";
 import CourseAttendance from "@/components/CourseAttendance";
 import RequestWithdrawalCard from "@/components/RequestWithdrawalCard";
@@ -1505,8 +1505,8 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
                     {course.grade_level ? (
                       <p className="text-xs text-[var(--muted)]">
                         Grade {course.grade_level} ·{" "}
-                        {hoursPerClassForGrade(course.grade_level)} community service hours
-                        per class
+                        {serviceHourMultiplierForGrade(course.grade_level)} community service
+                        hours per hour taught
                       </p>
                     ) : null}
                   </div>

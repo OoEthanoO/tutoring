@@ -18,7 +18,7 @@ type CourseClass = {
   course_id: string;
   course_title: string;
   course_grade_level: number | null;
-  // Service hours this class earns the tutor: 2 for grade 11/12 courses, else 1.5.
+  // Service hours this class earns: its length times 1.5, or 2 at grade 11/12.
   service_hours: number;
   tutor_withdrawal_id: string | null;
 };
@@ -367,7 +367,7 @@ export default function WithdrawHoursMenu() {
           Withdraw community service hours
         </h2>
         <p className="text-xs text-[var(--muted)] max-w-2xl">
-          Help tutors withdraw their community service hours. Each lesson taught counts as 1.5 hours, or 2 hours when the course is set to grade 11 or 12. Withdrawals must start chronologically from the oldest available class. Legal names are required to perform withdrawals.
+          Help tutors withdraw their community service hours. Every hour spent teaching counts as 1.5 hours, or 2 hours when the course is set to grade 11 or 12, so a longer class is worth proportionally more and reorganising a schedule never changes the total. Withdrawals must start chronologically from the oldest available class. Legal names are required to perform withdrawals.
         </p>
       </header>
 
@@ -721,7 +721,8 @@ export default function WithdrawHoursMenu() {
                             </p>
                             <p className="text-[10px] text-[var(--muted)]">
                               {cls.title} • {formatDateTime(cls.starts_at)} •{" "}
-                              {Number(cls.service_hours)} hrs
+                              {Math.round((Number(cls.duration_hours) || 1) * 60)} min taught
+                              → {Number(cls.service_hours)} hrs
                               {cls.course_grade_level ? ` (grade ${cls.course_grade_level})` : ""}
                             </p>
                           </div>

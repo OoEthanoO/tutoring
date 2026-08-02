@@ -1,5 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { hoursPerClassForGrade, sumHours, withdrawableHourSteps } from "@/lib/serviceHours";
+import {
+  serviceHoursForClass,
+  sumHours,
+  withdrawableHourSteps,
+} from "@/lib/serviceHours";
 
 // Automatically ensure the tutor_withdrawal_requests schema exists, mirroring the
 // ensureTutorWithdrawalsSchema pattern in the admin withdrawals route.
@@ -128,27 +132,31 @@ export async function getTutorAvailability(
     return { ...empty, withdrawnHours };
   }
 
-  const hoursByCourse = new Map(
+  const gradeByCourse = new Map(
     (courses ?? []).map((course: { id: string; grade_level: number | null }) => [
       course.id,
-      hoursPerClassForGrade(course.grade_level),
+      course.grade_level,
     ])
   );
 
   const nowStr = new Date().toISOString();
   const { data: pastClasses } = await adminClient
     .from("course_classes")
-    .select("id, course_id, tutor_withdrawal_id")
+    .select("id, course_id, duration_hours, tutor_withdrawal_id")
     .in("course_id", courseIds)
     .lte("starts_at", nowStr)
     .order("starts_at", { ascending: true });
 
   const taught = pastClasses ?? [];
+  // Each class is worth its teaching time times the course rate, so how the
+  // schedule is carved up does not change the total.
   const availableClassHours = taught
     .filter(
       (cls: { tutor_withdrawal_id: string | null }) => cls.tutor_withdrawal_id === null
     )
-    .map((cls: { course_id: string }) => hoursByCourse.get(cls.course_id) ?? 0);
+    .map((cls: { course_id: string; duration_hours: number | string | null }) =>
+      serviceHoursForClass(cls.duration_hours, gradeByCourse.get(cls.course_id) ?? null)
+    );
 
   return {
     availableHours: sumHours(availableClassHours),

@@ -52,7 +52,8 @@ export default function RequestWithdrawalCard() {
   const [availableHours, setAvailableHours] = useState(0);
   const [withdrawnHours, setWithdrawnHours] = useState(0);
   // Valid request amounts, from withdrawing the oldest 1..n classes. Classes are
-  // worth 1.5 hours, or 2 for grade 11/12 courses, so amounts are not uniform.
+  // worth its teaching time times 1.5, or 2 for grade 11/12 courses, so amounts
+  // are not uniform.
   const [hourSteps, setHourSteps] = useState<number[]>([]);
   const [legalNameSet, setLegalNameSet] = useState(true);
   const [gradeSet, setGradeSet] = useState(true);
@@ -301,12 +302,13 @@ export default function RequestWithdrawalCard() {
       ) : availableHours <= 0 ? (
         <p className="text-xs text-[var(--muted)]">
           No hours available to withdraw yet. Hours become withdrawable after you teach classes
-          (1.5 hours per class, or 2 hours for grade 11&ndash;12 courses).
+          (1.5 hours for every hour you teach, or 2 hours for grade 11&ndash;12 courses).
         </p>
       ) : (
         <div className="flex flex-wrap items-center gap-2">
           {/* Withdrawals consume your oldest classes first, and a class is worth
-              1.5 hours (2 for grade 11-12 courses), so only these totals are valid. */}
+              its length times 1.5 (2 for grade 11-12 courses), so only these
+              totals are valid. */}
           <select
             value={hoursInput}
             onChange={(event) => setHoursInput(event.target.value)}

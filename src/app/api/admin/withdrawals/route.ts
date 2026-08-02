@@ -11,7 +11,7 @@ import {
 import {
   classCountForHours,
   describeHourSteps,
-  hoursPerClassForGrade,
+  serviceHoursForClass,
   sumHours,
 } from "@/lib/serviceHours";
 
@@ -293,7 +293,7 @@ export async function GET(request: NextRequest) {
         ...cls,
         course_title: course?.title || "Unknown Course",
         course_grade_level: course?.grade_level ?? null,
-        service_hours: hoursPerClassForGrade(course?.grade_level ?? null),
+        service_hours: serviceHoursForClass(cls.duration_hours, course?.grade_level ?? null),
       };
     });
   }
@@ -402,10 +402,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "This tutor has not taught any courses." }, { status: 400 });
   }
 
-  const hoursByCourse = new Map(
+  const gradeByCourse = new Map(
     (courses ?? []).map((course: Pick<CourseRow, "id" | "grade_level">) => [
       course.id,
-      hoursPerClassForGrade(course.grade_level),
+      course.grade_level,
     ])
   );
 
@@ -423,12 +423,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: classesError.message }, { status: 500 });
   }
 
-  // Classes are consumed oldest-first, and each is worth 1.5 or 2 hours
-  // depending on its course's grade level, so a valid request is one of the
+  // Classes are consumed oldest-first, and each is worth its teaching time times
+  // the course rate (1.5, or 2 at grade 11/12), so a valid request is one of the
   // running totals over that chronological list.
   const classesCount = availableClasses?.length || 0;
   const perClassHours = (availableClasses || []).map(
-    (cls: Pick<CourseClassRow, "course_id">) => hoursByCourse.get(cls.course_id) ?? 0
+    (cls: Pick<CourseClassRow, "course_id" | "duration_hours">) =>
+      serviceHoursForClass(cls.duration_hours, gradeByCourse.get(cls.course_id) ?? null)
   );
   const availableHours = sumHours(perClassHours);
   const numClassesToWithdraw = classCountForHours(perClassHours, hours);

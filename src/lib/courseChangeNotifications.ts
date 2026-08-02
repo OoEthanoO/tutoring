@@ -27,6 +27,21 @@ type CourseNotificationRow = {
   co_tutor_email: string | null;
 };
 
+/**
+ * Class durations are stored in hours but entered and understood in minutes, so
+ * raw hours read badly in a notification: 70 minutes is either
+ * 1.1666666666666667 (the value the client sends) or 1.17 (what the numeric
+ * column rounds it to). Both are the same class length.
+ */
+export const courseChangeDurationMinutes = (hours: unknown): number => {
+  const parsed = typeof hours === "number" ? hours : Number.parseFloat(String(hours ?? ""));
+  const safe = Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+  return Math.round(safe * 60);
+};
+
+export const formatCourseChangeDuration = (hours: unknown): string =>
+  `${courseChangeDurationMinutes(hours)} min`;
+
 export const formatCourseChangeDateTime = (value: string | null | undefined) => {
   if (!value) {
     return "Not set";

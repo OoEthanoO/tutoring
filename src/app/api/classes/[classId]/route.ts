@@ -4,8 +4,10 @@ import { canManageCourses, isFounder, resolveUserRole } from "@/lib/roles";
 import { getRequestUser } from "@/lib/authServer";
 import { relabelClassesForCourse } from "@/lib/classTools";
 import {
+  courseChangeDurationMinutes,
   formatCourseChangeDateTime,
   formatCourseChangeDiscordDateTime,
+  formatCourseChangeDuration,
   notifyCourseTutorsOfChanges,
   type CourseChangeItem,
 } from "@/lib/courseChangeNotifications";
@@ -149,12 +151,18 @@ export async function PATCH(
       discordText: `${movedLabel} ${formatCourseChangeDiscordDateTime(classRow.starts_at)} to ${formatCourseChangeDiscordDateTime(primaryUpdatedClass.starts_at)}.`,
     });
   }
+  // Compare in whole minutes: the stored value is rounded by the numeric column
+  // while the client sends minutes/60 unrounded, so an unchanged 70-minute class
+  // otherwise looks like 1.17 -> 1.1666666666666667 and announces itself.
   if (
     isFounder(role) &&
     typeof body?.durationHours === "number" &&
-    body.durationHours !== classRow.duration_hours
+    courseChangeDurationMinutes(body.durationHours) !==
+      courseChangeDurationMinutes(classRow.duration_hours)
   ) {
-    notificationChanges.push(`${primaryUpdatedClass.title || "A class"} duration changed from ${classRow.duration_hours ?? 1}h to ${body.durationHours}h.`);
+    notificationChanges.push(
+      `${primaryUpdatedClass.title || "A class"} duration changed from ${formatCourseChangeDuration(classRow.duration_hours)} to ${formatCourseChangeDuration(body.durationHours)}.`
+    );
   }
 
   const updatesList = body?.bulkClassUpdates;

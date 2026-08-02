@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
-  BASE_HOURS_PER_CLASS,
-  SENIOR_HOURS_PER_CLASS,
+  BASE_HOURS_PER_TEACHING_HOUR,
+  SENIOR_HOURS_PER_TEACHING_HOUR,
   classCountForHours,
   describeHourSteps,
-  hoursPerClassForGrade,
   normalizeGradeLevel,
+  parseTeachingHours,
+  serviceHourMultiplierForGrade,
+  serviceHoursForClass,
+  serviceHoursForClasses,
   sumHours,
   withdrawableHourSteps,
 } from "@/lib/serviceHours";
@@ -28,21 +31,90 @@ describe("normalizeGradeLevel", () => {
   });
 });
 
-describe("hoursPerClassForGrade", () => {
+describe("serviceHourMultiplierForGrade", () => {
   it("pays the senior rate for grades 11 and 12", () => {
-    expect(hoursPerClassForGrade(11)).toBe(SENIOR_HOURS_PER_CLASS);
-    expect(hoursPerClassForGrade("12")).toBe(SENIOR_HOURS_PER_CLASS);
+    expect(serviceHourMultiplierForGrade(11)).toBe(SENIOR_HOURS_PER_TEACHING_HOUR);
+    expect(serviceHourMultiplierForGrade("12")).toBe(SENIOR_HOURS_PER_TEACHING_HOUR);
   });
 
-  it("pays the base rate for every other grade", () => {
-    expect(hoursPerClassForGrade(9)).toBe(BASE_HOURS_PER_CLASS);
-    expect(hoursPerClassForGrade(10)).toBe(BASE_HOURS_PER_CLASS);
+  it("pays the base rate for every other grade, and when unset or invalid", () => {
+    expect(serviceHourMultiplierForGrade(9)).toBe(BASE_HOURS_PER_TEACHING_HOUR);
+    expect(serviceHourMultiplierForGrade(10)).toBe(BASE_HOURS_PER_TEACHING_HOUR);
+    expect(serviceHourMultiplierForGrade(null)).toBe(BASE_HOURS_PER_TEACHING_HOUR);
+    expect(serviceHourMultiplierForGrade("")).toBe(BASE_HOURS_PER_TEACHING_HOUR);
+    expect(serviceHourMultiplierForGrade(13)).toBe(BASE_HOURS_PER_TEACHING_HOUR);
+  });
+});
+
+describe("parseTeachingHours", () => {
+  it("reads numbers and numeric strings", () => {
+    expect(parseTeachingHours(1.5)).toBe(1.5);
+    expect(parseTeachingHours("2")).toBe(2);
   });
 
-  it("falls back to the base rate when the grade is unset or invalid", () => {
-    expect(hoursPerClassForGrade(null)).toBe(BASE_HOURS_PER_CLASS);
-    expect(hoursPerClassForGrade("")).toBe(BASE_HOURS_PER_CLASS);
-    expect(hoursPerClassForGrade(13)).toBe(BASE_HOURS_PER_CLASS);
+  it("falls back to one hour rather than zero for unusable values", () => {
+    expect(parseTeachingHours(null)).toBe(1);
+    expect(parseTeachingHours(undefined)).toBe(1);
+    expect(parseTeachingHours("")).toBe(1);
+    expect(parseTeachingHours("not-a-number")).toBe(1);
+    expect(parseTeachingHours(0)).toBe(1);
+    expect(parseTeachingHours(-2)).toBe(1);
+  });
+});
+
+describe("serviceHoursForClass", () => {
+  it("keeps the familiar value for a standard 60-minute class", () => {
+    // The pre-August-2026 per-class rates, reproduced exactly.
+    expect(serviceHoursForClass(1, null)).toBe(1.5);
+    expect(serviceHoursForClass(1, 11)).toBe(2);
+  });
+
+  it("scales with teaching time", () => {
+    expect(serviceHoursForClass(1.5, null)).toBe(2.25);
+    expect(serviceHoursForClass(2, null)).toBe(3);
+    expect(serviceHoursForClass(1.5, 12)).toBe(3);
+    expect(serviceHoursForClass(0.5, null)).toBe(0.75);
+  });
+
+  it("treats an unusable duration as one hour", () => {
+    expect(serviceHoursForClass(null, null)).toBe(1.5);
+  });
+});
+
+describe("serviceHoursForClasses", () => {
+  it("totals a whole course", () => {
+    expect(
+      serviceHoursForClasses(
+        [{ durationHours: 1 }, { durationHours: 1 }, { durationHours: 1 }],
+        null
+      )
+    ).toBe(4.5);
+  });
+
+  it("is unchanged when a class is dropped and another absorbs its time", () => {
+    // The August 2026 policy: a missed class is deleted and a later one extended.
+    const asScheduled = serviceHoursForClasses(
+      [{ durationHours: 1 }, { durationHours: 1 }, { durationHours: 1 }, { durationHours: 1 }],
+      null
+    );
+    const afterReshuffle = serviceHoursForClasses(
+      [{ durationHours: 1 }, { durationHours: 1 }, { durationHours: 2 }],
+      null
+    );
+    expect(afterReshuffle).toBe(asScheduled);
+  });
+
+  it("is unaffected by how the same total time is split", () => {
+    const oneLongClass = serviceHoursForClasses([{ durationHours: 3 }], 11);
+    const threeShortClasses = serviceHoursForClasses(
+      [{ durationHours: 1 }, { durationHours: 1 }, { durationHours: 1 }],
+      11
+    );
+    expect(oneLongClass).toBe(threeShortClasses);
+  });
+
+  it("totals nothing for a course with no classes", () => {
+    expect(serviceHoursForClasses([], null)).toBe(0);
   });
 });
 
