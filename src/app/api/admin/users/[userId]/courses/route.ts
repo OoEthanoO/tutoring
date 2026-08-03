@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getRequestUser } from "@/lib/authServer";
 import { isFounder, resolveUserRole } from "@/lib/roles";
+import { classEndMs } from "@/lib/classTiming";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
@@ -39,8 +40,7 @@ const getClassBounds = (classes: ClassRow[]) => {
     if (Number.isNaN(start)) {
       continue;
     }
-    const durationHours = Number.parseFloat(String(cls.duration_hours ?? "1"));
-    const end = start + (Number.isFinite(durationHours) ? durationHours : 1) * 60 * 60 * 1000;
+    const end = classEndMs(start, cls.duration_hours);
     startMs = Math.min(startMs, start);
     endMs = Math.max(endMs, end);
   }

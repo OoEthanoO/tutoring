@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { founderEmails, resolveUserRole } from "@/lib/roles";
 import { fetchFundraisingRaisedAmount } from "@/lib/fundraising";
+import { classEndMs } from "@/lib/classTiming";
 
 const discordApiBase = "https://discord.com/api/v10";
 const courseTopicPrefix = "yanlearn-course-id:";
@@ -268,16 +269,10 @@ export const getCourseEndedAtMs = (course: CourseRow) => {
       continue;
     }
 
-    const durationHours =
-      typeof classRow.duration_hours === "number"
-        ? classRow.duration_hours
-        : Number.parseFloat(String(classRow.duration_hours || 1));
-    const durationMs =
-      Number.isFinite(durationHours) && durationHours > 0
-        ? durationHours * 60 * 60 * 1000
-        : 60 * 60 * 1000;
-
-    latestClassEndMs = Math.max(latestClassEndMs, startsAtMs + durationMs);
+    latestClassEndMs = Math.max(
+      latestClassEndMs,
+      classEndMs(startsAtMs, classRow.duration_hours)
+    );
   }
 
   if (!Number.isFinite(latestClassEndMs)) {
@@ -2129,14 +2124,7 @@ export const runDiscordSync = async ({
       if (!Number.isFinite(startsAt)) {
         return false;
       }
-      const durationHours = typeof item.duration_hours === "number"
-        ? item.duration_hours
-        : Number.parseFloat(String(item.duration_hours || 1));
-      const durationMs = Number.isFinite(durationHours) && durationHours > 0
-        ? durationHours * 60 * 60 * 1000
-        : 60 * 60 * 1000;
-      const endsAt = startsAt + durationMs;
-      return endsAt >= nowTimeMs;
+      return classEndMs(startsAt, item.duration_hours) >= nowTimeMs;
     });
     return hasActive;
   };

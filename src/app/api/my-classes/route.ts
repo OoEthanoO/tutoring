@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getRequestUser } from "@/lib/authServer";
 import { isFounder, resolveUserRole } from "@/lib/roles";
+import { classEndMs } from "@/lib/classTiming";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
@@ -81,7 +82,7 @@ export async function GET(request: NextRequest) {
       for (const cls of classes) {
         const startMs = new Date(cls.starts_at).getTime();
         const durationHours = Number.parseFloat(String(cls.duration_hours || "1"));
-        const endMs = startMs + durationHours * 60 * 60 * 1000;
+        const endMs = classEndMs(startMs, durationHours);
         
         if (endMs > nowMs) {
           upcomingClasses.push({
@@ -127,7 +128,7 @@ export async function GET(request: NextRequest) {
       for (const cls of classes) {
         const startMs = new Date(cls.starts_at).getTime();
         const durationHours = Number.parseFloat(String(cls.duration_hours || "1"));
-        const endMs = startMs + durationHours * 60 * 60 * 1000;
+        const endMs = classEndMs(startMs, durationHours);
         
         if (endMs > nowMs && !seenClassIds.has(cls.id)) {
           upcomingClasses.push({

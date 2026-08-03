@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { getCurrentUser, onAuthChange } from "@/lib/authClient";
+import { classEndMs } from "@/lib/classTiming";
 
 type StatusState = {
   type: "idle" | "error";
@@ -22,8 +23,8 @@ type UpcomingClass = {
 
 const formatTimeRange = (startsAt: string, durationHours: number) => {
   const start = new Date(startsAt);
-  const end = new Date(start.getTime() + durationHours * 60 * 60 * 1000);
-  
+  const end = new Date(classEndMs(start.getTime(), durationHours));
+
   const dateStr = start.toLocaleDateString(undefined, {
     weekday: "short",
     month: "short",
@@ -46,7 +47,7 @@ const formatTimeRange = (startsAt: string, durationHours: number) => {
 
 const isOngoingClass = (startsAt: string, durationHours: number, nowMs: number) => {
   const start = new Date(startsAt).getTime();
-  const end = start + durationHours * 60 * 60 * 1000;
+  const end = classEndMs(start, durationHours);
   return nowMs >= start && nowMs <= end;
 };
 

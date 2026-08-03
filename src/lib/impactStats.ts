@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isExecutive, resolveUserRole } from "@/lib/roles";
+import { classEndMs } from "@/lib/classTiming";
 
 // Enrollments in courses run before the website existed.
 export const LEGACY_ENROLLMENT_COUNT = 245;
@@ -178,7 +179,7 @@ export function computeCoreTotals(rows: CoreRows): {
     if (!Number.isFinite(startMs)) {
       continue;
     }
-    const endMs = startMs + parseHours(cls.duration_hours) * 60 * 60 * 1000;
+    const endMs = classEndMs(startMs, cls.duration_hours);
     classCountByCourse.set(cls.course_id, (classCountByCourse.get(cls.course_id) ?? 0) + 1);
     if (endMs > nowMs) {
       upcomingByCourse.add(cls.course_id);

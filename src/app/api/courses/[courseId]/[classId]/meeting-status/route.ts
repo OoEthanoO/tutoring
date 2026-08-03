@@ -9,6 +9,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { createZoomMeeting, deleteZoomMeeting } from "@/lib/zoom";
+import { classDurationMinutes, classEndDate } from "@/lib/classTiming";
 import { jwtDecode } from "jwt-decode";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
@@ -133,14 +134,12 @@ export async function POST(
 
     // Create new Zoom meeting
     const startsAt = new Date(courseClass.starts_at);
-    const durationHours = typeof courseClass.duration_hours === "number"
-      ? courseClass.duration_hours
-      : Number.parseFloat(String(courseClass.duration_hours || 1));
+    const durationMinutes = classDurationMinutes(courseClass.duration_hours);
 
     const meeting = await createZoomMeeting({
       topic: `${course.title} - ${courseClass.title}`,
       start_time: startsAt.toISOString(),
-      duration: Math.ceil(durationHours * 60),
+      duration: durationMinutes,
       settings: {
         participant_video: true,
         host_video: true,
@@ -289,10 +288,7 @@ export async function GET(
     // Conditions: host not in meeting AND current time is after end time
     const now = new Date();
     const startsAt = new Date(courseClass.starts_at);
-    const durationHours = typeof courseClass.duration_hours === "number"
-      ? courseClass.duration_hours
-      : Number.parseFloat(String(courseClass.duration_hours || 1));
-    const endsAt = new Date(startsAt.getTime() + durationHours * 60 * 60 * 1000);
+    const endsAt = classEndDate(startsAt, courseClass.duration_hours);
 
     const shouldClose = !session.ended_at && now > endsAt;
 

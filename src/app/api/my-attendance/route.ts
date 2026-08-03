@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getRequestUser } from "@/lib/authServer";
+import { classEndMs } from "@/lib/classTiming";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
@@ -70,8 +71,7 @@ export async function GET(request: NextRequest) {
       if (Number.isNaN(startMs)) {
         continue;
       }
-      const durationHours = Number.parseFloat(String(cls.duration_hours ?? "1"));
-      const endMs = startMs + (Number.isFinite(durationHours) ? durationHours : 1) * 60 * 60 * 1000;
+      const endMs = classEndMs(startMs, cls.duration_hours);
       if (endMs > nowMs || seen.has(cls.id)) {
         continue; // only classes that have already ended
       }

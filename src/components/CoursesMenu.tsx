@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ClientUser, getCurrentUser, onAuthChange } from "@/lib/authClient";
 import { setHasUnsavedData } from "@/lib/unsavedData";
+import { classEndMs } from "@/lib/classTiming";
 import { MarkdownText } from "@/lib/parseMarkdown";
 import { useNotification } from "./Notification";
 import StudentApplicationForm from "./StudentApplicationForm";
@@ -30,7 +31,7 @@ const sortClassesByStart = (classes: CourseClass[]) =>
 
 const getClassTimes = (startsAt: string, durationHours: number = 1) => {
   const start = new Date(startsAt);
-  const end = new Date(start.getTime() + durationHours * 60 * 60 * 1000);
+  const end = new Date(classEndMs(start.getTime(), durationHours));
   return { start, end };
 };
 
@@ -306,7 +307,7 @@ export default function CoursesMenu() {
         if (!Number.isFinite(startsAt)) {
           return false;
         }
-        const endsAt = startsAt + (item.duration_hours || 1) * 60 * 60 * 1000;
+        const endsAt = classEndMs(startsAt, item.duration_hours);
         return nowMs >= startsAt && nowMs <= endsAt;
       }),
     [nowMs]
@@ -507,7 +508,7 @@ export default function CoursesMenu() {
               const ongoing = (course.course_classes ?? []).some((cls) => {
                 const start = new Date(cls.starts_at).getTime();
                 if (Number.isNaN(start)) return false;
-                const end = start + (cls.duration_hours || 1) * 60 * 60 * 1000;
+                const end = classEndMs(start, cls.duration_hours);
                 return nowMs >= start && nowMs <= end;
               });
 
@@ -567,7 +568,7 @@ export default function CoursesMenu() {
               const ongoing = (course.course_classes ?? []).some((cls) => {
                 const start = new Date(cls.starts_at).getTime();
                 if (Number.isNaN(start)) return false;
-                const end = start + (cls.duration_hours || 1) * 60 * 60 * 1000;
+                const end = classEndMs(start, cls.duration_hours);
                 return nowMs >= start && nowMs <= end;
               });
 

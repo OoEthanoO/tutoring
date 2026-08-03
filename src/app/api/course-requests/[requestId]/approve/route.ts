@@ -5,6 +5,7 @@ import { getRequestUser } from "@/lib/authServer";
 import { relabelClassesForCourse } from "@/lib/classTools";
 import { sendEmail, sendDiscordMessageByChannelName } from "@/lib/notificationsServer";
 import { normalizeGradeLevel } from "@/lib/serviceHours";
+import { classEndDate } from "@/lib/classTiming";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
@@ -197,10 +198,7 @@ export async function POST(
       const courseTitle = requestRecord.title;
       const formatClassDetails = (items: FinalizedClass[]) => items.map((item, index) => {
         const startsAt = new Date(item.starts_at);
-        const durationHours = typeof item.duration_hours === "number" && item.duration_hours > 0
-          ? item.duration_hours
-          : 1;
-        const endsAt = new Date(startsAt.getTime() + durationHours * 60 * 60 * 1000);
+        const endsAt = classEndDate(startsAt, item.duration_hours);
         const date = startsAt.toLocaleDateString("en-US", {
           timeZone: "America/Toronto",
           month: "numeric",

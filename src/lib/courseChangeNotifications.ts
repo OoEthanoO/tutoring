@@ -1,6 +1,7 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 import { sendDiscordMessageByChannelName, sendBccEmail } from "./notificationsServer";
 import { formatDiscordTimestamp } from "./discordTimestamp";
+import { classDurationMinutes } from "./classTiming";
 
 // A change line can carry a Discord-specific variant so times render as
 // dynamic timestamps in Discord while emails keep static Toronto-time text.
@@ -33,11 +34,7 @@ type CourseNotificationRow = {
  * 1.1666666666666667 (the value the client sends) or 1.17 (what the numeric
  * column rounds it to). Both are the same class length.
  */
-export const courseChangeDurationMinutes = (hours: unknown): number => {
-  const parsed = typeof hours === "number" ? hours : Number.parseFloat(String(hours ?? ""));
-  const safe = Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
-  return Math.round(safe * 60);
-};
+export const courseChangeDurationMinutes = classDurationMinutes;
 
 export const formatCourseChangeDuration = (hours: unknown): string =>
   `${courseChangeDurationMinutes(hours)} min`;

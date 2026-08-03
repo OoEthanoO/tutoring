@@ -5,6 +5,7 @@ import { getCurrentUser, onAuthChange } from "@/lib/authClient";
 import { canManageCourses, isExecutive, isFounder, isHighRankingChiefExecutive, resolveUserRole, type UserRole } from "@/lib/roles";
 import { setHasUnsavedData } from "@/lib/unsavedData";
 import { serviceHourMultiplierForGrade } from "@/lib/serviceHours";
+import { classDurationMinutes as durationMinutesOf, classEndMs } from "@/lib/classTiming";
 import { MarkdownText } from "@/lib/parseMarkdown";
 import CourseAttendance from "@/components/CourseAttendance";
 import RequestWithdrawalCard from "@/components/RequestWithdrawalCard";
@@ -428,11 +429,7 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
     setEditStartsAt(
       toLocalDateTimeInputValue(new Date(courseClass.starts_at))
     );
-    setEditDurationMinutes(
-      typeof courseClass.duration_hours === "number"
-        ? String(Math.round(courseClass.duration_hours * 60))
-        : String(Math.round((courseClass.duration_hours || 1) * 60))
-    );
+    setEditDurationMinutes(String(durationMinutesOf(courseClass.duration_hours)));
   };
 
   const cancelEditClass = () => {
@@ -1108,10 +1105,7 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
             const dateString2 = classDate.toLocaleDateString().toLowerCase().replace(/[\u202F\u00A0]/g, ' ');
             const timeString = formatTime(classDate);
             
-            const durationHours = typeof courseClass.duration_hours === 'number' 
-              ? courseClass.duration_hours 
-              : Number.parseFloat(String(courseClass.duration_hours || "1"));
-            const endDate = new Date(classDate.getTime() + (Number.isNaN(durationHours) ? 1 : durationHours) * 60 * 60 * 1000);
+            const endDate = new Date(classEndMs(classDate.getTime(), courseClass.duration_hours));
             const endTimeString = formatTime(endDate);
 
             if (
@@ -1276,7 +1270,7 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
           const ongoing = (course.course_classes ?? []).some((cls) => {
             const start = new Date(cls.starts_at).getTime();
             if (Number.isNaN(start)) return false;
-            const end = start + (cls.duration_hours || 1) * 60 * 60 * 1000;
+            const end = classEndMs(start, cls.duration_hours);
             return nowMs >= start && nowMs <= end;
           });
           
@@ -1647,13 +1641,17 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
                                 )}{" "}
                                 -{" "}
                                   {new Date(
-                                    new Date(courseClass.starts_at).getTime() +
-                                    (courseClass.duration_hours || 1) * 60 * 60 * 1000
+                                    classEndMs(
+                                      new Date(courseClass.starts_at).getTime(),
+                                      courseClass.duration_hours
+                                    )
                                   ).toLocaleTimeString([], {
                                     hour: "numeric",
                                     minute: "2-digit",
                                   })}
-                                  {courseClass.duration_hours !== 1 ? ` (${Math.round(courseClass.duration_hours * 60)} min)` : ""}
+                                  {durationMinutesOf(courseClass.duration_hours) !== 60
+                                    ? ` (${durationMinutesOf(courseClass.duration_hours)} min)`
+                                    : ""}
                                 </span>
                             );
                           })()}

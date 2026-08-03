@@ -5,6 +5,7 @@ import { createClient } from "@supabase/supabase-js";
 import { isExecutive, isFounder, resolveUserRole, type UserRole } from "@/lib/roles";
 import { getRequestUser } from "@/lib/authServer";
 import { fetchDiscordGuildMemberIds } from "@/lib/discordSync";
+import { classEndMs } from "@/lib/classTiming";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
@@ -177,8 +178,7 @@ const hasFutureClass = (
     if (Number.isNaN(startMs)) {
       return false;
     }
-    const durationHours = Number.parseFloat(String(cls.duration_hours ?? "1"));
-    const endMs = startMs + (Number.isFinite(durationHours) ? durationHours : 1) * 60 * 60 * 1000;
+    const endMs = classEndMs(startMs, cls.duration_hours);
     return endMs > nowMs;
   });
 

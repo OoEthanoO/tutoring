@@ -35,6 +35,7 @@ import {
   type UserRole,
 } from "@/lib/roles";
 import { deleteZoomMeeting } from "@/lib/zoom";
+import { classEndDate, classEndMs } from "@/lib/classTiming";
 import { sendBccEmail } from "@/lib/notificationsServer";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
@@ -123,12 +124,7 @@ const courseHasFutureClass = (
     if (Number.isNaN(startsMs)) {
       return false;
     }
-    const durationRaw =
-      typeof classRow.duration_hours === "number"
-        ? classRow.duration_hours
-        : Number.parseFloat(String(classRow.duration_hours ?? 1));
-    const durationHours = Number.isFinite(durationRaw) && durationRaw > 0 ? durationRaw : 1;
-    return startsMs + durationHours * 60 * 60 * 1000 > nowMs;
+    return classEndMs(startsMs, classRow.duration_hours) > nowMs;
   });
 
 const escapeHtml = (value: string) =>
@@ -544,14 +540,7 @@ const runAutoCloseMeetings = async (
     }
 
     const startsAt = new Date(String(courseClass.starts_at));
-    const durationHoursRaw =
-      typeof courseClass.duration_hours === "number"
-        ? courseClass.duration_hours
-        : Number.parseFloat(String(courseClass.duration_hours || 1));
-    const durationHours = Number.isFinite(durationHoursRaw)
-      ? durationHoursRaw
-      : 1;
-    const endsAt = new Date(startsAt.getTime() + durationHours * 60 * 60 * 1000);
+    const endsAt = classEndDate(startsAt, courseClass.duration_hours);
 
     if (now <= endsAt) {
       continue;
@@ -868,13 +857,8 @@ export async function POST(request: NextRequest) {
 
   const classesInLiveWindow = ((potentialLiveClasses ?? []) as ClassRow[]).filter((classRow) => {
     const startsAt = new Date(classRow.starts_at);
-    const durationHoursRaw =
-      typeof classRow.duration_hours === "number"
-        ? classRow.duration_hours
-        : Number.parseFloat(String(classRow.duration_hours || 1));
-    const durationHours = Number.isFinite(durationHoursRaw) ? durationHoursRaw : 1;
     const startsMs = startsAt.getTime();
-    const endsMs = startsMs + durationHours * 60 * 60 * 1000;
+    const endsMs = classEndMs(startsMs, classRow.duration_hours);
     const earlyAccessMs = 15 * 60 * 1000;
     return (
       Number.isFinite(startsMs) &&
@@ -907,12 +891,7 @@ export async function POST(request: NextRequest) {
     } else {
       recentlyEndedClasses = ((potentialEndedClasses ?? []) as ClassRow[]).filter((classRow) => {
         const startsMs = new Date(classRow.starts_at).getTime();
-        const durationHoursRaw =
-          typeof classRow.duration_hours === "number"
-            ? classRow.duration_hours
-            : Number.parseFloat(String(classRow.duration_hours || 1));
-        const durationHours = Number.isFinite(durationHoursRaw) ? durationHoursRaw : 1;
-        const endsMs = startsMs + durationHours * 60 * 60 * 1000;
+        const endsMs = classEndMs(startsMs, classRow.duration_hours);
         return (
           Number.isFinite(startsMs) &&
           endsMs >= followUpEndWindowStartMs &&
@@ -1573,11 +1552,6 @@ export async function POST(request: NextRequest) {
       .map((classRow) => {
         const course = readCourse(classRow.course);
         const startsAtMs = new Date(classRow.starts_at).getTime();
-        const durationHoursRaw =
-          typeof classRow.duration_hours === "number"
-            ? classRow.duration_hours
-            : Number.parseFloat(String(classRow.duration_hours || 1));
-        const durationHours = Number.isFinite(durationHoursRaw) ? durationHoursRaw : 1;
         return {
           id: null,
           class_id: classRow.id,
@@ -1587,7 +1561,7 @@ export async function POST(request: NextRequest) {
             ? tutorDiscordIdById.get(course.created_by) ?? ""
             : "",
           starts_at: classRow.starts_at,
-          ends_at: new Date(startsAtMs + durationHours * 60 * 60 * 1000).toISOString(),
+          ends_at: new Date(classEndMs(startsAtMs, classRow.duration_hours)).toISOString(),
         };
       });
 
@@ -2316,12 +2290,7 @@ ${tutorWasPresent ? "" : "<p><strong>Note:</strong> you were not detected in the
                   liveChannelId = createdVoiceChannel.id;
 
                   const startsAtMs = new Date(classRow.starts_at).getTime();
-                  const durationHoursRaw =
-                    typeof classRow.duration_hours === "number"
-                      ? classRow.duration_hours
-                      : Number.parseFloat(String(classRow.duration_hours || 1));
-                  const durationHours = Number.isFinite(durationHoursRaw) ? durationHoursRaw : 1;
-                  const endsAt = new Date(startsAtMs + durationHours * 60 * 60 * 1000);
+                  const endsAt = new Date(classEndMs(startsAtMs, classRow.duration_hours));
 
                   if (existingLiveRow) {
                     await adminClient
@@ -2494,12 +2463,7 @@ ${tutorWasPresent ? "" : "<p><strong>Note:</strong> you were not detected in the
                     guildChannels.push(createdVoiceChannel);
                     liveChannelId = createdVoiceChannel.id;
                     const startsAtMs = new Date(classRow.starts_at).getTime();
-                    const durationHoursRaw =
-                      typeof classRow.duration_hours === "number"
-                        ? classRow.duration_hours
-                        : Number.parseFloat(String(classRow.duration_hours || 1));
-                    const durationHours = Number.isFinite(durationHoursRaw) ? durationHoursRaw : 1;
-                    const endsAt = new Date(startsAtMs + durationHours * 60 * 60 * 1000);
+                    const endsAt = new Date(classEndMs(startsAtMs, classRow.duration_hours));
                     if (existingLiveRow) {
                       await adminClient
                         .from("discord_live_class_channels")

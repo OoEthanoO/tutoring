@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { getCurrentUser, onAuthChange } from "@/lib/authClient";
 import { MarkdownText } from "@/lib/parseMarkdown";
+import { classDurationMinutes, classEndMs } from "@/lib/classTiming";
 
 type StatusState = {
   type: "idle" | "error";
@@ -145,7 +146,7 @@ export default function EnrolledCoursesMenu() {
           const ongoing = (course.course_classes ?? []).some((cls) => {
             const start = new Date(cls.starts_at).getTime();
             if (Number.isNaN(start)) return false;
-            const end = start + (cls.duration_hours || 1) * 60 * 60 * 1000;
+            const end = classEndMs(start, cls.duration_hours);
             return nowMs >= start && nowMs <= end;
           });
           
@@ -203,7 +204,7 @@ export default function EnrolledCoursesMenu() {
                     <li key={courseClass.id}>
                       {courseClass.title} ·{" "}
                       {new Date(courseClass.starts_at).toLocaleString()} ·{" "}
-                      {Math.round((courseClass.duration_hours || 1) * 60)} min
+                      {classDurationMinutes(courseClass.duration_hours)} min
                     </li>
                   ))}
                 </ul>

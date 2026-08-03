@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useNotification } from "./Notification";
+import { classEndMs } from "@/lib/classTiming";
 
 interface Course {
   id: string;
@@ -104,7 +105,7 @@ const getScheduleData = (classes: CourseClass[] | undefined): ScheduleData => {
     const dayName = DAYS_OF_WEEK[dayIndex];
 
     const start = formatTime(date);
-    const endDate = new Date(date.getTime() + cls.duration_hours * 60 * 60 * 1000);
+    const endDate = new Date(classEndMs(date.getTime(), cls.duration_hours));
     const end = formatTime(endDate);
     const timeRange = `${start}-${end}`;
 
@@ -140,7 +141,7 @@ const getScheduleData = (classes: CourseClass[] | undefined): ScheduleData => {
       const dateStr = date.toLocaleDateString("en-US", { month: "numeric", day: "numeric" });
 
       const start = formatTime(date);
-      const endDate = new Date(date.getTime() + cls.duration_hours * 60 * 60 * 1000);
+      const endDate = new Date(classEndMs(date.getTime(), cls.duration_hours));
       const end = formatTime(endDate);
 
       if (!byDate.has(dateStr)) {
