@@ -287,7 +287,46 @@ export async function GET(request: NextRequest) {
     legalName: item.legal_name ?? null,
     customRole: item.custom_role ?? null,
     generation: item.executive_generation ?? null,
+    // true = receiving reminders, false = opted out, null = unknown.
+    classReminderEmails: null as boolean | null,
   }));
+
+  // Queried separately from the user list above so that a missing column (the
+  // migration not yet applied) leaves this as "unknown" rather than failing the
+  // whole admin user list. Covers every tutor rather than just this page, so the
+  // caller can show a complete roster without paging through everyone.
+  const remindersOffTutors: { id: string; fullName: string; email: string }[] = [];
+  {
+    const { data: optedOutRows } = await adminClient
+      .from("app_users")
+      .select("id, email, full_name, role, custom_role")
+      .eq("class_reminder_emails", false);
+
+    if (optedOutRows) {
+      const optedOutIds = new Set(optedOutRows.map((row) => String(row.id)));
+      users.forEach((user) => {
+        user.classReminderEmails = !optedOutIds.has(String(user.id));
+      });
+
+      for (const row of optedOutRows) {
+        const role = resolveUserRole(
+          row.email,
+          row.role ?? null,
+          row.custom_role ? [String(row.custom_role)] : []
+        );
+        // Only tutors can opt out; ignore any stale row on a non-tutor.
+        if (!isExecutive(role)) {
+          continue;
+        }
+        remindersOffTutors.push({
+          id: String(row.id),
+          fullName: String(row.full_name ?? "").trim() || "Unnamed user",
+          email: String(row.email ?? ""),
+        });
+      }
+      remindersOffTutors.sort((left, right) => left.fullName.localeCompare(right.fullName));
+    }
+  }
 
   // For connected users, determine whether they have actually joined the Discord
   // server so the UI can distinguish "connected but not joined" from "connected
@@ -357,7 +396,7 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  return NextResponse.json({ users, total: users.length });
+  return NextResponse.json({ users, total: users.length, remindersOffTutors });
 }
 
 export async function PATCH(request: NextRequest) {

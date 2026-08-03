@@ -32,7 +32,15 @@ type AdminUser = {
   strikeCount?: number;
   legalName?: string | null;
   customRole?: string | null;
+  // true = receiving class reminder emails, false = opted out, null = unknown.
+  classReminderEmails?: boolean | null;
   generation?: string | null;
+};
+
+type RemindersOffTutor = {
+  id: string;
+  fullName: string;
+  email: string;
 };
 
 type StatusState = {
@@ -111,6 +119,8 @@ export default function AdminUserManager() {
   const backdropClickedRef = useRef(false);
   const [isFounderAccess, setIsFounderAccess] = useState(false);
   const [users, setUsers] = useState<AdminUser[]>([]);
+  // Every tutor who has opted out, not just those on the current page.
+  const [remindersOffTutors, setRemindersOffTutors] = useState<RemindersOffTutor[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<"all" | "student" | "executive">("all");
   const [discordFilter, setDiscordFilter] = useState<
@@ -302,8 +312,12 @@ export default function AdminUserManager() {
         return;
       }
 
-      const data = (await response.json()) as { users: AdminUser[] };
+      const data = (await response.json()) as {
+        users: AdminUser[];
+        remindersOffTutors?: RemindersOffTutor[];
+      };
       setUsers(data.users);
+      setRemindersOffTutors(data.remindersOffTutors ?? []);
       setDonationLinks(
         Object.fromEntries(
           (data.users ?? []).map((user) => [
@@ -1782,6 +1796,32 @@ export default function AdminUserManager() {
         </div>
       </div>
 
+      {/* Covers every tutor, not just the current page, so opted-out tutors are
+          discoverable without paging through the whole list. */}
+      {remindersOffTutors.length > 0 ? (
+        <div className="space-y-2 rounded-xl border border-orange-500/30 bg-orange-500/5 p-4">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-orange-500">
+            Class reminder emails off ({remindersOffTutors.length})
+          </p>
+          <p className="text-xs text-[var(--muted)]">
+            These tutors are not BCC&apos;d on the 24-hour, 1-hour, or 15-minute class
+            reminder emails. Their students still receive theirs. Only the tutor can
+            change this, from their account menu.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {remindersOffTutors.map((tutor) => (
+              <span
+                key={tutor.id}
+                title={tutor.email}
+                className="rounded-full border border-[var(--border)] bg-[var(--background)] px-3 py-1 text-xs text-[var(--foreground)]"
+              >
+                {tutor.fullName}
+              </span>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
       <div className="flex justify-end">
         <button
           type="button"
@@ -1837,6 +1877,17 @@ export default function AdminUserManager() {
                   {user.legalName && isExecutive(user.role) ? (
                     <span className="rounded bg-[var(--border)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--foreground)]">
                       Legal: {user.legalName}
+                    </span>
+                  ) : null}
+                  {/* Only tutors can opt out, so the badge is meaningless elsewhere.
+                      Shown only when off — a badge on every opted-in tutor would be
+                      noise, since that is the default. */}
+                  {isExecutive(user.role) && user.classReminderEmails === false ? (
+                    <span
+                      className="rounded bg-orange-500/10 border border-orange-500/20 px-1.5 py-0.5 text-[10px] font-medium text-orange-400"
+                      title="This tutor has turned off the 24-hour, 1-hour and 15-minute class reminder emails. Their students still receive theirs."
+                    >
+                      Reminder emails off
                     </span>
                   ) : null}
                   {isExecutive(user.role) ? (() => {

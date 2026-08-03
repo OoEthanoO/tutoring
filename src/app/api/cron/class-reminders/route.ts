@@ -12,6 +12,14 @@ import {
 } from "@/lib/discordLiveChannels";
 import { formatDiscordTimestampWithRelative } from "@/lib/discordTimestamp";
 import {
+  buildScheduleSnapshot,
+  diffSchedules,
+  formatScheduleChangeLines,
+  hasSettled,
+  parseScheduleSnapshot,
+  schedulesMatch,
+} from "@/lib/courseScheduleDigest";
+import {
   floorToMinuteBoundary,
   formatOrdinalClass,
   getReminderWindow,
@@ -103,6 +111,25 @@ type DiscordCourseReminderTarget = {
   channelId: string;
   roleId: string;
 };
+
+// Whether any of a course's classes has not finished yet — i.e. the course is
+// still running and its students still care about its schedule.
+const courseHasFutureClass = (
+  classRows: { starts_at: string; duration_hours?: number | string | null }[],
+  nowMs: number
+) =>
+  classRows.some((classRow) => {
+    const startsMs = new Date(classRow.starts_at).getTime();
+    if (Number.isNaN(startsMs)) {
+      return false;
+    }
+    const durationRaw =
+      typeof classRow.duration_hours === "number"
+        ? classRow.duration_hours
+        : Number.parseFloat(String(classRow.duration_hours ?? 1));
+    const durationHours = Number.isFinite(durationRaw) && durationRaw > 0 ? durationRaw : 1;
+    return startsMs + durationHours * 60 * 60 * 1000 > nowMs;
+  });
 
 const escapeHtml = (value: string) =>
   value
@@ -2781,11 +2808,246 @@ ${tutorWasPresent ? "" : "<p><strong>Note:</strong> you were not detected in the
     };
   }
 
+  // Student-facing schedule digests. Executives already get a message per edit
+  // from the course-change notifications; students instead get one coalesced
+  // summary of the NET schedule change, once the schedule has stopped moving.
+  // See src/lib/courseScheduleDigest.ts for why this diffs state rather than
+  // reacting to edit events.
+  const scheduleDigests: {
+    sentCourses: number;
+    emailRecipients: number;
+    discordMessages: number;
+    settling: number;
+    revertedWithoutNotice: number;
+    errors: string[];
+  } = {
+    sentCourses: 0,
+    emailRecipients: 0,
+    discordMessages: 0,
+    settling: 0,
+    revertedWithoutNotice: 0,
+    errors: [],
+  };
+
+  try {
+    const digestNowMs = Date.now();
+    const { data: digestCourses, error: digestCoursesError } = await adminClient
+      .from("courses")
+      .select(
+        "id, title, is_completed, course_classes(id, title, starts_at, duration_hours)"
+      )
+      .is("deleted_at", null);
+
+    if (digestCoursesError) {
+      scheduleDigests.errors.push(
+        `Failed to load courses for schedule digests: ${digestCoursesError.message}`
+      );
+    } else {
+      // Only courses still running: a finished course's schedule is history, and
+      // a course that has not started yet has no students to disorient.
+      const ongoingCourses = (digestCourses ?? []).filter((course) => {
+        if (course.is_completed) {
+          return false;
+        }
+        const classRows = (course.course_classes ?? []) as {
+          starts_at: string;
+          duration_hours: number | string | null;
+        }[];
+        return courseHasFutureClass(classRows, digestNowMs);
+      });
+
+      if (ongoingCourses.length > 0) {
+        const digestCourseIds = ongoingCourses.map((course) => String(course.id));
+        const { data: stateRows, error: stateError } = await adminClient
+          .from("course_schedule_notifications")
+          .select("course_id, observed_schedule, observed_at, notified_schedule")
+          .in("course_id", digestCourseIds);
+
+        if (stateError) {
+          // Missing table (migration not applied) must not send a flood of
+          // digests, nor break the tick.
+          scheduleDigests.errors.push(
+            `Failed to load schedule digest state (is the migration applied?): ${stateError.message}`
+          );
+        } else {
+          const stateByCourseId = new Map(
+            (stateRows ?? []).map((row) => [String(row.course_id), row])
+          );
+
+          const { data: digestEnrollments } = await adminClient
+            .from("course_enrollments")
+            .select("course_id, student_email")
+            .in("course_id", digestCourseIds);
+
+          const digestEmailsByCourseId = new Map<string, string[]>();
+          for (const row of digestEnrollments ?? []) {
+            const email = String(row.student_email ?? "").trim();
+            if (!email) {
+              continue;
+            }
+            const courseId = String(row.course_id);
+            const list = digestEmailsByCourseId.get(courseId) ?? [];
+            list.push(email);
+            digestEmailsByCourseId.set(courseId, list);
+          }
+
+          for (const course of ongoingCourses) {
+            const courseId = String(course.id);
+            const classRows = (course.course_classes ?? []) as {
+              id: string;
+              title: string | null;
+              starts_at: string;
+              duration_hours: number | string | null;
+            }[];
+            const current = buildScheduleSnapshot(classRows);
+            const titles = Object.fromEntries(
+              classRows.map((row) => [
+                String(row.id),
+                String(row.title ?? "").trim() || "A class",
+              ])
+            );
+
+            const state = stateByCourseId.get(courseId);
+            const observed = parseScheduleSnapshot(state?.observed_schedule);
+            const notified = parseScheduleSnapshot(state?.notified_schedule);
+            const observedAtMs = state?.observed_at
+              ? new Date(String(state.observed_at)).getTime()
+              : null;
+
+            // First sighting: adopt the schedule silently so deploying this does
+            // not announce every course's existing schedule as a change.
+            if (!state || !notified) {
+              await adminClient.from("course_schedule_notifications").upsert(
+                {
+                  course_id: courseId,
+                  observed_schedule: current,
+                  observed_at: new Date(digestNowMs).toISOString(),
+                  notified_schedule: current,
+                  notified_at: new Date(digestNowMs).toISOString(),
+                  updated_at: new Date(digestNowMs).toISOString(),
+                },
+                { onConflict: "course_id" }
+              );
+              continue;
+            }
+
+            // Still moving: restart the quiet period and say nothing yet.
+            if (!schedulesMatch(observed, current)) {
+              scheduleDigests.settling += 1;
+              await adminClient
+                .from("course_schedule_notifications")
+                .update({
+                  observed_schedule: current,
+                  observed_at: new Date(digestNowMs).toISOString(),
+                  updated_at: new Date(digestNowMs).toISOString(),
+                })
+                .eq("course_id", courseId);
+              continue;
+            }
+
+            if (!hasSettled(digestNowMs, observedAtMs)) {
+              continue;
+            }
+
+            const changes = diffSchedules(notified, current, titles, digestNowMs);
+
+            if (changes.length === 0) {
+              // Everything that changed has been undone, or only affected
+              // classes already taught. Adopt the schedule without telling anyone.
+              if (!schedulesMatch(notified, current)) {
+                scheduleDigests.revertedWithoutNotice += 1;
+              }
+              await adminClient
+                .from("course_schedule_notifications")
+                .update({
+                  notified_schedule: current,
+                  notified_at: new Date(digestNowMs).toISOString(),
+                  updated_at: new Date(digestNowMs).toISOString(),
+                })
+                .eq("course_id", courseId);
+              continue;
+            }
+
+            const courseTitleRaw = String(course.title ?? "").trim() || "your course";
+            const emailLines = formatScheduleChangeLines(changes, formatTorontoDateTime);
+            const discordLines = formatScheduleChangeLines(
+              changes,
+              formatDiscordTimestampWithRelative
+            );
+
+            const recipients = Array.from(
+              new Set(
+                (digestEmailsByCourseId.get(courseId) ?? []).map((email) =>
+                  email.toLowerCase()
+                )
+              )
+            );
+
+            if (emailRemindersEnabled && recipients.length > 0) {
+              const html = `<p>Hi there,</p>
+<p>The schedule for <strong>${escapeHtml(courseTitleRaw)}</strong> has been updated:</p>
+<ul>${emailLines.map((line) => `<li>${escapeHtml(line)}</li>`).join("")}</ul>
+<p>All times are ${torontoTimeZone}. You can see the full schedule on the website.</p>
+<p>Thanks,<br/>The YanLearn Team</p>`;
+              const { sentCount, failed } = await sendBccEmail(
+                recipients,
+                `Schedule update: ${courseTitleRaw}`,
+                html
+              );
+              scheduleDigests.emailRecipients += sentCount;
+              for (const failure of failed) {
+                scheduleDigests.errors.push(
+                  `Schedule digest email to ${failure.email} failed: ${failure.reason}`
+                );
+              }
+            }
+
+            const discordTarget = discordCourseTargetByCourseId.get(courseId);
+            if (discordReminderDeliveryEnabled && discordTarget) {
+              try {
+                await sendDiscordCourseReminderMessage(
+                  discordTarget.channelId,
+                  discordTarget.roleId,
+                  [
+                    `<@&${discordTarget.roleId}> **Schedule update for ${courseTitleRaw}**`,
+                    "",
+                    ...discordLines.map((line) => `• ${line}`),
+                  ].join("\n")
+                );
+                scheduleDigests.discordMessages += 1;
+                await sleep(150);
+              } catch (error) {
+                scheduleDigests.errors.push(
+                  `Schedule digest Discord message for "${courseTitleRaw}" failed: ${error instanceof Error ? error.message : "Unknown error"}`
+                );
+              }
+            }
+
+            scheduleDigests.sentCourses += 1;
+            await adminClient
+              .from("course_schedule_notifications")
+              .update({
+                notified_schedule: current,
+                notified_at: new Date(digestNowMs).toISOString(),
+                updated_at: new Date(digestNowMs).toISOString(),
+              })
+              .eq("course_id", courseId);
+          }
+        }
+      }
+    }
+  } catch (error) {
+    scheduleDigests.errors.push(
+      `Schedule digest pass failed: ${error instanceof Error ? error.message : "Unknown error"}`
+    );
+  }
+
   return NextResponse.json({
     sentClassCount,
     sentEmailCount,
     sentDiscordReminderCount,
     sentDiscordFollowUpCount,
+    scheduleDigests,
     autoClosedMeetingsCount: autoCloseResult.closedCount,
     autoCloseErrors: autoCloseResult.errors,
     failedClasses,
