@@ -35,7 +35,12 @@ import {
   type UserRole,
 } from "@/lib/roles";
 import { deleteZoomMeeting } from "@/lib/zoom";
-import { classEndDate, classEndMs } from "@/lib/classTiming";
+import { classDurationMinutes, classEndDate, classEndMs } from "@/lib/classTiming";
+import {
+  shouldWarnTutorLeftEarly,
+  tutorLeftEarlyReminderType,
+  tutorPresenceRequiredUntilBeforeEndMs,
+} from "@/lib/tutorPresence";
 import { sendBccEmail } from "@/lib/notificationsServer";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
@@ -1717,9 +1722,11 @@ export async function POST(request: NextRequest) {
 
   // Auto-attendance: record which enrolled students (and the tutor) are currently
   // in their class's live Discord voice channel. Runs every tick while a class is
-  // in session; each participant is polled only until first detected, which bounds
-  // the number of Discord API calls.
+  // in session; students are polled only until first detected, which bounds the
+  // number of Discord API calls. The tutor is polled every tick instead, because
+  // staying is the thing being checked, not arriving.
   let attendanceRecorded = 0;
+  let tutorLeftEarlyWarnings = 0;
   if (discordRemindersEnabled && !discordReminderSkippedReason && discordGuildId) {
     try {
       const attendanceNow = Date.now();
@@ -1777,26 +1784,68 @@ export async function POST(request: NextRequest) {
 
         // Tutor (course creator) app_users id per in-session course.
         const createdByByCourse = new Map<string, string>();
+        const courseTitleById = new Map<string, string>();
         const { data: sessionCourses } = await adminClient
           .from("courses")
-          .select("id, created_by")
+          .select("id, created_by, title")
           .in("id", sessionCourseIds);
         for (const courseRow of sessionCourses ?? []) {
           const createdBy = String(courseRow.created_by ?? "").trim();
           if (createdBy) {
             createdByByCourse.set(String(courseRow.id), createdBy);
           }
+          courseTitleById.set(
+            String(courseRow.id),
+            String(courseRow.title ?? "").trim() || "your course"
+          );
         }
 
-        // Participants already recorded for these classes (skip to bound API calls).
+        // Titles for the tutor-left-early warning message.
+        const classTitleById = new Map<string, string>();
+        if (sessionClassIds.length > 0) {
+          const { data: sessionClassRows } = await adminClient
+            .from("course_classes")
+            .select("id, title")
+            .in("id", sessionClassIds);
+          for (const classRow of sessionClassRows ?? []) {
+            classTitleById.set(
+              String(classRow.id),
+              String(classRow.title ?? "").trim() || "Class"
+            );
+          }
+        }
+
+        // Classes whose tutor has already been warned, so the warning is sent once.
+        const tutorLeftEarlyWarnedClassIds = new Set<string>();
+        if (sessionClassIds.length > 0) {
+          const { data: tutorLeftEarlyLogs } = await adminClient
+            .from("class_reminder_logs")
+            .select("class_id")
+            .in("class_id", sessionClassIds)
+            .eq("reminder_type", tutorLeftEarlyReminderType);
+          for (const log of tutorLeftEarlyLogs ?? []) {
+            tutorLeftEarlyWarnedClassIds.add(String(log.class_id));
+          }
+        }
+
+        // Participants already recorded for these classes (students are skipped
+        // from then on to bound API calls; the tutor's last_seen_at is how long
+        // they have been gone).
         const recordedKeys = new Set<string>();
+        const tutorLastSeenMsByClassId = new Map<string, number>();
         if (sessionClassIds.length > 0) {
           const { data: existingAttendance } = await adminClient
             .from("class_attendance")
-            .select("class_id, user_id")
+            .select("class_id, user_id, is_tutor, last_seen_at")
             .in("class_id", sessionClassIds);
           for (const row of existingAttendance ?? []) {
             recordedKeys.add(`${row.class_id}:${row.user_id}`);
+            if (row.is_tutor) {
+              const lastSeenMs = new Date(String(row.last_seen_at ?? "")).getTime();
+              if (Number.isFinite(lastSeenMs)) {
+                tutorLastSeenMsByClassId.set(String(row.class_id), lastSeenMs);
+              }
+            }
           }
         }
 
@@ -1814,18 +1863,133 @@ export async function POST(request: NextRequest) {
             continue;
           }
 
-          const participants: { userId: string; discordId: string; isTutor: boolean }[] = [];
           const tutorUserId = createdByByCourse.get(courseId);
           const tutorDiscordId = String(session.tutor_discord_user_id ?? "").trim();
-          if (tutorUserId && tutorDiscordId) {
-            participants.push({ userId: tutorUserId, discordId: tutorDiscordId, isTutor: true });
-          }
+          const participants: { userId: string; discordId: string; isTutor: boolean }[] = [];
           for (const student of studentsByCourse.get(courseId) ?? []) {
-            // A student who is also the creator is already covered as the tutor.
+            // A student who is also the creator is handled as the tutor below.
             if (student.userId === tutorUserId) {
               continue;
             }
             participants.push({ userId: student.userId, discordId: student.discordId, isTutor: false });
+          }
+
+          // The tutor is polled on every tick, unlike students: what matters for
+          // them is not that they arrived but that they are still there.
+          if (tutorUserId && tutorDiscordId && pollBudget > 0) {
+            pollBudget -= 1;
+            const tutorKey = `${classId}:${tutorUserId}`;
+            let tutorChannelId: string | null = null;
+            let tutorPollSucceeded = true;
+            try {
+              tutorChannelId = await getDiscordUserVoiceChannelId(
+                discordGuildId,
+                tutorDiscordId
+              );
+            } catch {
+              // A failed read is not evidence of absence — try again next tick.
+              tutorPollSucceeded = false;
+            }
+
+            if (tutorPollSucceeded && tutorChannelId === channelId) {
+              if (recordedKeys.has(tutorKey)) {
+                await adminClient
+                  .from("class_attendance")
+                  .update({ last_seen_at: nowIso })
+                  .eq("class_id", classId)
+                  .eq("user_id", tutorUserId);
+              } else {
+                const { error: tutorUpsertError } = await adminClient
+                  .from("class_attendance")
+                  .upsert(
+                    {
+                      class_id: classId,
+                      course_id: courseId,
+                      user_id: tutorUserId,
+                      discord_user_id: tutorDiscordId,
+                      is_tutor: true,
+                      first_seen_at: nowIso,
+                      last_seen_at: nowIso,
+                    },
+                    { onConflict: "class_id,user_id", ignoreDuplicates: true }
+                  );
+                if (!tutorUpsertError) {
+                  recordedKeys.add(tutorKey);
+                  attendanceRecorded += 1;
+                }
+              }
+              tutorLastSeenMsByClassId.set(classId, attendanceNow);
+            } else if (tutorPollSucceeded) {
+              // Gone from the class channel. Warn once if they have been gone for
+              // longer than a poll interval and the class is not yet in its last
+              // 5 minutes. A tutor who never joined at all has no last-seen time
+              // and is left to the absence follow-up instead.
+              const tutorLastSeenMs = tutorLastSeenMsByClassId.get(classId) ?? null;
+              const sessionStartMs = new Date(String(session.starts_at)).getTime();
+              const sessionEndMs = new Date(String(session.ends_at)).getTime();
+              const stayUntilMs = sessionEndMs - tutorPresenceRequiredUntilBeforeEndMs;
+              if (
+                executivesChannelId &&
+                shouldWarnTutorLeftEarly({
+                  nowMs: attendanceNow,
+                  startsAtMs: sessionStartMs,
+                  endsAtMs: sessionEndMs,
+                  tutorLastSeenMs,
+                  alreadyWarned: tutorLeftEarlyWarnedClassIds.has(classId),
+                })
+              ) {
+                const minutesGone = Math.max(
+                  1,
+                  Math.round((attendanceNow - (tutorLastSeenMs ?? attendanceNow)) / 60000)
+                );
+                // How early they went, measured from when they were last seen —
+                // by now the students have almost certainly been dismissed, so
+                // this is a note for next time, not a request to come back.
+                const minutesEarly = Math.max(
+                  1,
+                  Math.round((stayUntilMs - (tutorLastSeenMs ?? stayUntilMs)) / 60000)
+                );
+                const durationMinutes = Math.max(
+                  1,
+                  Math.round((sessionEndMs - sessionStartMs) / 60000)
+                );
+                const warningContent = [
+                  `<@${tutorDiscordId}> You left the voice channel for **${escapeDiscordText(
+                    courseTitleById.get(courseId) ?? "your course"
+                  )}** (**${escapeDiscordText(
+                    classTitleById.get(classId) ?? "Class"
+                  )}**) about ${minutesGone} minute${minutesGone === 1 ? "" : "s"} ago, before the last 5 minutes of class.`,
+                  `This class is **${durationMinutes} minutes** long and ends ${formatDiscordTimestampWithRelative(
+                    String(session.ends_at)
+                  )}, so you left **${minutesEarly} minute${
+                    minutesEarly === 1 ? "" : "s"
+                  }** before its last 5 minutes even began.`,
+                  "Please stay in the meeting for the full duration of every class, until at least the last 5 minutes, so your students get close to the full class they signed up for.",
+                ].join("\n");
+
+                try {
+                  await sendDiscordUserMentionMessage(
+                    executivesChannelId,
+                    tutorDiscordId,
+                    warningContent
+                  );
+                  await adminClient.from("class_reminder_logs").insert({
+                    class_id: classId,
+                    reminder_type: tutorLeftEarlyReminderType,
+                  });
+                  tutorLeftEarlyWarnedClassIds.add(classId);
+                  tutorLeftEarlyWarnings += 1;
+                  await sleep(150);
+                } catch (error) {
+                  failedClasses.push({
+                    classId,
+                    reason: `Failed to warn the tutor about leaving class early: ${
+                      error instanceof Error ? error.message : "Unknown Discord error."
+                    }`,
+                  });
+                }
+              }
+            }
           }
 
           for (const participant of participants) {
@@ -2238,6 +2402,11 @@ ${tutorWasPresent ? "" : "<p><strong>Note:</strong> you were not detected in the
         ? `${tutorFirstName}${tutorLastInitial ? ` ${tutorLastInitial}` : ""}: ${courseShortName}`
         : "";
     const startLabel = escapeHtml(formatTorontoDateTime(classRow.starts_at));
+    // Every reminder states the length: classes are not all the usual 60 minutes,
+    // and a tutor who assumes they are leaves early.
+    const durationLabel = `${classDurationMinutes(classRow.duration_hours)} minutes`;
+    const durationHtmlLine = `<p><strong>Duration:</strong> ${escapeHtml(durationLabel)}</p>`;
+    const durationDiscordLine = `**Duration:** ${escapeDiscordText(durationLabel)}`;
     let subject = "";
     let html = "";
     let discordContent = "";
@@ -2336,6 +2505,7 @@ ${tutorWasPresent ? "" : "<p><strong>Note:</strong> you were not detected in the
         <p><strong>Course:</strong> ${courseTitle}</p>
         <p><strong>${isStandardClassTitle ? classTitle : `Class: ${classTitle}`}</strong></p>
         <p><strong>Start time (${torontoTimeZone}):</strong> ${startLabel}</p>
+        ${durationHtmlLine}
         ${voiceChannelLinkForTutor ? `<p><strong>Voice channel:</strong> <a href="${escapeHtml(voiceChannelLinkForTutor)}">${escapeHtml(voiceChannelLinkForTutor)}</a></p>` : ""}
       `;
       }
@@ -2351,6 +2521,7 @@ ${tutorWasPresent ? "" : "<p><strong>Note:</strong> you were not detected in the
         <p><strong>${isStandardClassTitle ? classTitle : `Class: ${classTitle}`}</strong></p>
         <p><strong>Tutor:</strong> ${tutorName}</p>
         <p><strong>Start time (${torontoTimeZone}):</strong> ${startLabel}</p>
+        ${durationHtmlLine}
         <p>This class will be held on <strong>Discord</strong>. Please make sure you have connected your Discord account in your profile and joined our Discord server.</p>
         <p>You will receive a notification in the Discord server with a link to the voice channel 5 minutes before the class starts. Please make sure to join the server if you haven't already.</p>
       `;
@@ -2360,6 +2531,7 @@ ${tutorWasPresent ? "" : "<p><strong>Note:</strong> you were not detected in the
             isStandardClassTitle ? `**${escapeDiscordText(classTitleRaw)}**` : `**Class:** ${escapeDiscordText(classTitleRaw)}`,
             `**Tutor:** ${escapeDiscordText(tutorNameRaw)}`,
             `**Start time:** ${formatDiscordTimestampWithRelative(classRow.starts_at)}`,
+            durationDiscordLine,
             "This class will be held on **Discord**.",
             "You will receive a notification in this server with a link to the voice channel 5 minutes before the class starts.",
             "Please make sure you are in the voice channel 5 minutes before the start time."
@@ -2372,6 +2544,7 @@ ${tutorWasPresent ? "" : "<p><strong>Note:</strong> you were not detected in the
         <p><strong>${isStandardClassTitle ? classTitle : `Class: ${classTitle}`}</strong></p>
         <p><strong>Tutor:</strong> ${tutorName}</p>
         <p><strong>Start time (${torontoTimeZone}):</strong> ${startLabel}</p>
+        ${durationHtmlLine}
         ${
           isFounderTaughtClass
             ? `<p>Please attend the class 5 minutes before the start time on the Schoolhouse platform.</p>`
@@ -2402,6 +2575,7 @@ ${tutorWasPresent ? "" : "<p><strong>Note:</strong> you were not detected in the
             isStandardClassTitle ? `**${escapeDiscordText(classTitleRaw)}**` : `**Class:** ${escapeDiscordText(classTitleRaw)}`,
             `**Tutor:** ${escapeDiscordText(tutorNameRaw)}`,
             `**Start time:** ${formatDiscordTimestampWithRelative(classRow.starts_at)}`,
+            durationDiscordLine,
             isFounderTaughtClass
               ? "Please attend the class 5 minutes before the start time on the Schoolhouse platform."
               : nonFounderDiscordInstruction,
@@ -2524,7 +2698,10 @@ ${tutorWasPresent ? "" : "<p><strong>Note:</strong> you were not detected in the
             }
           }
 
-          discordContent = voiceChannelLink;
+          // An empty link still has to read as empty so the failure check below fires.
+          discordContent = voiceChannelLink
+            ? `${voiceChannelLink}\n${durationDiscordLine}`
+            : "";
         } else {
           // Legacy system
           const fiveMinBreakoutInstruction = breakoutRoomName
@@ -2546,6 +2723,7 @@ ${tutorWasPresent ? "" : "<p><strong>Note:</strong> you were not detected in the
             isStandardClassTitle ? `**${escapeDiscordText(classTitleRaw)}**` : `**Class:** ${escapeDiscordText(classTitleRaw)}`,
             `**Tutor:** ${escapeDiscordText(tutorNameRaw)}`,
             `**Start time:** ${formatDiscordTimestampWithRelative(classRow.starts_at)}`,
+            durationDiscordLine,
             isFounderTaughtClass
               ? "Please join the meeting on the Schoolhouse platform immediately!"
               : nonFounderFiveMinInstruction,
@@ -2583,6 +2761,7 @@ ${tutorWasPresent ? "" : "<p><strong>Note:</strong> you were not detected in the
 
         executiveTutorContent = [
           `<@${tutorDiscordId}> Your **${escapeDiscordText(classTitleOrdinalRaw)}** for **${escapeDiscordText(courseTitleRaw)}** is starting in ${escapeDiscordText(reminderLabel)}.${contactInstruction ? ` ${contactInstruction}` : ""}`,
+          `${durationDiscordLine} — please stay until at least the last 5 minutes of class.`,
           !isFounderTaughtClass && !usesDiscordVoiceSystem ? "Please join the breakout room immediately after joining the meeting. Do not stay in the main meeting room." : "",
         ].filter(Boolean).join("\n");
       }
@@ -2702,6 +2881,7 @@ ${tutorWasPresent ? "" : "<p><strong>Note:</strong> you were not detected in the
           isStandardClassTitle ? `**${escapeDiscordText(classTitleRaw)}**` : `**Class:** ${escapeDiscordText(classTitleRaw)}`,
           `**Tutor:** ${escapeDiscordText(tutorNameRaw)}`,
           `**Start time:** ${formatDiscordTimestampWithRelative(classRow.starts_at)}`,
+          durationDiscordLine,
         ].join("\n");
       } else {
         founderContent = [
@@ -2710,6 +2890,7 @@ ${tutorWasPresent ? "" : "<p><strong>Note:</strong> you were not detected in the
           isStandardClassTitle ? `**${escapeDiscordText(classTitleRaw)}**` : `**Class:** ${escapeDiscordText(classTitleRaw)}`,
           `**Tutor:** ${escapeDiscordText(tutorNameRaw)}`,
           `**Start time:** ${formatDiscordTimestampWithRelative(classRow.starts_at)}`,
+          durationDiscordLine,
         ].join("\n");
       }
 
@@ -3017,6 +3198,7 @@ ${tutorWasPresent ? "" : "<p><strong>Note:</strong> you were not detected in the
     failedClasses,
     liveChannelRecovery,
     attendanceRecorded,
+    tutorLeftEarlyWarnings,
     absenceFollowUps,
     timezone: torontoTimeZone,
     reminderSkippedReason,
