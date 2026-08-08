@@ -396,11 +396,14 @@ export default function DashboardMenus() {
   // Grouped navigation: a handful of direct tabs plus labeled dropdown groups.
   // Every visibility condition is preserved verbatim from the previous flat list.
   const navEntries = useMemo<NavEntry[]>(() => {
+    // Analytics sits here rather than under Admin: the dashboard is public, so
+    // signed-out visitors get it too.
     const explore: MenuItem[] = [
       { key: "all_courses_table", label: "Courses table" },
       { key: "our_team", label: "Our team" },
       { key: "donation_history", label: "Donation history" },
       { key: "impact", label: "Impact" },
+      { key: "analytics", label: "Analytics" },
       { key: "sponsors", label: "For Sponsors" },
     ];
 
@@ -428,7 +431,6 @@ export default function DashboardMenus() {
       admin.push({ key: "site_settings", label: "Site Settings" });
     }
     if (isFounder(role)) {
-      admin.push({ key: "analytics", label: "Analytics" });
       admin.push({ key: "roles_manager", label: "Roles" });
     }
     // Founders/high-level roles should always see trash if there is something in it

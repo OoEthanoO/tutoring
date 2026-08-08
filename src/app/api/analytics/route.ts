@@ -1,6 +1,6 @@
-import { NextResponse, type NextRequest } from "next/server";
-import { getAdminClient, getRequestUser } from "@/lib/authServer";
-import { isExecutive, isFounder, resolveUserRole } from "@/lib/roles";
+import { NextResponse } from "next/server";
+import { getAdminClient } from "@/lib/authServer";
+import { isExecutive, resolveUserRole } from "@/lib/roles";
 import { computeCoreTotals, loadCoreRows, parseHours } from "@/lib/impactStats";
 
 const TORONTO_TZ = "America/Toronto";
@@ -73,22 +73,10 @@ function buildWeeklySeries(
   return series;
 }
 
-export async function GET(request: NextRequest) {
-  const user = await getRequestUser(request);
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
-  }
-
-  const customRoleLevels = Array.isArray(user.custom_roles)
-    ? user.custom_roles
-        .map((r: { role_level?: string }) => r.role_level)
-        .filter((level): level is string => Boolean(level))
-    : [user.custom_roles?.role_level].filter((level): level is string => Boolean(level));
-  const role = resolveUserRole(user.email, user.role ?? null, customRoleLevels);
-  if (!isFounder(role)) {
-    return NextResponse.json({ error: "Forbidden." }, { status: 403 });
-  }
-
+// Public endpoint, like /api/impact: open to signed-out visitors, and aggregate,
+// non-personal numbers only — no names, emails or per-student rows ever leave
+// this handler.
+export async function GET() {
   try {
     const adminClient = getAdminClient();
     const rows = await loadCoreRows(adminClient);
@@ -182,8 +170,11 @@ export async function GET(request: NextRequest) {
         enrolledSlots: stats.enrolled,
         trackedClasses: stats.trackedClasses,
       }))
-      .sort((a, b) => b.trackedClasses - a.trackedClasses)
-      .slice(0, 8);
+      // Every course with tracked attendance is listed. Truncating to a top N
+      // hid ongoing courses, which are the ones worth acting on.
+      .sort(
+        (a, b) => b.trackedClasses - a.trackedClasses || a.title.localeCompare(b.title)
+      );
 
     return NextResponse.json({
       generatedAt: new Date().toISOString(),
@@ -212,6 +203,11 @@ export async function GET(request: NextRequest) {
         donationsOverTime: donations,
         attendanceByCourse,
       },
+    },
+    {
+      // Anyone can hit this and it scans several tables, so let the CDN absorb
+      // repeat traffic. These numbers move slowly; minutes of staleness is fine.
+      headers: { "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600" },
     });
   } catch (error) {
     return NextResponse.json(

@@ -111,7 +111,7 @@ export default function AnalyticsMenu() {
 
   useEffect(() => {
     const load = async () => {
-      const response = await fetch("/api/admin/analytics");
+      const response = await fetch("/api/analytics");
       if (!response.ok) {
         const payload = (await response.json().catch(() => null)) as { error?: string } | null;
         setError(payload?.error ?? "Unable to load analytics.");
@@ -139,6 +139,10 @@ export default function AnalyticsMenu() {
   }
 
   const { totals, charts } = data;
+
+  // One row per course, so the chart is sized by its data instead of clipping it.
+  // Past a screenful the card scrolls rather than pushing the page out of shape.
+  const attendanceChartHeight = Math.max(240, charts.attendanceByCourse.length * 36 + 40);
 
   return (
     <section className="space-y-6 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6">
@@ -350,36 +354,38 @@ export default function AnalyticsMenu() {
               excluded.
             </p>
           </div>
-          <div className="h-72 w-full rounded-xl bg-[var(--surface-muted)] p-4">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                data={charts.attendanceByCourse}
-                layout="vertical"
-                margin={{ top: 5, right: 20, left: 10, bottom: 0 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="var(--border)" />
-                <XAxis
-                  type="number"
-                  domain={[0, 1]}
-                  tickFormatter={formatPercent}
-                  {...axisProps}
-                />
-                <YAxis type="category" dataKey="title" width={150} {...axisProps} />
-                <Tooltip
-                  {...tooltipProps}
-                  formatter={(value, _name, item) => {
-                    const row = item?.payload as
-                      | { attendedSlots?: number; enrolledSlots?: number; trackedClasses?: number }
-                      | undefined;
-                    return [
-                      `${formatPercent(Number(value))} (${row?.attendedSlots ?? 0}/${row?.enrolledSlots ?? 0} across ${row?.trackedClasses ?? 0} classes)`,
-                      "Attendance",
-                    ];
-                  }}
-                />
-                <Bar dataKey="rate" fill="var(--foreground)" radius={[0, 4, 4, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+          <div className="max-h-[36rem] w-full overflow-y-auto rounded-xl bg-[var(--surface-muted)] p-4">
+            <div style={{ height: attendanceChartHeight }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={charts.attendanceByCourse}
+                  layout="vertical"
+                  margin={{ top: 5, right: 20, left: 10, bottom: 0 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="var(--border)" />
+                  <XAxis
+                    type="number"
+                    domain={[0, 1]}
+                    tickFormatter={formatPercent}
+                    {...axisProps}
+                  />
+                  <YAxis type="category" dataKey="title" width={150} {...axisProps} />
+                  <Tooltip
+                    {...tooltipProps}
+                    formatter={(value, _name, item) => {
+                      const row = item?.payload as
+                        | { attendedSlots?: number; enrolledSlots?: number; trackedClasses?: number }
+                        | undefined;
+                      return [
+                        `${formatPercent(Number(value))} (${row?.attendedSlots ?? 0}/${row?.enrolledSlots ?? 0} across ${row?.trackedClasses ?? 0} classes)`,
+                        "Attendance",
+                      ];
+                    }}
+                  />
+                  <Bar dataKey="rate" fill="var(--foreground)" radius={[0, 4, 4, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
           </div>
         </div>
       ) : null}
