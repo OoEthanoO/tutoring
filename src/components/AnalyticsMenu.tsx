@@ -140,9 +140,10 @@ export default function AnalyticsMenu() {
 
   const { totals, charts } = data;
 
-  // One row per course, so the chart is sized by its data instead of clipping it.
-  // Past a screenful the card scrolls rather than pushing the page out of shape.
-  const attendanceChartHeight = Math.max(240, charts.attendanceByCourse.length * 36 + 40);
+  // One row per course, sized so the whole list fits without an inner scrollbar:
+  // 26px a row leaves the bars thin with clear gaps between them. The max-height
+  // below only bites past ~24 courses, well beyond the current list.
+  const attendanceChartHeight = Math.max(200, charts.attendanceByCourse.length * 26 + 44);
 
   return (
     <section className="space-y-6 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6">
@@ -354,13 +355,13 @@ export default function AnalyticsMenu() {
               excluded.
             </p>
           </div>
-          <div className="max-h-[36rem] w-full overflow-y-auto rounded-xl bg-[var(--surface-muted)] p-4">
+          <div className="max-h-[44rem] w-full overflow-y-auto rounded-xl bg-[var(--surface-muted)] p-4">
             <div style={{ height: attendanceChartHeight }}>
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart
                   data={charts.attendanceByCourse}
                   layout="vertical"
-                  margin={{ top: 5, right: 20, left: 10, bottom: 0 }}
+                  margin={{ top: 5, right: 24, left: 0, bottom: 0 }}
                 >
                   <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="var(--border)" />
                   <XAxis
@@ -369,7 +370,9 @@ export default function AnalyticsMenu() {
                     tickFormatter={formatPercent}
                     {...axisProps}
                   />
-                  <YAxis type="category" dataKey="title" width={150} {...axisProps} />
+                  {/* Wide enough for a name like "Grade 10 Pre-IB Mathematics" on one
+                      line; the bars start after it, so they get correspondingly shorter. */}
+                  <YAxis type="category" dataKey="title" width={210} {...axisProps} />
                   <Tooltip
                     {...tooltipProps}
                     formatter={(value, _name, item) => {
@@ -382,7 +385,7 @@ export default function AnalyticsMenu() {
                       ];
                     }}
                   />
-                  <Bar dataKey="rate" fill="var(--foreground)" radius={[0, 4, 4, 0]} />
+                  <Bar dataKey="rate" fill="var(--foreground)" radius={[0, 4, 4, 0]} barSize={12} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
