@@ -38,8 +38,14 @@ import { deleteZoomMeeting } from "@/lib/zoom";
 import { classDurationMinutes, classEndDate, classEndMs } from "@/lib/classTiming";
 import {
   shouldWarnTutorLeftEarly,
+  tutorExpectedJoinBeforeStartMs,
+  tutorIdealJoinBeforeStartMs,
+  tutorJoinWarning,
   tutorLeftEarlyReminderType,
+  tutorNotJoinedReminderType,
   tutorPresenceRequiredUntilBeforeEndMs,
+  tutorStillNotJoinedReminderType,
+  tutorStrikeDeadlineAfterStartMs,
 } from "@/lib/tutorPresence";
 import { sendBccEmail } from "@/lib/notificationsServer";
 
@@ -1727,6 +1733,8 @@ export async function POST(request: NextRequest) {
   // staying is the thing being checked, not arriving.
   let attendanceRecorded = 0;
   let tutorLeftEarlyWarnings = 0;
+  let tutorNotJoinedWarnings = 0;
+  let tutorStillNotJoinedWarnings = 0;
   if (discordRemindersEnabled && !discordReminderSkippedReason && discordGuildId) {
     try {
       const attendanceNow = Date.now();
@@ -1815,16 +1823,29 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        // Classes whose tutor has already been warned, so the warning is sent once.
+        // Warnings already sent, so each one goes out once per class.
         const tutorLeftEarlyWarnedClassIds = new Set<string>();
+        const tutorNotJoinedWarnedClassIds = new Set<string>();
+        const tutorStillNotJoinedWarnedClassIds = new Set<string>();
         if (sessionClassIds.length > 0) {
-          const { data: tutorLeftEarlyLogs } = await adminClient
+          const { data: tutorWarningLogs } = await adminClient
             .from("class_reminder_logs")
-            .select("class_id")
+            .select("class_id, reminder_type")
             .in("class_id", sessionClassIds)
-            .eq("reminder_type", tutorLeftEarlyReminderType);
-          for (const log of tutorLeftEarlyLogs ?? []) {
-            tutorLeftEarlyWarnedClassIds.add(String(log.class_id));
+            .in("reminder_type", [
+              tutorLeftEarlyReminderType,
+              tutorNotJoinedReminderType,
+              tutorStillNotJoinedReminderType,
+            ]);
+          for (const log of tutorWarningLogs ?? []) {
+            const classId = String(log.class_id);
+            if (log.reminder_type === tutorLeftEarlyReminderType) {
+              tutorLeftEarlyWarnedClassIds.add(classId);
+            } else if (log.reminder_type === tutorNotJoinedReminderType) {
+              tutorNotJoinedWarnedClassIds.add(classId);
+            } else {
+              tutorStillNotJoinedWarnedClassIds.add(classId);
+            }
           }
         }
 
@@ -1920,14 +1941,88 @@ export async function POST(request: NextRequest) {
               }
               tutorLastSeenMsByClassId.set(classId, attendanceNow);
             } else if (tutorPollSucceeded) {
-              // Gone from the class channel. Warn once if they have been gone for
-              // longer than a poll interval and the class is not yet in its last
-              // 5 minutes. A tutor who never joined at all has no last-seen time
-              // and is left to the absence follow-up instead.
+              // Not in the class channel. Which warning that earns depends on
+              // whether they have ever been in it: never — a no-show, before or
+              // after the start; once and now gone — they left early.
               const tutorLastSeenMs = tutorLastSeenMsByClassId.get(classId) ?? null;
               const sessionStartMs = new Date(String(session.starts_at)).getTime();
               const sessionEndMs = new Date(String(session.ends_at)).getTime();
               const stayUntilMs = sessionEndMs - tutorPresenceRequiredUntilBeforeEndMs;
+
+              const joinWarning = tutorJoinWarning({
+                nowMs: attendanceNow,
+                startsAtMs: sessionStartMs,
+                endsAtMs: sessionEndMs,
+                tutorEverJoined: tutorLastSeenMs !== null,
+                warnedNotJoined: tutorNotJoinedWarnedClassIds.has(classId),
+                warnedStillNotJoined: tutorStillNotJoinedWarnedClassIds.has(classId),
+              });
+
+              if (executivesChannelId && joinWarning) {
+                const courseTitleText = escapeDiscordText(
+                  courseTitleById.get(courseId) ?? "your course"
+                );
+                const classTitleText = escapeDiscordText(
+                  classTitleById.get(classId) ?? "Class"
+                );
+                const channelLink = `https://discord.com/channels/${discordGuildId}/${channelId}`;
+                const idealJoinMinutes = Math.round(tutorIdealJoinBeforeStartMs / 60000);
+                const expectedJoinMinutes = Math.round(
+                  tutorExpectedJoinBeforeStartMs / 60000
+                );
+                const strikeDeadlineMinutes = Math.round(
+                  tutorStrikeDeadlineAfterStartMs / 60000
+                );
+
+                const warningContent =
+                  joinWarning === "join_soon"
+                    ? [
+                        `<@${tutorDiscordId}> **${classTitleText}** for **${courseTitleText}** starts ${formatDiscordTimestampWithRelative(
+                          String(session.starts_at)
+                        )} and you have not joined the voice channel.`,
+                        `Join now: ${channelLink}`,
+                        `You are expected in the channel at least **${expectedJoinMinutes} minutes** before the start time, and ideally **${idealJoinMinutes} minutes** before — that is when it opens for you.`,
+                      ].join("\n")
+                    : [
+                        `<@${tutorDiscordId}> **${classTitleText}** for **${courseTitleText}** started ${formatDiscordTimestampWithRelative(
+                          String(session.starts_at)
+                        )} and you still have not joined the voice channel. Your students are waiting.`,
+                        `Join immediately: ${channelLink}`,
+                        `If you have not joined within **${strikeDeadlineMinutes} minutes** of the start time, you will be given a strike. **Two strikes means permanent removal from the organization.**`,
+                      ].join("\n");
+
+                try {
+                  await sendDiscordUserMentionMessage(
+                    executivesChannelId,
+                    tutorDiscordId,
+                    warningContent
+                  );
+                  const reminderType =
+                    joinWarning === "join_soon"
+                      ? tutorNotJoinedReminderType
+                      : tutorStillNotJoinedReminderType;
+                  await adminClient.from("class_reminder_logs").insert({
+                    class_id: classId,
+                    reminder_type: reminderType,
+                  });
+                  if (joinWarning === "join_soon") {
+                    tutorNotJoinedWarnedClassIds.add(classId);
+                    tutorNotJoinedWarnings += 1;
+                  } else {
+                    tutorStillNotJoinedWarnedClassIds.add(classId);
+                    tutorStillNotJoinedWarnings += 1;
+                  }
+                  await sleep(150);
+                } catch (error) {
+                  failedClasses.push({
+                    classId,
+                    reason: `Failed to warn the tutor about not joining class: ${
+                      error instanceof Error ? error.message : "Unknown Discord error."
+                    }`,
+                  });
+                }
+              }
+
               if (
                 executivesChannelId &&
                 shouldWarnTutorLeftEarly({
@@ -3199,6 +3294,8 @@ ${tutorWasPresent ? "" : "<p><strong>Note:</strong> you were not detected in the
     liveChannelRecovery,
     attendanceRecorded,
     tutorLeftEarlyWarnings,
+    tutorNotJoinedWarnings,
+    tutorStillNotJoinedWarnings,
     absenceFollowUps,
     timezone: torontoTimeZone,
     reminderSkippedReason,

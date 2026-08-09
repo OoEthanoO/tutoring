@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   shouldWarnTutorLeftEarly,
   tutorAbsenceToleranceMs,
+  tutorExpectedJoinBeforeStartMs,
+  tutorJoinWarning,
+  tutorLateWarningAfterStartMs,
   tutorPresenceRequiredUntilBeforeEndMs,
 } from "./tutorPresence";
 
@@ -67,5 +70,76 @@ describe("shouldWarnTutorLeftEarly", () => {
     const nowMs = startsAtMs + 56 * 60 * 1000;
     expect(warn({ nowMs })).toBe(true);
     expect(warn({ nowMs, endsAtMs: shortEndsAtMs })).toBe(false);
+  });
+});
+
+const joinWarn = (overrides: Partial<Parameters<typeof tutorJoinWarning>[0]>) =>
+  tutorJoinWarning({
+    nowMs: startsAtMs - 60 * 1000,
+    startsAtMs,
+    endsAtMs,
+    tutorEverJoined: false,
+    warnedNotJoined: false,
+    warnedStillNotJoined: false,
+    ...overrides,
+  });
+
+describe("tutorJoinWarning", () => {
+  it("nudges a missing tutor inside the last 5 minutes before the start", () => {
+    expect(joinWarn({ nowMs: startsAtMs - tutorExpectedJoinBeforeStartMs })).toBe("join_soon");
+    expect(joinWarn({ nowMs: startsAtMs - 1000 })).toBe("join_soon");
+  });
+
+  it("stays quiet earlier than that", () => {
+    expect(joinWarn({ nowMs: startsAtMs - tutorExpectedJoinBeforeStartMs - 1 })).toBe(null);
+    // The channel opens 15 minutes early, but not being in it yet is fine then.
+    expect(joinWarn({ nowMs: startsAtMs - 15 * 60 * 1000 })).toBe(null);
+  });
+
+  it("says nothing between the start and the late threshold", () => {
+    expect(joinWarn({ nowMs: startsAtMs })).toBe(null);
+    expect(joinWarn({ nowMs: startsAtMs + tutorLateWarningAfterStartMs - 1 })).toBe(null);
+  });
+
+  it("escalates once the tutor is 5 minutes late", () => {
+    expect(joinWarn({ nowMs: startsAtMs + tutorLateWarningAfterStartMs })).toBe("late");
+    expect(joinWarn({ nowMs: startsAtMs + 40 * 60 * 1000 })).toBe("late");
+  });
+
+  it("escalates even if the earlier nudge was never sent", () => {
+    expect(
+      joinWarn({ nowMs: startsAtMs + tutorLateWarningAfterStartMs, warnedNotJoined: false })
+    ).toBe("late");
+  });
+
+  it("sends each warning once", () => {
+    expect(joinWarn({ nowMs: startsAtMs - 60 * 1000, warnedNotJoined: true })).toBe(null);
+    expect(
+      joinWarn({
+        nowMs: startsAtMs + tutorLateWarningAfterStartMs,
+        warnedStillNotJoined: true,
+      })
+    ).toBe(null);
+    // A sent nudge does not suppress the later escalation.
+    expect(
+      joinWarn({ nowMs: startsAtMs + tutorLateWarningAfterStartMs, warnedNotJoined: true })
+    ).toBe("late");
+  });
+
+  it("says nothing about a tutor who did join — that is the left-early case", () => {
+    expect(joinWarn({ nowMs: startsAtMs - 60 * 1000, tutorEverJoined: true })).toBe(null);
+    expect(
+      joinWarn({ nowMs: startsAtMs + tutorLateWarningAfterStartMs, tutorEverJoined: true })
+    ).toBe(null);
+  });
+
+  it("stops once the class is over", () => {
+    expect(joinWarn({ nowMs: endsAtMs })).toBe(null);
+    expect(joinWarn({ nowMs: endsAtMs - 1000 })).toBe("late");
+  });
+
+  it("stays quiet when a timestamp is unusable", () => {
+    expect(joinWarn({ startsAtMs: Number.NaN })).toBe(null);
+    expect(joinWarn({ endsAtMs: Number.NaN })).toBe(null);
   });
 });

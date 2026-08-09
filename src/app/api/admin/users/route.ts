@@ -6,6 +6,7 @@ import { isExecutive, isFounder, resolveUserRole, type UserRole } from "@/lib/ro
 import { getRequestUser } from "@/lib/authServer";
 import { fetchDiscordGuildMemberIds } from "@/lib/discordSync";
 import { classEndMs } from "@/lib/classTiming";
+import { sendDiscordMessageByChannelName } from "@/lib/notificationsServer";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
@@ -618,6 +619,42 @@ export async function PATCH(request: NextRequest) {
       { error: updateError?.message ?? "Failed to update user." },
       { status: 500 }
     );
+  }
+
+  // A strike is a warning, so the person warned has to hear about it. Only on an
+  // increase: clearing or lowering a strike is not something to ping anyone for.
+  if (body.strikeCount !== undefined) {
+    const previousStrikeCount = Number(existingUser?.data?.strike_count ?? 0);
+    const newStrikeCount = Number(updated.strike_count ?? 0);
+    if (newStrikeCount > previousStrikeCount) {
+      const executivesChannelName =
+        String(process.env.DISCORD_EXECUTIVES_ONLY_CHANNEL_NAME ?? "").trim() || "executives";
+      const targetDiscordId = String(updated.discord_user_id ?? "").trim();
+      // Without a linked Discord account there is nobody to mention, so name
+      // them instead — the strike still has to be visible to the executives.
+      const who = targetDiscordId
+        ? `<@${targetDiscordId}>`
+        : `**${updated.full_name || updated.email || "A tutor"}**`;
+      const strikeWord = newStrikeCount === 1 ? "strike" : "strikes";
+      const content = [
+        `${who} You have been given a strike. You now have **${newStrikeCount} ${strikeWord}**.`,
+        "Strikes come from missing classes, joining late, or leaving before the last 5 minutes of class.",
+        "**Two strikes means permanent removal from the organization.** If you believe this is a mistake, contact a founder.",
+      ].join("\n");
+
+      // Best-effort: a Discord outage must not fail the strike itself, which is
+      // already saved.
+      try {
+        await sendDiscordMessageByChannelName(
+          executivesChannelName,
+          content,
+          undefined,
+          targetDiscordId ? [targetDiscordId] : undefined
+        );
+      } catch (error) {
+        console.error("Failed to send strike warning to Discord", error);
+      }
+    }
   }
 
   if (isDemotingFromTutor) {

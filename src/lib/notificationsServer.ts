@@ -183,7 +183,8 @@ export const notifyFounders = async (subject: string, html: string) => {
 export const sendDiscordMessageByChannelName = async (
   channelName: string,
   content: string,
-  allowedRoleMentionIds?: string[]
+  allowedRoleMentionIds?: string[],
+  allowedUserMentionIds?: string[]
 ): Promise<boolean> => {
   if (!discordBotToken || !discordGuildId || !channelName || !content) {
     console.warn("Skipping Discord message: Missing configuration, channel name, or content.");
@@ -225,8 +226,14 @@ export const sendDiscordMessageByChannelName = async (
         },
         body: JSON.stringify({
           content,
-          ...(allowedRoleMentionIds && allowedRoleMentionIds.length > 0
-            ? { allowed_mentions: { parse: [], roles: allowedRoleMentionIds, users: [] } }
+          ...(allowedRoleMentionIds?.length || allowedUserMentionIds?.length
+            ? {
+                allowed_mentions: {
+                  parse: [],
+                  roles: allowedRoleMentionIds ?? [],
+                  users: allowedUserMentionIds ?? [],
+                },
+              }
             : {}),
         }),
       }

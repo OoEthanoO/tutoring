@@ -1,13 +1,18 @@
 /**
- * Whether a tutor has stepped out of their live class voice channel for long
- * enough to be warned about it. Pure date math lives here (rather than the
+ * When a tutor's presence in their live class voice channel is off-policy, and
+ * which warning that earns. Pure date math lives here (rather than the
  * class-reminders route) so it can be unit-tested.
  *
- * The policy: students should get close to the full scheduled duration, so a
- * tutor is expected to stay in the channel until at least the last 5 minutes of
- * class. Leaving before that — for longer than a single poll interval, so a
- * reconnect is not mistaken for walking out — earns one warning in the
- * executives channel.
+ * The policy has two halves:
+ *
+ *  - Show up. The channel opens 15 minutes before the start, the tutor is
+ *    expected in it 5 minutes before, and a tutor still missing 5 minutes after
+ *    the start gets a sharper warning naming the consequence.
+ *  - Stay. Students should get close to the full scheduled duration, so leaving
+ *    before the last 5 minutes — for longer than a single poll interval, so a
+ *    reconnect is not mistaken for walking out — earns a warning too.
+ *
+ * Every warning goes to the executives channel, once per class.
  */
 
 /** How long before the scheduled end a tutor may leave without being warned. */
@@ -58,4 +63,79 @@ export const shouldWarnTutorLeftEarly = ({
   }
   // Strictly greater: "longer than a minute", not "at least a minute".
   return nowMs - tutorLastSeenMs > tutorAbsenceToleranceMs;
+};
+
+/** The channel opens this far ahead; the tutor should be in it by then. */
+export const tutorIdealJoinBeforeStartMs = 15 * 60 * 1000;
+
+/** The latest a tutor should join without being nudged. */
+export const tutorExpectedJoinBeforeStartMs = 5 * 60 * 1000;
+
+/** How far past the start an absent tutor gets the sharper warning. */
+export const tutorLateWarningAfterStartMs = 5 * 60 * 1000;
+
+/**
+ * How far past the start a still-absent tutor is told a strike follows. Nothing
+ * here applies that strike — a founder does, from Manage accounts — so this is
+ * only the number quoted in the warning.
+ */
+export const tutorStrikeDeadlineAfterStartMs = 10 * 60 * 1000;
+
+export const tutorNotJoinedReminderType = "tutor_not_joined";
+export const tutorStillNotJoinedReminderType = "tutor_still_not_joined";
+
+export type TutorJoinWarning = "join_soon" | "late" | null;
+
+/**
+ * Which no-show warning a tutor is due, if any.
+ *
+ * Only for a tutor who has never been seen in this class's channel: one who
+ * joined and then left is the left-early case above, and warning them for not
+ * joining would be wrong.
+ */
+export const tutorJoinWarning = ({
+  nowMs,
+  startsAtMs,
+  endsAtMs,
+  tutorEverJoined,
+  warnedNotJoined,
+  warnedStillNotJoined,
+}: {
+  nowMs: number;
+  startsAtMs: number;
+  endsAtMs: number;
+  tutorEverJoined: boolean;
+  warnedNotJoined: boolean;
+  warnedStillNotJoined: boolean;
+}): TutorJoinWarning => {
+  if (
+    tutorEverJoined ||
+    !Number.isFinite(nowMs) ||
+    !Number.isFinite(startsAtMs) ||
+    !Number.isFinite(endsAtMs)
+  ) {
+    return null;
+  }
+
+  // Past the scheduled end there is nothing left to join; the post-class
+  // absence follow-up covers what happened.
+  if (nowMs >= endsAtMs) {
+    return null;
+  }
+
+  if (nowMs >= startsAtMs + tutorLateWarningAfterStartMs) {
+    return warnedStillNotJoined ? null : "late";
+  }
+
+  // Between the start and the late threshold, the pre-class warning has already
+  // been sent and the sharper one is not due yet.
+  if (nowMs >= startsAtMs) {
+    return null;
+  }
+
+  if (nowMs >= startsAtMs - tutorExpectedJoinBeforeStartMs) {
+    return warnedNotJoined ? null : "join_soon";
+  }
+
+  return null;
 };
