@@ -233,17 +233,25 @@ export default function AnalyticsMenu() {
               strokeWidth={2}
               fill="url(#analyticsSignupsStudents)"
             />
+            {/* Dashed rather than just lighter: the two lines overlap often, and
+                colour alone was doing all the work of telling them apart. */}
             <Area
               type="monotone"
               dataKey="executives"
               stroke="var(--muted)"
               strokeWidth={2}
+              strokeDasharray="5 4"
               fill="url(#analyticsSignupsExecs)"
             />
           </AreaChart>
         </ChartCard>
 
-        <ChartCard title="Enrollments per week" hasData={charts.enrollmentsPerWeek.length > 0}>
+        {/* Subtitle keeps this card's plot area level with "Signups per week". */}
+        <ChartCard
+          title="Enrollments per week"
+          subtitle="New course enrollments"
+          hasData={charts.enrollmentsPerWeek.length > 0}
+        >
           <AreaChart
             data={charts.enrollmentsPerWeek}
             margin={{ top: 5, right: 20, left: 0, bottom: 0 }}
