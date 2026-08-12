@@ -44,6 +44,11 @@ type AnalyticsData = {
       enrolledSlots: number;
       trackedClasses: number;
     }[];
+    untrackedCourses: {
+      courseId: string;
+      title: string;
+      pastClasses: number;
+    }[];
   };
 };
 
@@ -345,7 +350,9 @@ export default function AnalyticsMenu() {
         </ChartCard>
       </div>
 
-      {charts.attendanceByCourse.length > 0 ? (
+      {/* The untracked notice has to survive an empty chart: a total tracking
+          outage is precisely when it needs to be on screen. */}
+      {charts.attendanceByCourse.length > 0 || charts.untrackedCourses.length > 0 ? (
         <div className="space-y-2">
           <div>
             <p className="text-sm font-semibold text-[var(--foreground)]">
@@ -362,42 +369,63 @@ export default function AnalyticsMenu() {
               Voice-tracked classes only (since Jul 2026); classes with no attendance rows are
               excluded.
             </p>
+            {/* Naming the gap: a course missing from the chart because tracking
+                failed is indistinguishable from one that was never there. */}
+            {charts.untrackedCourses.length > 0 ? (
+              <p className="text-xs text-amber-500">
+                {charts.untrackedCourses.length} running{" "}
+                {charts.untrackedCourses.length === 1 ? "course has" : "courses have"} no tracked
+                attendance and {charts.untrackedCourses.length === 1 ? "is" : "are"} missing from
+                this chart:{" "}
+                {charts.untrackedCourses
+                  .map(
+                    (course) =>
+                      `${course.title} (${course.pastClasses} past ${
+                        course.pastClasses === 1 ? "class" : "classes"
+                      })`
+                  )
+                  .join(", ")}
+                .
+              </p>
+            ) : null}
           </div>
-          <div className="max-h-[44rem] w-full overflow-y-auto rounded-xl bg-[var(--surface-muted)] p-4">
-            <div style={{ height: attendanceChartHeight }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart
-                  data={charts.attendanceByCourse}
-                  layout="vertical"
-                  margin={{ top: 5, right: 24, left: 0, bottom: 0 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="var(--border)" />
-                  <XAxis
-                    type="number"
-                    domain={[0, 1]}
-                    tickFormatter={formatPercent}
-                    {...axisProps}
-                  />
-                  {/* Wide enough for a name like "Grade 10 Pre-IB Mathematics" on one
-                      line; the bars start after it, so they get correspondingly shorter. */}
-                  <YAxis type="category" dataKey="title" width={210} {...axisProps} />
-                  <Tooltip
-                    {...tooltipProps}
-                    formatter={(value, _name, item) => {
-                      const row = item?.payload as
-                        | { attendedSlots?: number; enrolledSlots?: number; trackedClasses?: number }
-                        | undefined;
-                      return [
-                        `${formatPercent(Number(value))} (${row?.attendedSlots ?? 0}/${row?.enrolledSlots ?? 0} across ${row?.trackedClasses ?? 0} classes)`,
-                        "Attendance",
-                      ];
-                    }}
-                  />
-                  <Bar dataKey="rate" fill="var(--foreground)" radius={[0, 4, 4, 0]} barSize={12} />
-                </BarChart>
-              </ResponsiveContainer>
+          {charts.attendanceByCourse.length > 0 ? (
+            <div className="max-h-[44rem] w-full overflow-y-auto rounded-xl bg-[var(--surface-muted)] p-4">
+              <div style={{ height: attendanceChartHeight }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={charts.attendanceByCourse}
+                    layout="vertical"
+                    margin={{ top: 5, right: 24, left: 0, bottom: 0 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="var(--border)" />
+                    <XAxis
+                      type="number"
+                      domain={[0, 1]}
+                      tickFormatter={formatPercent}
+                      {...axisProps}
+                    />
+                    {/* Wide enough for a name like "Grade 10 Pre-IB Mathematics" on one
+                        line; the bars start after it, so they get correspondingly shorter. */}
+                    <YAxis type="category" dataKey="title" width={210} {...axisProps} />
+                    <Tooltip
+                      {...tooltipProps}
+                      formatter={(value, _name, item) => {
+                        const row = item?.payload as
+                          | { attendedSlots?: number; enrolledSlots?: number; trackedClasses?: number }
+                          | undefined;
+                        return [
+                          `${formatPercent(Number(value))} (${row?.attendedSlots ?? 0}/${row?.enrolledSlots ?? 0} across ${row?.trackedClasses ?? 0} classes)`,
+                          "Attendance",
+                        ];
+                      }}
+                    />
+                    <Bar dataKey="rate" fill="var(--foreground)" radius={[0, 4, 4, 0]} barSize={12} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
             </div>
-          </div>
+          ) : null}
         </div>
       ) : null}
     </section>

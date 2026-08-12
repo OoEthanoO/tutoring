@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   buildLiveVoicePermissionOverwrites,
+  courseUsesDiscordVoiceSystem,
   decideLiveChannelCleanup,
+  discordVoiceSystemStartMs,
   liveChannelEmptyConfirmMs,
   normalizeVoiceChannelName,
 } from "@/lib/discordLiveChannels";
@@ -261,4 +263,23 @@ describe("decideLiveChannelCleanup", () => {
     ).toBe("mark-empty");
   });
 
+});
+
+describe("courseUsesDiscordVoiceSystem", () => {
+  it("includes a course whose first class is on the cutoff", () => {
+    expect(courseUsesDiscordVoiceSystem(new Date(discordVoiceSystemStartMs))).toBe(true);
+  });
+
+  it("excludes the legacy Zoom era", () => {
+    expect(courseUsesDiscordVoiceSystem(new Date(discordVoiceSystemStartMs - 1))).toBe(false);
+  });
+
+  it("includes courses started well after the cutoff", () => {
+    expect(courseUsesDiscordVoiceSystem(new Date("2026-08-11T00:00:00Z"))).toBe(true);
+  });
+
+  it("excludes a course with no classes, or an unusable date", () => {
+    expect(courseUsesDiscordVoiceSystem(null)).toBe(false);
+    expect(courseUsesDiscordVoiceSystem(new Date("not a date"))).toBe(false);
+  });
 });

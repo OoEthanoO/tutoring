@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { getAdminClient } from "@/lib/authServer";
-import { isExecutive, resolveUserRole } from "@/lib/roles";
+import { isExecutive, isFounder, resolveUserRole } from "@/lib/roles";
+import { courseUsesDiscordVoiceSystem } from "@/lib/discordLiveChannels";
 import { computeCoreTotals, loadCoreRows, parseHours } from "@/lib/impactStats";
+import { classEndMs } from "@/lib/classTiming";
 
 const TORONTO_TZ = "America/Toronto";
 
@@ -176,6 +178,78 @@ export async function GET() {
         (a, b) => b.trackedClasses - a.trackedClasses || a.title.localeCompare(b.title)
       );
 
+    // Running courses that contribute nothing to the chart above, because none
+    // of their finished classes produced an attendance row. Without this, a
+    // Discord sync outage looks exactly like a course that does not exist —
+    // the rate silently describes a smaller org than the real one.
+    const nowMs = Date.now();
+    const courseHasLiveClass = new Set<string>();
+    const pastClassesByCourse = new Map<string, number>();
+    const trackedPastClassesByCourse = new Map<string, number>();
+    const firstClassMsByCourse = new Map<string, number>();
+    for (const cls of rows.classes) {
+      const startMs = new Date(cls.starts_at).getTime();
+      if (!Number.isFinite(startMs) || !courseById.has(cls.course_id)) {
+        continue;
+      }
+      const knownFirst = firstClassMsByCourse.get(cls.course_id);
+      if (knownFirst === undefined || startMs < knownFirst) {
+        firstClassMsByCourse.set(cls.course_id, startMs);
+      }
+      if (classEndMs(startMs, cls.duration_hours) > nowMs) {
+        courseHasLiveClass.add(cls.course_id);
+        continue;
+      }
+      pastClassesByCourse.set(
+        cls.course_id,
+        (pastClassesByCourse.get(cls.course_id) ?? 0) + 1
+      );
+      if (classesWithRows.has(cls.id)) {
+        trackedPastClassesByCourse.set(
+          cls.course_id,
+          (trackedPastClassesByCourse.get(cls.course_id) ?? 0) + 1
+        );
+      }
+    }
+
+    // Founder-taught courses run on Schoolhouse and pre-cutoff courses on the
+    // legacy Zoom flow: neither produces attendance, so listing them as gaps
+    // would be crying wolf.
+    const founderUserIds = new Set(
+      rows.users
+        .filter((row) => isFounder(resolveUserRole(row.email, row.role ?? null)))
+        .map((row) => row.id)
+    );
+
+    const untrackedCourses = Array.from(courseHasLiveClass)
+      .filter((courseId) => {
+        const course = courseById.get(courseId);
+        if (!course || course.is_completed) {
+          return false;
+        }
+        if (course.created_by && founderUserIds.has(course.created_by)) {
+          return false;
+        }
+        const firstClassMs = firstClassMsByCourse.get(courseId);
+        if (
+          !courseUsesDiscordVoiceSystem(
+            firstClassMs === undefined ? null : new Date(firstClassMs)
+          )
+        ) {
+          return false;
+        }
+        return (
+          (pastClassesByCourse.get(courseId) ?? 0) > 0 &&
+          (trackedPastClassesByCourse.get(courseId) ?? 0) === 0
+        );
+      })
+      .map((courseId) => ({
+        courseId,
+        title: (courseById.get(courseId)?.title ?? "").trim() || "Untitled course",
+        pastClasses: pastClassesByCourse.get(courseId) ?? 0,
+      }))
+      .sort((a, b) => b.pastClasses - a.pastClasses || a.title.localeCompare(b.title));
+
     return NextResponse.json({
       generatedAt: new Date().toISOString(),
       totals: {
@@ -202,6 +276,7 @@ export async function GET() {
         ),
         donationsOverTime: donations,
         attendanceByCourse,
+        untrackedCourses,
       },
     },
     {

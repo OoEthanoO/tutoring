@@ -10,6 +10,20 @@
 // the call rather than from waiting a long time, so this window is short.
 export const liveChannelEmptyConfirmMs = 5 * 60 * 1000;
 
+/**
+ * Courses whose first class falls on or after this date run their lessons in
+ * Discord voice channels; older ones stayed on the legacy Zoom flow. Only
+ * voice-system courses produce attendance and presence data, so anything
+ * reasoning about missing attendance has to apply the same cutoff.
+ */
+export const discordVoiceSystemStartMs = new Date("2026-06-24T00:00:00Z").getTime();
+
+/** Whether a course (identified by its first class date) uses Discord voice. */
+export const courseUsesDiscordVoiceSystem = (firstClassDate: Date | null): boolean =>
+  firstClassDate !== null &&
+  Number.isFinite(firstClassDate.getTime()) &&
+  firstClassDate.getTime() >= discordVoiceSystemStartMs;
+
 export type LiveChannelCleanupDecision = "keep" | "mark-empty" | "clear-empty" | "delete";
 
 /**

@@ -6,6 +6,7 @@ import {
   type DiscordSyncResult,
 } from "@/lib/discordSync";
 import {
+  courseUsesDiscordVoiceSystem,
   buildLiveVoicePermissionOverwrites,
   decideLiveChannelCleanup,
   normalizeVoiceChannelName,
@@ -156,16 +157,6 @@ const readCourse = (value: ClassRow["course"]): CourseRow | null => {
     return value[0] ?? null;
   }
   return value ?? null;
-};
-
-/**
- * Determine if a course should use Discord live voice channels.
- * Criteria:
- * - First class date is on or after June 24, 2026
- */
-const shouldUseDiscordVoiceSystem = (firstClassDate: Date | null): boolean => {
-  const june24_2026 = new Date("2026-06-24T00:00:00Z");
-  return firstClassDate !== null && firstClassDate >= june24_2026;
 };
 
 /**
@@ -1557,7 +1548,7 @@ export async function POST(request: NextRequest) {
           liveChannelRecovery.skipped.push({ classId: classRow.id, reason: "founder/CEO/COO-taught legacy class" });
           return false;
         }
-        if (!shouldUseDiscordVoiceSystem(firstClassDate)) {
+        if (!courseUsesDiscordVoiceSystem(firstClassDate)) {
           liveChannelRecovery.skipped.push({ classId: classRow.id, reason: "course does not use Discord voice system" });
           return false;
         }
@@ -2305,7 +2296,7 @@ export async function POST(request: NextRequest) {
         }
 
         const firstClassDate = firstClassDateByCourseId.get(classRow.course_id) ?? null;
-        if (!shouldUseDiscordVoiceSystem(firstClassDate)) {
+        if (!courseUsesDiscordVoiceSystem(firstClassDate)) {
           await skip("course does not use Discord voice system");
           continue;
         }
@@ -2508,7 +2499,7 @@ ${tutorWasPresent ? "" : "<p><strong>Note:</strong> you were not detected in the
       : resolveRoleByEmail(tutorEmail);
     const isFounderTaughtClass = isFounderRole(tutorRole);
     const firstClassDate = firstClassDateByCourseId.get(classRow.course_id) ?? null;
-    const usesDiscordVoiceSystem = !isFounderTaughtClass && shouldUseDiscordVoiceSystem(firstClassDate);
+    const usesDiscordVoiceSystem = !isFounderTaughtClass && courseUsesDiscordVoiceSystem(firstClassDate);
     const isTutorEarlyAccessReminder = reminderType === "fifteen_minutes" && usesDiscordVoiceSystem;
 
     const shouldSendCourseDiscordReminder =
