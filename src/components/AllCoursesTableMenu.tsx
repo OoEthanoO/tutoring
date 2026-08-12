@@ -206,9 +206,21 @@ export default function AllCoursesTableMenu() {
         return false;
       }
 
-      return !(course.course_classes ?? []).some((courseClass) => {
+      const classes = course.course_classes ?? [];
+      // A course with no classes scheduled yet is still to come.
+      if (classes.length === 0) {
+        return true;
+      }
+
+      // Finished means every class has ENDED. Testing whether a class had
+      // started hid every course currently running, which is all of them once a
+      // term is underway.
+      return classes.some((courseClass) => {
         const startsAt = new Date(courseClass.starts_at).getTime();
-        return Number.isFinite(startsAt) && startsAt <= now;
+        return (
+          Number.isFinite(startsAt) &&
+          classEndMs(startsAt, courseClass.duration_hours) > now
+        );
       });
     });
 

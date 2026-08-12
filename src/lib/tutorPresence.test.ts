@@ -6,6 +6,8 @@ import {
   tutorJoinWarning,
   tutorLateWarningAfterStartMs,
   tutorPresenceRequiredUntilBeforeEndMs,
+  shouldWarnStudentsNotJoined,
+  studentsNotJoinedWindowMs,
 } from "./tutorPresence";
 
 const startsAtMs = new Date("2026-08-16T19:00:00Z").getTime();
@@ -141,5 +143,45 @@ describe("tutorJoinWarning", () => {
   it("stays quiet when a timestamp is unusable", () => {
     expect(joinWarn({ startsAtMs: Number.NaN })).toBe(null);
     expect(joinWarn({ endsAtMs: Number.NaN })).toBe(null);
+  });
+});
+
+const studentWarn = (
+  overrides: Partial<Parameters<typeof shouldWarnStudentsNotJoined>[0]>
+) =>
+  shouldWarnStudentsNotJoined({
+    nowMs: startsAtMs,
+    startsAtMs,
+    anyStudentJoined: false,
+    alreadyWarned: false,
+    ...overrides,
+  });
+
+describe("shouldWarnStudentsNotJoined", () => {
+  it("nudges an empty room at the start time", () => {
+    expect(studentWarn({})).toBe(true);
+  });
+
+  it("says nothing before the start", () => {
+    // Students are expected 5 minutes early, but the nudge is a "class has
+    // started" message — sending it beforehand would be wrong.
+    expect(studentWarn({ nowMs: startsAtMs - 1000 })).toBe(false);
+  });
+
+  it("stops once the window has passed", () => {
+    expect(studentWarn({ nowMs: startsAtMs + studentsNotJoinedWindowMs - 1 })).toBe(true);
+    expect(studentWarn({ nowMs: startsAtMs + studentsNotJoinedWindowMs })).toBe(false);
+  });
+
+  it("says nothing when a student has joined", () => {
+    expect(studentWarn({ anyStudentJoined: true })).toBe(false);
+  });
+
+  it("nudges once per class", () => {
+    expect(studentWarn({ alreadyWarned: true })).toBe(false);
+  });
+
+  it("stays quiet when the start time is unusable", () => {
+    expect(studentWarn({ startsAtMs: Number.NaN })).toBe(false);
   });
 });

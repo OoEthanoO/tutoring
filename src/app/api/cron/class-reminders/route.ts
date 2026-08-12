@@ -37,7 +37,10 @@ import {
 import { deleteZoomMeeting } from "@/lib/zoom";
 import { classDurationMinutes, classEndDate, classEndMs } from "@/lib/classTiming";
 import {
+  shouldWarnStudentsNotJoined,
   shouldWarnTutorLeftEarly,
+  studentsExpectedJoinBeforeStartMs,
+  studentsNotJoinedReminderType,
   tutorExpectedJoinBeforeStartMs,
   tutorIdealJoinBeforeStartMs,
   tutorJoinWarning,
@@ -1735,6 +1738,7 @@ export async function POST(request: NextRequest) {
   let tutorLeftEarlyWarnings = 0;
   let tutorNotJoinedWarnings = 0;
   let tutorStillNotJoinedWarnings = 0;
+  let studentsNotJoinedWarnings = 0;
   if (discordRemindersEnabled && !discordReminderSkippedReason && discordGuildId) {
     try {
       const attendanceNow = Date.now();
@@ -1827,6 +1831,7 @@ export async function POST(request: NextRequest) {
         const tutorLeftEarlyWarnedClassIds = new Set<string>();
         const tutorNotJoinedWarnedClassIds = new Set<string>();
         const tutorStillNotJoinedWarnedClassIds = new Set<string>();
+        const studentsNotJoinedWarnedClassIds = new Set<string>();
         if (sessionClassIds.length > 0) {
           const { data: tutorWarningLogs } = await adminClient
             .from("class_reminder_logs")
@@ -1836,6 +1841,7 @@ export async function POST(request: NextRequest) {
               tutorLeftEarlyReminderType,
               tutorNotJoinedReminderType,
               tutorStillNotJoinedReminderType,
+              studentsNotJoinedReminderType,
             ]);
           for (const log of tutorWarningLogs ?? []) {
             const classId = String(log.class_id);
@@ -1843,8 +1849,10 @@ export async function POST(request: NextRequest) {
               tutorLeftEarlyWarnedClassIds.add(classId);
             } else if (log.reminder_type === tutorNotJoinedReminderType) {
               tutorNotJoinedWarnedClassIds.add(classId);
-            } else {
+            } else if (log.reminder_type === tutorStillNotJoinedReminderType) {
               tutorStillNotJoinedWarnedClassIds.add(classId);
+            } else {
+              studentsNotJoinedWarnedClassIds.add(classId);
             }
           }
         }
@@ -1883,6 +1891,8 @@ export async function POST(request: NextRequest) {
           if (!channelId) {
             continue;
           }
+          const sessionStartMs = new Date(String(session.starts_at)).getTime();
+          const sessionEndMs = new Date(String(session.ends_at)).getTime();
 
           const tutorUserId = createdByByCourse.get(courseId);
           const tutorDiscordId = String(session.tutor_discord_user_id ?? "").trim();
@@ -1945,8 +1955,6 @@ export async function POST(request: NextRequest) {
               // whether they have ever been in it: never — a no-show, before or
               // after the start; once and now gone — they left early.
               const tutorLastSeenMs = tutorLastSeenMsByClassId.get(classId) ?? null;
-              const sessionStartMs = new Date(String(session.starts_at)).getTime();
-              const sessionEndMs = new Date(String(session.ends_at)).getTime();
               const stayUntilMs = sessionEndMs - tutorPresenceRequiredUntilBeforeEndMs;
 
               const joinWarning = tutorJoinWarning({
@@ -2124,6 +2132,63 @@ export async function POST(request: NextRequest) {
             if (!upsertError) {
               recordedKeys.add(`${classId}:${participant.userId}`);
               attendanceRecorded += 1;
+            }
+          }
+
+          // An empty room at the start time: nudge the course channel. This runs
+          // after the student poll above, so a student first detected on this
+          // very tick counts as joined and no message goes out.
+          const courseStudents = studentsByCourse.get(courseId) ?? [];
+          const anyStudentJoined = courseStudents.some((student) =>
+            recordedKeys.has(`${classId}:${student.userId}`)
+          );
+          const courseDiscordTarget = discordCourseTargetByCourseId.get(courseId);
+          if (
+            // With no enrolled student on Discord there is nobody the ping could
+            // reach, and no way any of them could have joined.
+            courseStudents.length > 0 &&
+            courseDiscordTarget &&
+            shouldWarnStudentsNotJoined({
+              nowMs: attendanceNow,
+              startsAtMs: sessionStartMs,
+              anyStudentJoined,
+              alreadyWarned: studentsNotJoinedWarnedClassIds.has(classId),
+            })
+          ) {
+            const expectedEarlyMinutes = Math.round(
+              studentsExpectedJoinBeforeStartMs / 60000
+            );
+            const studentNudge = [
+              `<@&${courseDiscordTarget.roleId}>`,
+              `**${escapeDiscordText(
+                classTitleById.get(classId) ?? "Class"
+              )}** for **${escapeDiscordText(
+                courseTitleById.get(courseId) ?? "your course"
+              )}** has started and nobody has joined the voice channel yet.`,
+              `Join now: https://discord.com/channels/${discordGuildId}/${channelId}`,
+              `You are expected to join **${expectedEarlyMinutes} minutes before** the start time so the class can begin on time.`,
+            ].join("\n");
+
+            try {
+              await sendDiscordCourseReminderMessage(
+                courseDiscordTarget.channelId,
+                courseDiscordTarget.roleId,
+                studentNudge
+              );
+              await adminClient.from("class_reminder_logs").insert({
+                class_id: classId,
+                reminder_type: studentsNotJoinedReminderType,
+              });
+              studentsNotJoinedWarnedClassIds.add(classId);
+              studentsNotJoinedWarnings += 1;
+              await sleep(150);
+            } catch (error) {
+              failedClasses.push({
+                classId,
+                reason: `Failed to nudge students to join class: ${
+                  error instanceof Error ? error.message : "Unknown Discord error."
+                }`,
+              });
             }
           }
         }
@@ -3296,6 +3361,7 @@ ${tutorWasPresent ? "" : "<p><strong>Note:</strong> you were not detected in the
     tutorLeftEarlyWarnings,
     tutorNotJoinedWarnings,
     tutorStillNotJoinedWarnings,
+    studentsNotJoinedWarnings,
     absenceFollowUps,
     timezone: torontoTimeZone,
     reminderSkippedReason,
