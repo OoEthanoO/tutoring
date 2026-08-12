@@ -37,7 +37,10 @@ Notes on the edges:
 - Nothing fires between the start and start + 5 min for the tutor: the earlier
   nudge has gone out and the sharper one is not due yet.
 - The "still not joined" message quotes a strike at 10 minutes past the start.
-  **Nothing applies that strike automatically** — a founder does, by hand.
+  **Nothing applies that strike automatically, by design** — punishments get
+  manual intervention (decided August 2026). The bot's job is to surface the
+  no-show in the executives channel; a founder decides and applies the strike
+  in Admin → Manage accounts.
 - The student nudge is suppressed unless the tick actually determined every
   enrolled student's whereabouts, so an API outage cannot tell a full classroom
   that nobody joined.

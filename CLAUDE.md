@@ -1,10 +1,11 @@
 # YanLearn (tutoring)
 
 Free online tutoring platform (learn.ethanyanxu.com). Next.js App Router +
-Supabase (Postgres/RLS) + Discord bot integration. Hosted on Vercel, but
-`vercel.json` sets `git.deploymentEnabled: false` — pushing to `master` does
-NOT auto-deploy; deploys are triggered manually. `vercel.json` also defines no
-crons: the class-reminders tick is invoked externally with a `CRON_SECRET`
+Supabase (Postgres/RLS) + Discord bot integration. Hosted on Vercel: **pushing
+to `master` deploys to production** (August 2026 — there is no `vercel.json`
+any more, so the project's Git settings govern). A commit is a deploy: apply
+Supabase migrations BEFORE pushing code that reads the new schema. Vercel runs
+no crons — the class-reminders tick is invoked externally with a `CRON_SECRET`
 bearer (see the `cron:reminders:*` npm scripts).
 
 ## Commands
