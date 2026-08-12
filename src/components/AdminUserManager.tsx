@@ -816,14 +816,18 @@ export default function AdminUserManager() {
     setPendingId(null);
   };
 
-  const updateStrikeCount = async (userId: string, hasStrike: boolean) => {
+  // Strikes are counted, not toggled: the class-reminder bot warns tutors that a
+  // second strike means removal from the organization, so the panel has to be
+  // able to record that second one. Raising the count notifies the tutor in the
+  // executives channel (see the PATCH handler).
+  const updateStrikeCount = async (userId: string, strikeCount: number) => {
     setPendingId(userId);
     setStatus({ type: "idle", message: "" });
 
     const response = await fetch("/api/admin/users", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId, strikeCount: hasStrike ? 1 : 0 }),
+      body: JSON.stringify({ userId, strikeCount: Math.max(0, strikeCount) }),
     });
 
     if (!response.ok) {
@@ -835,7 +839,12 @@ export default function AdminUserManager() {
 
     const data = (await response.json()) as { user: AdminUser };
     setUsers((current) => current.map((user) => (user.id === data.user.id ? data.user : user)));
-    setStatus({ type: "success", message: `Updated strike for ${data.user.fullName || data.user.email || "user"}.` });
+    setStatus({
+      type: "success",
+      message: `${data.user.fullName || data.user.email || "User"} now has ${
+        data.user.strikeCount ?? 0
+      } strike${(data.user.strikeCount ?? 0) === 1 ? "" : "s"}.`,
+    });
     setPendingId(null);
   };
 
@@ -2066,20 +2075,32 @@ export default function AdminUserManager() {
                       ) : null}
                       {user.role !== "founder" ? (
                         <div className="flex items-center gap-2">
-                          <input
-                            id={`strike-toggle-${user.id}`}
-                            type="checkbox"
-                            checked={(user.strikeCount ?? 0) > 0}
+                          <span className="text-xs font-medium text-red-500">
+                            {user.strikeCount ?? 0} strike{(user.strikeCount ?? 0) === 1 ? "" : "s"}
+                          </span>
+                          <button
+                            type="button"
                             disabled={isPending}
-                            onChange={(event) => updateStrikeCount(user.id, event.target.checked)}
-                            className="h-4 w-4 rounded border-[var(--border)] bg-[var(--surface)] text-red-500 transition focus:ring-0"
-                          />
-                          <label
-                            htmlFor={`strike-toggle-${user.id}`}
-                            className="text-xs font-medium text-red-500"
+                            onClick={() => updateStrikeCount(user.id, (user.strikeCount ?? 0) + 1)}
+                            className="rounded-full border border-red-200 px-2 py-0.5 text-[0.6rem] font-semibold text-red-500 transition hover:border-red-400 disabled:cursor-not-allowed disabled:opacity-70"
                           >
-                            Strike
-                          </label>
+                            Add strike
+                          </button>
+                          {(user.strikeCount ?? 0) > 0 ? (
+                            <button
+                              type="button"
+                              disabled={isPending}
+                              onClick={() => updateStrikeCount(user.id, 0)}
+                              className="rounded-full border border-[var(--border)] px-2 py-0.5 text-[0.6rem] font-semibold text-[var(--foreground)] transition hover:border-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-70"
+                            >
+                              Clear
+                            </button>
+                          ) : null}
+                          {(user.strikeCount ?? 0) >= 2 ? (
+                            <span className="text-[0.6rem] font-semibold uppercase tracking-wider text-red-500">
+                              Removal threshold
+                            </span>
+                          ) : null}
                         </div>
                       ) : null}
                       <div className="flex flex-wrap items-center gap-2">

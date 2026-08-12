@@ -1739,6 +1739,24 @@ export async function POST(request: NextRequest) {
   let tutorNotJoinedWarnings = 0;
   let tutorStillNotJoinedWarnings = 0;
   let studentsNotJoinedWarnings = 0;
+
+  /**
+   * Claim a class's once-per-class warning slot BEFORE sending it.
+   *
+   * The log row is what makes these warnings idempotent across ticks, so
+   * inserting it after the send means a failed insert re-sends the same ping
+   * every minute for the rest of the warning's window. Claiming first inverts
+   * the failure: at worst a warning is missed (and recorded in failedClasses)
+   * rather than repeated. The unique (class_id, reminder_type) constraint also
+   * makes this the atomic guard against two overlapping cron runs both sending.
+   */
+  const claimClassWarning = async (classId: string, reminderType: string) => {
+    const { error } = await adminClient
+      .from("class_reminder_logs")
+      .insert({ class_id: classId, reminder_type: reminderType });
+    return !error;
+  };
+
   if (discordRemindersEnabled && !discordReminderSkippedReason && discordGuildId) {
     try {
       const attendanceNow = Date.now();
@@ -1999,35 +2017,36 @@ export async function POST(request: NextRequest) {
                         `If you have not joined within **${strikeDeadlineMinutes} minutes** of the start time, you will be given a strike. **Two strikes means permanent removal from the organization.**`,
                       ].join("\n");
 
-                try {
-                  await sendDiscordUserMentionMessage(
-                    executivesChannelId,
-                    tutorDiscordId,
-                    warningContent
-                  );
-                  const reminderType =
-                    joinWarning === "join_soon"
-                      ? tutorNotJoinedReminderType
-                      : tutorStillNotJoinedReminderType;
-                  await adminClient.from("class_reminder_logs").insert({
-                    class_id: classId,
-                    reminder_type: reminderType,
-                  });
+                const reminderType =
+                  joinWarning === "join_soon"
+                    ? tutorNotJoinedReminderType
+                    : tutorStillNotJoinedReminderType;
+                if (await claimClassWarning(classId, reminderType)) {
                   if (joinWarning === "join_soon") {
                     tutorNotJoinedWarnedClassIds.add(classId);
-                    tutorNotJoinedWarnings += 1;
                   } else {
                     tutorStillNotJoinedWarnedClassIds.add(classId);
-                    tutorStillNotJoinedWarnings += 1;
                   }
-                  await sleep(150);
-                } catch (error) {
-                  failedClasses.push({
-                    classId,
-                    reason: `Failed to warn the tutor about not joining class: ${
-                      error instanceof Error ? error.message : "Unknown Discord error."
-                    }`,
-                  });
+                  try {
+                    await sendDiscordUserMentionMessage(
+                      executivesChannelId,
+                      tutorDiscordId,
+                      warningContent
+                    );
+                    if (joinWarning === "join_soon") {
+                      tutorNotJoinedWarnings += 1;
+                    } else {
+                      tutorStillNotJoinedWarnings += 1;
+                    }
+                    await sleep(150);
+                  } catch (error) {
+                    failedClasses.push({
+                      classId,
+                      reason: `Failed to warn the tutor about not joining class: ${
+                        error instanceof Error ? error.message : "Unknown Discord error."
+                      }`,
+                    });
+                  }
                 }
               }
 
@@ -2070,33 +2089,39 @@ export async function POST(request: NextRequest) {
                   "Please stay in the meeting for the full duration of every class, until at least the last 5 minutes, so your students get close to the full class they signed up for.",
                 ].join("\n");
 
-                try {
-                  await sendDiscordUserMentionMessage(
-                    executivesChannelId,
-                    tutorDiscordId,
-                    warningContent
-                  );
-                  await adminClient.from("class_reminder_logs").insert({
-                    class_id: classId,
-                    reminder_type: tutorLeftEarlyReminderType,
-                  });
+                if (await claimClassWarning(classId, tutorLeftEarlyReminderType)) {
                   tutorLeftEarlyWarnedClassIds.add(classId);
-                  tutorLeftEarlyWarnings += 1;
-                  await sleep(150);
-                } catch (error) {
-                  failedClasses.push({
-                    classId,
-                    reason: `Failed to warn the tutor about leaving class early: ${
-                      error instanceof Error ? error.message : "Unknown Discord error."
-                    }`,
-                  });
+                  try {
+                    await sendDiscordUserMentionMessage(
+                      executivesChannelId,
+                      tutorDiscordId,
+                      warningContent
+                    );
+                    tutorLeftEarlyWarnings += 1;
+                    await sleep(150);
+                  } catch (error) {
+                    failedClasses.push({
+                      classId,
+                      reason: `Failed to warn the tutor about leaving class early: ${
+                        error instanceof Error ? error.message : "Unknown Discord error."
+                      }`,
+                    });
+                  }
                 }
               }
             }
           }
 
+          // Whether every student's whereabouts is actually known this tick. A
+          // student already recorded is known (they joined); one whose
+          // voice-state read failed, or who was never polled because the budget
+          // ran out, is not — and "unknown" must never be reported to a course
+          // channel as "nobody joined".
+          let studentPresenceKnown = true;
+
           for (const participant of participants) {
             if (pollBudget <= 0) {
+              studentPresenceKnown = false;
               break;
             }
             if (recordedKeys.has(`${classId}:${participant.userId}`)) {
@@ -2110,6 +2135,8 @@ export async function POST(request: NextRequest) {
                 participant.discordId
               );
             } catch {
+              // A failed read is not evidence of absence, same as for the tutor.
+              studentPresenceKnown = false;
               continue;
             }
             if (currentChannelId !== channelId) {
@@ -2148,6 +2175,7 @@ export async function POST(request: NextRequest) {
             // reach, and no way any of them could have joined.
             courseStudents.length > 0 &&
             courseDiscordTarget &&
+            studentPresenceKnown &&
             shouldWarnStudentsNotJoined({
               nowMs: attendanceNow,
               startsAtMs: sessionStartMs,
@@ -2169,26 +2197,24 @@ export async function POST(request: NextRequest) {
               `You are expected to join **${expectedEarlyMinutes} minutes before** the start time so the class can begin on time.`,
             ].join("\n");
 
-            try {
-              await sendDiscordCourseReminderMessage(
-                courseDiscordTarget.channelId,
-                courseDiscordTarget.roleId,
-                studentNudge
-              );
-              await adminClient.from("class_reminder_logs").insert({
-                class_id: classId,
-                reminder_type: studentsNotJoinedReminderType,
-              });
+            if (await claimClassWarning(classId, studentsNotJoinedReminderType)) {
               studentsNotJoinedWarnedClassIds.add(classId);
-              studentsNotJoinedWarnings += 1;
-              await sleep(150);
-            } catch (error) {
-              failedClasses.push({
-                classId,
-                reason: `Failed to nudge students to join class: ${
-                  error instanceof Error ? error.message : "Unknown Discord error."
-                }`,
-              });
+              try {
+                await sendDiscordCourseReminderMessage(
+                  courseDiscordTarget.channelId,
+                  courseDiscordTarget.roleId,
+                  studentNudge
+                );
+                studentsNotJoinedWarnings += 1;
+                await sleep(150);
+              } catch (error) {
+                failedClasses.push({
+                  classId,
+                  reason: `Failed to nudge students to join class: ${
+                    error instanceof Error ? error.message : "Unknown Discord error."
+                  }`,
+                });
+              }
             }
           }
         }
