@@ -126,6 +126,7 @@ export async function GET() {
     let attendedSlots = 0;
     let enrolledSlots = 0;
     let trackedClasses = 0;
+    const nowMs = Date.now();
     const perCourse = new Map<
       string,
       { attended: number; enrolled: number; trackedClasses: number }
@@ -133,6 +134,16 @@ export async function GET() {
 
     for (const cls of pastClasses) {
       if (!classesWithRows.has(cls.id)) {
+        continue;
+      }
+      // pastClasses means "has started", which includes a lesson happening right
+      // now: its attendance is whoever has arrived so far, so counting it would
+      // dent the course's rate mid-lesson and quietly recover afterwards.
+      const classStartMs = new Date(cls.starts_at).getTime();
+      if (
+        !Number.isFinite(classStartMs) ||
+        classEndMs(classStartMs, cls.duration_hours) > nowMs
+      ) {
         continue;
       }
       const course = courseById.get(cls.course_id);
@@ -182,7 +193,6 @@ export async function GET() {
     // of their finished classes produced an attendance row. Without this, a
     // Discord sync outage looks exactly like a course that does not exist —
     // the rate silently describes a smaller org than the real one.
-    const nowMs = Date.now();
     const courseHasLiveClass = new Set<string>();
     const pastClassesByCourse = new Map<string, number>();
     const trackedPastClassesByCourse = new Map<string, number>();
