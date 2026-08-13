@@ -19,6 +19,7 @@ export default function Footer() {
   const [totalCommits, setTotalCommits] = useState<number | null>(null);
   const [pendingCommitCount, setPendingCommitCount] = useState<number | null>(null);
   const [isCommitHovered, setIsCommitHovered] = useState(false);
+  const [isSourceHovered, setIsSourceHovered] = useState(false);
   const lastDismissedCommitCountRef = useRef<number | null>(null);
   const backdropClickedRef = useRef(false);
 
@@ -199,6 +200,21 @@ export default function Footer() {
         ) : (
           <span>Loading...</span>
         )}
+
+        <a
+          href="https://github.com/OoEthanoO/tutoring"
+          target="_blank"
+          rel="noreferrer"
+          className="transition-colors"
+          onMouseEnter={() => setIsSourceHovered(true)}
+          onMouseLeave={() => setIsSourceHovered(false)}
+          onFocus={() => setIsSourceHovered(true)}
+          onBlur={() => setIsSourceHovered(false)}
+        >
+          <span style={{ color: isSourceHovered ? "#3b82f6" : "var(--muted)" }}>
+            Source code
+          </span>
+        </a>
 
         {isSignedIn ? (
           <button
