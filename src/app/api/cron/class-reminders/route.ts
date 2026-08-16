@@ -1242,7 +1242,7 @@ export async function POST(request: NextRequest) {
     const { data: activeLiveChannels, error: activeLiveChannelsError } = await adminClient
       .from("discord_live_class_channels")
       .select(
-        "id, class_id, course_id, discord_channel_id, tutor_discord_user_id, ends_at, empty_since"
+        "id, class_id, course_id, discord_channel_id, tutor_discord_user_id, starts_at, ends_at, empty_since"
       )
       .is("deleted_at", null);
 
@@ -1251,6 +1251,7 @@ export async function POST(request: NextRequest) {
     // co-taught course the person actually running the lesson was invisible to
     // this check and the channel was torn down on top of them.
     const occupantIdsByCourseId = new Map<string, string[]>();
+    const tutorDiscordIdsByCourseId = new Map<string, Set<string>>();
     let guildMembersForOccupancy: { id: string; roles: string[] }[] | null = null;
     // Only rows past their scheduled end can be deleted, so a class that is
     // simply in progress costs no extra queries and no extra Discord calls —
@@ -1263,6 +1264,28 @@ export async function POST(request: NextRequest) {
       new Set(rowsPastEnd.map((row) => String(row.course_id)).filter(Boolean))
     );
 
+    // How long the tutor has been out of each channel, for the absence rule in
+    // decideLiveChannelCleanup. The attendance poll only runs while a class is in
+    // progress, so for a finished class last_seen_at is exactly when the tutor
+    // was last in the room.
+    const tutorLastSeenMsByLiveClassId = new Map<string, number>();
+    const classIdsPastEnd = Array.from(
+      new Set(rowsPastEnd.map((row) => String(row.class_id)).filter(Boolean))
+    );
+    if (classIdsPastEnd.length > 0) {
+      const { data: tutorAttendanceRows } = await adminClient
+        .from("class_attendance")
+        .select("class_id, last_seen_at")
+        .in("class_id", classIdsPastEnd)
+        .eq("is_tutor", true);
+      for (const row of tutorAttendanceRows ?? []) {
+        const lastSeenMs = new Date(String(row.last_seen_at ?? "")).getTime();
+        if (Number.isFinite(lastSeenMs)) {
+          tutorLastSeenMsByLiveClassId.set(String(row.class_id), lastSeenMs);
+        }
+      }
+    }
+
     if (courseIdsToResolve.length > 0) {
       const { data: liveCourseRows } = await adminClient
         .from("courses")
@@ -1274,6 +1297,7 @@ export async function POST(request: NextRequest) {
         .in("course_id", courseIdsToResolve);
 
       const memberIdsByCourseId = new Map<string, Set<string>>();
+      const tutorUserIdsByCourseId = new Map<string, Set<string>>();
       for (const row of liveCourseRows ?? []) {
         const set = new Set<string>();
         for (const id of [row.created_by, row.co_tutor_id]) {
@@ -1282,6 +1306,7 @@ export async function POST(request: NextRequest) {
           }
         }
         memberIdsByCourseId.set(String(row.id), set);
+        tutorUserIdsByCourseId.set(String(row.id), new Set(set));
       }
       for (const row of liveEnrollmentRows ?? []) {
         if (!row.student_id) {
@@ -1308,6 +1333,23 @@ export async function POST(request: NextRequest) {
             discordIdByUserId.set(String(row.id), discordId);
           }
         }
+      }
+
+      // Whoever could be teaching, not just the stored primary tutor: a
+      // co-tutor sitting in the call has to count as the tutor being there.
+      for (const [courseId, tutorUserIds] of tutorUserIdsByCourseId) {
+        const discordIds = new Set<string>();
+        for (const tutorUserId of tutorUserIds) {
+          const discordId = discordIdByUserId.get(tutorUserId);
+          if (!discordId) {
+            continue;
+          }
+          discordIds.add(discordId);
+          for (const extraId of approvedExtraIdsByOwnerDiscordId.get(discordId) ?? []) {
+            discordIds.add(extraId);
+          }
+        }
+        tutorDiscordIdsByCourseId.set(courseId, discordIds);
       }
 
       for (const [courseId, memberIds] of memberIdsByCourseId) {
@@ -1356,30 +1398,59 @@ export async function POST(request: NextRequest) {
     for (const liveChannel of activeLiveChannels ?? []) {
       const endsAtMs = new Date(String(liveChannel.ends_at)).getTime();
       // Nothing before the scheduled end is ever a candidate. Past it, deletion
-      // still requires proving the call is empty (see decideLiveChannelCleanup).
+      // still requires proving either that the call is empty or that the tutor
+      // has been out of it for half an hour (see decideLiveChannelCleanup).
       if (Number.isNaN(endsAtMs) || Date.now() <= endsAtMs) {
         continue;
       }
 
       const channelId = String(liveChannel.discord_channel_id);
-      const candidateIds = new Set<string>(
-        occupantIdsByCourseId.get(String(liveChannel.course_id)) ?? []
-      );
       const storedTutorId = String(liveChannel.tutor_discord_user_id ?? "").trim();
+      // Every account that could be the person teaching — the stored tutor, the
+      // course's tutor and co-tutor, and their approved extra accounts — polled
+      // separately from everyone else because a tutor's absence is grounds for
+      // deletion on its own.
+      const tutorCandidateIds = new Set<string>(
+        tutorDiscordIdsByCourseId.get(String(liveChannel.course_id)) ?? []
+      );
       if (storedTutorId) {
-        candidateIds.add(storedTutorId);
+        tutorCandidateIds.add(storedTutorId);
         for (const extraId of approvedExtraIdsByOwnerDiscordId.get(storedTutorId) ?? []) {
-          candidateIds.add(extraId);
+          tutorCandidateIds.add(extraId);
         }
       }
+
+      let tutorPresent = false;
+      let tutorPollFailed = false;
+      for (const candidateId of tutorCandidateIds) {
+        try {
+          const voiceChannelId = await getDiscordUserVoiceChannelId(discordGuildId, candidateId);
+          if (voiceChannelId === channelId) {
+            tutorPresent = true;
+            break;
+          }
+        } catch {
+          tutorPollFailed = true;
+          break;
+        }
+      }
+
+      const candidateIds = new Set<string>([
+        ...(occupantIdsByCourseId.get(String(liveChannel.course_id)) ?? []),
+        ...tutorCandidateIds,
+      ]);
 
       // Any single voice-state read failing means we do not know whether the
       // channel is empty, and "unknown" must never lead to deleting it. The same
       // applies if the guild member list was unreadable: without it we cannot
       // claim the candidate list is complete.
-      let someonePresent = false;
-      let lookupFailed = guildMembersForOccupancy === null;
-      for (const candidateId of lookupFailed ? [] : candidateIds) {
+      let someonePresent = tutorPresent;
+      let lookupFailed = guildMembersForOccupancy === null || tutorPollFailed;
+      for (const candidateId of (lookupFailed || someonePresent) ? [] : candidateIds) {
+        // Already polled above; do not spend a second Discord call on it.
+        if (tutorCandidateIds.has(candidateId)) {
+          continue;
+        }
         try {
           const voiceChannelId = await getDiscordUserVoiceChannelId(discordGuildId, candidateId);
           if (voiceChannelId === channelId) {
@@ -1392,6 +1463,13 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      // A tutor with no attendance row never joined this class at all, so they
+      // have been out of the call since it was scheduled to start.
+      const scheduledStartMs = new Date(String(liveChannel.starts_at)).getTime();
+      const tutorLastSeenMs =
+        tutorLastSeenMsByLiveClassId.get(String(liveChannel.class_id)) ??
+        (Number.isFinite(scheduledStartMs) ? scheduledStartMs : null);
+
       const decision = decideLiveChannelCleanup({
         nowMs: Date.now(),
         endsAtMs,
@@ -1400,6 +1478,9 @@ export async function POST(request: NextRequest) {
         emptySinceMs: liveChannel.empty_since
           ? new Date(String(liveChannel.empty_since)).getTime()
           : null,
+        tutorPresent,
+        tutorLookupFailed: tutorCandidateIds.size === 0 || tutorPollFailed,
+        tutorLastSeenMs,
       });
 
       if (decision === "keep") {

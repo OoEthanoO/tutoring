@@ -5,6 +5,7 @@ import {
   decideLiveChannelCleanup,
   discordVoiceSystemStartMs,
   liveChannelEmptyConfirmMs,
+  liveChannelTutorAbsenceMs,
   normalizeVoiceChannelName,
 } from "@/lib/discordLiveChannels";
 
@@ -143,7 +144,7 @@ describe("decideLiveChannelCleanup", () => {
     ).toBe("keep");
   });
 
-  it("keeps the channel while anyone at all is in the call, however long the overrun", () => {
+  it("keeps the channel while anyone at all is in the call, for as long as the tutor is there", () => {
     // The incident: students were still in the call at 8:03 PM.
     expect(
       decide({
@@ -162,6 +163,9 @@ describe("decideLiveChannelCleanup", () => {
         someonePresent: true,
         lookupFailed: false,
         emptySinceMs: null,
+        tutorPresent: true,
+        tutorLookupFailed: false,
+        tutorLastSeenMs: at(240),
       })
     ).toBe("keep");
   });
@@ -263,6 +267,105 @@ describe("decideLiveChannelCleanup", () => {
     ).toBe("mark-empty");
   });
 
+  describe("tutor absence", () => {
+    // A room full of students the tutor walked out of: the emptiness clock can
+    // never start, so only the absence rule can ever clear this channel.
+    const occupiedByStudents = {
+      endsAtMs,
+      someonePresent: true,
+      lookupFailed: false,
+      emptySinceMs: null,
+      tutorPresent: false,
+      tutorLookupFailed: false,
+    };
+
+    it("deletes over students still in the call once the tutor has been gone more than 30 minutes", () => {
+      expect(
+        decide({
+          ...occupiedByStudents,
+          nowMs: at(5),
+          tutorLastSeenMs: at(-26),
+        })
+      ).toBe("delete");
+    });
+
+    it("counts absence from the last sighting, including time before the class ended", () => {
+      // Left 40 minutes before the end: already past 30 minutes at the end, so
+      // the first post-end tick clears it.
+      expect(
+        decide({
+          ...occupiedByStudents,
+          nowMs: at(1),
+          tutorLastSeenMs: at(-40),
+        })
+      ).toBe("delete");
+    });
+
+    it("holds at exactly 30 minutes", () => {
+      expect(
+        decide({
+          ...occupiedByStudents,
+          nowMs: at(0) + 1 + liveChannelTutorAbsenceMs,
+          tutorLastSeenMs: at(0) + 1,
+        })
+      ).toBe("keep");
+    });
+
+    it("restarts the clock while the tutor is in the call", () => {
+      expect(
+        decide({
+          ...occupiedByStudents,
+          nowMs: at(600),
+          tutorPresent: true,
+          tutorLastSeenMs: at(-30),
+        })
+      ).toBe("keep");
+    });
+
+    it("never deletes on an unknown tutor voice state", () => {
+      // A failed read, or no recorded tutor to read: absence must be observed,
+      // never assumed.
+      expect(
+        decide({
+          ...occupiedByStudents,
+          nowMs: at(600),
+          tutorLookupFailed: true,
+          tutorLastSeenMs: at(-600),
+        })
+      ).toBe("keep");
+
+      expect(
+        decide({
+          ...occupiedByStudents,
+          nowMs: at(600),
+          tutorLastSeenMs: null,
+        })
+      ).toBe("keep");
+    });
+
+    it("still waits for the scheduled end", () => {
+      // Mid-lesson the channel stays up whatever the tutor is doing; the
+      // left-early warning handles that case instead.
+      expect(
+        decide({
+          ...occupiedByStudents,
+          nowMs: at(-5),
+          tutorLastSeenMs: at(-90),
+        })
+      ).toBe("keep");
+    });
+
+    it("leaves the emptiness rule alone for a tutor who is merely recently gone", () => {
+      expect(
+        decide({
+          ...occupiedByStudents,
+          nowMs: at(3),
+          someonePresent: false,
+          tutorLastSeenMs: at(-1),
+        })
+      ).toBe("mark-empty");
+    });
+  });
 });
 
 describe("courseUsesDiscordVoiceSystem", () => {

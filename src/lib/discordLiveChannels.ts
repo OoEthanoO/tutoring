@@ -11,6 +11,21 @@
 export const liveChannelEmptyConfirmMs = 5 * 60 * 1000;
 
 /**
+ * The one exception to "nobody in the call": a channel whose tutor has been out
+ * of it for longer than this is torn down even with students still sitting in
+ * it. Past the scheduled end, a room the tutor left this long ago is not a
+ * lesson any more — it is a hangout keeping a temporary channel alive
+ * indefinitely, because students who never leave mean the emptiness clock above
+ * never starts.
+ *
+ * Absence is measured from when the tutor was last seen in the channel (their
+ * `class_attendance.last_seen_at`), so it can already have been running for most
+ * of the class by the time the class ends; a tutor who never joined at all
+ * counts as absent since the scheduled start.
+ */
+export const liveChannelTutorAbsenceMs = 30 * 60 * 1000;
+
+/**
  * Courses whose first class falls on or after this date run their lessons in
  * Discord voice channels; older ones stayed on the legacy Zoom flow. Only
  * voice-system courses produce attendance and presence data, so anything
@@ -29,16 +44,27 @@ export type LiveChannelCleanupDecision = "keep" | "mark-empty" | "clear-empty" |
 /**
  * Whether a live class voice channel may be deleted yet.
  *
- * Deletion requires ALL of:
- *  - the class is past its scheduled end;
+ * There are two independent grounds for deletion, both of which require the
+ * class to be past its scheduled end.
+ *
+ * The tutor has been gone too long. Requires ALL of:
+ *  - the tutor's own voice state was read successfully (`tutorLookupFailed`
+ *    covers not knowing who the tutor is, too);
+ *  - the tutor is not in the call right now;
+ *  - and they were last in it MORE than liveChannelTutorAbsenceMs ago.
+ * Students still in the call do not block this one — that is the whole point of
+ * it, since otherwise they keep the channel alive forever.
+ *
+ * Otherwise, the call is provably empty. Requires ALL of:
  *  - every occupancy lookup succeeded, so the emptiness is known rather than
  *    assumed (`lookupFailed` covers an unreadable member list too, not just a
  *    failed voice-state read);
  *  - absolutely nobody was found in the call;
  *  - and it has been continuously empty for MORE than liveChannelEmptyConfirmMs.
  *
- * Anything short of that keeps the channel. A single sighting of anyone resets
- * the clock, so a flaky connection can never accumulate towards deletion.
+ * Anything short of either keeps the channel. A single sighting of anyone resets
+ * the emptiness clock, so a flaky connection can never accumulate towards
+ * deletion, and one sighting of the tutor restarts their absence clock too.
  */
 export const decideLiveChannelCleanup = ({
   nowMs,
@@ -46,15 +72,42 @@ export const decideLiveChannelCleanup = ({
   someonePresent,
   lookupFailed,
   emptySinceMs,
+  tutorPresent = false,
+  tutorLookupFailed = true,
+  tutorLastSeenMs = null,
 }: {
   nowMs: number;
   endsAtMs: number;
   someonePresent: boolean;
   lookupFailed: boolean;
   emptySinceMs: number | null;
+  /** Whether the tutor (or an approved extra account of theirs) is in the call. */
+  tutorPresent?: boolean;
+  /**
+   * Whether the tutor's voice state is unknown this tick — a failed read, or no
+   * recorded tutor to read. Unknown never counts as absent; the default leaves
+   * the absence rule switched off for callers that cannot supply this.
+   */
+  tutorLookupFailed?: boolean;
+  /**
+   * When the tutor was last seen in this class's channel, falling back to the
+   * scheduled start when they never joined at all.
+   */
+  tutorLastSeenMs?: number | null;
 }): LiveChannelCleanupDecision => {
   if (!Number.isFinite(endsAtMs) || nowMs <= endsAtMs) {
     return "keep";
+  }
+
+  if (
+    !tutorLookupFailed &&
+    !tutorPresent &&
+    tutorLastSeenMs !== null &&
+    Number.isFinite(tutorLastSeenMs) &&
+    // Strictly greater: "more than 30 minutes", not "at least".
+    nowMs - tutorLastSeenMs > liveChannelTutorAbsenceMs
+  ) {
+    return "delete";
   }
 
   if (lookupFailed) {

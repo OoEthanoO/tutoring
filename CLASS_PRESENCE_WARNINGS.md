@@ -55,6 +55,27 @@ loses and stays quiet. Claiming first means a failure costs a missed warning
 rather than a ping repeated every minute; misses land in the response's
 `failedClasses`.
 
+## Channel teardown
+
+The same tracking decides when a live voice channel is deleted
+(`decideLiveChannelCleanup` in `src/lib/discordLiveChannels.ts`). Never before
+the scheduled end; past it, either:
+
+- **Nobody is in the call** and has not been for more than 5 minutes. Any
+  sighting of anyone resets that clock, and an unreadable voice state or guild
+  member list counts as "unknown", never as empty.
+- **The tutor has been out of the call for more than 30 minutes**, measured from
+  their `class_attendance.last_seen_at` (the scheduled start if they never
+  joined at all). This one deletes the channel *with students still in it* — a
+  room the tutor left half an hour ago is a hangout, and since the first rule
+  needs the call to go empty, students who never leave would otherwise keep a
+  temporary channel alive indefinitely. It still requires reading the tutor's
+  voice state successfully and finding them absent right now.
+
+Because absence is counted from the last sighting rather than from the end of
+class, a tutor who walked out 30+ minutes before the end loses the channel on
+the first tick after the scheduled end.
+
 ## Strikes
 
 `app_users.strike_count` / `last_strike_at`, set through
