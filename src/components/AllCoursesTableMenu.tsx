@@ -206,22 +206,22 @@ export default function AllCoursesTableMenu() {
         return false;
       }
 
-      const classes = course.course_classes ?? [];
-      // A course with no classes scheduled yet is still to come.
-      if (classes.length === 0) {
+      const startTimes = (course.course_classes ?? [])
+        .map((courseClass) => new Date(courseClass.starts_at).getTime())
+        .filter(Number.isFinite);
+
+      // A course with no classes scheduled yet (or none with a usable date) is
+      // still to come.
+      if (startTimes.length === 0) {
         return true;
       }
 
-      // Finished means every class has ENDED. Testing whether a class had
-      // started hid every course currently running, which is all of them once a
-      // term is underway.
-      return classes.some((courseClass) => {
-        const startsAt = new Date(courseClass.starts_at).getTime();
-        return (
-          Number.isFinite(startsAt) &&
-          classEndMs(startsAt, courseClass.duration_hours) > now
-        );
-      });
+      // Upcoming means the course has not begun: its first class is still in the
+      // future. A course whose first class has started is dropped even though
+      // later classes are still to come, so mid-term this table is empty until
+      // the next term's courses exist — that is intended (decided August 2026),
+      // and is why the earlier "has an unfinished class" rule was replaced.
+      return Math.min(...startTimes) > now;
     });
 
     // Courses with a grade number (first number in the title) come first,
@@ -370,7 +370,7 @@ export default function AllCoursesTableMenu() {
       </table>
 
       {visibleCourses.length === 0 && (
-        <div className="py-8 text-center text-[var(--muted)]">No courses found</div>
+        <div className="py-8 text-center text-[var(--muted)]">No upcoming courses</div>
       )}
     </div>
   );
