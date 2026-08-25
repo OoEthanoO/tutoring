@@ -652,6 +652,7 @@ export async function POST(request: NextRequest) {
       deletedChannelCount: 0,
       deletedCourseRoleCount: 0,
       updatedMemberNickCount: 0,
+      updatedDiscordUsernameCount: 0,
       errors: [
         error instanceof Error
           ? error.message

@@ -538,9 +538,11 @@ export default function AdminUserManager() {
         }
         const fullName = (user.fullName ?? "").toLowerCase();
         const email = (user.email ?? "").toLowerCase();
+        const discordUsername = (user.discordUsername ?? "").toLowerCase();
         return (
           fullName.includes(normalizedSearch) ||
-          email.includes(normalizedSearch)
+          email.includes(normalizedSearch) ||
+          discordUsername.includes(normalizedSearch)
         );
       });
   }, [users, searchQuery, roleFilter, discordFilter, classesFilter, onboardingFilter, applicationsByUserId]);
@@ -1713,7 +1715,7 @@ export default function AdminUserManager() {
           type="text"
           value={searchQuery}
           onChange={(event) => setSearchQuery(event.target.value)}
-          placeholder="Search by name or email"
+          placeholder="Search by name, email, or Discord username"
           className="w-full rounded-full border border-[var(--border)] bg-[var(--surface)] px-4 py-2 text-xs text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)] sm:max-w-sm"
         />
         <select

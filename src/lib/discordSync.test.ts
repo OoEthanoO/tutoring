@@ -9,6 +9,7 @@ import {
   normalizeRoleName,
   parseMemberSnapshot,
   parseMemberSnapshotEntry,
+  pickDiscordUsernameUpdates,
   readCourseIdFromTopic,
 } from "@/lib/discordSync";
 
@@ -259,5 +260,58 @@ describe("parseMemberSnapshot", () => {
 
   it("preserves an empty snapshot as a real baseline", () => {
     expect(parseMemberSnapshot({})).toEqual({});
+  });
+});
+
+describe("pickDiscordUsernameUpdates", () => {
+  it("picks linked accounts whose stored username has changed", () => {
+    expect(
+      pickDiscordUsernameUpdates([
+        {
+          userId: "user-1",
+          storedUsername: "old_handle",
+          currentUsername: "new_handle",
+        },
+        {
+          userId: "user-2",
+          storedUsername: "same_handle",
+          currentUsername: "same_handle",
+        },
+      ])
+    ).toEqual([{ userId: "user-1", username: "new_handle" }]);
+  });
+
+  it("ignores members with no linked website user", () => {
+    expect(
+      pickDiscordUsernameUpdates([
+        { userId: null, storedUsername: null, currentUsername: "stranger" },
+      ])
+    ).toEqual([]);
+  });
+
+  it("fills in a username that was never recorded", () => {
+    expect(
+      pickDiscordUsernameUpdates([
+        { userId: "user-1", storedUsername: null, currentUsername: "handle" },
+      ])
+    ).toEqual([{ userId: "user-1", username: "handle" }]);
+  });
+
+  it("never clears a stored username with a missing guild one", () => {
+    expect(
+      pickDiscordUsernameUpdates([
+        { userId: "user-1", storedUsername: "handle", currentUsername: "" },
+        { userId: "user-2", storedUsername: "handle", currentUsername: null },
+      ])
+    ).toEqual([]);
+  });
+
+  it("keeps one update per user when a user appears twice", () => {
+    expect(
+      pickDiscordUsernameUpdates([
+        { userId: "user-1", storedUsername: "old", currentUsername: "first" },
+        { userId: "user-1", storedUsername: "old", currentUsername: "second" },
+      ])
+    ).toEqual([{ userId: "user-1", username: "second" }]);
   });
 });

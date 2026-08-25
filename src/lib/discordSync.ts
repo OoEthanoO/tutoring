@@ -49,6 +49,7 @@ type WebsiteUserRow = {
   full_name: string | null;
   role: string | null;
   discord_user_id: string | null;
+  discord_username?: string | null;
   is_junior: boolean | null;
   strike_count?: number | null;
   custom_roles?: { name: string; role_level: string } | { name: string; role_level: string }[] | null;
@@ -149,6 +150,7 @@ export type DiscordSyncResult = {
   deletedChannelCount: number;
   deletedCourseRoleCount: number;
   updatedMemberNickCount: number;
+  updatedDiscordUsernameCount: number;
   errors: string[];
 };
 
@@ -1397,6 +1399,39 @@ const getRoleIdsFromOverwrites = (
     .filter((overwrite) => overwrite.type === 0 && overwrite.id !== guildId)
     .map((overwrite) => overwrite.id);
 
+/**
+ * Discord usernames are mutable, but the website only records one when the
+ * account is first linked. Pick the linked accounts whose stored username has
+ * drifted from what the guild reports, so the sync can write the new value
+ * back. Exported for tests.
+ */
+export const pickDiscordUsernameUpdates = (
+  entries: {
+    userId: string | null | undefined;
+    storedUsername: string | null | undefined;
+    currentUsername: string | null | undefined;
+  }[]
+): { userId: string; username: string }[] => {
+  const updates = new Map<string, string>();
+
+  for (const entry of entries) {
+    const userId = String(entry.userId ?? "").trim();
+    const currentUsername = String(entry.currentUsername ?? "").trim();
+    if (!userId || !currentUsername) {
+      continue;
+    }
+    if (String(entry.storedUsername ?? "").trim() === currentUsername) {
+      continue;
+    }
+    updates.set(userId, currentUsername);
+  }
+
+  return [...updates.entries()].map(([userId, username]) => ({
+    userId,
+    username,
+  }));
+};
+
 const buildZeroResult = (
   enabled: boolean,
   skippedReason: string | null
@@ -1416,6 +1451,7 @@ const buildZeroResult = (
   deletedChannelCount: 0,
   deletedCourseRoleCount: 0,
   updatedMemberNickCount: 0,
+  updatedDiscordUsernameCount: 0,
 
   errors: [],
 });
@@ -1526,7 +1562,7 @@ export const runDiscordSync = async ({
     await Promise.all([
       adminClient
         .from("app_users")
-        .select("id, email, full_name, role, discord_user_id, is_junior, strike_count, custom_roles(name, role_level)")
+        .select("id, email, full_name, role, discord_user_id, discord_username, is_junior, strike_count, custom_roles(name, role_level)")
         .not("email_verified_at", "is", null),
       adminClient
         .from("courses")
@@ -1726,6 +1762,41 @@ export const runDiscordSync = async ({
 
     websiteUserByDiscordMemberId.set(memberUserId, websiteUser);
     websiteMemberIds.add(memberUserId);
+  }
+
+  // Keep the stored Discord username (shown and searched in Admin → Manage
+  // accounts) in step with the guild: it is captured at link time and goes
+  // stale as soon as the member renames themselves.
+  const discordUsernameUpdates = pickDiscordUsernameUpdates(
+    humanMembers.map((member) => {
+      const memberId = member.user?.id ?? "";
+      const websiteUser = websiteUserByDiscordMemberId.get(memberId);
+      return {
+        userId: websiteUser?.id ?? null,
+        storedUsername: websiteUser?.discord_username ?? null,
+        currentUsername: member.user?.username ?? null,
+      };
+    })
+  );
+
+  for (const update of discordUsernameUpdates) {
+    try {
+      const { error: usernameError } = await adminClient
+        .from("app_users")
+        .update({ discord_username: update.username })
+        .eq("id", update.userId);
+      if (usernameError) {
+        throw new Error(usernameError.message);
+      }
+      result.updatedDiscordUsernameCount += 1;
+    } catch (error) {
+      result.errors.push(
+        `Failed to update Discord username for user ${update.userId}: ${toErrorMessage(
+          error,
+          "Unknown username update error."
+        )}`
+      );
+    }
   }
 
   const addRoleToMember = async (
