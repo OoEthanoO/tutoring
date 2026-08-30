@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { getCurrentUser, onAuthChange } from "@/lib/authClient";
 import { isFounder, resolveUserRole } from "@/lib/roles";
+import { suggestNextClassStart } from "@/lib/classSchedule";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import CourseCreator from "./CourseCreator";
@@ -268,16 +269,10 @@ export default function CourseRequestsMenu() {
     const updatedDrafts = [...draftClasses, nextEntry];
     setDraftClasses(updatedDrafts);
 
-    if (updatedDrafts.length > 0) {
-      const latest = updatedDrafts[updatedDrafts.length - 1];
-      const suggested = new Date(latest.startsAt);
-      if (updatedDrafts.length === 1) {
-        suggested.setDate(suggested.getDate() + 7);
-      } else {
-        const secondLatest = updatedDrafts[updatedDrafts.length - 2];
-        const diffMs = new Date(latest.startsAt).getTime() - new Date(secondLatest.startsAt).getTime();
-        suggested.setTime(suggested.getTime() + diffMs);
-      }
+    const suggested = suggestNextClassStart(
+      updatedDrafts.map((draft) => draft.startsAt)
+    );
+    if (suggested) {
       setDraftClassStartsAt(suggested);
     }
   };

@@ -6,6 +6,7 @@ import { canManageCourses, isExecutive, isFounder, isHighRankingChiefExecutive, 
 import { setHasUnsavedData } from "@/lib/unsavedData";
 import { serviceHourMultiplierForGrade } from "@/lib/serviceHours";
 import { classDurationMinutes as durationMinutesOf, classEndMs } from "@/lib/classTiming";
+import { suggestNextClassStart } from "@/lib/classSchedule";
 import { MarkdownText } from "@/lib/parseMarkdown";
 import CourseAttendance from "@/components/CourseAttendance";
 import RequestWithdrawalCard from "@/components/RequestWithdrawalCard";
@@ -333,24 +334,11 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
     );
 
   const getSuggestedStartValue = (course: Course) => {
-    if (!course.course_classes || course.course_classes.length === 0) {
-      return "";
-    }
-
-    const sorted = [...course.course_classes].sort(
-      (a, b) =>
-        new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime()
+    const suggested = suggestNextClassStart(
+      (course.course_classes ?? []).map((item) => item.starts_at)
     );
-    const latest = sorted[sorted.length - 1];
-
-    const suggested = new Date(latest.starts_at);
-    
-    if (sorted.length === 1) {
-      suggested.setDate(suggested.getDate() + 7);
-    } else {
-      const secondLatest = sorted[sorted.length - 2];
-      const diffMs = new Date(latest.starts_at).getTime() - new Date(secondLatest.starts_at).getTime();
-      suggested.setTime(suggested.getTime() + diffMs);
+    if (!suggested) {
+      return "";
     }
 
     return snapDateTimeLocalToFiveMinutes(
