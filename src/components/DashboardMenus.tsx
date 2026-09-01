@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import DonationHistoryMenu from "./DonationHistoryMenu";
 import { getCurrentUser, onAuthChange, type ClientUser } from "@/lib/authClient";
 import { canManageCourses, isExecutive, isFounder, isHighRankingChiefExecutive, resolveUserRole, type UserRole } from "@/lib/roles";
 import TutorApplicationFormModal from "./TutorApplicationFormModal";
@@ -33,7 +32,7 @@ export type MenuKey =
   | "home"
   | "all_courses"
   | "all_courses_table"
-  | "our_team" | "donation_history"
+  | "our_team"
   | "enrolled_courses"
   | "my_classes"
 
@@ -63,7 +62,6 @@ const ALL_MENU_KEYS: readonly MenuKey[] = [
   "all_courses",
   "all_courses_table",
   "our_team",
-  "donation_history",
   "enrolled_courses",
   "my_classes",
   "manage_course_requests",
@@ -401,7 +399,6 @@ export default function DashboardMenus() {
     const explore: MenuItem[] = [
       { key: "all_courses_table", label: "Courses table" },
       { key: "our_team", label: "Our team" },
-      { key: "donation_history", label: "Donation history" },
       { key: "impact", label: "Impact" },
       { key: "analytics", label: "Analytics" },
       { key: "sponsors", label: "For Sponsors" },
@@ -557,7 +554,6 @@ export default function DashboardMenus() {
       {activeMenu === "all_courses" ? <CoursesMenu /> : null}
       {activeMenu === "all_courses_table" ? <AllCoursesTableMenu /> : null}
       {activeMenu === "our_team" ? <OurTeamMenu /> : null}
-      {activeMenu === "donation_history" ? <DonationHistoryMenu /> : null}
       {activeMenu === "enrolled_courses" ? <EnrolledCoursesMenu /> : null}
       {activeMenu === "my_classes" ? <MyClassesMenu /> : null}
       {activeMenu === "manage_course_requests" ? <CourseRequestsMenu /> : null}
