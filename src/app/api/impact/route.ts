@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAdminClient } from "@/lib/authServer";
 import { computeCoreTotals, loadCoreRows } from "@/lib/impactStats";
+import { fetchTeamCount } from "@/lib/teamRoster";
 
 // Public endpoint: aggregate, non-personal numbers only. Cached for an hour so
 // anonymous traffic doesn't re-scan the tables on every visit; the handler uses
@@ -9,8 +10,14 @@ export const revalidate = 3600;
 
 export async function GET() {
   try {
-    const rows = await loadCoreRows(getAdminClient());
-    // Shared with the founder analytics dashboard so the numbers never drift.
+    const adminClient = getAdminClient();
+    // Tutors come from the public team roster so the number matches the
+    // home page's team count; everything else is shared with the founder
+    // analytics dashboard so the numbers never drift.
+    const [rows, teamCount] = await Promise.all([
+      loadCoreRows(adminClient),
+      fetchTeamCount(adminClient),
+    ]);
     const { totals } = computeCoreTotals(rows);
 
     return NextResponse.json({
@@ -20,7 +27,7 @@ export async function GET() {
       courses: { total: totals.courses.total, completed: totals.courses.completed },
       enrollments: totals.enrollments.total,
       students: totals.verifiedUsers.students,
-      tutors: totals.verifiedUsers.executives,
+      tutors: teamCount,
       raised: totals.raised,
     });
   } catch (error) {

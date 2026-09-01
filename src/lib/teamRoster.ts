@@ -1,6 +1,8 @@
 // Visibility rules for the public team roster. Kept in one place so the
 // public team count and the Our team tab agree on who counts as a member.
 
+import type { SupabaseClient } from "@supabase/supabase-js";
+
 export type TeamRosterCandidate = {
   id: string;
   role?: string | null;
@@ -49,3 +51,35 @@ export const countTeamMembers = (
   users: TeamRosterCandidate[],
   activeCreatorIds: Set<string>
 ) => users.filter((user) => isTeamRosterMember(user, activeCreatorIds)).length;
+
+// Shared by /api/team/count and /api/impact so the home-page team size and the
+// impact page's volunteer tutors are always the same number.
+export async function fetchTeamCount(adminClient: SupabaseClient): Promise<number> {
+  const [usersResult, coursesResult] = await Promise.all([
+    adminClient.from("app_users").select("id, role, custom_role, is_junior"),
+    adminClient.from("courses").select("created_by"),
+  ]);
+
+  if (usersResult.error || !usersResult.data) {
+    throw new Error(usersResult.error?.message ?? "Failed to load team.");
+  }
+  if (coursesResult.error || !coursesResult.data) {
+    throw new Error(coursesResult.error?.message ?? "Failed to load courses.");
+  }
+
+  const activeCreatorIds = new Set(
+    coursesResult.data
+      .map((course) => course.created_by)
+      .filter((id): id is string => typeof id === "string" && id.length > 0)
+  );
+
+  return countTeamMembers(
+    usersResult.data.map((user) => ({
+      id: user.id as string,
+      role: user.role ?? null,
+      customRole: user.custom_role ?? null,
+      isJunior: user.is_junior ?? null,
+    })),
+    activeCreatorIds
+  );
+}
