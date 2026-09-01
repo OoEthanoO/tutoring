@@ -3,7 +3,7 @@ import { isExecutive, resolveUserRole } from "@/lib/roles";
 import { classEndMs } from "@/lib/classTiming";
 
 // Enrollments in courses run before the website existed.
-export const LEGACY_ENROLLMENT_COUNT = 245;
+export const LEGACY_ENROLLMENT_COUNT = 272;
 
 const PAGE_SIZE = 1000;
 
