@@ -5,7 +5,6 @@ import { useEffect, useRef, useState } from "react";
 interface TeamMember {
   id: string;
   name: string;
-  email: string;
   role: string;
   customRole: string | null;
   customRoleLabel: string | null;
@@ -13,18 +12,14 @@ interface TeamMember {
   generation: number | null;
 }
 
-// Shape returned by /api/admin/users (fields this component reads; the
-// snake_case variants are kept as fallbacks for older payload shapes).
-type AdminUserRecord = {
+// Shape returned by /api/team/roster (already filtered to roster members,
+// public-safe fields only).
+type RosterRecord = {
   id: string;
-  email?: string | null;
-  fullName?: string | null;
-  full_name?: string | null;
+  name?: string | null;
   role?: string | null;
   customRole?: string | null;
-  custom_role?: string | null;
   isJunior?: boolean | null;
-  is_junior?: boolean | null;
   generation?: string | number | null;
 };
 
@@ -79,49 +74,34 @@ export default function OurTeamMenu() {
     const fetchTeam = async () => {
       try {
         setIsLoading(true);
-        const [usersResponse, coursesResponse] = await Promise.all([
-          fetch("/api/admin/users?all=true"),
-          fetch("/api/courses"),
-        ]);
+        const rosterResponse = await fetch("/api/team/roster");
 
-        if (!usersResponse.ok || !coursesResponse.ok) {
+        if (!rosterResponse.ok) {
           throw new Error("Failed to fetch team members");
         }
-        const data = (await usersResponse.json()) as { users?: AdminUserRecord[] };
-        const coursesData = (await coursesResponse.json()) as { courses?: Array<{ created_by?: string | null }> };
-        const activeCreatorIds = new Set(
-          (coursesData.courses ?? [])
-            .map((course) => course.created_by)
-            .filter((id): id is string => typeof id === "string" && id.length > 0)
-        );
+        const data = (await rosterResponse.json()) as { members?: RosterRecord[] };
 
-        const users = (data.users ?? [])
+        // The endpoint already applies the roster visibility rules; this only
+        // shapes the records for display.
+        const users = (data.members ?? [])
           .map((u) => {
-            const rawCustomRoleLabel = formatCustomRoleLabel(u.customRole ?? u.custom_role ?? null);
+            const rawCustomRoleLabel = formatCustomRoleLabel(u.customRole ?? null);
             const customRoleLabel = isCustomOnlyRole(rawCustomRoleLabel) ? rawCustomRoleLabel : null;
             const customRole = normalizeStandardRole(rawCustomRoleLabel);
             const role = normalizeStandardRole(u.role) ?? null;
             return {
               id: u.id,
-              name: String(u.fullName ?? u.full_name ?? u.email ?? "").trim() || "Team member",
-              email: String(u.email ?? ""),
+              name: String(u.name ?? "").trim() || "Team member",
               role: role ?? "student",
               customRole,
               customRoleLabel,
-              isJunior: Boolean(u.isJunior ?? u.is_junior),
+              isJunior: Boolean(u.isJunior),
               generation: typeof u.generation === "string" && u.generation.trim()
                 ? Number.parseInt(u.generation, 10)
                 : typeof u.generation === "number"
                   ? u.generation
                   : null,
             };
-          })
-          .filter((u: TeamMember & { id: string }) => {
-            const effectiveRole = u.customRole ?? u.role;
-            if (u.isJunior) {
-              return activeCreatorIds.has(u.id);
-            }
-            return Boolean(effectiveRole && effectiveRole !== "student");
           })
           .sort((a: TeamMember, b: TeamMember) => {
             const aRoleOrder = roleOrder[a.customRole ?? a.role] ?? 999;

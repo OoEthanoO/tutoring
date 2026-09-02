@@ -52,11 +52,26 @@ export const countTeamMembers = (
   activeCreatorIds: Set<string>
 ) => users.filter((user) => isTeamRosterMember(user, activeCreatorIds)).length;
 
-// Shared by /api/team/count and /api/impact so the home-page team size and the
-// impact page's volunteer tutors are always the same number.
-export async function fetchTeamCount(adminClient: SupabaseClient): Promise<number> {
+// Public-safe roster entry: display fields only, never an email address.
+export type TeamRosterMember = {
+  id: string;
+  name: string;
+  role: string | null;
+  customRole: string | null;
+  isJunior: boolean;
+  generation: string | number | null;
+};
+
+// Shared by /api/team/roster, /api/team/count, and /api/impact so the Our team
+// page, the home-page team size, and the impact page's volunteer tutors always
+// describe the same set of people.
+export async function fetchTeamRoster(
+  adminClient: SupabaseClient
+): Promise<TeamRosterMember[]> {
   const [usersResult, coursesResult] = await Promise.all([
-    adminClient.from("app_users").select("id, role, custom_role, is_junior"),
+    adminClient
+      .from("app_users")
+      .select("id, full_name, role, custom_role, is_junior, executive_generation"),
     adminClient.from("courses").select("created_by"),
   ]);
 
@@ -73,13 +88,28 @@ export async function fetchTeamCount(adminClient: SupabaseClient): Promise<numbe
       .filter((id): id is string => typeof id === "string" && id.length > 0)
   );
 
-  return countTeamMembers(
-    usersResult.data.map((user) => ({
+  return usersResult.data
+    .filter((user) =>
+      isTeamRosterMember(
+        {
+          id: user.id as string,
+          role: user.role ?? null,
+          customRole: user.custom_role ?? null,
+          isJunior: user.is_junior ?? null,
+        },
+        activeCreatorIds
+      )
+    )
+    .map((user) => ({
       id: user.id as string,
+      name: String(user.full_name ?? "").trim(),
       role: user.role ?? null,
       customRole: user.custom_role ?? null,
-      isJunior: user.is_junior ?? null,
-    })),
-    activeCreatorIds
-  );
+      isJunior: Boolean(user.is_junior),
+      generation: user.executive_generation ?? null,
+    }));
+}
+
+export async function fetchTeamCount(adminClient: SupabaseClient): Promise<number> {
+  return (await fetchTeamRoster(adminClient)).length;
 }
