@@ -188,15 +188,16 @@ fn show_main(app: &AppHandle) {
 /// Stop ffmpeg and the system-audio feeder (used on every exit path).
 fn stop_everything(app: &AppHandle) {
     let state = app.state::<AppState>();
-    if let Ok(mut guard) = state.capture.lock() {
-        if let Some(mut session) = guard.take() {
-            let _ = session.stop();
-        }
+    // Take both out from under their locks before stopping them: ffmpeg can take
+    // seconds to exit, and holding a mutex across that would stall every other
+    // caller. It also keeps the lock temporaries from outliving `state`.
+    let session = state.capture.lock().ok().and_then(|mut guard| guard.take());
+    let feeder = state.system_audio.lock().ok().and_then(|mut guard| guard.take());
+    if let Some(mut session) = session {
+        let _ = session.stop();
     }
-    if let Ok(mut guard) = state.system_audio.lock() {
-        if let Some(mut feeder) = guard.take() {
-            feeder.stop();
-        }
+    if let Some(mut feeder) = feeder {
+        feeder.stop();
     }
 }
 

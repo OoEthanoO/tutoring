@@ -106,6 +106,8 @@ pub fn sidecar_path(name: &str) -> Result<PathBuf, String> {
 
 /// A `Command` that never pops up a console window on Windows.
 pub fn command(program: &Path) -> Command {
+    // Only the Windows branch below mutates it.
+    #[allow(unused_mut)]
     let mut cmd = Command::new(program);
     #[cfg(windows)]
     {
