@@ -11,7 +11,7 @@
 //   macOS x86_64:  ffmpeg.martin-riedl.de
 // Override any URL with FFMPEG_URL_<triple with dashes as underscores>.
 
-import { createWriteStream, existsSync, mkdirSync, chmodSync, readdirSync, renameSync, rmSync, statSync } from "node:fs";
+import { createWriteStream, existsSync, mkdirSync, chmodSync, copyFileSync, readdirSync, rmSync, statSync } from "node:fs";
 import { execSync } from "node:child_process";
 import { pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
@@ -94,7 +94,9 @@ const binary = findBinary(workDir);
 if (!binary) {
   throw new Error(`Could not find ${source.binaryName} inside the downloaded archive`);
 }
-renameSync(binary, target);
+// copy rather than rename: on the Windows CI runner the temp directory is on
+// C: and the checkout on D:, and a rename across drives fails with EXDEV.
+copyFileSync(binary, target);
 if (!ext) {
   chmodSync(target, 0o755);
 }
