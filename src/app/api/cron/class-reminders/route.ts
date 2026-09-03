@@ -52,6 +52,8 @@ import {
   tutorStrikeDeadlineAfterStartMs,
 } from "@/lib/tutorPresence";
 import { sendBccEmail } from "@/lib/notificationsServer";
+import { expireClassRecordings, type RecordingExpiryResult } from "@/lib/recordings";
+import { recorderNotOpenReminderType, shouldWarnRecorderNotOpen } from "@/lib/recorderPolicy";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
@@ -3446,7 +3448,134 @@ ${tutorWasPresent ? "" : "<p><strong>Note:</strong> you were not detected in the
     );
   }
 
+  // --- YanLearn Recorder ---------------------------------------------------------
+  // Recordings live for 7 days after upload; delete the ones past that. Then,
+  // for every class that started during this tick, check that the tutor's
+  // recorder was open at least 5 minutes before the start (mandatory from
+  // 2026-09-09) and warn the executives once when it was not.
+  let recordingExpiry: RecordingExpiryResult = { expiredCount: 0, failedUploadCount: 0, errors: [] };
+  try {
+    recordingExpiry = await expireClassRecordings(adminClient, Date.now());
+  } catch (error) {
+    recordingExpiry.errors.push(
+      `Recording expiry pass failed: ${error instanceof Error ? error.message : "Unknown error"}`
+    );
+  }
+
+  const recorderNotOpenWarnings: { warnedClassIds: string[]; errors: string[] } = {
+    warnedClassIds: [],
+    errors: [],
+  };
+  try {
+    const recorderNowMs = Date.now();
+    // Wider than the one-minute cadence so a delayed tick cannot skip a start;
+    // the reminder log keeps a class from being warned about twice.
+    const recorderTickWindowMs = 2 * 60 * 1000;
+    const { data: startingClasses } = await adminClient
+      .from("course_classes")
+      .select("id, title, starts_at, course:courses(id, title, created_by, deleted_at)")
+      .gte("starts_at", new Date(recorderNowMs - recorderTickWindowMs).toISOString())
+      .lte("starts_at", new Date(recorderNowMs).toISOString());
+
+    for (const classRow of startingClasses ?? []) {
+      const course = readCourse(classRow.course as ClassRow["course"]) as
+        | (CourseRow & { deleted_at?: string | null })
+        | null;
+      const tutorId = String(course?.created_by ?? "").trim();
+      if (!course || course.deleted_at || !tutorId) {
+        continue;
+      }
+      const startsAtMs = new Date(String(classRow.starts_at)).getTime();
+      if (!Number.isFinite(startsAtMs)) {
+        continue;
+      }
+
+      // Only classes taught in Discord voice have a live channel row; legacy
+      // Zoom courses are exempt from the recorder.
+      const { data: liveChannelRow } = await adminClient
+        .from("discord_live_class_channels")
+        .select("id")
+        .eq("class_id", classRow.id)
+        .maybeSingle();
+      if (!liveChannelRow) {
+        continue;
+      }
+
+      const [{ data: warnedRow }, { data: recorderSessionRow }] = await Promise.all([
+        adminClient
+          .from("class_reminder_logs")
+          .select("id")
+          .eq("class_id", classRow.id)
+          .eq("reminder_type", recorderNotOpenReminderType)
+          .maybeSingle(),
+        adminClient
+          .from("recorder_class_sessions")
+          .select("first_seen_at")
+          .eq("class_id", classRow.id)
+          .eq("tutor_id", tutorId)
+          .maybeSingle(),
+      ]);
+      const firstSeenMs = recorderSessionRow?.first_seen_at
+        ? new Date(String(recorderSessionRow.first_seen_at)).getTime()
+        : null;
+      if (
+        !shouldWarnRecorderNotOpen({
+          nowMs: recorderNowMs,
+          startsAtMs,
+          firstSeenMs,
+          alreadyWarned: Boolean(warnedRow),
+          tickIntervalMs: recorderTickWindowMs,
+        })
+      ) {
+        continue;
+      }
+
+      const { error: logError } = await adminClient
+        .from("class_reminder_logs")
+        .insert({ class_id: classRow.id, reminder_type: recorderNotOpenReminderType });
+      if (logError) {
+        // A concurrent tick already claimed this warning.
+        continue;
+      }
+
+      if (executivesChannelId) {
+        const { data: tutorRow } = await adminClient
+          .from("app_users")
+          .select("full_name, email, discord_user_id")
+          .eq("id", tutorId)
+          .maybeSingle();
+        const tutorDiscordId = String(tutorRow?.discord_user_id ?? "").trim();
+        const tutorLabel = tutorDiscordId
+          ? `<@${tutorDiscordId}>`
+          : `**${escapeDiscordText(String(tutorRow?.full_name || tutorRow?.email || "A tutor"))}**`;
+        const detail =
+          firstSeenMs === null
+            ? "YanLearn Recorder was **not open** when the class started."
+            : "YanLearn Recorder was opened **less than 5 minutes** before the start.";
+        const warningContent = `${tutorLabel} ${detail} **${escapeDiscordText(String(course.title ?? ""))}** — ${escapeDiscordText(String(classRow.title ?? ""))} has started. Every class must be recorded with YanLearn Recorder, open at least 5 minutes before the start.`;
+        try {
+          if (tutorDiscordId) {
+            await sendDiscordUserMentionMessage(executivesChannelId, tutorDiscordId, warningContent);
+          } else {
+            await sendDiscordChannelMessage(executivesChannelId, warningContent);
+          }
+        } catch (error) {
+          recorderNotOpenWarnings.errors.push(
+            `Recorder warning for class ${classRow.id} failed: ${error instanceof Error ? error.message : "Unknown error"}`
+          );
+        }
+      }
+      recorderNotOpenWarnings.warnedClassIds.push(String(classRow.id));
+    }
+  } catch (error) {
+    recorderNotOpenWarnings.errors.push(
+      `Recorder compliance pass failed: ${error instanceof Error ? error.message : "Unknown error"}`
+    );
+  }
+
   return NextResponse.json({
+    recordingExpiry,
+    recorderNotOpenWarnings,
     sentClassCount,
     sentEmailCount,
     sentDiscordReminderCount,

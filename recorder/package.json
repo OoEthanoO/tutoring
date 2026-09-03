@@ -1,0 +1,16 @@
+{
+  "name": "yanlearn-recorder",
+  "version": "0.1.0",
+  "private": true,
+  "description": "YanLearn Recorder — records tutors' classes and uploads them to YanLearn.",
+  "scripts": {
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "tauri": "tauri",
+    "fetch-ffmpeg": "node scripts/fetch-ffmpeg.mjs",
+    "icons": "tauri icon src/icon.png"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.5.0"
+  }
+}

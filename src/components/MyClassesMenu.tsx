@@ -3,6 +3,8 @@
 import React, { useEffect, useState } from "react";
 import { getCurrentUser, onAuthChange } from "@/lib/authClient";
 import { classEndMs } from "@/lib/classTiming";
+import ClassRecordings from "@/components/ClassRecordings";
+import RecorderNotice from "@/components/RecorderNotice";
 
 type StatusState = {
   type: "idle" | "error";
@@ -144,6 +146,8 @@ export default function MyClassesMenu() {
     return null;
   }
 
+  const teachesAClass = classes.some((cls) => cls.role_in_course !== "student");
+
   return (
     <section className="space-y-6 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6">
       <header className="flex items-start justify-between">
@@ -177,6 +181,8 @@ export default function MyClassesMenu() {
           You have no upcoming classes.
         </p>
       ) : null}
+
+      {teachesAClass ? <RecorderNotice /> : null}
 
       <div className="space-y-3">
         {classes.map((cls) => {
@@ -214,6 +220,8 @@ export default function MyClassesMenu() {
           );
         })}
       </div>
+
+      <ClassRecordings userId={userId} />
 
       {pastAttendance.length > 0 ? (
         <div className="space-y-2">

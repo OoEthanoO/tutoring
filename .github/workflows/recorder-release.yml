@@ -1,0 +1,82 @@
+name: YanLearn Recorder release
+
+# Builds the desktop recorder for macOS (Apple Silicon + Intel) and Windows and
+# attaches the installers to a GitHub release. Trigger by pushing a tag such as
+# `recorder-v0.1.0` (the version should match recorder/package.json and
+# recorder/src-tauri/tauri.conf.json) or manually from the Actions tab.
+#
+# The builds are unsigned: macOS users must right-click → Open the first time
+# (or the app needs an Apple Developer ID certificate — see RECORDER.md), and
+# Windows SmartScreen shows a "More info → Run anyway" prompt.
+
+on:
+  push:
+    tags:
+      - "recorder-v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            swift_target: arm64-apple-macos13.0
+          - os: macos-13
+            target: x86_64-apple-darwin
+            swift_target: x86_64-apple-macos13.0
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: recorder
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: recorder/src-tauri
+
+      - name: Install Tauri CLI
+        run: npm install --no-audit --no-fund
+
+      - name: Fetch static ffmpeg
+        run: node scripts/fetch-ffmpeg.mjs ${{ matrix.target }}
+
+      - name: Build macOS system-audio helper
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p src-tauri/binaries
+          swiftc -O -target ${{ matrix.swift_target }} \
+            -framework ScreenCaptureKit -framework CoreMedia -framework AVFoundation \
+            sysaudio/main.swift -o src-tauri/binaries/sysaudio-${{ matrix.target }}
+
+      - name: Generate app icons
+        run: npm run icons
+
+      - name: Build and release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: recorder
+          tagName: ${{ github.ref_type == 'tag' && github.ref_name || 'recorder-dev' }}
+          releaseName: "YanLearn Recorder ${{ github.ref_type == 'tag' && github.ref_name || 'development build' }}"
+          releaseBody: "Download the installer for your computer: `.dmg` for macOS (Apple Silicon or Intel), `.msi` or `-setup.exe` for Windows. See RECORDER.md in the repository for setup instructions."
+          releaseDraft: ${{ github.ref_type != 'tag' }}
+          prerelease: false
+          args: --target ${{ matrix.target }}

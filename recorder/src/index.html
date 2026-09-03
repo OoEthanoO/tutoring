@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>YanLearn Recorder</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <div class="brand">YanLearn Recorder</div>
+        <div class="sub" id="version-label"></div>
+      </div>
+      <div class="status-pill" id="connection-pill">Offline</div>
+    </header>
+
+    <!-- Sign in -->
+    <section id="view-login" class="view" hidden>
+      <h1>Sign in</h1>
+      <p class="muted">Use your YanLearn tutor account. The recorder stays signed in on this computer.</p>
+      <form id="login-form" autocomplete="on">
+        <label>Email<input type="email" id="login-email" required autocomplete="username" /></label>
+        <label>Password<input type="password" id="login-password" required autocomplete="current-password" /></label>
+        <details class="advanced">
+          <summary>Advanced</summary>
+          <label>Server<input type="url" id="login-server" placeholder="https://learn.ethanyanxu.com" /></label>
+        </details>
+        <button type="submit" class="primary" id="login-button">Sign in</button>
+        <p class="error" id="login-error" hidden></p>
+      </form>
+    </section>
+
+    <!-- Main -->
+    <section id="view-main" class="view" hidden>
+      <div class="card" id="class-card">
+        <div class="card-label" id="class-label">No class right now</div>
+        <div class="card-title" id="class-title"></div>
+        <div class="card-detail" id="class-detail"></div>
+        <div class="state-row">
+          <span class="dot" id="state-dot"></span>
+          <span id="state-text">Idle</span>
+          <span class="timer" id="state-timer"></span>
+        </div>
+        <div class="card-detail" id="presence-text"></div>
+        <div class="progress" id="upload-progress" hidden><div class="bar" id="upload-bar"></div></div>
+      </div>
+
+      <div class="notice" id="lock-notice" hidden>
+        The recorder is locked for this class and cannot be closed until the recording is uploaded.
+      </div>
+      <div class="notice warn" id="device-notice" hidden>
+        Choose which display, microphone, and speaker to record before your class starts.
+      </div>
+      <div class="notice warn" id="warning-notice" hidden></div>
+
+      <div class="hint">
+        Pause / resume: <strong id="hotkey-label">Ctrl+Alt+P</strong>. Recording only runs while you are in the class voice channel.
+      </div>
+
+      <div class="actions">
+        <button type="button" id="devices-button">Devices</button>
+        <button type="button" id="refresh-button">Check now</button>
+        <button type="button" id="signout-button" class="danger">Sign out</button>
+      </div>
+
+      <div class="user" id="user-label"></div>
+
+      <details class="log" id="log-details">
+        <summary>Activity</summary>
+        <pre id="log"></pre>
+      </details>
+    </section>
+
+    <!-- Devices -->
+    <section id="panel-devices" class="view" hidden>
+      <h1>Devices</h1>
+      <p class="muted">These are used for every class. When more than one is available you must choose.</p>
+
+      <h2>Display to record <button type="button" class="link" id="identify-button">Identify</button></h2>
+      <div id="display-list" class="option-list"></div>
+
+      <h2>Microphone</h2>
+      <select id="mic-select"></select>
+      <p class="muted small" id="mic-help"></p>
+
+      <h2>Speaker (system audio)</h2>
+      <select id="output-select"></select>
+      <p class="muted small" id="output-help"></p>
+
+      <label class="check"><input type="checkbox" id="sysaudio-check" /> Record the class audio (what you hear)</label>
+      <label class="check"><input type="checkbox" id="hwenc-check" /> Use the hardware video encoder when available</label>
+
+      <p class="muted small" id="probe-info"></p>
+      <div class="actions">
+        <button type="button" class="primary" id="devices-save">Done</button>
+        <button type="button" id="devices-refresh">Refresh list</button>
+      </div>
+    </section>
+
+    <!-- Class done prompt -->
+    <div class="modal" id="modal-done" hidden>
+      <div class="modal-box">
+        <h2>Is the class done?</h2>
+        <p>The scheduled end time has passed and you are not in the voice channel.</p>
+        <p class="muted small">Yes uploads the recording now. No keeps waiting — the recording is uploaded automatically once the live voice channel is removed.</p>
+        <div class="actions">
+          <button type="button" class="primary" id="done-yes">Yes, upload it</button>
+          <button type="button" id="done-no">No, I'm going back</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quit blocked -->
+    <div class="modal" id="modal-quit" hidden>
+      <div class="modal-box">
+        <h2>You can't quit right now</h2>
+        <p>YanLearn Recorder must stay open from 5 minutes before a class until its recording has been uploaded.</p>
+        <div class="actions"><button type="button" class="primary" id="quit-ok">OK</button></div>
+      </div>
+    </div>
+
+    <script src="main.js"></script>
+  </body>
+</html>

@@ -21,6 +21,9 @@ bearer (see the `cron:reminders:*` npm scripts).
   tests).
 - Local dev needs `.env.local` (Supabase URL/keys, Discord bot token); without
   it the app cannot run against data.
+- Recorder app: `cd recorder && npm install && node scripts/fetch-ffmpeg.mjs &&
+  npm run icons && npm run dev` (Node 20 + Rust stable; macOS also needs the
+  Swift helper — see `RECORDER.md`).
 
 ## Architecture
 
@@ -46,6 +49,18 @@ bearer (see the `cron:reminders:*` npm scripts).
   live in `AdminUserManager.tsx` (Admin → Manage accounts).
 - `src/lib/roles.ts` — role model: student/executive tiers up to founder;
   `founderEmails` is hardcoded there.
+- `recorder/` — **YanLearn Recorder**, the Tauri 2 desktop app (macOS +
+  Windows) tutors must run for every class from 2026-09-09; see `RECORDER.md`.
+  Server side: `src/app/api/recorder/**` (bearer-token endpoints the app calls),
+  `src/app/api/recordings/**` (student playback: token + range-proxy stream),
+  `src/lib/recorderPolicy.ts` (phases / lock / compliance / 7-day expiry — pure,
+  unit tested), `src/lib/recordings.ts` (access checks, playback tokens, expiry
+  sweep). The class-reminders cron runs the expiry sweep and the "recorder not
+  open" warning. Recordings live in a private S3-compatible bucket (Cloudflare R2 /
+  Backblaze B2 free tier — `src/lib/recordingStorage.ts`, env `RECORDINGS_S3_*`;
+  Supabase Storage is deliberately not used) and are only reached through the
+  stream endpoint (per-viewer token → 2-minute presigned URL). Release builds come from
+  `.github/workflows/recorder-release.yml` on `recorder-v*` tags.
 
 ## Conventions
 

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>YanLearn Recorder records your voice during classes so students can review them.</string>
+  <key>NSScreenCaptureUsageDescription</key>
+  <string>YanLearn Recorder records your screen and the class audio during classes so students can review them.</string>
+  <key>NSAudioCaptureUsageDescription</key>
+  <string>YanLearn Recorder records the class audio so students can review the lesson.</string>
+  <key>LSUIElement</key>
+  <false/>
+</dict>
+</plist>
