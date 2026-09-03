@@ -1,5 +1,7 @@
-// Visibility rules for the public team roster. Kept in one place so the
-// public team count and the Our team tab agree on who counts as a member.
+// Visibility rules for the public team roster, and who counts towards the
+// public team size. Kept in one place so the Our team tab, the home-page team
+// count, and the impact page's volunteer tutors are computed from the same
+// data. The count is a superset of the roster: see isCountedTeamMember.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -29,7 +31,7 @@ const isCustomOnlyRole = (role: string | null | undefined) => {
   return Boolean(label && !normalizeStandardRole(label));
 };
 
-// Juniors only appear once they own at least one course.
+// Juniors only appear by name once they own at least one course.
 export const isTeamRosterMember = (
   user: TeamRosterCandidate,
   activeCreatorIds: Set<string>
@@ -47,10 +49,20 @@ export const isTeamRosterMember = (
   return effectiveRole !== null;
 };
 
+/**
+ * Who counts towards the public team size: everyone on the roster, plus every
+ * junior executive — including juniors who have not taught a course yet and so
+ * are not listed by name on the Our team page (decided September 2026).
+ */
+export const isCountedTeamMember = (
+  user: TeamRosterCandidate,
+  activeCreatorIds: Set<string>
+) => Boolean(user.isJunior) || isTeamRosterMember(user, activeCreatorIds);
+
 export const countTeamMembers = (
   users: TeamRosterCandidate[],
   activeCreatorIds: Set<string>
-) => users.filter((user) => isTeamRosterMember(user, activeCreatorIds)).length;
+) => users.filter((user) => isCountedTeamMember(user, activeCreatorIds)).length;
 
 // Public-safe roster entry: display fields only, never an email address.
 export type TeamRosterMember = {
@@ -62,12 +74,25 @@ export type TeamRosterMember = {
   generation: string | number | null;
 };
 
-// Shared by /api/team/roster, /api/team/count, and /api/impact so the Our team
-// page, the home-page team size, and the impact page's volunteer tutors always
-// describe the same set of people.
-export async function fetchTeamRoster(
+type TeamUserRow = {
+  id: string;
+  full_name: string | null;
+  role: string | null;
+  custom_role: string | null;
+  is_junior: boolean | null;
+  executive_generation: string | number | null;
+};
+
+const toCandidate = (user: TeamUserRow): TeamRosterCandidate => ({
+  id: String(user.id),
+  role: user.role ?? null,
+  customRole: user.custom_role ?? null,
+  isJunior: user.is_junior ?? null,
+});
+
+const loadTeamCandidates = async (
   adminClient: SupabaseClient
-): Promise<TeamRosterMember[]> {
+): Promise<{ users: TeamUserRow[]; activeCreatorIds: Set<string> }> => {
   const [usersResult, coursesResult] = await Promise.all([
     adminClient
       .from("app_users")
@@ -88,20 +113,18 @@ export async function fetchTeamRoster(
       .filter((id): id is string => typeof id === "string" && id.length > 0)
   );
 
-  return usersResult.data
-    .filter((user) =>
-      isTeamRosterMember(
-        {
-          id: user.id as string,
-          role: user.role ?? null,
-          customRole: user.custom_role ?? null,
-          isJunior: user.is_junior ?? null,
-        },
-        activeCreatorIds
-      )
-    )
+  return { users: usersResult.data as TeamUserRow[], activeCreatorIds };
+};
+
+/** The people listed by name on the Our team page (/api/team/roster). */
+export async function fetchTeamRoster(
+  adminClient: SupabaseClient
+): Promise<TeamRosterMember[]> {
+  const { users, activeCreatorIds } = await loadTeamCandidates(adminClient);
+  return users
+    .filter((user) => isTeamRosterMember(toCandidate(user), activeCreatorIds))
     .map((user) => ({
-      id: user.id as string,
+      id: String(user.id),
       name: String(user.full_name ?? "").trim(),
       role: user.role ?? null,
       customRole: user.custom_role ?? null,
@@ -110,6 +133,11 @@ export async function fetchTeamRoster(
     }));
 }
 
+/**
+ * The public team size (/api/team/count, the impact page's volunteer tutors):
+ * the roster plus every junior executive.
+ */
 export async function fetchTeamCount(adminClient: SupabaseClient): Promise<number> {
-  return (await fetchTeamRoster(adminClient)).length;
+  const { users, activeCreatorIds } = await loadTeamCandidates(adminClient);
+  return countTeamMembers(users.map(toCandidate), activeCreatorIds);
 }
