@@ -31,6 +31,19 @@ const isCustomOnlyRole = (role: string | null | undefined) => {
   return Boolean(label && !normalizeStandardRole(label));
 };
 
+/**
+ * Whether a user holds a role that puts them on the team at all, ignoring the
+ * junior "must own a course" rule below.
+ */
+const hasTeamRole = (user: TeamRosterCandidate): boolean => {
+  if (isCustomOnlyRole(user.customRole)) {
+    return true;
+  }
+  // normalizeStandardRole maps anything unrecognized (including "student") to
+  // null, so a non-null role here always means a roster role.
+  return (normalizeStandardRole(user.customRole) ?? normalizeStandardRole(user.role)) !== null;
+};
+
 // Juniors only appear by name once they own at least one course.
 export const isTeamRosterMember = (
   user: TeamRosterCandidate,
@@ -39,25 +52,24 @@ export const isTeamRosterMember = (
   if (user.isJunior) {
     return activeCreatorIds.has(user.id);
   }
-  if (isCustomOnlyRole(user.customRole)) {
-    return true;
-  }
-  // normalizeStandardRole maps anything unrecognized (including "student") to
-  // null, so a non-null role here always means a roster role.
-  const effectiveRole =
-    normalizeStandardRole(user.customRole) ?? normalizeStandardRole(user.role);
-  return effectiveRole !== null;
+  return hasTeamRole(user);
 };
 
 /**
- * Who counts towards the public team size: everyone on the roster, plus every
- * junior executive — including juniors who have not taught a course yet and so
- * are not listed by name on the Our team page (decided September 2026).
+ * Who counts towards the public team size: everyone on the roster, plus junior
+ * executives who have not taught a course yet and so are not listed by name on
+ * the Our team page (decided September 2026).
+ *
+ * A junior must still hold an executive role to count. `is_junior` is a flag
+ * that can sit on a plain student account, and such a person is not a junior
+ * executive — counting them would overstate the team size.
  */
 export const isCountedTeamMember = (
   user: TeamRosterCandidate,
   activeCreatorIds: Set<string>
-) => Boolean(user.isJunior) || isTeamRosterMember(user, activeCreatorIds);
+) =>
+  isTeamRosterMember(user, activeCreatorIds) ||
+  (Boolean(user.isJunior) && hasTeamRole(user));
 
 export const countTeamMembers = (
   users: TeamRosterCandidate[],
