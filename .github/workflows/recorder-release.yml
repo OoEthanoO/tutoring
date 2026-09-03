@@ -27,7 +27,10 @@ jobs:
           - os: macos-latest
             target: aarch64-apple-darwin
             swift_target: arm64-apple-macos13.0
-          - os: macos-13
+          # Intel Macs. The macos-13 image was retired in December 2025, so that
+          # label never picks up a runner; macos-15-intel is its replacement and
+          # is supported until August 2027.
+          - os: macos-15-intel
             target: x86_64-apple-darwin
             swift_target: x86_64-apple-macos13.0
           - os: windows-latest
@@ -55,6 +58,10 @@ jobs:
         run: npm install --no-audit --no-fund
 
       - name: Fetch static ffmpeg
+        env:
+          # Used only to list releases when the rolling asset is mid-rebuild;
+          # runners share outbound IPs and hit the anonymous rate limit.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node scripts/fetch-ffmpeg.mjs ${{ matrix.target }}
 
       - name: Build macOS system-audio helper
