@@ -60,7 +60,10 @@ bearer (see the `cron:reminders:*` npm scripts).
   Backblaze B2 free tier — `src/lib/recordingStorage.ts`, env `RECORDINGS_S3_*`;
   Supabase Storage is deliberately not used) and are only reached through the
   stream endpoint (per-viewer token → 2-minute presigned URL). Release builds come from
-  `.github/workflows/recorder-release.yml` on `recorder-v*` tags.
+  `.github/workflows/recorder-release.yml` on `recorder-v*` tags; installed apps
+  then update themselves from that release's signed `latest.json`, but only
+  while no class is armed, recording, or uploading (see "Automatic updates" in
+  `RECORDER.md`).
 
 ## Conventions
 

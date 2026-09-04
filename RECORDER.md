@@ -13,7 +13,8 @@ recordings. **Mandatory for every class from 2026‑09‑09.**
 ## What the tutor experiences
 
 1. Install the app (GitHub release), sign in with their YanLearn tutor account.
-   The app lives in the tray / menu bar and stays signed in.
+   The app lives in the tray / menu bar, stays signed in, and updates itself
+   between classes — there is never a second download.
 2. If they have more than one display, microphone, or speaker, the app makes
    them choose which to record (with an "Identify" flash on each display).
 3. From **15 min before** a class the app pre‑arms; from **5 min before** it is
@@ -74,6 +75,7 @@ recorder/                      Tauri 2 app ("YanLearn Recorder")
   src-tauri/src/sysaudio.rs    system audio feeder (WASAPI loopback / SCK helper) → TCP → ffmpeg
   src-tauri/src/overlay.rs     overlay + identify windows, display list
   src-tauri/src/upload.rs      streaming PUT to the signed storage URL
+  src-tauri/src/update.rs      self-update: check, verify, install, restart
   sysaudio/main.swift          macOS ScreenCaptureKit system-audio helper
   scripts/fetch-ffmpeg.mjs     downloads the static ffmpeg sidecar per target
 .github/workflows/recorder-release.yml   builds mac arm64 / mac x64 / win x64 on `recorder-v*` tags
@@ -165,18 +167,77 @@ uploads failed).
 4. `npm install` (adds `@aws-sdk/client-s3` and `@aws-sdk/s3-request-presigner`),
    then push to `master` and run `npm test` / `tsc` — see the status note above.
 
+## Automatic updates
+
+The app updates itself, so a tutor installs it once and never has to download an
+installer again.
+
+* Every release build also produces Tauri updater artifacts (`.app.tar.gz` on
+  macOS, `-setup.nsis.zip` on Windows) and a `latest.json` manifest, all
+  attached to the GitHub release. Installed apps read
+  `https://github.com/OoEthanoO/tutoring/releases/latest/download/latest.json`.
+* Each artifact is signed with a minisign key; `plugins.updater.pubkey` in
+  `tauri.conf.json` is its public half and the app installs nothing whose
+  signature does not verify. That signature is the whole security story for an
+  app that is otherwise unsigned (no Developer ID, no Authenticode).
+* **When it updates** is decided by `updateSafeNow()` in `src/main.js`: only
+  while the app is connected to the server (so "no class" is a fresh fact),
+  with no class session, nothing waiting to upload, no quit lock, and the next
+  class more than 20 minutes away. It checks at startup and every 6 hours. An
+  update found during a class simply waits — the tutor sees "installs by itself
+  once you are between classes" — so a restart can never interrupt a recording
+  or an upload.
+* Downloading and installing are deliberately separate (`download_update` /
+  `install_update`). The download runs in the background without blocking the
+  tick loop, however slow the network is; only when it has finished does the
+  app ask again whether this is still a safe moment and then install, which
+  takes a moment. So a stalled download can neither stop the recorder from
+  arming for the next class nor restart it in the middle of one.
+* Installing shows a short modal. Windows then runs the NSIS installer in
+  passive mode (per-user, no UAC prompt) and it relaunches the app; macOS
+  replaces the `.app` bundle and the app restarts itself. `pendingUpdate` in
+  `settings.json` tells the restarted app which version to expect and whether
+  it was living in the tray, so a hidden recorder goes back to the tray instead
+  of popping a window up in the tutor's face.
+* **Check for updates** in the app does the same thing on demand.
+
+### One-time setup: the updater signing key
+
+The release workflow refuses to build until this is done.
+
+1. In `recorder/`, run `npm run updater:keygen`. It writes
+   `yanlearn-recorder-updater.key` (private) and `yanlearn-recorder-updater.key.pub`
+   (public) *beside* the repository folder, never inside it. Pick a password
+   when asked.
+2. Add two repository secrets: **TAURI_SIGNING_PRIVATE_KEY** (the whole
+   contents of the `.key` file) and **TAURI_SIGNING_PRIVATE_KEY_PASSWORD**.
+3. Paste the contents of the `.key.pub` file into `plugins.updater.pubkey` in
+   `recorder/src-tauri/tauri.conf.json`, and commit that (public keys are meant
+   to be published).
+
+Keep the private key safe and backed up: without it no already-installed
+recorder can ever be updated again, and every tutor would have to reinstall by
+hand.
+
 ## Building the app
 
-CI: push a tag `recorder-v0.1.0` (version in `recorder/package.json` and
-`recorder/src-tauri/tauri.conf.json`) → GitHub release with `.dmg` (Apple
-Silicon and Intel) and `.msi` / `-setup.exe`. The Help tab and tutor banner
-link to `releases/latest`.
+CI: push a tag `recorder-v0.1.0` (version in `recorder/package.json`,
+`recorder/src-tauri/tauri.conf.json` and `recorder/src-tauri/Cargo.toml`) →
+GitHub release with `.dmg` (Apple Silicon and Intel), `.msi` / `-setup.exe`, the
+signed updater artifacts and `latest.json`. The Help tab and tutor banner link
+to `releases/latest` for first installs; after that every open recorder picks
+the release up by itself (see "Automatic updates"). The matrix runs one job at
+a time because all three merge into the same `latest.json` asset.
 
 Locally (needs Node 20, Rust stable, and on macOS Xcode CLT):
 
 ```bash
 cd recorder && npm install && node scripts/fetch-ffmpeg.mjs && npm run icons && npm run dev
 ```
+
+A local `npm run build` now also signs the updater artifacts, so it needs
+`TAURI_SIGNING_PRIVATE_KEY` (and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`) in the
+environment; `npm run dev` does not bundle and is unaffected.
 
 macOS also needs the helper: `swiftc -O -target arm64-apple-macos13.0 -framework ScreenCaptureKit -framework CoreMedia -framework AVFoundation sysaudio/main.swift -o src-tauri/binaries/sysaudio-aarch64-apple-darwin`.
 
@@ -191,6 +252,9 @@ to add before rolling out to all tutors.
   (`initialize_client`, `read_from_device_to_deque`), Tauri 2 builder method
   names (`show_menu_on_left_click`, `AppHandle::available_monitors`), and the
   macOS `ffmpeg.martin-riedl.de` download URLs in `fetch-ffmpeg.mjs`.
+  The updater code (`src-tauri/src/update.rs`) is written against
+  tauri-plugin-updater 2.11 (`Updater::check`, `Update::download`/`install`,
+  `AppHandle::restart`) and has not been compiled either.
 * macOS: the overlay is `NSWindowSharingNone` (hidden from Discord), but
   AVFoundation screen capture may still include it in the recording; if so,
   move the pill to a non‑recorded display or accept the small pill.
@@ -208,3 +272,9 @@ to add before rolling out to all tutors.
   recorder also counts for release/upload but not for the warning.
 * ffmpeg GPL static builds are redistributed; keep the ffmpeg licence notice
   with the app if it is ever distributed outside the organization.
+* The updater reads `releases/latest`, i.e. the newest published release of
+  this repository whatever it is — if the repo ever publishes a release that is
+  not a recorder build, tutors stop seeing updates until the next recorder tag.
+* An update is installed the moment the recorder is idle, which can be seconds
+  after a tutor opens it. That is deliberate (it is the only guaranteed-safe
+  moment), but it means the app can restart itself right after launch.

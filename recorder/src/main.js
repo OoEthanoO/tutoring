@@ -32,6 +32,9 @@
   const CRASH_FALLBACK_SECONDS = 4;
   const MAX_CAPTURE_FAILURES = 6;
   const RECORDING_FPS = 10;
+  const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
+  // Never restart for an update this close to the next class.
+  const UPDATE_QUIET_WINDOW_MS = 20 * 60 * 1000;
 
   const state = {
     info: null,
@@ -56,6 +59,15 @@
     lastOverlayJson: "",
     recovered: false,
     hotkeyLabel: "Ctrl+Alt+P",
+    update: {
+      info: null,
+      lastCheckAt: 0,
+      checking: false,
+      downloading: false,
+      progress: null,
+      ready: false,
+      installing: false,
+    },
     logLines: [],
   };
 
@@ -151,6 +163,7 @@
     hardwareEncoding: true,
     captureBackend: null,
     encoder: null,
+    pendingUpdate: null,
   });
 
   const loadSettings = async () => {
@@ -737,6 +750,7 @@
       } catch (error) {
         log(`Upload processing error: ${error}`);
       }
+      await maybeUpdate();
     }
     render();
     await updateOverlay();
@@ -1033,6 +1047,151 @@
     }
   };
 
+  // --- Updates -----------------------------------------------------------------------------
+
+  // Updating restarts the app, so it may only happen when losing the process
+  // costs nothing: connected to the server (so "no class" is a fresh fact),
+  // nothing recording, nothing waiting to upload, and no class close enough
+  // that the restart could eat into its pre-arm window.
+  const updateSafeNow = () => {
+    if (!state.settings.token || !state.online || state.update.installing) {
+      return false;
+    }
+    if (state.quitLocked || state.session || state.uploads.length > 0) {
+      return false;
+    }
+    const next = state.tick?.nextClass;
+    if (next && next.startsAtMs - serverNow() < UPDATE_QUIET_WINDOW_MS) {
+      return false;
+    }
+    return true;
+  };
+
+  const checkForUpdate = async ({ manual = false } = {}) => {
+    if (state.update.checking || state.update.installing) {
+      return;
+    }
+    state.update.checking = true;
+    state.update.lastCheckAt = Date.now();
+    try {
+      const info = await invoke("check_update");
+      state.update.info = info || null;
+      state.update.ready = false;
+      if (info) {
+        log(`Update available: v${info.version} (this is v${info.currentVersion}).`);
+      } else if (manual) {
+        log("YanLearn Recorder is up to date.");
+      }
+    } catch (error) {
+      if (manual) {
+        log(`Could not check for updates: ${error}`);
+      }
+    } finally {
+      state.update.checking = false;
+    }
+    render();
+  };
+
+  // Downloading is harmless — it only costs bandwidth — so it runs in the
+  // background rather than blocking the tick loop. However long it takes, the
+  // decision to install is taken again afterwards.
+  const downloadUpdate = () => {
+    if (state.update.downloading || state.update.ready || !state.update.info) {
+      return;
+    }
+    const version = state.update.info.version;
+    state.update.downloading = true;
+    state.update.progress = null;
+    log(`Downloading update v${version} in the background.`);
+    invoke("download_update")
+      .then(() => {
+        state.update.ready = true;
+        log(`Update v${version} is downloaded and installs at the next safe moment.`);
+      })
+      .catch((error) => {
+        state.update.info = null;
+        log(`Could not download the update: ${error}`);
+      })
+      .finally(() => {
+        state.update.downloading = false;
+        render();
+      });
+  };
+
+  const installUpdate = async () => {
+    const info = state.update.info;
+    if (!info || !state.update.ready || state.update.installing || !updateSafeNow()) {
+      return;
+    }
+    state.update.installing = true;
+    $("update-modal-title").textContent = `Updating to v${info.version}`;
+    $("modal-update").hidden = false;
+    render();
+    log(`Installing update v${info.version}; the recorder will restart.`);
+    try {
+      // The restarted app reads this back: it says which version to expect and
+      // whether the recorder was living in the tray rather than on screen.
+      let visible = true;
+      try {
+        visible = await invoke("main_window_visible");
+      } catch {
+        // assume it was visible
+      }
+      state.settings.pendingUpdate = { version: info.version, hidden: !visible };
+      await saveSettings();
+      // On Windows the installer ends this process; on macOS the app relaunches.
+      await invoke("install_update");
+    } catch (error) {
+      state.update.installing = false;
+      state.update.info = null;
+      state.update.ready = false;
+      state.settings.pendingUpdate = null;
+      await saveSettings();
+      $("modal-update").hidden = true;
+      log(`The update could not be installed: ${error}`);
+      render();
+    }
+  };
+
+  // Called once per tick: check every few hours, then download and install at
+  // the first safe moment. An update found during a class waits it out.
+  const maybeUpdate = async () => {
+    if (state.update.installing || !state.settings.token) {
+      return;
+    }
+    if (!state.update.info && Date.now() - state.update.lastCheckAt >= UPDATE_CHECK_INTERVAL_MS) {
+      await checkForUpdate();
+    }
+    if (!state.update.info || !updateSafeNow()) {
+      return;
+    }
+    if (state.update.ready) {
+      await installUpdate();
+    } else {
+      downloadUpdate();
+    }
+  };
+
+  const renderUpdate = () => {
+    const notice = $("update-notice");
+    const info = state.update.info;
+    if (!info || state.update.installing) {
+      notice.hidden = true;
+      return;
+    }
+    notice.hidden = false;
+    const ready = state.update.ready;
+    const progress = state.update.progress;
+    const percent =
+      !ready && progress && progress.total
+        ? ` ${Math.round((progress.downloaded / progress.total) * 100)}%`
+        : "";
+    $("update-text").textContent = updateSafeNow()
+      ? `Update v${info.version} — ${ready ? "installing now…" : `downloading${percent}…`}`
+      : `Update v${info.version} installs by itself once you are between classes.`;
+    $("update-install").hidden = !(ready && updateSafeNow());
+  };
+
   // --- Rendering ---------------------------------------------------------------------------
 
   const showView = (name) => {
@@ -1070,6 +1229,7 @@
     $("device-notice").textContent = state.deviceChoiceNeeded
       ? deviceProblems().join(" ")
       : "";
+    renderUpdate();
 
     const session = state.session;
     const dot = $("state-dot");
@@ -1329,6 +1489,8 @@
       saveSettings();
     });
     $("refresh-button").addEventListener("click", () => scheduleTick(0));
+    $("update-check").addEventListener("click", () => checkForUpdate({ manual: true }));
+    $("update-install").addEventListener("click", () => installUpdate());
     $("done-yes").addEventListener("click", () => finalize("tutor_confirmed"));
     $("done-no").addEventListener("click", () => {
       if (state.session) {
@@ -1352,6 +1514,10 @@
       render();
       updateOverlay();
     });
+    listen("update-progress", (event) => {
+      state.update.progress = event.payload || null;
+      renderUpdate();
+    });
     listen("hidden-to-tray", () => {
       log("YanLearn Recorder keeps running in the tray / menu bar.");
     });
@@ -1374,6 +1540,21 @@
     }
     state.hotkeyLabel = state.info?.platform === "macos" ? "⌘+Option+P" : "Ctrl+Alt+P";
     await loadSettings();
+    // Coming back from an automatic update: say so, and go back to the tray if
+    // that is where the recorder was when it restarted itself.
+    const pendingUpdate = state.settings.pendingUpdate;
+    if (pendingUpdate) {
+      state.settings.pendingUpdate = null;
+      await saveSettings();
+      if (pendingUpdate.version === state.info?.version) {
+        log(`Updated to v${pendingUpdate.version}.`);
+        if (pendingUpdate.hidden && state.settings.token) {
+          invoke("hide_main_window").catch(() => {});
+        }
+      } else {
+        log(`The update to v${pendingUpdate.version} did not finish; still on v${state.info?.version || "?"}.`);
+      }
+    }
     state.recordingsDir = await invoke("recordings_dir");
     wireEvents();
     try {

@@ -149,7 +149,7 @@ export default function HelpMenu() {
                     <ol className="list-decimal list-outside text-sm text-[var(--foreground)] space-y-1 pl-5">
                         <li>
                             <a href={recorderDownloadUrl} target="_blank" rel="noreferrer" className="font-semibold underline decoration-2 decoration-[var(--border)] underline-offset-4 hover:decoration-[var(--foreground)]">Download the app</a>{" "}
-                            and sign in with your YanLearn account. On macOS, allow <span className="font-semibold">Screen Recording</span> and <span className="font-semibold">Microphone</span> access when asked.
+                            and sign in with your YanLearn account. On macOS, allow <span className="font-semibold">Screen Recording</span> and <span className="font-semibold">Microphone</span> access when asked. You only ever download it once: the app updates itself between classes.
                         </li>
                         <li>If you have more than one display, microphone, or speaker, the app asks you to choose which ones to record before each class.</li>
                         <li>Have the app open <span className="font-semibold">at least 5 minutes before</span> the class starts. From then until the class is uploaded it cannot be closed.</li>

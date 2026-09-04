@@ -8,6 +8,11 @@ name: YanLearn Recorder release
 # The builds are unsigned: macOS users must right-click → Open the first time
 # (or the app needs an Apple Developer ID certificate — see RECORDER.md), and
 # Windows SmartScreen shows a "More info → Run anyway" prompt.
+#
+# Installed copies update themselves from the `latest.json` attached to the
+# newest published release, so every build must be signed with the updater key
+# (TAURI_SIGNING_PRIVATE_KEY / TAURI_SIGNING_PRIVATE_KEY_PASSWORD secrets, whose
+# public half lives in recorder/src-tauri/tauri.conf.json). See RECORDER.md.
 
 on:
   push:
@@ -22,6 +27,10 @@ jobs:
   build:
     strategy:
       fail-fast: false
+      # One job at a time: each build merges its platform into the shared
+      # `latest.json` on the release, and parallel jobs would overwrite
+      # each other's entry.
+      max-parallel: 1
       matrix:
         include:
           - os: macos-latest
@@ -41,6 +50,36 @@ jobs:
         working-directory: recorder
     steps:
       - uses: actions/checkout@v4
+
+      - name: Check the updater signing key
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            echo "::error::TAURI_SIGNING_PRIVATE_KEY is not set. Automatic updates need a signing key — see \"Automatic updates\" in RECORDER.md."
+            exit 1
+          fi
+          if ! grep -q "\"pubkey\": \"[^\"]" src-tauri/tauri.conf.json; then
+            echo "::error::plugins.updater.pubkey is empty in recorder/src-tauri/tauri.conf.json; installed apps would reject every update."
+            exit 1
+          fi
+
+      # Installed apps compare their own version with the one in the release
+      # manifest, so a tag that does not match the project version would ship a
+      # build nobody ever updates to.
+      - name: Check the version matches the tag
+        if: github.ref_type == 'tag'
+        shell: bash
+        run: |
+          tag="${GITHUB_REF_NAME#recorder-v}"
+          conf=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' src-tauri/tauri.conf.json | head -1 | tr -d "\r")
+          pkg=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' package.json | head -1 | tr -d "\r")
+          crate=$(sed -n 's/^version = "\(.*\)"/\1/p' src-tauri/Cargo.toml | head -1 | tr -d "\r")
+          if [ "$conf" != "$tag" ] || [ "$pkg" != "$tag" ] || [ "$crate" != "$tag" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME is version $tag, but the project says $conf (tauri.conf.json), $pkg (package.json), $crate (Cargo.toml). Bump all three."
+            exit 1
+          fi
 
       - uses: actions/setup-node@v4
         with:
@@ -79,11 +118,18 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Signs the updater artifacts; the app verifies this signature before
+          # installing anything.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: recorder
           tagName: ${{ github.ref_type == 'tag' && github.ref_name || 'recorder-dev' }}
           releaseName: "YanLearn Recorder ${{ github.ref_type == 'tag' && github.ref_name || 'development build' }}"
-          releaseBody: "Download the installer for your computer: `.dmg` for macOS (Apple Silicon or Intel), `.msi` or `-setup.exe` for Windows. See RECORDER.md in the repository for setup instructions."
+          releaseBody: "Download the installer for your computer: `.dmg` for macOS (Apple Silicon or Intel), `.msi` or `-setup.exe` for Windows. See RECORDER.md in the repository for setup instructions. Recorders that are already installed update themselves to this version the next time they are open and not in a class."
+          # NSIS (-setup.exe) updates install per-user without a UAC prompt;
+          # the .msi would need one.
+          updaterJsonPreferNsis: true
           releaseDraft: ${{ github.ref_type != 'tag' }}
           prerelease: false
           args: --target ${{ matrix.target }}

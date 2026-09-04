@@ -3,3 +3,7 @@ src-tauri/target/
 src-tauri/gen/
 src-tauri/binaries/
 src-tauri/icons/
+
+# Never commit an updater signing key.
+*.key
+*.key.pub

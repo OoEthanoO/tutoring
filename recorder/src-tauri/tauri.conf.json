@@ -6,6 +6,17 @@
   "build": {
     "frontendDist": "../src"
   },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/OoEthanoO/tutoring/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEM1NzIwNTI2NzIzN0NFNTkKUldSWnpqZHlKZ1Z5eGJFaHVrWG9OMW03a05Qb0ZKZ1c4dkhMMng5bnQ5QjMyUnFtS2wrMVJ0WngK",
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  },
   "app": {
     "withGlobalTauri": true,
     "macOSPrivateApi": true,
@@ -29,7 +40,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "createUpdaterArtifacts": false,
+    "createUpdaterArtifacts": true,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

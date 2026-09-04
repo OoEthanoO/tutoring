@@ -8,7 +8,8 @@
     "build": "tauri build",
     "tauri": "tauri",
     "fetch-ffmpeg": "node scripts/fetch-ffmpeg.mjs",
-    "icons": "tauri icon src/icon.png"
+    "icons": "tauri icon src/icon.png",
+    "updater:keygen": "tauri signer generate -w ../../yanlearn-recorder-updater.key"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.5.0"

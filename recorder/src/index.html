@@ -53,6 +53,10 @@
         Choose which display, microphone, and speaker to record before your class starts.
       </div>
       <div class="notice warn" id="warning-notice" hidden></div>
+      <div class="notice update" id="update-notice" hidden>
+        <span id="update-text"></span>
+        <button type="button" class="link" id="update-install" hidden>Install now</button>
+      </div>
 
       <div class="hint">
         Pause / resume: <strong id="hotkey-label">Ctrl+Alt+P</strong>. Recording only runs while you are in the class voice channel.
@@ -61,6 +65,7 @@
       <div class="actions">
         <button type="button" id="devices-button">Devices</button>
         <button type="button" id="refresh-button">Check now</button>
+        <button type="button" id="update-check">Check for updates</button>
         <button type="button" id="signout-button" class="danger">Sign out</button>
       </div>
 
@@ -117,6 +122,15 @@
         <h2>You can't quit right now</h2>
         <p>YanLearn Recorder must stay open from 5 minutes before a class until its recording has been uploaded.</p>
         <div class="actions"><button type="button" class="primary" id="quit-ok">OK</button></div>
+      </div>
+    </div>
+
+    <!-- Updating -->
+    <div class="modal" id="modal-update" hidden>
+      <div class="modal-box">
+        <h2 id="update-modal-title">Updating</h2>
+        <p id="update-modal-text">Installing. The recorder closes and reopens in a moment.</p>
+        <p class="muted small">This only ever happens when no class is running.</p>
       </div>
     </div>
 

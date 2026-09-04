@@ -21,7 +21,8 @@ export default function RecorderNotice() {
       <p className="text-xs text-[var(--muted)]">
         Pause with <span className="font-semibold">Ctrl+Alt+P</span> (macOS:{" "}
         <span className="font-semibold">⌘+Option+P</span>). Recordings are only visible to the
-        students enrolled in your course and are deleted after 7 days. See the Help tab for details.
+        students enrolled in your course and are deleted after 7 days. The app keeps itself up to
+        date, so you only download it once. See the Help tab for details.
       </p>
       <a
         href={recorderDownloadUrl}

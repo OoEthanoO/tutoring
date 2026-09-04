@@ -8,6 +8,7 @@
 mod capture;
 mod overlay;
 mod sysaudio;
+mod update;
 mod upload;
 
 use std::path::{Path, PathBuf};
@@ -168,6 +169,22 @@ fn show_main_window(app: AppHandle) {
     show_main(&app);
 }
 
+/// Used after an automatic update: a recorder that was living in the tray
+/// before it restarted itself goes back there instead of popping a window up.
+#[tauri::command]
+fn hide_main_window(app: AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.hide();
+    }
+}
+
+#[tauri::command]
+fn main_window_visible(app: AppHandle) -> bool {
+    app.get_webview_window("main")
+        .and_then(|window| window.is_visible().ok())
+        .unwrap_or(false)
+}
+
 #[tauri::command]
 fn register_hotkey(app: AppHandle, combo: String) -> Result<(), String> {
     let shortcuts = app.global_shortcut();
@@ -186,7 +203,7 @@ fn show_main(app: &AppHandle) {
 }
 
 /// Stop ffmpeg and the system-audio feeder (used on every exit path).
-fn stop_everything(app: &AppHandle) {
+pub(crate) fn stop_everything(app: &AppHandle) {
     let state = app.state::<AppState>();
     // Take both out from under their locks before stopping them: ffmpeg can take
     // seconds to exit, and holding a mutex across that would stall every other
@@ -206,6 +223,7 @@ pub fn run() {
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             show_main(app);
         }))
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, _shortcut, event| {
@@ -215,6 +233,7 @@ pub fn run() {
                 })
                 .build(),
         )
+        .manage(update::UpdateState::default())
         .manage(AppState {
             quit_locked: AtomicBool::new(false),
             capture: Mutex::new(None),
@@ -235,6 +254,8 @@ pub fn run() {
             set_quit_lock,
             quit_app,
             show_main_window,
+            hide_main_window,
+            main_window_visible,
             register_hotkey,
             capture::probe_capture,
             capture::start_capture,
@@ -246,6 +267,9 @@ pub fn run() {
             overlay::list_displays,
             overlay::identify_displays,
             upload::upload_file,
+            update::check_update,
+            update::download_update,
+            update::install_update,
         ])
         .setup(|app| {
             let show = MenuItem::with_id(app, "show", "Open YanLearn Recorder", true, None::<&str>)?;
