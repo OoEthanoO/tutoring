@@ -4,11 +4,12 @@ Desktop app (macOS + Windows) that records tutors' classes and uploads them to
 YanLearn, plus the website side that stores, protects, serves, and expires those
 recordings. **Mandatory for every class from 2026‑09‑09.**
 
-> Status (2026‑09‑02): everything below was written without a compiler or a
-> test run available on the authoring machine — no Node, Rust, or Swift were
-> installed. Expect the first `tsc`/`vitest`/`cargo` runs to surface small
-> errors (API signatures in the `wasapi` crate and Tauri 2 are the likeliest).
-> Nothing has been deployed or built yet.
+> Status (2026‑09‑04): `recorder-v0.1.0` was built and released on 2026‑09‑03 —
+> the workflow is green on all three targets, so the app compiles and bundles.
+> What is still unproven is everything that only shows up at runtime (the
+> `wasapi` loopback, the macOS helper, a real class end to end) and the
+> automatic updater added in 0.2.0, which by its nature cannot be exercised
+> until a second release exists to update *to*.
 
 ## What the tutor experiences
 
@@ -248,13 +249,12 @@ to add before rolling out to all tutors.
 
 ## Known limitations / follow‑ups
 
-* Not compiled or run yet (see the status note). Verify the `wasapi` 0.13 API
-  (`initialize_client`, `read_from_device_to_deque`), Tauri 2 builder method
-  names (`show_menu_on_left_click`, `AppHandle::available_monitors`), and the
-  macOS `ffmpeg.martin-riedl.de` download URLs in `fetch-ffmpeg.mjs`.
-  The updater code (`src-tauri/src/update.rs`) is written against
-  tauri-plugin-updater 2.11 (`Updater::check`, `Update::download`/`install`,
-  `AppHandle::restart`) and has not been compiled either.
+* Compiled and bundled by CI since `recorder-v0.1.0`, but never run against a
+  real class. The updater code (`src-tauri/src/update.rs`, written against
+  tauri-plugin-updater 2.11) has not been compiled at all yet, and no installed
+  copy can be updated until a release newer than the one it came from exists.
+* Everyone running 0.1.0 has to reinstall by hand once: those builds shipped
+  before the updater existed, so they cannot fetch 0.2.0 themselves.
 * macOS: the overlay is `NSWindowSharingNone` (hidden from Discord), but
   AVFoundation screen capture may still include it in the recording; if so,
   move the pill to a non‑recorded display or accept the small pill.
