@@ -750,13 +750,13 @@
       } catch (error) {
         log(`Upload processing error: ${error}`);
       }
-      await maybeUpdate();
     }
+    // Runs signed out too, so a recorder that cannot sign in can still be
+    // fixed by an update instead of a reinstall.
+    await maybeUpdate();
     render();
     await updateOverlay();
-    if (state.settings.token) {
-      scheduleTick(interval);
-    }
+    scheduleTick(interval);
   };
 
   const runTick = async () => {
@@ -1054,10 +1054,18 @@
   // nothing recording, nothing waiting to upload, and no class close enough
   // that the restart could eat into its pre-arm window.
   const updateSafeNow = () => {
-    if (!state.settings.token || !state.online || state.update.installing) {
+    if (state.update.installing) {
       return false;
     }
     if (state.quitLocked || state.session || state.uploads.length > 0) {
+      return false;
+    }
+    // Signed out there is no class to interrupt — and an update is the only
+    // way out of a bug that stops the app signing in at all.
+    if (!state.settings.token) {
+      return true;
+    }
+    if (!state.online) {
       return false;
     }
     const next = state.tick?.nextClass;
@@ -1156,7 +1164,7 @@
   // Called once per tick: check every few hours, then download and install at
   // the first safe moment. An update found during a class waits it out.
   const maybeUpdate = async () => {
-    if (state.update.installing || !state.settings.token) {
+    if (state.update.installing) {
       return;
     }
     if (!state.update.info && Date.now() - state.update.lastCheckAt >= UPDATE_CHECK_INTERVAL_MS) {
@@ -1446,10 +1454,8 @@
       await saveSettings();
       state.online = false;
       state.tick = null;
-      if (state.timer) {
-        clearTimeout(state.timer);
-        state.timer = null;
-      }
+      // Keep the loop alive: it no longer ticks, but it still checks for updates.
+      scheduleTick(IDLE_POLL_MS);
       showView("login");
       render();
       await updateOverlay();
@@ -1565,9 +1571,7 @@
     render();
     showView(state.settings.token ? "main" : "login");
     await refreshDevices();
-    if (state.settings.token) {
-      scheduleTick(0);
-    }
+    scheduleTick(0);
   };
 
   init().catch((error) => {
