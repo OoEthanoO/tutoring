@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import { recorderCorsHeaders } from "@/lib/recorderCors";
 
 const guardedPaths = ["/onboarding"];
 const maintenancePath = "/maintenance";
@@ -123,6 +124,22 @@ const isFounderSession = async (request: NextRequest) => {
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  // The desktop recorder calls these from its webview, which is a different
+  // origin, so they need CORS. Answered before anything else: the app ticks
+  // every 2 s during a class and must not pay for a maintenance-mode lookup.
+  if (pathname.startsWith("/api/recorder")) {
+    const corsHeaders = recorderCorsHeaders(request.headers.get("origin"));
+    if (request.method === "OPTIONS") {
+      return new NextResponse(null, { status: 204, headers: corsHeaders ?? undefined });
+    }
+    const response = NextResponse.next();
+    for (const [name, value] of Object.entries(corsHeaders ?? {})) {
+      response.headers.set(name, value);
+    }
+    return response;
+  }
+
   const maintenanceEnabled = await readMaintenanceMode();
   const isFounder = maintenanceEnabled ? await isFounderSession(request) : false;
   const isPublicMaintenanceAccess = pathname === "/login" || pathname === "/login/" || pathname === maintenancePath || pathname === maintenancePath + "/";
@@ -200,5 +217,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|api).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|api).*)", "/api/recorder/:path*"],
 };
