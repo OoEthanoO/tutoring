@@ -28,6 +28,9 @@ recordings. **Mandatory for every class from 2026‑09‑09.**
    class's live Discord voice channel**. Leaving the call pauses, rejoining
    resumes (within one poll, ~2 s). If the app is opened late it starts
    recording immediately (subject to being in the call).
+5. Mute hotkey **Ctrl+Alt+M / ⌘+Option+M** drops their microphone from the
+   recording (not from Discord) until they press it again, with a banner
+   saying so throughout.
 5. Pause hotkey **Ctrl+Alt+P / ⌘+Option+P**:
    * pressed while in the call → *manual pause*, with a large centred banner
      until they press it again;
@@ -172,6 +175,37 @@ uploads failed).
    Discord vars are the existing ones.
 4. `npm install` (adds `@aws-sdk/client-s3` and `@aws-sdk/s3-request-presigner`),
    then push to `master` and run `npm test` / `tsc` — see the status note above.
+
+## Muting yourself, and trying the recorder
+
+**Mute** (`Ctrl+Alt+M` / `⌘+Option+M`, or the button in the app) drops the
+tutor's microphone from the recording: the segment restarts without the
+microphone input, so their voice is simply not one of ffmpeg's inputs while it
+lasts. Everything else carries on — the screen, and the class audio, so the
+students' voices are still recorded. A centred banner says `MICROPHONE MUTED`
+for as long as it is on, because a tutor who forgets loses their own voice for
+the rest of the class.
+
+It does **not** mute them in Discord. The students in the call still hear them;
+only the recording is affected, and the banner says so.
+
+**Test mode** ("Try the recorder") runs a dry class so a tutor can feel the
+controls before their first real one. It sets up a session exactly like a live
+class — the overlay, the countdown-free REC pill, the pause hotkey, mute, and
+the window-mode freeze banner all behave as they will on the day — but:
+
+* no ffmpeg is started and no segment is written (`session.test` short-circuits
+  `startSegment`/`stopSegment`);
+* nothing is written to disk (`persistMeta` returns early), so there is nothing
+  to upload and nothing to clean up;
+* the server is never told about it: the tick reports state `test` and a null
+  class id, so it never counts as a recording or a class session;
+* the quit lock stays off, so they can close the app;
+* every overlay carries "Test mode — nothing is being recorded", so a dry run
+  can never be mistaken for a class.
+
+A real class always wins: if one becomes active while a test is running, the
+test ends and the real session takes over.
 
 ## Recording windows instead of the whole display
 

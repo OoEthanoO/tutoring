@@ -27,6 +27,7 @@
 
   const DEFAULT_SERVER = "https://learn.ethanyanxu.com";
   const DEFAULT_HOTKEY = "CmdOrCtrl+Alt+P";
+  const DEFAULT_MUTE_HOTKEY = "CmdOrCtrl+Alt+M";
   const IDLE_POLL_MS = 30000;
   const ACTIVE_POLL_MS = 2000;
   const CRASH_FALLBACK_SECONDS = 4;
@@ -68,6 +69,7 @@
     lastOverlayJson: "",
     recovered: false,
     hotkeyLabel: "Ctrl+Alt+P",
+    muteHotkeyLabel: "Ctrl+Alt+M",
     update: {
       info: null,
       lastCheckAt: 0,
@@ -163,6 +165,7 @@
     user: null,
     deviceId: crypto.randomUUID(),
     hotkey: DEFAULT_HOTKEY,
+    muteHotkey: DEFAULT_MUTE_HOTKEY,
     display: null,
     captureMode: "display",
     sharedWindows: [],
@@ -372,8 +375,9 @@
     if (!session) {
       return null;
     }
+    const muted = Boolean(session.muted);
     if (state.settings.captureMode !== "windows") {
-      return { kind: "display" };
+      return { kind: "display", muted };
     }
     // undefined means the focused window has not been looked up yet: start
     // nothing rather than guess.
@@ -384,10 +388,10 @@
     if (focus && isSharedWindow(focus)) {
       const crop = cropForWindow(focus);
       if (crop) {
-        return { kind: "window", id: String(focus.id), crop, title: focus.title, app: focus.app };
+        return { kind: "window", id: String(focus.id), crop, muted, title: focus.title, app: focus.app };
       }
     }
-    return { kind: "frozen" };
+    return { kind: "frozen", muted };
   };
 
   const targetSatisfied = (desired, active) =>
@@ -481,7 +485,7 @@
 
   const persistMeta = async () => {
     const session = state.session;
-    if (!session) {
+    if (!session || session.test) {
       return;
     }
     await writeJson(`${session.dir}/meta.json`, {
@@ -570,6 +574,17 @@
     if (Date.now() < session.nextCaptureAttemptMs) {
       return;
     }
+    if (session.test) {
+      // Dry run: pretend the segment started so every control and overlay
+      // behaves as it would in a lesson, without capturing anything.
+      session.capturing = true;
+      session.activeTarget = target;
+      session.lastTargetChangeMs = Date.now();
+      if (!session.recordingStartedAtMs) {
+        session.recordingStartedAtMs = serverNow();
+      }
+      return;
+    }
     const index = session.segments.length + 1;
     const path = `${session.dir}/seg-${String(index).padStart(3, "0")}.mp4`;
     const config = {
@@ -580,7 +595,8 @@
       displayHeight: display.height,
       singleDisplay: state.displays.length <= 1,
       screenDeviceIndex: screenDeviceIndex(display),
-      microphoneId: chosenMicrophone()?.id ?? null,
+      // Muted: the microphone is simply not one of ffmpeg's inputs.
+      microphoneId: target.muted ? null : chosenMicrophone()?.id ?? null,
       outputDeviceId: chosenOutput()?.id ?? null,
       systemAudio: state.settings.systemAudio !== false && state.probe?.systemAudio !== "none",
       backend: state.settings.captureBackend || null,
@@ -626,6 +642,12 @@
   const stopSegment = async () => {
     const session = state.session;
     if (!session) {
+      return null;
+    }
+    if (session.test) {
+      session.capturing = false;
+      session.activeTarget = null;
+      session.currentSegment = null;
       return null;
     }
     let stopped = { sizeBytes: 0, seconds: 0 };
@@ -947,8 +969,8 @@
       deviceName: state.info?.hostName || "",
       platform: state.info?.platform || "",
       appVersion: state.info?.version || "",
-      state: currentStateLabel(),
-      classId: state.session?.classId ?? null,
+      state: state.session?.test ? "test" : currentStateLabel(),
+      classId: state.session && !state.session.test ? state.session.classId : null,
       finished: state.pendingFinished,
     };
     const response = await api("/api/recorder/tick", { method: "POST", body });
@@ -984,8 +1006,12 @@
 
   const applyTick = async (tick) => {
     const active = tick.active;
+    // A real class always wins over a dry run.
+    if (state.session?.test && active) {
+      await endTestMode();
+    }
     if (!active) {
-      if (state.session && !state.session.finalizing) {
+      if (state.session && !state.session.test && !state.session.finalizing) {
         if (state.session.segments.length > 0 || state.session.capturing) {
           await finalize("recovered");
         } else {
@@ -1061,7 +1087,9 @@
       await updateOverlay();
       return;
     }
-    await setQuitLock(session.phase !== "pre_arm" || session.finalizing || uploadsPending);
+    await setQuitLock(
+      session.test ? uploadsPending : session.phase !== "pre_arm" || session.finalizing || uploadsPending
+    );
     if (session.finalizing) {
       render();
       await updateOverlay();
@@ -1096,7 +1124,7 @@
       return;
     }
 
-    if (session.capturing) {
+    if (session.capturing && !session.test) {
       const status = await invoke("capture_status");
       if (!status.running) {
         await handleCaptureExit(status);
@@ -1145,6 +1173,84 @@
     await evaluate();
   };
 
+  // --- Mute and test mode ---------------------------------------------------------
+
+  // Muting drops the tutor's microphone from the *recording*. It does not mute
+  // them in Discord — students in the call still hear them — so the overlay
+  // says so.
+  const handleMuteHotkey = async () => {
+    const session = state.session;
+    if (!session || session.finalizing || !(session.phase === "live" || session.phase === "after_end")) {
+      return;
+    }
+    await setMuted(!session.muted);
+  };
+
+  const setMuted = async (muted) => {
+    const session = state.session;
+    if (!session || Boolean(session.muted) === Boolean(muted)) {
+      return;
+    }
+    session.muted = Boolean(muted);
+    log(
+      session.muted
+        ? "Microphone muted: your voice is no longer being recorded. Students in the call still hear you."
+        : "Microphone unmuted: your voice is being recorded again."
+    );
+    await evaluate();
+  };
+
+  // Test mode is a dry run of a class: every control, overlay and banner
+  // behaves exactly as it does in a lesson, but no ffmpeg is started, nothing
+  // is written, and the server is never told about it.
+  const startTestMode = async () => {
+    if (state.session) {
+      return;
+    }
+    const now = serverNow();
+    state.session = {
+      test: true,
+      classId: "test",
+      courseTitle: "Test class",
+      classTitle: "Trying out the recorder",
+      dir: "",
+      segments: [],
+      phase: "live",
+      startsAtMs: now,
+      endsAtMs: now + 60 * 60 * 1000,
+      inCall: true,
+      pauseMode: "none",
+      muted: false,
+      capturing: false,
+      finalizing: false,
+      prompted: false,
+      promptOpen: false,
+      captureFailures: 0,
+      captureDisabled: false,
+      nextCaptureAttemptMs: 0,
+      recordingStartedAtMs: null,
+      currentSegment: null,
+      systemAudioActive: state.settings.systemAudio !== false,
+    };
+    log("Test mode: nothing is recorded and nothing is sent to YanLearn. Try the hotkeys.");
+    render();
+    await evaluate();
+  };
+
+  const endTestMode = async () => {
+    const session = state.session;
+    if (!session || !session.test) {
+      return;
+    }
+    state.session = null;
+    state.lastFocusKey = null;
+    closeDonePrompt();
+    await setQuitLock(state.uploads.length > 0);
+    log("Test mode ended. Nothing was recorded or uploaded.");
+    render();
+    await updateOverlay();
+  };
+
   // --- Prompts -----------------------------------------------------------------------
 
   const openDonePrompt = () => {
@@ -1169,6 +1275,9 @@
   const overlayState = () => {
     const session = state.session;
     const hotkey = state.hotkeyLabel;
+    const muteHotkey = state.muteHotkeyLabel;
+    // Every overlay says so during a dry run, so nobody mistakes it for a class.
+    const testNote = session?.test ? "Test mode — nothing is being recorded." : "";
     const displayIndex = chosenDisplay()?.index ?? null;
     const uploading = state.uploads.find((upload) => upload.uploading);
     if (uploading) {
@@ -1191,11 +1300,24 @@
       return { mode: "armed", title: "Recorder ready — class starts in {countdown}", detail: "Recording starts automatically once you are in the voice channel.", blocking: false, displayIndex, countdownToMs: session.startsAtMs - state.clockOffsetMs };
     }
     if (session.capturing && session.activeTarget?.kind === "frozen") {
+      const carryOn = testNote || "Go back to a window you shared to carry on.";
       return {
         mode: "attention",
         title: "THIS WINDOW IS NOT BEING RECORDED",
+        detail: session.muted
+          ? `Students see the last shared window, frozen, and your microphone is muted. ${carryOn}`
+          : `Students see the last shared window, frozen. Your microphone is still recording. ${carryOn}`,
+        blocking: true,
+        displayIndex,
+      };
+    }
+    if (session.capturing && session.muted) {
+      return {
+        mode: "paused",
+        title: "MICROPHONE MUTED",
         detail:
-          "Students see the last shared window, frozen. Your microphone is still recording. Go back to a window you shared to carry on.",
+          `Your voice is not being recorded — students in the call still hear you. ` +
+          `Press ${muteHotkey} to unmute. ${testNote}`.trimEnd(),
         blocking: true,
         displayIndex,
       };
@@ -1204,7 +1326,9 @@
       return {
         mode: "recording",
         title: "REC {elapsed}",
-        detail: session.systemAudioActive ? `${session.courseTitle}` : `${session.courseTitle} — system audio off`,
+        detail:
+          testNote ||
+          (session.systemAudioActive ? `${session.courseTitle}` : `${session.courseTitle} — system audio off`),
         blocking: false,
         displayIndex,
         recordingSinceMs: session.recordingStartedAtMs ? session.recordingStartedAtMs - state.clockOffsetMs : Date.now(),
@@ -1415,6 +1539,7 @@
     pill.textContent = state.online ? "Connected" : settings.token ? "Reconnecting…" : "Signed out";
     pill.className = `status-pill${state.online ? " online" : ""}`;
     $("hotkey-label").textContent = state.hotkeyLabel;
+    $("mute-hotkey-label").textContent = state.muteHotkeyLabel;
 
     if (!settings.token) {
       if ($("view-login").hidden && $("panel-devices").hidden) {
@@ -1437,6 +1562,16 @@
     renderUpdate();
 
     const session = state.session;
+    // Mute is only meaningful once a class (or a test) is actually running.
+    const liveSession =
+      session && !session.finalizing && (session.phase === "live" || session.phase === "after_end");
+    const muteButton = $("mute-button");
+    muteButton.hidden = !liveSession;
+    muteButton.textContent = session?.muted ? "Unmute my mic" : "Mute my mic";
+    const testButton = $("test-button");
+    testButton.hidden = Boolean(session) && !session.test;
+    testButton.textContent = session?.test ? "End test" : "Try the recorder";
+
     const dot = $("state-dot");
     const uploading = state.uploads.find((upload) => upload.uploading);
     const timer = $("state-timer");
@@ -1484,6 +1619,10 @@
       timer.textContent = `starts in ${formatCountdown(session.startsAtMs)}`;
     } else if (session.capturing && session.activeTarget?.kind === "frozen") {
       text = "Audio recording — picture frozen";
+      cls = "paused";
+      timer.textContent = session.recordingStartedAtMs ? formatElapsed(session.recordingStartedAtMs - state.clockOffsetMs) : "";
+    } else if (session.capturing && session.muted) {
+      text = "Recording — microphone muted";
       cls = "paused";
       timer.textContent = session.recordingStartedAtMs ? formatElapsed(session.recordingStartedAtMs - state.clockOffsetMs) : "";
     } else if (session.capturing) {
@@ -1777,6 +1916,19 @@
       saveSettings();
     });
     $("refresh-button").addEventListener("click", () => scheduleTick(0));
+    $("mute-button").addEventListener("click", () => {
+      const session = state.session;
+      if (session) {
+        setMuted(!session.muted);
+      }
+    });
+    $("test-button").addEventListener("click", () => {
+      if (state.session?.test) {
+        endTestMode();
+      } else if (!state.session) {
+        startTestMode();
+      }
+    });
     $("update-check").addEventListener("click", () => checkForUpdate({ manual: true }));
     $("update-install").addEventListener("click", () => installUpdate());
     $("done-yes").addEventListener("click", () => finalize("tutor_confirmed"));
@@ -1793,6 +1945,9 @@
 
     listen("hotkey", () => {
       handleHotkey();
+    });
+    listen("mute-hotkey", () => {
+      handleMuteHotkey();
     });
     listen("quit-blocked", () => {
       $("modal-quit").hidden = false;
@@ -1832,7 +1987,9 @@
     } catch (error) {
       console.error(error);
     }
-    state.hotkeyLabel = state.info?.platform === "macos" ? "⌘+Option+P" : "Ctrl+Alt+P";
+    const mac = state.info?.platform === "macos";
+    state.hotkeyLabel = mac ? "⌘+Option+P" : "Ctrl+Alt+P";
+    state.muteHotkeyLabel = mac ? "⌘+Option+M" : "Ctrl+Alt+M";
     await loadSettings();
     // Coming back from an automatic update: say so, and go back to the tray if
     // that is where the recorder was when it restarted itself.
@@ -1852,7 +2009,10 @@
     state.recordingsDir = await invoke("recordings_dir");
     wireEvents();
     try {
-      await invoke("register_hotkey", { combo: state.settings.hotkey || DEFAULT_HOTKEY });
+      await invoke("register_hotkeys", {
+        pause: state.settings.hotkey || DEFAULT_HOTKEY,
+        mute: state.settings.muteHotkey || DEFAULT_MUTE_HOTKEY,
+      });
     } catch (error) {
       log(`${error}`);
     }

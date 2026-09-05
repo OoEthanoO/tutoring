@@ -81,6 +81,11 @@
     if (desired.kind !== active.kind) {
       return false;
     }
+    // Muting drops the microphone from the recording, which means a new
+    // segment whatever is being captured.
+    if (Boolean(desired.muted) !== Boolean(active.muted)) {
+      return false;
+    }
     if (desired.kind !== "window") {
       return true;
     }

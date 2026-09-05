@@ -118,3 +118,34 @@ describe("targetsMatch", () => {
     expect(targetsMatch(at(100), null, settle)).toBe(false);
   });
 });
+
+describe("targetsMatch and muting", () => {
+  const win = (muted) => ({
+    kind: "window",
+    id: "7",
+    muted,
+    crop: { x: 0, y: 0, width: 800, height: 600 },
+  });
+
+  it("restarts the segment when the tutor mutes", () => {
+    expect(targetsMatch(win(true), win(false), { now: 9000 })).toBe(false);
+  });
+
+  it("restarts again when they unmute", () => {
+    expect(targetsMatch(win(false), win(true), { now: 9000 })).toBe(false);
+  });
+
+  it("leaves it alone when the mute has not changed", () => {
+    expect(targetsMatch(win(true), win(true), { now: 9000 })).toBe(true);
+  });
+
+  it("applies to display and frozen segments too", () => {
+    expect(targetsMatch({ kind: "display", muted: true }, { kind: "display", muted: false })).toBe(false);
+    expect(targetsMatch({ kind: "frozen", muted: true }, { kind: "frozen", muted: true })).toBe(true);
+  });
+
+  it("treats a missing mute flag as not muted", () => {
+    expect(targetsMatch({ kind: "display" }, { kind: "display", muted: false })).toBe(true);
+    expect(targetsMatch({ kind: "display" }, { kind: "display", muted: true })).toBe(false);
+  });
+});

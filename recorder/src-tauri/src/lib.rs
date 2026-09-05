@@ -186,13 +186,31 @@ fn main_window_visible(app: AppHandle) -> bool {
         .unwrap_or(false)
 }
 
+/// Register the pause and mute hotkeys. Each gets its own handler so the
+/// webview knows which one was pressed; an empty combo leaves it unregistered.
 #[tauri::command]
-fn register_hotkey(app: AppHandle, combo: String) -> Result<(), String> {
+fn register_hotkeys(app: AppHandle, pause: String, mute: String) -> Result<(), String> {
     let shortcuts = app.global_shortcut();
     shortcuts.unregister_all().map_err(|e| e.to_string())?;
-    shortcuts
-        .register(combo.as_str())
-        .map_err(|e| format!("Could not register the hotkey {combo}: {e}"))
+    if !pause.trim().is_empty() {
+        shortcuts
+            .on_shortcut(pause.as_str(), |app, _shortcut, event| {
+                if matches!(event.state(), ShortcutState::Pressed) {
+                    let _ = app.emit("hotkey", ());
+                }
+            })
+            .map_err(|e| format!("Could not register the pause hotkey {pause}: {e}"))?;
+    }
+    if !mute.trim().is_empty() {
+        shortcuts
+            .on_shortcut(mute.as_str(), |app, _shortcut, event| {
+                if matches!(event.state(), ShortcutState::Pressed) {
+                    let _ = app.emit("mute-hotkey", ());
+                }
+            })
+            .map_err(|e| format!("Could not register the mute hotkey {mute}: {e}"))?;
+    }
+    Ok(())
 }
 
 fn show_main(app: &AppHandle) {
@@ -225,15 +243,10 @@ pub fn run() {
             show_main(app);
         }))
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .plugin(
-            tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(|app, _shortcut, event| {
-                    if matches!(event.state(), ShortcutState::Pressed) {
-                        let _ = app.emit("hotkey", ());
-                    }
-                })
-                .build(),
-        )
+        // No global handler: each shortcut carries its own below, so pause and
+        // mute can be told apart (the plugin would fire a global handler for
+        // both).
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .manage(update::UpdateState::default())
         .manage(AppState {
             quit_locked: AtomicBool::new(false),
@@ -257,7 +270,7 @@ pub fn run() {
             show_main_window,
             hide_main_window,
             main_window_visible,
-            register_hotkey,
+            register_hotkeys,
             capture::probe_capture,
             capture::start_capture,
             capture::stop_capture,
