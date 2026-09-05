@@ -159,6 +159,8 @@ export default function AdminUserManager() {
   const [attendanceCourseId, setAttendanceCourseId] = useState<string | null>(null);
   const [isFixingClasses, setIsFixingClasses] = useState(false);
   const [isSyncingNames, setIsSyncingNames] = useState(false);
+  const [courseNeeds, setCourseNeeds] = useState("");
+  const [isSendingCourseNeeds, setIsSendingCourseNeeds] = useState(false);
   const [discordReminderRecipientMode, setDiscordReminderRecipientMode] =
     useState<DiscordEmailRecipientMode>("blacklist");
   const [discordReminderEmailList, setDiscordReminderEmailList] = useState("");
@@ -1422,6 +1424,46 @@ export default function AdminUserManager() {
     setIsFixingClasses(false);
   };
 
+  // Ask the tutors in Discord for someone to teach a course we have no tutor for.
+  const sendCourseNeeds = async () => {
+    const typed = courseNeeds.trim();
+    if (!typed || isSendingCourseNeeds) {
+      return;
+    }
+
+    setIsSendingCourseNeeds(true);
+    setStatus({ type: "idle", message: "" });
+
+    const response = await fetch("/api/admin/course-needs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ needs: typed }),
+    });
+
+    const payload = (await response.json().catch(() => null)) as
+      | { error?: string; needs?: string[]; channel?: string }
+      | null;
+
+    if (!response.ok) {
+      setStatus({
+        type: "error",
+        message: payload?.error ?? "Could not send the course needs.",
+      });
+      setIsSendingCourseNeeds(false);
+      return;
+    }
+
+    const count = payload?.needs?.length ?? 0;
+    setStatus({
+      type: "success",
+      message: `YanBot asked for ${count === 1 ? "a tutor" : `tutors for ${count} courses`} in #${
+        payload?.channel ?? "everyone"
+      }.`,
+    });
+    setCourseNeeds("");
+    setIsSendingCourseNeeds(false);
+  };
+
   const syncProfileNames = async () => {
     const confirmed = window.confirm(
       "Sync all profile names to denormalized fields in courses and enrollments?"
@@ -1532,6 +1574,36 @@ export default function AdminUserManager() {
 
       {activeTab === "tools" ? (
       <>
+      <div className="space-y-3 rounded-xl border border-[var(--border)] px-4 py-3">
+        <div className="space-y-1">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
+            Course needs
+          </p>
+          <p className="text-xs text-[var(--muted)]">
+            Courses we have no tutor for. YanBot announces them to the tutors and asks whoever can
+            teach one to send a course request. One course per line.
+          </p>
+        </div>
+        <textarea
+          value={courseNeeds}
+          onChange={(event) => setCourseNeeds(event.target.value)}
+          rows={3}
+          placeholder={"Grade 6 French\nGrade 9 Math"}
+          className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--foreground)] placeholder:text-[var(--muted)]"
+        />
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={sendCourseNeeds}
+            disabled={isSendingCourseNeeds || courseNeeds.trim().length === 0}
+            className="rounded-full border border-[var(--foreground)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            {isSendingCourseNeeds ? "Sending..." : "Send course needs"}
+          </button>
+          <span className="text-xs text-[var(--muted)]">Posted publicly, mentioning the tutor roles.</span>
+        </div>
+      </div>
+
       <div className="space-y-3 rounded-xl border border-[var(--border)] px-4 py-3">
         <div className="flex flex-wrap items-center gap-2">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">

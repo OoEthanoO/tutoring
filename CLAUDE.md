@@ -47,7 +47,10 @@ bearer (see the `cron:reminders:*` npm scripts).
   tutors/students — see `CLASS_PRESENCE_WARNINGS.md`; the timing rules are
   pure functions in `src/lib/tutorPresence.ts`.
 - `src/components/DashboardMenus.tsx` — home page tab router; admin panels
-  live in `AdminUserManager.tsx` (Admin → Manage accounts).
+  live in `AdminUserManager.tsx` (Admin → Manage accounts). Admin Tools
+  there includes "Course needs": the trio types courses nobody teaches yet and
+  YanBot asks the tutors in Discord to send course requests
+  (`src/lib/courseNeeds.ts`, `api/admin/course-needs`).
 - `src/lib/roles.ts` — role model: student/executive tiers up to founder;
   `founderEmails` is hardcoded there.
 - `recorder/` — **YanLearn Recorder**, the Tauri 2 desktop app (macOS +
