@@ -352,6 +352,16 @@ fn list_avfoundation(ffmpeg: &Path) -> (Vec<ScreenDevice>, Vec<AudioDevice>) {
     (screens, audio)
 }
 
+#[derive(Deserialize, Debug, Clone, Copy)]
+#[serde(rename_all = "camelCase")]
+pub struct CropRect {
+    /// Offset from the top-left of the recorded display, in capture pixels.
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+}
+
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct CaptureConfig {
@@ -376,6 +386,11 @@ pub struct CaptureConfig {
     /// One of the encoders reported by `probe_capture`.
     pub encoder: Option<String>,
     pub fps: Option<u32>,
+    /// Window mode: the part of the display to keep. None records all of it.
+    pub crop: Option<CropRect>,
+    /// Freeze mode: loop this still image instead of capturing the screen,
+    /// while the microphone and system audio keep recording.
+    pub still_path: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -385,6 +400,24 @@ pub struct CaptureStarted {
     pub encoder: String,
     pub system_audio: bool,
     pub warnings: Vec<String>,
+}
+
+fn even(value: u32) -> u32 {
+    (value & !1).max(2)
+}
+
+/// The fixed size every segment of a class is encoded at. Derived from the
+/// recorded display so display-mode output is unchanged; window and frozen
+/// segments are letterboxed into the same rectangle.
+fn canvas_for(config: &CaptureConfig, target_height: Option<u32>) -> (u32, u32) {
+    let height = target_height.unwrap_or(config.display_height).max(2);
+    let width = if config.display_height == 0 {
+        config.display_width
+    } else {
+        ((config.display_width as f64) * (height as f64) / (config.display_height as f64)).round()
+            as u32
+    };
+    (even(width), even(height))
 }
 
 /// 720p normally; 1080p for displays above 1440p so small text survives.
@@ -425,10 +458,24 @@ fn build_args(
     let mut args: Vec<String> = Vec::new();
     push_all(&mut args, &["-y", "-hide_banner", "-loglevel", "warning", "-nostats"]);
 
-    let scale_filter = target_height
-        .map(|height| format!("scale=-2:{height},"))
-        .unwrap_or_default();
     let fps_text = fps.to_string();
+    let (canvas_width, canvas_height) = canvas_for(config, target_height);
+
+    // Every segment of a class is encoded onto the same canvas whatever it
+    // captured — the whole display, a window of any shape, or a frozen still —
+    // so that they still concatenate at the end without re-encoding.
+    let fill = format!("scale={canvas_width}:{canvas_height},setsar=1,format=yuv420p");
+    let fit = format!(
+        "scale={canvas_width}:{canvas_height}:force_original_aspect_ratio=decrease,pad={canvas_width}:{canvas_height}:(ow-iw)/2:(oh-ih)/2:black,setsar=1,format=yuv420p"
+    );
+    let crop_filter = config
+        .crop
+        .as_ref()
+        .map(|crop| format!("crop={}:{}:{}:{},", crop.width, crop.height, crop.x, crop.y))
+        .unwrap_or_default();
+    // A cropped window rarely matches the display's shape, so it is letterboxed
+    // rather than stretched.
+    let screen_filter = if config.crop.is_some() { fit.clone() } else { fill.clone() };
 
     let mut filter_parts: Vec<String> = Vec::new();
     let mut next_input = 0usize;
@@ -437,34 +484,112 @@ fn build_args(
     // Applied with -vf when the video comes from a real input (not a filter source).
     let mut video_filter: Option<String> = None;
 
-    if cfg!(windows) {
+    let microphone = config
+        .microphone_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|id| !id.is_empty());
+    let still = config
+        .still_path
+        .as_deref()
+        .map(str::trim)
+        .filter(|path| !path.is_empty());
+
+    if let Some(still) = still {
+        // Frozen picture: the tutor is on a window they did not share, so the
+        // video holds the last frame of the last shared window while the
+        // microphone and system audio keep recording. `-re` paces the looped
+        // image to real time so it cannot run ahead of the live audio.
+        if Path::new(still).exists() {
+            push_all(
+                &mut args,
+                &["-re", "-loop", "1", "-framerate", &fps_text, "-i", still],
+            );
+        } else {
+            // Nothing shared has been recorded yet (or the still could not be
+            // made): hold a black picture rather than failing to record at all.
+            push_all(
+                &mut args,
+                &[
+                    "-re",
+                    "-f", "lavfi",
+                    "-i", &format!("color=c=black:s={canvas_width}x{canvas_height}:r={fps_text}"),
+                ],
+            );
+        }
+        video_map = format!("{next_input}:v");
+        next_input += 1;
+        video_filter = Some(fit.clone());
+
+        if let Some(mic) = microphone {
+            if cfg!(windows) {
+                push_all(
+                    &mut args,
+                    &[
+                        "-f", "dshow",
+                        "-thread_queue_size", "1024",
+                        "-rtbufsize", "64M",
+                        "-i", &format!("audio={mic}"),
+                    ],
+                );
+            } else {
+                // No video device on this input: the picture comes from the still.
+                push_all(
+                    &mut args,
+                    &[
+                        "-f", "avfoundation",
+                        "-thread_queue_size", "512",
+                        "-i", &format!(":{mic}"),
+                    ],
+                );
+            }
+            audio_inputs.push(next_input);
+            next_input += 1;
+        }
+    } else if cfg!(windows) {
         if backend == "ddagrab" {
             // Desktop Duplication: the frames stay on the GPU until hwdownload,
             // which is far cheaper than GDI for the same frame rate.
             push_all(&mut args, &["-init_hw_device", "d3d11va"]);
             filter_parts.push(format!(
-                "ddagrab=framerate={fps_text}:draw_mouse=1,hwdownload,format=bgra,{scale_filter}format=yuv420p[v]"
+                "ddagrab=framerate={fps_text}:draw_mouse=1,hwdownload,format=bgra,{crop_filter}{screen_filter}[v]"
             ));
             video_map = "[v]".to_string();
         } else {
+            // gdigrab can grab the window's rectangle straight from the desktop,
+            // which is cheaper than grabbing the whole display and cropping it.
+            let (grab_x, grab_y, grab_width, grab_height) = match config.crop.as_ref() {
+                Some(crop) => (
+                    config.display_x + crop.x,
+                    config.display_y + crop.y,
+                    crop.width,
+                    crop.height,
+                ),
+                None => (
+                    config.display_x,
+                    config.display_y,
+                    config.display_width,
+                    config.display_height,
+                ),
+            };
             push_all(
                 &mut args,
                 &[
                     "-f", "gdigrab",
                     "-framerate", &fps_text,
                     "-draw_mouse", "1",
-                    "-offset_x", &config.display_x.to_string(),
-                    "-offset_y", &config.display_y.to_string(),
-                    "-video_size", &format!("{}x{}", config.display_width, config.display_height),
+                    "-offset_x", &grab_x.to_string(),
+                    "-offset_y", &grab_y.to_string(),
+                    "-video_size", &format!("{grab_width}x{grab_height}"),
                     "-thread_queue_size", "512",
                     "-i", "desktop",
                 ],
             );
             video_map = format!("{next_input}:v");
             next_input += 1;
-            video_filter = Some(format!("{scale_filter}format=yuv420p"));
+            video_filter = Some(screen_filter.clone());
         }
-        if let Some(mic) = config.microphone_id.as_deref().filter(|id| !id.is_empty()) {
+        if let Some(mic) = microphone {
             push_all(
                 &mut args,
                 &[
@@ -481,11 +606,7 @@ fn build_args(
         let screen = config
             .screen_device_index
             .ok_or("No screen capture device was chosen.")?;
-        let mic = config
-            .microphone_id
-            .clone()
-            .filter(|id| !id.is_empty())
-            .unwrap_or_else(|| "none".to_string());
+        let mic = microphone.unwrap_or("none");
         push_all(
             &mut args,
             &[
@@ -501,7 +622,7 @@ fn build_args(
             audio_inputs.push(next_input);
         }
         next_input += 1;
-        video_filter = Some(format!("{scale_filter}format=yuv420p"));
+        video_filter = Some(format!("{crop_filter}{screen_filter}"));
     }
 
     if let Some(port) = system_audio_port {
@@ -806,4 +927,66 @@ fn concat_blocking(segments: Vec<String>, output: String) -> Result<u64, String>
     std::fs::metadata(&output)
         .map(|meta| meta.len())
         .map_err(|e| e.to_string())
+}
+
+/// Pull the last frame of a finished segment out as a JPEG, for the frozen
+/// picture shown while the tutor is on a window they did not share.
+///
+/// Taken from the file rather than from the screen on purpose: by the time we
+/// notice the focus change, the window that took focus may already be covering
+/// the one we were recording, and grabbing the screen would capture exactly
+/// what the tutor asked us not to show.
+#[tauri::command]
+pub async fn extract_last_frame(segment: String, output: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || extract_last_frame_blocking(segment, output))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+fn extract_last_frame_blocking(segment: String, output: String) -> Result<(), String> {
+    let ffmpeg = sidecar_path("ffmpeg")?;
+    let _ = std::fs::remove_file(&output);
+
+    // Seeking from the end is cheap; a segment shorter than that seek produces
+    // nothing, so fall back to decoding it and keeping the last frame written.
+    let attempts: [Vec<&str>; 2] = [
+        vec![
+            "-y", "-hide_banner", "-loglevel", "error",
+            "-sseof", "-1.5", "-i", &segment,
+            // No frame limit: -update rewrites the same file for every frame,
+            // so what survives is the last one.
+            "-update", "1", "-q:v", "3", &output,
+        ],
+        vec![
+            "-y", "-hide_banner", "-loglevel", "error",
+            "-i", &segment,
+            "-update", "1", "-q:v", "3", &output,
+        ],
+    ];
+
+    let mut last_error = String::new();
+    for args in attempts {
+        let result = command(&ffmpeg)
+            .args(&args)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .output();
+        match result {
+            Ok(done) => {
+                let wrote = std::fs::metadata(&output).map(|meta| meta.len()).unwrap_or(0);
+                if done.status.success() && wrote > 0 {
+                    return Ok(());
+                }
+                last_error = String::from_utf8_lossy(&done.stderr).trim().to_string();
+            }
+            Err(err) => last_error = err.to_string(),
+        }
+        let _ = std::fs::remove_file(&output);
+    }
+    Err(if last_error.is_empty() {
+        "ffmpeg produced no still frame.".to_string()
+    } else {
+        last_error
+    })
 }

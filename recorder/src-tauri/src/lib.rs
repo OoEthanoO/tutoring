@@ -10,6 +10,7 @@ mod overlay;
 mod sysaudio;
 mod update;
 mod upload;
+mod windowlist;
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -262,10 +263,13 @@ pub fn run() {
             capture::stop_capture,
             capture::capture_status,
             capture::concat_segments,
+            capture::extract_last_frame,
             overlay::set_overlay,
             overlay::get_overlay_state,
             overlay::list_displays,
             overlay::identify_displays,
+            windowlist::list_windows,
+            windowlist::focused_window,
             upload::upload_file,
             update::check_update,
             update::download_update,

@@ -319,6 +319,16 @@ button:disabled {
   border-color: var(--fg);
 }
 
+.option.check-option {
+  gap: 10px;
+  cursor: pointer;
+}
+
+.option.check-option input {
+  margin: 0;
+  flex: none;
+}
+
 .option .num {
   width: 26px;
   height: 26px;

@@ -16,9 +16,10 @@ bearer (see the `cron:reminders:*` npm scripts).
   creates `src/generated/commits.json` — typecheck fails until it exists).
 - Typecheck: `./node_modules/.bin/tsc --noEmit`
 - Lint: `./node_modules/.bin/eslint src`
-- Tests: `npm test` (vitest; unit tests for pure logic in `src/lib/` —
-  discordSync helpers, live-channel overwrites, roles. No integration/UI
-  tests).
+- Tests: `npm test` (vitest; unit tests for pure logic — `src/lib/`
+  (discordSync helpers, live-channel overwrites, roles, recorder CORS) and
+  `recorder/src/windowmath.js` (window matching / crop maths). No
+  integration/UI tests).
 - Local dev needs `.env.local` (Supabase URL/keys, Discord bot token); without
   it the app cannot run against data.
 - Recorder app: `cd recorder && npm install && node scripts/fetch-ffmpeg.mjs &&
@@ -64,6 +65,9 @@ bearer (see the `cron:reminders:*` npm scripts).
   then update themselves from that release's signed `latest.json`, but only
   while no class is armed, recording, or uploading (see "Automatic updates" in
   `RECORDER.md`).
+  Tutors can record the whole display or only windows they tick, in which case
+  only the focused shared window is recorded and anything else freezes the
+  picture (`windowlist.rs` + `crop`/`stillPath` in `capture.rs`).
 
 ## Conventions
 

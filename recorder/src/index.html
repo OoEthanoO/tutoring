@@ -82,8 +82,24 @@
       <h1>Devices</h1>
       <p class="muted">These are used for every class. When more than one is available you must choose.</p>
 
+      <h2>What to record</h2>
+      <div class="option-list">
+        <label class="check"><input type="radio" name="capture-mode" id="mode-display" value="display" /> The whole display</label>
+        <label class="check"><input type="radio" name="capture-mode" id="mode-windows" value="windows" /> Only the windows I choose</label>
+      </div>
+
       <h2>Display to record <button type="button" class="link" id="identify-button">Identify</button></h2>
       <div id="display-list" class="option-list"></div>
+
+      <div id="window-section" hidden>
+        <h2>Windows you share <button type="button" class="link" id="windows-refresh">Refresh</button></h2>
+        <p class="muted small">
+          Only the window you are working in is recorded, and only if it is ticked here. On any
+          other window the picture freezes on the last shared window — your microphone and the
+          class audio keep recording.
+        </p>
+        <div id="window-list" class="option-list"></div>
+      </div>
 
       <h2>Microphone</h2>
       <select id="mic-select"></select>
@@ -134,6 +150,7 @@
       </div>
     </div>
 
+    <script src="windowmath.js"></script>
     <script src="main.js"></script>
   </body>
 </html>

@@ -152,6 +152,10 @@ export default function HelpMenu() {
                             and sign in with your YanLearn account. On macOS, allow <span className="font-semibold">Screen Recording</span> and <span className="font-semibold">Microphone</span> access when asked. You only ever download it once: the app updates itself between classes.
                         </li>
                         <li>If you have more than one display, microphone, or speaker, the app asks you to choose which ones to record before each class.</li>
+                        <li>
+                            By default the app records your whole display. In <span className="font-semibold">Devices → What to record</span> you can instead pick
+                            <span className="font-semibold"> only the windows you tick</span>. Then only the window you are actually working in is recorded, and only if you ticked it — on any other window the picture freezes on the last shared window and a banner tells you so, while your microphone and the class audio keep recording.
+                        </li>
                         <li>Have the app open <span className="font-semibold">at least 5 minutes before</span> the class starts. From then until the class is uploaded it cannot be closed.</li>
                         <li>Recording starts by itself at the start time whenever you are in the class voice channel. It pauses when you leave the call and resumes the moment you rejoin.</li>
                         <li>Press <span className="font-semibold">Ctrl+Alt+P</span> (macOS: <span className="font-semibold">⌘+Option+P</span>) to pause. A pause while you are in the call shows a large reminder until you resume; a pause while you are outside the call is a <span className="font-semibold">forced pause</span> and recording will not resume by itself when you rejoin.</li>

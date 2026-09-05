@@ -32,6 +32,13 @@
   const CRASH_FALLBACK_SECONDS = 4;
   const MAX_CAPTURE_FAILURES = 6;
   const RECORDING_FPS = 10;
+  // How often the focused window is checked in window mode. Short, because
+  // everything after a focus change is a leak of a window nobody shared.
+  const FOCUS_POLL_MS = 250;
+  // A window being dragged or resized is left alone for this long.
+  const GEOMETRY_SETTLE_MS = 1200;
+  // Smaller than this and there is nothing worth recording.
+  const MIN_WINDOW_SIDE = 120;
   const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
   // Never restart for an update this close to the next class.
   const UPDATE_QUIET_WINDOW_MS = 20 * 60 * 1000;
@@ -41,6 +48,7 @@
     settings: null,
     probe: null,
     displays: [],
+    windows: [],
     tick: null,
     clockOffsetMs: 0,
     online: false,
@@ -50,6 +58,7 @@
     recordingsDir: "",
     timer: null,
     tickBusy: false,
+    focusBusy: false,
     evaluating: false,
     reevaluate: false,
     deviceChoiceNeeded: false,
@@ -155,6 +164,8 @@
     deviceId: crypto.randomUUID(),
     hotkey: DEFAULT_HOTKEY,
     display: null,
+    captureMode: "display",
+    sharedWindows: [],
     microphoneId: null,
     microphoneName: null,
     outputId: null,
@@ -196,6 +207,7 @@
       log(`Could not probe capture devices: ${error}`);
     }
     autoSelectDevices();
+    await refreshWindows();
     await saveSettings();
     renderDevices();
   };
@@ -299,6 +311,9 @@
     if (state.settings.systemAudio && outputs.length > 1 && !chosenOutput()) {
       problems.push("Choose which speaker's audio to record.");
     }
+    if (state.settings.captureMode === "windows" && sharedWindows().length === 0) {
+      problems.push("Choose at least one window to share.");
+    }
     if (state.info?.platform === "macos" && chosenDisplay() && screenDeviceIndex(chosenDisplay()) === null) {
       problems.push("Screen capture device not found. Allow Screen Recording for YanLearn Recorder in System Settings, then refresh.");
     }
@@ -306,6 +321,159 @@
   };
 
   const devicesReady = () => deviceProblems().length === 0;
+
+  // --- Windows to record ---------------------------------------------------------
+
+  // In window mode the recorder shows the window the tutor is working in, and
+  // only if they ticked it. Anything else — another app, the desktop, the
+  // recorder itself — freezes the picture on the last shared window while the
+  // microphone and system audio keep recording.
+
+  const stillPath = () => (state.session ? `${state.session.dir}/still.jpg` : "");
+
+  const sharedWindows = () => state.settings.sharedWindows || [];
+
+  const windowMath = window.RecorderWindowMath;
+
+  const isSharedWindow = (win) => windowMath.matchesSharedWindow(win, sharedWindows());
+
+  /** The window's rectangle in the recorded display's capture pixels, or null
+   *  when it is not usefully on that display. */
+  const cropForWindow = (win) =>
+    windowMath.cropWindowToDisplay(win, chosenDisplay(), MIN_WINDOW_SIDE);
+
+  /** Keep stored handles fresh while the app runs, so a window that was
+   *  reopened is still recognised without the tutor re-picking it. */
+  const reconcileSharedWindows = () => {
+    const shared = sharedWindows();
+    if (shared.length === 0) {
+      return;
+    }
+    let changed = false;
+    for (const entry of shared) {
+      const stillOpen = state.windows.some((win) => String(win.id) === String(entry.id));
+      if (stillOpen) {
+        continue;
+      }
+      const match = state.windows.find((win) => win.app === entry.app && win.title === entry.title);
+      if (match) {
+        entry.id = match.id;
+        changed = true;
+      }
+    }
+    if (changed) {
+      saveSettings();
+    }
+  };
+
+  /** What the running ffmpeg should be capturing right now. */
+  const desiredTarget = () => {
+    const session = state.session;
+    if (!session) {
+      return null;
+    }
+    if (state.settings.captureMode !== "windows") {
+      return { kind: "display" };
+    }
+    // undefined means the focused window has not been looked up yet: start
+    // nothing rather than guess.
+    if (session.focus === undefined) {
+      return null;
+    }
+    const focus = session.focus;
+    if (focus && isSharedWindow(focus)) {
+      const crop = cropForWindow(focus);
+      if (crop) {
+        return { kind: "window", id: String(focus.id), crop, title: focus.title, app: focus.app };
+      }
+    }
+    return { kind: "frozen" };
+  };
+
+  const targetSatisfied = (desired, active) =>
+    windowMath.targetsMatch(desired, active, {
+      driftTolerance: 3,
+      settleMs: GEOMETRY_SETTLE_MS,
+      lastChangeMs: state.session?.lastTargetChangeMs || 0,
+      now: Date.now(),
+    });
+
+  const describeTarget = (target) => {
+    if (!target) {
+      return "nothing";
+    }
+    if (target.kind === "display") {
+      return "the whole display";
+    }
+    if (target.kind === "frozen") {
+      return "a frozen picture";
+    }
+    return target.title || target.app || "a window";
+  };
+
+  /** Freeze on the last frame of the segment that just ended. Taken from the
+   *  file, not the screen: by now the window that took focus may already be
+   *  covering the one we were recording. */
+  const captureStill = async (segmentPath) => {
+    if (!segmentPath || !state.session) {
+      return;
+    }
+    try {
+      await invoke("extract_last_frame", { segment: segmentPath, output: stillPath() });
+    } catch (error) {
+      // The recorder falls back to a black picture when there is no still.
+      log(`Could not freeze the last shared frame: ${error}`);
+    }
+  };
+
+  const switchTarget = async (desired) => {
+    const session = state.session;
+    if (!session) {
+      return;
+    }
+    const previous = session.activeTarget;
+    const stopped = await stopSegment();
+    if (desired && desired.kind === "frozen" && previous && previous.kind !== "frozen") {
+      await captureStill(stopped?.path);
+    }
+    if (desired) {
+      await startSegment(desired);
+    }
+  };
+
+  // Polled rather than pushed: a focus change has to be noticed quickly, but
+  // the platforms disagree about how to subscribe to one, and asking is cheap.
+  const focusTick = async () => {
+    if (state.focusBusy || !state.session || state.settings?.captureMode !== "windows") {
+      return;
+    }
+    const session = state.session;
+    if (session.finalizing || !(session.phase === "live" || session.phase === "after_end")) {
+      return;
+    }
+    // Held across the whole tick: switching segments takes longer than the poll
+    // interval, and ticks must not pile up behind it.
+    state.focusBusy = true;
+    try {
+      try {
+        session.focus = (await invoke("focused_window")) || null;
+      } catch (error) {
+        // Never keep recording a window we can no longer identify.
+        session.focus = null;
+      }
+      // Re-decide when the focused window changes, or when the one being
+      // recorded has drifted far enough to matter.
+      const desired = desiredTarget();
+      const key = desired ? desired.kind + ":" + (desired.id || "") : "none";
+      const drifted = session.capturing && !targetSatisfied(desired, session.activeTarget);
+      if (key !== session.lastFocusKey || drifted) {
+        session.lastFocusKey = key;
+        await evaluate();
+      }
+    } finally {
+      state.focusBusy = false;
+    }
+  };
 
   // --- Sessions ----------------------------------------------------------------
 
@@ -393,10 +561,10 @@
     return "libx264";
   };
 
-  const startSegment = async () => {
+  const startSegment = async (target) => {
     const session = state.session;
     const display = chosenDisplay();
-    if (!session || !display) {
+    if (!session || !display || !target) {
       return;
     }
     if (Date.now() < session.nextCaptureAttemptMs) {
@@ -418,11 +586,15 @@
       backend: state.settings.captureBackend || null,
       encoder: chosenEncoder(),
       fps: RECORDING_FPS,
+      crop: target.kind === "window" ? target.crop : null,
+      stillPath: target.kind === "frozen" ? stillPath() : null,
     };
     try {
       const started = await invoke("start_capture", { config });
       session.capturing = true;
-      session.currentSegment = { path, startedAtMs: serverNow() };
+      session.activeTarget = target;
+      session.lastTargetChangeMs = Date.now();
+      session.currentSegment = { path, startedAtMs: serverNow(), kind: target.kind };
       session.currentEncoder = started.encoder;
       session.currentBackend = started.backend;
       session.systemAudioActive = started.systemAudio;
@@ -432,7 +604,13 @@
       for (const warning of started.warnings || []) {
         log(warning);
       }
-      log(`Recording started (${started.backend}, ${started.encoder}${started.systemAudio ? ", system audio" : ""}).`);
+      if (target.kind === "frozen") {
+        log("The window you are on is not shared: the picture is frozen, audio keeps recording.");
+      } else {
+        log(
+          `Recording ${describeTarget(target)} (${started.backend}, ${started.encoder}${started.systemAudio ? ", system audio" : ""}).`
+        );
+      }
       await persistMeta();
     } catch (error) {
       session.captureFailures += 1;
@@ -448,7 +626,7 @@
   const stopSegment = async () => {
     const session = state.session;
     if (!session) {
-      return;
+      return null;
     }
     let stopped = { sizeBytes: 0, seconds: 0 };
     try {
@@ -457,15 +635,19 @@
       log(`Could not stop recording cleanly: ${error}`);
     }
     session.capturing = false;
+    session.activeTarget = null;
+    let recorded = null;
     if (session.currentSegment) {
       const segment = { ...session.currentSegment, endedAtMs: serverNow(), sizeBytes: stopped.sizeBytes || 0 };
       if (segment.sizeBytes > 0) {
         session.segments.push(segment);
+        recorded = segment;
       }
       session.currentSegment = null;
     }
     log(`Recording paused/stopped (${Math.round(stopped.seconds || 0)} s).`);
     await persistMeta();
+    return recorded;
   };
 
   /** ffmpeg exited on its own: keep what it wrote, then work out why. */
@@ -923,10 +1105,15 @@
 
     const wantCapture =
       session.inCall && session.pauseMode === "none" && ready && !session.captureDisabled;
-    if (wantCapture && !session.capturing) {
-      await startSegment();
-    } else if (!wantCapture && session.capturing) {
-      await stopSegment();
+    // In window mode this also switches between windows, and to the frozen
+    // picture when the tutor moves to a window they did not share.
+    const desired = wantCapture ? desiredTarget() : null;
+    if (session.capturing) {
+      if (!targetSatisfied(desired, session.activeTarget)) {
+        await switchTarget(desired);
+      }
+    } else if (desired) {
+      await startSegment(desired);
     }
 
     if (session.inCall) {
@@ -1002,6 +1189,16 @@
         return { mode: "attention", title: "Choose your devices in YanLearn Recorder", detail: `Class starts at ${formatClock(session.startsAtMs)}.`, blocking: session.phase === "armed", displayIndex };
       }
       return { mode: "armed", title: "Recorder ready — class starts in {countdown}", detail: "Recording starts automatically once you are in the voice channel.", blocking: false, displayIndex, countdownToMs: session.startsAtMs - state.clockOffsetMs };
+    }
+    if (session.capturing && session.activeTarget?.kind === "frozen") {
+      return {
+        mode: "attention",
+        title: "THIS WINDOW IS NOT BEING RECORDED",
+        detail:
+          "Students see the last shared window, frozen. Your microphone is still recording. Go back to a window you shared to carry on.",
+        blocking: true,
+        displayIndex,
+      };
     }
     if (session.capturing) {
       return {
@@ -1285,6 +1482,10 @@
       text = "Armed";
       cls = "armed";
       timer.textContent = `starts in ${formatCountdown(session.startsAtMs)}`;
+    } else if (session.capturing && session.activeTarget?.kind === "frozen") {
+      text = "Audio recording — picture frozen";
+      cls = "paused";
+      timer.textContent = session.recordingStartedAtMs ? formatElapsed(session.recordingStartedAtMs - state.clockOffsetMs) : "";
     } else if (session.capturing) {
       text = "Recording";
       cls = "recording";
@@ -1318,6 +1519,7 @@
 
   const renderDevices = () => {
     const settings = state.settings;
+    renderWindowChoices();
     const list = $("display-list");
     list.innerHTML = "";
     const current = chosenDisplay();
@@ -1390,6 +1592,70 @@
     $("probe-info").textContent = probe
       ? `${probe.ffmpegOk ? probe.ffmpegVersion : "ffmpeg missing"} · encoders: ${(probe.encoders || []).join(", ") || "none"}`
       : "";
+  };
+
+  const renderWindowChoices = () => {
+    const settings = state.settings;
+    const windowMode = settings.captureMode === "windows";
+    $("mode-display").checked = !windowMode;
+    $("mode-windows").checked = windowMode;
+    $("window-section").hidden = !windowMode;
+    if (!windowMode) {
+      return;
+    }
+    const list = $("window-list");
+    list.innerHTML = "";
+    if (state.windows.length === 0) {
+      const empty = document.createElement("p");
+      empty.className = "muted small";
+      empty.textContent = "No windows were found. Open the apps you teach with, then press Refresh.";
+      list.appendChild(empty);
+      return;
+    }
+    for (const win of state.windows) {
+      const option = document.createElement("label");
+      option.className = "option check-option";
+      const box = document.createElement("input");
+      box.type = "checkbox";
+      box.checked = isSharedWindow(win);
+      box.addEventListener("change", () => toggleSharedWindow(win, box.checked));
+      const text = document.createElement("div");
+      const name = document.createElement("div");
+      name.className = "name";
+      name.textContent = win.title || win.app || "Untitled window";
+      const meta = document.createElement("div");
+      meta.className = "meta";
+      meta.textContent = win.title ? win.app : "";
+      text.appendChild(name);
+      text.appendChild(meta);
+      option.appendChild(box);
+      option.appendChild(text);
+      list.appendChild(option);
+    }
+  };
+
+  const toggleSharedWindow = (win, shared) => {
+    const kept = sharedWindows().filter(
+      (entry) => !(String(entry.id) === String(win.id) || (entry.app === win.app && entry.title === win.title))
+    );
+    if (shared) {
+      kept.push({ id: win.id, app: win.app, title: win.title });
+    }
+    state.settings.sharedWindows = kept;
+    saveSettings();
+    renderWindowChoices();
+    render();
+  };
+
+  const refreshWindows = async () => {
+    try {
+      state.windows = await invoke("list_windows");
+      reconcileSharedWindows();
+    } catch (error) {
+      state.windows = [];
+      log(`Could not list open windows: ${error}`);
+    }
+    renderWindowChoices();
   };
 
   // --- Wiring --------------------------------------------------------------------------------
@@ -1466,6 +1732,22 @@
       await refreshDevices();
     });
     $("devices-refresh").addEventListener("click", refreshDevices);
+    $("windows-refresh").addEventListener("click", refreshWindows);
+    for (const id of ["mode-display", "mode-windows"]) {
+      $(id).addEventListener("change", async (event) => {
+        if (!event.target.checked) {
+          return;
+        }
+        state.settings.captureMode = event.target.value;
+        await saveSettings();
+        if (event.target.value === "windows") {
+          await refreshWindows();
+        }
+        renderWindowChoices();
+        render();
+        await evaluate();
+      });
+    }
     $("identify-button").addEventListener("click", () => invoke("identify_displays").catch((error) => log(`${error}`)));
     $("devices-save").addEventListener("click", async () => {
       await saveSettings();
@@ -1527,6 +1809,12 @@
     listen("hidden-to-tray", () => {
       log("YanLearn Recorder keeps running in the tray / menu bar.");
     });
+
+    // Window mode has to notice a focus change quickly: everything after one
+    // is a window the tutor did not agree to share.
+    setInterval(() => {
+      focusTick().catch(() => {});
+    }, FOCUS_POLL_MS);
 
     // A cheap once-a-second refresh keeps countdowns and timers moving.
     setInterval(() => {

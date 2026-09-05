@@ -18,6 +18,9 @@ recordings. **Mandatory for every class from 2026‑09‑09.**
    between classes — there is never a second download.
 2. If they have more than one display, microphone, or speaker, the app makes
    them choose which to record (with an "Identify" flash on each display).
+   They can also switch from recording the whole display to recording only
+   the windows they tick — see "Recording windows instead of the whole
+   display".
 3. From **15 min before** a class the app pre‑arms; from **5 min before** it is
    locked — closing the window only hides it, and Quit/Cmd+Q are refused until
    the recording has been uploaded.
@@ -70,6 +73,7 @@ captures the mix regardless of output device — so macOS has no speaker choice.
 ```
 recorder/                      Tauri 2 app ("YanLearn Recorder")
   src/main.js                  state machine + UI (vanilla JS, no bundler)
+  src/windowmath.js            window matching + crop maths (pure, unit tested)
   src/overlay.html             the always-on-top status overlay / display identify flash
   src-tauri/src/lib.rs         tray, quit lock, hotkey, settings/files, command wiring
   src-tauri/src/capture.rs     ffmpeg sidecar: device probe, args, start/stop, concat
@@ -77,6 +81,7 @@ recorder/                      Tauri 2 app ("YanLearn Recorder")
   src-tauri/src/overlay.rs     overlay + identify windows, display list
   src-tauri/src/upload.rs      streaming PUT to the signed storage URL
   src-tauri/src/update.rs      self-update: check, verify, install, restart
+  src-tauri/src/windowlist.rs  open windows + which one has focus (Win32 / CoreGraphics)
   sysaudio/main.swift          macOS ScreenCaptureKit system-audio helper
   scripts/fetch-ffmpeg.mjs     downloads the static ffmpeg sidecar per target
 .github/workflows/recorder-release.yml   builds mac arm64 / mac x64 / win x64 on `recorder-v*` tags
@@ -167,6 +172,67 @@ uploads failed).
    Discord vars are the existing ones.
 4. `npm install` (adds `@aws-sdk/client-s3` and `@aws-sdk/s3-request-presigner`),
    then push to `master` and run `npm test` / `tsc` — see the status note above.
+
+## Recording windows instead of the whole display
+
+In **Devices → What to record** a tutor can switch from "the whole display" to
+"only the windows I choose" and tick the windows they are willing to share.
+From then on the recorder shows **the window they are working in, and only if
+it is ticked**. On anything else — another app, the desktop, the recorder
+itself — the picture freezes on the last shared window while the microphone and
+the class audio keep recording, and a banner on the recorded display says
+`THIS WINDOW IS NOT BEING RECORDED`.
+
+How it works, and why it was built this way:
+
+* **Cropping, not per-window capture.** The recorder captures the display as it
+  always did and crops to the focused window's rectangle (`crop` in
+  `CaptureConfig`). Because only the *focused* window is ever recorded, and a
+  focused window is the top-most one, the crop shows that window rather than
+  what is behind it. True per-window capture (Windows.Graphics.Capture,
+  ScreenCaptureKit) would be a whole second capture stack for the same result
+  in the normal case — see the limitations below for where the difference bites.
+* **One canvas for every segment.** A class is a series of segments stitched
+  together without re-encoding, which only works if they all share a size. Every
+  segment — display, window, or frozen — is now scaled and letterboxed onto a
+  canvas derived from the recorded display (`canvas_for` in `capture.rs`), so a
+  class can switch between windows of different shapes and still concatenate.
+* **The freeze is the last recorded frame**, pulled out of the segment that just
+  ended (`extract_last_frame`) rather than grabbed from the screen: by the time
+  a focus change is noticed, the window that took focus may already be covering
+  the one being recorded, and grabbing the screen would capture exactly what the
+  tutor asked to keep private. With nothing recorded yet the picture is black.
+* **Focus is polled every 250 ms** (`FOCUS_POLL_MS`) rather than pushed —
+  Windows and macOS disagree about how to subscribe, and asking is cheap.
+  `windowlist.rs` declares the dozen platform calls it needs by hand rather than
+  adding a bindings crate: `EnumWindows`/`GetForegroundWindow` on Windows, and
+  `CGWindowListCopyWindowInfo` on macOS, where the front-to-back ordering
+  identifies the focused window without asking for Accessibility permission.
+* **Windows are matched by handle**, falling back to the application and title
+  they had when they were picked, because handles do not survive closing a
+  window or restarting the recorder.
+* If the focused window cannot be identified at all, it counts as **not
+  shared**. Every failure in this feature has to fail towards not recording.
+
+### Limitations of window mode
+
+* **A focus change is not instant.** Between the tutor switching windows and
+  ffmpeg stopping (~250 ms of polling plus shutdown), a few frames of the newly
+  focused window can land in the recording if it overlaps the rectangle being
+  recorded. Cropping cannot close that gap; only real per-window capture can.
+  Tutors with something genuinely sensitive should keep it on another display.
+* Anything drawn **on top of** the shared window is recorded with it —
+  notification toasts, other always-on-top windows. The recorder's own overlay
+  is content-protected on Windows and so stays out of the recording.
+* Moving or resizing a shared window restarts the segment, at most once every
+  1.2 s (`GEOMETRY_SETTLE_MS`); while it is being dragged the crop is stale, so
+  the edges of whatever is behind it can show.
+* Each switch restarts ffmpeg, which costs a fraction of a second of audio.
+* A window that was reopened with a **different title** is no longer recognised
+  and counts as not shared until the tutor ticks it again.
+* Mixed-DPI multi-monitor setups on macOS convert window bounds with the
+  recorded display's scale factor, which is wrong if the window is on a display
+  with a different one.
 
 ## Automatic updates
 
