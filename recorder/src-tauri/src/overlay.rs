@@ -102,8 +102,13 @@ fn make_overlay_window(
 }
 
 /// `state`: { mode, title, detail, blocking, displayIndex }. mode "hidden" hides it.
+///
+/// Async on purpose: this builds a window the first time it is called, and on
+/// Windows building one inside a *synchronous* command deadlocks against the
+/// WebView2 message loop — which meant the overlay never appeared and the
+/// caller never got its promise back.
 #[tauri::command]
-pub fn set_overlay(app: AppHandle, state: serde_json::Value) -> Result<(), String> {
+pub async fn set_overlay(app: AppHandle, state: serde_json::Value) -> Result<(), String> {
     let app_state = app.state::<AppState>();
     if let Ok(mut last) = app_state.overlay.lock() {
         *last = state.clone();
@@ -168,8 +173,10 @@ pub fn get_overlay_state(app: AppHandle) -> serde_json::Value {
 
 /// Flash a big number on every display for a few seconds so the tutor can tell
 /// which entry in the display picker is which.
+///
+/// Async for the same reason as `set_overlay`: it creates windows.
 #[tauri::command]
-pub fn identify_displays(app: AppHandle) -> Result<(), String> {
+pub async fn identify_displays(app: AppHandle) -> Result<(), String> {
     let monitors = app.available_monitors().map_err(|e| e.to_string())?;
     for (index, monitor) in monitors.iter().enumerate() {
         let label = format!("identify-{index}");

@@ -1087,9 +1087,9 @@
       await updateOverlay();
       return;
     }
-    await setQuitLock(
-      session.test ? uploadsPending : session.phase !== "pre_arm" || session.finalizing || uploadsPending
-    );
+    // Test mode locks too: being unable to quit is part of what a class feels
+    // like, and "End test" always releases it.
+    await setQuitLock(session.phase !== "pre_arm" || session.finalizing || uploadsPending);
     if (session.finalizing) {
       render();
       await updateOverlay();
@@ -1276,8 +1276,6 @@
     const session = state.session;
     const hotkey = state.hotkeyLabel;
     const muteHotkey = state.muteHotkeyLabel;
-    // Every overlay says so during a dry run, so nobody mistakes it for a class.
-    const testNote = session?.test ? "Test mode — nothing is being recorded." : "";
     const displayIndex = chosenDisplay()?.index ?? null;
     const uploading = state.uploads.find((upload) => upload.uploading);
     if (uploading) {
@@ -1300,13 +1298,12 @@
       return { mode: "armed", title: "Recorder ready — class starts in {countdown}", detail: "Recording starts automatically once you are in the voice channel.", blocking: false, displayIndex, countdownToMs: session.startsAtMs - state.clockOffsetMs };
     }
     if (session.capturing && session.activeTarget?.kind === "frozen") {
-      const carryOn = testNote || "Go back to a window you shared to carry on.";
       return {
         mode: "attention",
         title: "THIS WINDOW IS NOT BEING RECORDED",
         detail: session.muted
-          ? `Students see the last shared window, frozen, and your microphone is muted. ${carryOn}`
-          : `Students see the last shared window, frozen. Your microphone is still recording. ${carryOn}`,
+          ? `Students see the last shared window, frozen, and your microphone is muted. Go back to a window you shared to carry on.`
+          : `Students see the last shared window, frozen. Your microphone is still recording. Go back to a window you shared to carry on.`,
         blocking: true,
         displayIndex,
       };
@@ -1317,7 +1314,7 @@
         title: "MICROPHONE MUTED",
         detail:
           `Your voice is not being recorded — students in the call still hear you. ` +
-          `Press ${muteHotkey} to unmute. ${testNote}`.trimEnd(),
+          `Press ${muteHotkey} to unmute.`,
         blocking: true,
         displayIndex,
       };
@@ -1326,9 +1323,7 @@
       return {
         mode: "recording",
         title: "REC {elapsed}",
-        detail:
-          testNote ||
-          (session.systemAudioActive ? `${session.courseTitle}` : `${session.courseTitle} — system audio off`),
+        detail: session.systemAudioActive ? `${session.courseTitle}` : `${session.courseTitle} — system audio off`,
         blocking: false,
         displayIndex,
         recordingSinceMs: session.recordingStartedAtMs ? session.recordingStartedAtMs - state.clockOffsetMs : Date.now(),
@@ -1354,6 +1349,11 @@
     return { mode: "paused", title: "Starting recording…", detail: "", blocking: false, displayIndex };
   };
 
+  // The overlay is the one call that used to be able to hang: creating its
+  // window deadlocked on Windows. Nothing here may ever stall the tick loop,
+  // so a slow reply is abandoned and retried on the next pass.
+  const OVERLAY_TIMEOUT_MS = 4000;
+
   const updateOverlay = async () => {
     const next = overlayState();
     const json = JSON.stringify(next);
@@ -1362,8 +1362,16 @@
     }
     state.lastOverlayJson = json;
     try {
-      await invoke("set_overlay", { state: next });
+      let timer = null;
+      await Promise.race([
+        invoke("set_overlay", { state: next }),
+        new Promise((_, reject) => {
+          timer = setTimeout(() => reject(new Error("the overlay did not respond")), OVERLAY_TIMEOUT_MS);
+        }),
+      ]).finally(() => clearTimeout(timer));
     } catch (error) {
+      // Forget what we sent so the next pass tries this state again.
+      state.lastOverlayJson = "";
       log(`Overlay error: ${error}`);
     }
   };

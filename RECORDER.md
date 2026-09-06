@@ -190,22 +190,22 @@ It does **not** mute them in Discord. The students in the call still hear them;
 only the recording is affected, and the banner says so.
 
 **Test mode** ("Try the recorder") runs a dry class so a tutor can feel the
-controls before their first real one. It sets up a session exactly like a live
-class — the overlay, the countdown-free REC pill, the pause hotkey, mute, and
-the window-mode freeze banner all behave as they will on the day — but:
+controls before their first real one. It is deliberately identical to a lesson
+— the same overlays with the same wording, the pause and mute hotkeys, the
+window-mode freeze banner, and the quit lock, which "End test" always releases
+— except that:
 
-* no ffmpeg is started and no segment is written (`session.test` short-circuits
-  `startSegment`/`stopSegment`);
+* no ffmpeg is started and no segment is written (`session.test`
+  short-circuits `startSegment`/`stopSegment`);
 * nothing is written to disk (`persistMeta` returns early), so there is nothing
   to upload and nothing to clean up;
 * the server is never told about it: the tick reports state `test` and a null
-  class id, so it never counts as a recording or a class session;
-* the quit lock stays off, so they can close the app;
-* every overlay carries "Test mode — nothing is being recorded", so a dry run
-  can never be mistaken for a class.
+  class id, so it never counts as a recording or a class session.
 
-A real class always wins: if one becomes active while a test is running, the
-test ends and the real session takes over.
+The class it invents is called "Test class", which is what the overlay shows
+where a real class shows its course title. A real class always wins: if one
+becomes active while a test is running, the test ends and the real session
+takes over.
 
 ## Recording windows instead of the whole display
 
@@ -349,6 +349,12 @@ to add before rolling out to all tutors.
 
 ## Known limitations / follow‑ups
 
+* The overlay is built by an **async** command. On Windows, creating a window
+  inside a synchronous Tauri command deadlocks against the WebView2 message
+  loop, so `set_overlay` never returned and no overlay ever appeared — in a
+  class or in test mode. Any command that creates a window must stay `async`.
+  The webview also gives up on the call after 4 s and retries on the next pass,
+  so a stuck overlay can never stall the tick loop.
 * Compiled and bundled by CI since `recorder-v0.1.0`, but never run against a
   real class. The updater code (`src-tauri/src/update.rs`, written against
   tauri-plugin-updater 2.11) has not been compiled at all yet, and no installed

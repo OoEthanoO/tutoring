@@ -1,6 +1,6 @@
 [package]
 name = "yanlearn-recorder"
-version = "0.4.0"
+version = "0.4.1"
 description = "YanLearn Recorder — records tutors' classes and uploads them to YanLearn."
 edition = "2021"
 rust-version = "1.77"
