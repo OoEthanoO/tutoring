@@ -63,12 +63,7 @@ export default function HomeMenu({ isSignedIn, onOpenTeamTab }: HomeMenuProps) {
           in grades 6-12.
         </p>
         <p className="text-sm text-[var(--muted)]">
-          All YanLearn tutors are current IB/AP high school students with
-          excellent grades in their respective subjects. We run our classes by
-          hosting online Discord meetings with a requirement of a donation fee
-          to enjoy 10 lessons per term. As of April 2026, more than 300 classes
-          have been taught, and more than 350 students are participating in our
-          program.
+          All YanLearn tutors are current IB/AP high school students with excellent grades in their respective subjects. We run our classes by hosting online Discord meetings with a requirement of a donation fee to enjoy 10 lessons per term. As of September 2026, more than 597 hours have been taught, and more than 459 enrollments in our program.
         </p>
         <p className="text-sm text-[var(--muted)]">
           In addition, the &quot;Coding for SickKids&quot; fundraising campaign
