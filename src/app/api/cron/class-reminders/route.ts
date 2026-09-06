@@ -6,7 +6,8 @@ import {
   type DiscordSyncResult,
 } from "@/lib/discordSync";
 import {
-  courseUsesDiscordVoiceSystem,
+  classOnSchoolhouse,
+  classUsesDiscordVoiceSystem,
   buildLiveVoicePermissionOverwrites,
   decideLiveChannelCleanup,
   normalizeVoiceChannelName,
@@ -1628,12 +1629,20 @@ export async function POST(request: NextRequest) {
           ? tutorRoleById.get(course.created_by) ?? resolveRoleByEmail(tutorEmail)
           : resolveRoleByEmail(tutorEmail);
         const firstClassDate = firstClassDateByCourseId.get(classRow.course_id) ?? null;
-        if (isFounderRole(tutorRole)) {
-          liveChannelRecovery.skipped.push({ classId: classRow.id, reason: "founder/CEO/COO-taught legacy class" });
-          return false;
-        }
-        if (!courseUsesDiscordVoiceSystem(firstClassDate)) {
-          liveChannelRecovery.skipped.push({ classId: classRow.id, reason: "course does not use Discord voice system" });
+        const founderTaught = isFounderRole(tutorRole);
+        if (
+          !classUsesDiscordVoiceSystem({
+            founderTaught,
+            firstClassDate,
+            classStart: new Date(classRow.starts_at),
+          })
+        ) {
+          liveChannelRecovery.skipped.push({
+            classId: classRow.id,
+            reason: founderTaught
+              ? "founder-taught class still on Schoolhouse"
+              : "course does not use Discord voice system",
+          });
           return false;
         }
         return true;
@@ -2374,14 +2383,21 @@ export async function POST(request: NextRequest) {
         const tutorRole = course.created_by
           ? tutorRoleById.get(course.created_by) ?? resolveRoleByEmail(tutorEmail)
           : resolveRoleByEmail(tutorEmail);
-        if (isFounderRole(tutorRole)) {
-          await skip("founder/CEO/COO-taught legacy class");
-          continue;
-        }
-
         const firstClassDate = firstClassDateByCourseId.get(classRow.course_id) ?? null;
-        if (!courseUsesDiscordVoiceSystem(firstClassDate)) {
-          await skip("course does not use Discord voice system");
+        const founderTaught = isFounderRole(tutorRole);
+        // Only classes held in Discord produce attendance to follow up on.
+        if (
+          !classUsesDiscordVoiceSystem({
+            founderTaught,
+            firstClassDate,
+            classStart: new Date(classRow.starts_at),
+          })
+        ) {
+          await skip(
+            founderTaught
+              ? "founder-taught class still on Schoolhouse"
+              : "course does not use Discord voice system"
+          );
           continue;
         }
 
@@ -2583,7 +2599,18 @@ ${tutorWasPresent ? "" : "<p><strong>Note:</strong> you were not detected in the
       : resolveRoleByEmail(tutorEmail);
     const isFounderTaughtClass = isFounderRole(tutorRole);
     const firstClassDate = firstClassDateByCourseId.get(classRow.course_id) ?? null;
-    const usesDiscordVoiceSystem = !isFounderTaughtClass && courseUsesDiscordVoiceSystem(firstClassDate);
+    const classStart = new Date(classRow.starts_at);
+    const usesDiscordVoiceSystem = classUsesDiscordVoiceSystem({
+      founderTaught: isFounderTaughtClass,
+      firstClassDate,
+      classStart,
+    });
+    // Founder-taught classes before the migration date are the only ones left
+    // on Schoolhouse; everything else is Discord voice or the legacy Zoom flow.
+    const isSchoolhouseClass = classOnSchoolhouse({
+      founderTaught: isFounderTaughtClass,
+      classStart,
+    });
     const isTutorEarlyAccessReminder = reminderType === "fifteen_minutes" && usesDiscordVoiceSystem;
 
     const shouldSendCourseDiscordReminder =
@@ -2591,7 +2618,7 @@ ${tutorWasPresent ? "" : "<p><strong>Note:</strong> you were not detected in the
     const shouldSendAnyEmail =
       (isStandardReminder || isTutorEarlyAccessReminder) && emailRemindersEnabled;
     const shouldSendExecutiveTutorReminder =
-      (isFounderTaughtClass
+      (isSchoolhouseClass
         ? reminderType !== "ten_minutes" && reminderType !== "five_minutes"
         : reminderType !== "ten_minutes" && (usesDiscordVoiceSystem || reminderType !== "fifteen_minutes")) &&
       discordReminderDeliveryEnabled &&
@@ -2807,7 +2834,7 @@ ${tutorWasPresent ? "" : "<p><strong>Note:</strong> you were not detected in the
         <p><strong>Start time (${torontoTimeZone}):</strong> ${startLabel}</p>
         ${durationHtmlLine}
         ${
-          isFounderTaughtClass
+          isSchoolhouseClass
             ? `<p>Please attend the class 5 minutes before the start time on the Schoolhouse platform.</p>`
             : `<p>Please attend the class 5 minutes before the start time:</p>\n        <p>Zoom ID: ${escapeHtml(defaultZoomId)}<br/>Password: ${escapeHtml(defaultZoomPassword)}<br/>${breakoutRoomName
                 ? `Breakout room: "${escapeHtml(breakoutRoomName)}"`
@@ -2837,7 +2864,7 @@ ${tutorWasPresent ? "" : "<p><strong>Note:</strong> you were not detected in the
             `**Tutor:** ${escapeDiscordText(tutorNameRaw)}`,
             `**Start time:** ${formatDiscordTimestampWithRelative(classRow.starts_at)}`,
             durationDiscordLine,
-            isFounderTaughtClass
+            isSchoolhouseClass
               ? "Please attend the class 5 minutes before the start time on the Schoolhouse platform."
               : nonFounderDiscordInstruction,
           ].join("\n");
@@ -2985,7 +3012,7 @@ ${tutorWasPresent ? "" : "<p><strong>Note:</strong> you were not detected in the
             `**Tutor:** ${escapeDiscordText(tutorNameRaw)}`,
             `**Start time:** ${formatDiscordTimestampWithRelative(classRow.starts_at)}`,
             durationDiscordLine,
-            isFounderTaughtClass
+            isSchoolhouseClass
               ? "Please join the meeting on the Schoolhouse platform immediately!"
               : nonFounderFiveMinInstruction,
           ].join("\n");
@@ -2997,12 +3024,12 @@ ${tutorWasPresent ? "" : "<p><strong>Note:</strong> you were not detected in the
         : "";
       if (tutorDiscordId) {
         let contactInstruction = "";
-        if (isFounderTaughtClass) {
-          if (reminderType === "one_hour") {
-            contactInstruction = "Please remember to mark the students' homework!";
-          } else if (reminderType === "fifteen_minutes") {
-            contactInstruction = "Please join the meeting via Schoolhouse!";
-          }
+        // The homework nudge is about who is teaching, not where; the
+        // Schoolhouse line only applies while the class is still there.
+        if (isFounderTaughtClass && reminderType === "one_hour") {
+          contactInstruction = "Please remember to mark the students' homework!";
+        } else if (isSchoolhouseClass && reminderType === "fifteen_minutes") {
+          contactInstruction = "Please join the meeting via Schoolhouse!";
         } else if (isTutorEarlyAccessReminder) {
           contactInstruction = voiceChannelLinkForTutor
             ? `Please join the voice channel now to prepare for your students: ${voiceChannelLinkForTutor}`

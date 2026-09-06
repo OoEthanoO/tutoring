@@ -958,7 +958,7 @@ export async function POST(request: NextRequest) {
   <li>You will need to connect your Discord account to your YanLearn profile and join our Discord server.</li>
   <li>Notifications and links to voice channels for your classes will be sent directly within our Discord server.</li>
 </ul>
-<p><em>Note: Courses taught by our lead tutor, Yan Xu, will continue to use Schoolhouse, which relies on Zoom.</em></p>
+<p><em>Note: from September 8, 2026, courses taught by our lead tutor, Yan Xu, also run in our Discord server rather than on Schoolhouse.</em></p>
 <p>Please let us know if you have any questions!</p>
 <p>Thanks,<br/>The YanLearn Team</p>`
       );

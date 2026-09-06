@@ -51,6 +51,11 @@ bearer (see the `cron:reminders:*` npm scripts).
   there includes "Course needs": the trio types courses nobody teaches yet and
   YanBot asks the tutors in Discord to send course requests
   (`src/lib/courseNeeds.ts`, `api/admin/course-needs`).
+- Founder-taught courses ran on Schoolhouse rather than Discord; from
+  2026-09-08 (Toronto) their classes use the same live voice channels,
+  reminders and attendance as everyone else. The rule is per class, not per
+  course, and lives in `classUsesDiscordVoiceSystem`
+  (`src/lib/discordLiveChannels.ts`) — see `ZOOM_INTEGRATION.md`.
 - `src/lib/roles.ts` — role model: student/executive tiers up to founder;
   `founderEmails` is hardcoded there.
 - `recorder/` — **YanLearn Recorder**, the Tauri 2 desktop app (macOS +

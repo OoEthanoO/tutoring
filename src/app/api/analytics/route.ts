@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { getAdminClient } from "@/lib/authServer";
 import { isExecutive, isFounder, resolveUserRole } from "@/lib/roles";
-import { courseUsesDiscordVoiceSystem } from "@/lib/discordLiveChannels";
+import {
+  courseUsesDiscordVoiceSystem,
+  founderSchoolhouseEndMs,
+} from "@/lib/discordLiveChannels";
 import { computeCoreTotals, loadCoreRows, parseHours } from "@/lib/impactStats";
 import { classEndMs } from "@/lib/classTiming";
 
@@ -197,6 +200,7 @@ export async function GET() {
     const pastClassesByCourse = new Map<string, number>();
     const trackedPastClassesByCourse = new Map<string, number>();
     const firstClassMsByCourse = new Map<string, number>();
+    const lastClassMsByCourse = new Map<string, number>();
     for (const cls of rows.classes) {
       const startMs = new Date(cls.starts_at).getTime();
       if (!Number.isFinite(startMs) || !courseById.has(cls.course_id)) {
@@ -205,6 +209,10 @@ export async function GET() {
       const knownFirst = firstClassMsByCourse.get(cls.course_id);
       if (knownFirst === undefined || startMs < knownFirst) {
         firstClassMsByCourse.set(cls.course_id, startMs);
+      }
+      const knownLast = lastClassMsByCourse.get(cls.course_id);
+      if (knownLast === undefined || startMs > knownLast) {
+        lastClassMsByCourse.set(cls.course_id, startMs);
       }
       if (classEndMs(startMs, cls.duration_hours) > nowMs) {
         courseHasLiveClass.add(cls.course_id);
@@ -222,9 +230,10 @@ export async function GET() {
       }
     }
 
-    // Founder-taught courses run on Schoolhouse and pre-cutoff courses on the
-    // legacy Zoom flow: neither produces attendance, so listing them as gaps
-    // would be crying wolf.
+    // Pre-cutoff courses ran on the legacy Zoom flow, and founder-taught ones on
+    // Schoolhouse until the migration date: neither produces attendance, so
+    // listing them as gaps would be crying wolf. A founder course is only
+    // excluded while all of its classes are still on Schoolhouse.
     const founderUserIds = new Set(
       rows.users
         .filter((row) => isFounder(resolveUserRole(row.email, row.role ?? null)))
@@ -237,7 +246,11 @@ export async function GET() {
         if (!course || course.is_completed) {
           return false;
         }
-        if (course.created_by && founderUserIds.has(course.created_by)) {
+        if (
+          course.created_by &&
+          founderUserIds.has(course.created_by) &&
+          (lastClassMsByCourse.get(courseId) ?? 0) < founderSchoolhouseEndMs
+        ) {
           return false;
         }
         const firstClassMs = firstClassMsByCourse.get(courseId);

@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { isFounder, resolveUserRole } from "@/lib/roles";
+import { classOnSchoolhouse } from "@/lib/discordLiveChannels";
 import { getRequestUser } from "@/lib/authServer";
 import { notifyCourseTutorsOfNewEnrollment } from "@/lib/courseChangeNotifications";
 
@@ -195,15 +196,29 @@ export async function PATCH(
     .eq("user_id", tutorId)
     .maybeSingle();
 
-  let isFounderCourse = false;
+  let isSchoolhouseCourse = false;
   const tutorEmail = Array.isArray(requestData.course)
     ? requestData.course[0]?.created_by_email
     : (requestData.course as { created_by_email?: string } | null)?.created_by_email;
-    
-  if (tutorEmail) {
-    // Founder-tier tutors teach on Schoolhouse instead of Discord; keep this
-    // aligned with the class-reminders cron, which uses the same trio check.
-    isFounderCourse = isFounder(resolveUserRole(tutorEmail, null));
+
+  if (tutorEmail && isFounder(resolveUserRole(tutorEmail, null))) {
+    // Founder-taught courses ran on Schoolhouse; from the migration date their
+    // classes are in Discord like everyone else's. What matters to a student
+    // being approved now is where the classes they are about to attend happen,
+    // so this asks about the next one rather than the course's first — a course
+    // already under way moves over partway through.
+    const { data: nextClass } = await adminClient
+      .from("course_classes")
+      .select("starts_at")
+      .eq("course_id", requestData.course_id)
+      .gte("starts_at", new Date().toISOString())
+      .order("starts_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    isSchoolhouseCourse = classOnSchoolhouse({
+      founderTaught: true,
+      classStart: nextClass?.starts_at ? new Date(String(nextClass.starts_at)) : new Date(),
+    });
   }
 
   let hasDiscordConnected = false;
@@ -227,7 +242,7 @@ export async function PATCH(
     const html = isApproval
         ? `<p>Your enrollment request for <strong>${courseTitle}</strong> has been approved.</p>
            <p>Please attend the class 5 minutes before the start time:</p>
-           ${isFounderCourse ? 
+           ${isSchoolhouseCourse ? 
              `<p>This course is hosted on Schoolhouse! Please join the session via the Schoolhouse platform. If you don't have a Schoolhouse account yet, please create one using this link: <a href="https://schoolhouse.world/?ref=u-mx1o1c1hti">https://schoolhouse.world/?ref=u-mx1o1c1hti</a></p>` 
              : 
              `<p>This class will be held on <strong>Discord</strong>. Please make sure you have connected your Discord account in your profile and joined our Discord server.</p>

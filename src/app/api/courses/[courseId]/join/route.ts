@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { registerZoomParticipant } from "@/lib/zoom";
 import { jwtDecode } from "jwt-decode";
+import { classOnSchoolhouse } from "@/lib/discordLiveChannels";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
@@ -124,6 +125,18 @@ export async function GET(
     // Determine if this course should use new Zoom system
     const usesZoomSystem =
       !isCEOTutor && firstClassDate && firstClassDate <= june24_2026;
+
+    // Founder-taught classes moved off Schoolhouse into Discord voice channels;
+    // there is no link to send anyone to, the class is in the server.
+    if (isCEOTutor && !classOnSchoolhouse({ founderTaught: true, classStart: new Date() })) {
+      return NextResponse.json(
+        {
+          error:
+            "This class is held in a Discord voice channel. Connect your Discord account and watch the server for the channel link 5 minutes before the class starts.",
+        },
+        { status: 400 }
+      );
+    }
 
     if (!usesZoomSystem) {
       // Redirect to Schoolhouse

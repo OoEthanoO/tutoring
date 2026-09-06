@@ -10,8 +10,39 @@ This document outlines the setup and implementation of Zoom as a secure video co
 2. **Host Management**: Only the tutor can start/manage the meeting
 3. **Automatic Name Enforcement**: Student names are registered as their YanLearn names
 4. **Auto-Close Logic**: Meetings automatically close when the class ends and the host leaves
-5. **Selective Adoption**: Only courses with first class date on/before June 24, 2026 (non-CEO tutors) use this system
+5. **Selective Adoption**: Only courses with first class date on/before June 24, 2026 (non-founder tutors) use this system. Founder-taught courses were on Schoolhouse until September 8, 2026 and are in Discord from then on -- see below.
 6. **Discord Integration**: Only 5-minute reminders include the join link; others don't show Zoom details
+
+## Founder-taught courses leaving Schoolhouse (September 8, 2026)
+
+Courses taught by the founder trio ran on Schoolhouse rather than in Discord.
+From **midnight Toronto time on 2026-09-08** (`founderSchoolhouseEndMs` in
+`src/lib/discordLiveChannels.ts`) their classes use exactly the same Discord
+infrastructure as everyone else's: a temporary live voice channel under the
+"Live" category, tutor early access 15 minutes before, student access 5 minutes
+before, attendance from voice states, absence follow-ups, and the recorder.
+
+The cutoff is applied **per class, not per course**, so a founder course already
+under way switches partway through: its classes before the date stay on
+Schoolhouse and its classes after it are in Discord. That differs from the
+Zoom-era rule (`courseUsesDiscordVoiceSystem`), which is decided once by a
+course's first class, and both live behind one predicate,
+`classUsesDiscordVoiceSystem`.
+
+Nothing about this needs a migration or a backfill — it is a date rule, so it
+takes effect on its own. What it touches:
+
+* `class-reminders` cron — live voice channel creation, the reminder cadence,
+  the reminder wording (Schoolhouse vs voice channel), and absence follow-ups.
+* Enrollment approval emails — a student approved for a founder course is told
+  about Discord or Schoolhouse based on the **next** class they will attend.
+* `/api/courses/[courseId]/join` — no longer redirects a migrated class to
+  Schoolhouse; it explains the class is in Discord.
+* Analytics — founder courses stop being excluded from attendance-gap warnings
+  once any of their classes falls after the cutoff.
+
+Schoolhouse itself is untouched: `schoolhouse_course_id` still exists and old
+classes still point at it, so past courses keep working.
 
 ## Setup Instructions
 

@@ -39,6 +39,57 @@ export const courseUsesDiscordVoiceSystem = (firstClassDate: Date | null): boole
   Number.isFinite(firstClassDate.getTime()) &&
   firstClassDate.getTime() >= discordVoiceSystemStartMs;
 
+/**
+ * Courses taught by the founder trio ran on Schoolhouse rather than in Discord.
+ * From this moment their classes use the same voice channels, reminders and
+ * attendance tracking as everyone else's.
+ *
+ * Midnight in Toronto, which is where the organisation's day starts — a UTC
+ * midnight would have moved the classes over at 8pm the evening before.
+ */
+export const founderSchoolhouseEndMs = new Date("2026-09-08T00:00:00-04:00").getTime();
+
+/**
+ * Whether a single class runs in a Discord voice channel.
+ *
+ * Two different cutoffs, because the two groups came from different places:
+ * a founder-taught class moves off Schoolhouse on its own start time, so a
+ * course already under way switches partway through; everyone else's is
+ * decided once for the whole course by its first class, which is where the
+ * legacy Zoom flow drew the line.
+ */
+export const classUsesDiscordVoiceSystem = ({
+  founderTaught,
+  firstClassDate,
+  classStart,
+}: {
+  founderTaught: boolean;
+  /** The course's first class, for the Zoom-era cutoff. */
+  firstClassDate: Date | null;
+  /** This class's own start time, for the Schoolhouse cutoff. */
+  classStart: Date | null;
+}): boolean => {
+  if (founderTaught) {
+    return (
+      classStart !== null &&
+      Number.isFinite(classStart.getTime()) &&
+      classStart.getTime() >= founderSchoolhouseEndMs
+    );
+  }
+  return courseUsesDiscordVoiceSystem(firstClassDate);
+};
+
+/** Whether a founder-taught class is still on Schoolhouse. */
+export const classOnSchoolhouse = ({
+  founderTaught,
+  classStart,
+}: {
+  founderTaught: boolean;
+  classStart: Date | null;
+}): boolean =>
+  founderTaught &&
+  !classUsesDiscordVoiceSystem({ founderTaught, firstClassDate: null, classStart });
+
 export type LiveChannelCleanupDecision = "keep" | "mark-empty" | "clear-empty" | "delete";
 
 /**

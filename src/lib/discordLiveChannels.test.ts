@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   buildLiveVoicePermissionOverwrites,
+  classOnSchoolhouse,
+  classUsesDiscordVoiceSystem,
   courseUsesDiscordVoiceSystem,
   decideLiveChannelCleanup,
   discordVoiceSystemStartMs,
+  founderSchoolhouseEndMs,
   liveChannelEmptyConfirmMs,
   liveChannelTutorAbsenceMs,
   normalizeVoiceChannelName,
@@ -384,5 +387,81 @@ describe("courseUsesDiscordVoiceSystem", () => {
   it("excludes a course with no classes, or an unusable date", () => {
     expect(courseUsesDiscordVoiceSystem(null)).toBe(false);
     expect(courseUsesDiscordVoiceSystem(new Date("not a date"))).toBe(false);
+  });
+});
+
+describe("classUsesDiscordVoiceSystem", () => {
+  const beforeCutoff = new Date(founderSchoolhouseEndMs - 60_000);
+  const atCutoff = new Date(founderSchoolhouseEndMs);
+  const afterCutoff = new Date(founderSchoolhouseEndMs + 60_000);
+  const zoomEraFirstClass = new Date(discordVoiceSystemStartMs - 60_000);
+  const voiceEraFirstClass = new Date(discordVoiceSystemStartMs);
+
+  it("keeps a founder class on Schoolhouse right up to the cutoff", () => {
+    expect(
+      classUsesDiscordVoiceSystem({
+        founderTaught: true,
+        firstClassDate: zoomEraFirstClass,
+        classStart: beforeCutoff,
+      })
+    ).toBe(false);
+  });
+
+  it("moves a founder class to Discord from the cutoff onwards", () => {
+    for (const classStart of [atCutoff, afterCutoff]) {
+      expect(
+        classUsesDiscordVoiceSystem({
+          founderTaught: true,
+          firstClassDate: zoomEraFirstClass,
+          classStart,
+        })
+      ).toBe(true);
+    }
+  });
+
+  it("switches a founder course that is already under way, mid-course", () => {
+    // Same course, one class either side of the cutoff.
+    const firstClassDate = new Date(founderSchoolhouseEndMs - 30 * 24 * 3600 * 1000);
+    expect(
+      classUsesDiscordVoiceSystem({ founderTaught: true, firstClassDate, classStart: beforeCutoff })
+    ).toBe(false);
+    expect(
+      classUsesDiscordVoiceSystem({ founderTaught: true, firstClassDate, classStart: afterCutoff })
+    ).toBe(true);
+  });
+
+  it("leaves everyone else on the first-class rule the Zoom cutoff set", () => {
+    // A non-founder course from the Zoom era stays off Discord even now.
+    expect(
+      classUsesDiscordVoiceSystem({
+        founderTaught: false,
+        firstClassDate: zoomEraFirstClass,
+        classStart: afterCutoff,
+      })
+    ).toBe(false);
+    expect(
+      classUsesDiscordVoiceSystem({
+        founderTaught: false,
+        firstClassDate: voiceEraFirstClass,
+        classStart: beforeCutoff,
+      })
+    ).toBe(true);
+  });
+
+  it("never puts a class with no start time on Discord", () => {
+    expect(
+      classUsesDiscordVoiceSystem({ founderTaught: true, firstClassDate: null, classStart: null })
+    ).toBe(false);
+  });
+
+  it("counts a founder class as on Schoolhouse only before the cutoff", () => {
+    expect(classOnSchoolhouse({ founderTaught: true, classStart: beforeCutoff })).toBe(true);
+    expect(classOnSchoolhouse({ founderTaught: true, classStart: afterCutoff })).toBe(false);
+    expect(classOnSchoolhouse({ founderTaught: false, classStart: beforeCutoff })).toBe(false);
+  });
+
+  it("starts at midnight in Toronto, not in UTC", () => {
+    // 2026-09-08 is EDT (UTC-4), so the switch is at 04:00 UTC.
+    expect(new Date(founderSchoolhouseEndMs).toISOString()).toBe("2026-09-08T04:00:00.000Z");
   });
 });
