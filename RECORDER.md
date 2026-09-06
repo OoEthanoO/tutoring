@@ -191,9 +191,8 @@ only the recording is affected, and the banner says so.
 
 **Test mode** ("Try the recorder") runs a dry class so a tutor can feel the
 controls before their first real one. It is deliberately identical to a lesson
-— the same overlays with the same wording, the pause and mute hotkeys, the
-window-mode freeze banner, and the quit lock, which "End test" always releases
-— except that:
+— the same overlays with the same wording, the pause and mute hotkeys, and the
+window-mode freeze banner — except that:
 
 * no ffmpeg is started and no segment is written (`session.test`
   short-circuits `startSegment`/`stopSegment`);
@@ -201,6 +200,9 @@ window-mode freeze banner, and the quit lock, which "End test" always releases
   to upload and nothing to clean up;
 * the server is never told about it: the tick reports state `test` and a null
   class id, so it never counts as a recording or a class session.
+* it never holds the quit lock. Being unable to quit is part of a real class,
+  but trapping someone in a practice run looks like a broken app, so a dry run
+  can always be closed.
 
 The class it invents is called "Test class", which is what the overlay shows
 where a real class shows its course title. A real class always wins: if one

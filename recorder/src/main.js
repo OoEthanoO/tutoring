@@ -1087,9 +1087,12 @@
       await updateOverlay();
       return;
     }
-    // Test mode locks too: being unable to quit is part of what a class feels
-    // like, and "End test" always releases it.
-    await setQuitLock(session.phase !== "pre_arm" || session.finalizing || uploadsPending);
+    // A dry run never holds the quit lock. Trapping someone in a practice
+    // session is worse than the lost realism, and it looks like the app is
+    // broken rather than doing its job.
+    await setQuitLock(
+      session.test ? uploadsPending : session.phase !== "pre_arm" || session.finalizing || uploadsPending
+    );
     if (session.finalizing) {
       render();
       await updateOverlay();
@@ -1249,6 +1252,24 @@
     log("Test mode ended. Nothing was recorded or uploaded.");
     render();
     await updateOverlay();
+  };
+
+  // What is holding the quit lock, in words the tutor can act on.
+  const quitBlockReason = () => {
+    const session = state.session;
+    if (session && !session.test && session.phase !== "pre_arm") {
+      return `“${session.courseTitle}” is in progress. The recorder stays open until its recording has been uploaded.`;
+    }
+    const upload = state.uploads[0];
+    if (upload) {
+      return `A recording from “${upload.courseTitle || "an earlier class"}” still has to be uploaded. It keeps retrying on its own; the recorder can be closed once it is done.`;
+    }
+    return "A class is in progress, or a recording is still waiting to upload.";
+  };
+
+  const showQuitBlocked = () => {
+    $("quit-reason").textContent = quitBlockReason();
+    $("modal-quit").hidden = false;
   };
 
   // --- Prompts -----------------------------------------------------------------------
@@ -1854,7 +1875,7 @@
 
     $("signout-button").addEventListener("click", async () => {
       if (state.quitLocked) {
-        $("modal-quit").hidden = false;
+        showQuitBlocked();
         return;
       }
       try {
@@ -1958,7 +1979,7 @@
       handleMuteHotkey();
     });
     listen("quit-blocked", () => {
-      $("modal-quit").hidden = false;
+      showQuitBlocked();
     });
     listen("upload-progress", (event) => {
       state.uploadProgress = event.payload;
