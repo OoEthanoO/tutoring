@@ -191,6 +191,7 @@ export async function POST(
   // Awaited: on Vercel the function can be frozen the moment the response is
   // returned, and anything still in flight is lost. An approval that silently
   // fails to tell anyone is worse than one that takes a second longer.
+  let announced = true;
   await (async () => {
     try {
       const execUser = Array.isArray(requestRecord.app_users) ? requestRecord.app_users[0] : requestRecord.app_users;
@@ -243,11 +244,12 @@ export async function POST(
 
       const discordMention = execDiscordId ? `<@${execDiscordId}>` : `**${execUser.full_name || execUser.email}**`;
       const discordContent = `${discordMention} Your course request for **${courseTitle}** has been approved!\n\n**Finalized Details:**\n- **Max Students:** ${maxStudents || 'Unlimited'}\n**Classes:**\n${classDetails || 'No classes scheduled.'}`;
-      await sendDiscordMessageByChannelName(executivesChannelName(), discordContent);
+      announced = await sendDiscordMessageByChannelName(executivesChannelName(), discordContent);
     } catch (err) {
       console.error("Failed to send approval notifications:", err);
     }
   })();
 
-  return NextResponse.json({ success: true, courseId: courseData.id });
+  // The course exists either way; the founder needs to know if nobody was told.
+  return NextResponse.json({ success: true, courseId: courseData.id, announced });
 }

@@ -218,12 +218,20 @@ export default function CourseRequestsMenu() {
       });
 
       if (res.ok) {
+        const payload = (await res.json().catch(() => null)) as { announced?: boolean } | null;
         setRequests(reqs => reqs.map(r => r.id === approvingId ? { ...r, status: "approved" } : r));
         setApprovingId(null);
         setDraftClasses([]);
         setMaxStudents("");
         setDonationFee("");
         setGradeLevel("");
+        if (payload && payload.announced === false) {
+          // The course is created; only the announcement failed, and silence
+          // here is how an unannounced approval goes unnoticed.
+          alert(
+            "The course was approved, but the announcement could not be posted to the executives channel. Tell the tutor directly, and check the Discord channel name and the bot's permissions."
+          );
+        }
       } else {
         const err = await res.json();
         alert(err.error || "Failed to approve request.");

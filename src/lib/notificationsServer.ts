@@ -222,6 +222,10 @@ export const sendDiscordMessageByChannelName = async (
       return false;
     }
 
+    // Discord rejects the whole message over 2000 characters, and some of
+    // these carry a full class list. Better a trimmed announcement than none.
+    const body = content.length > 2000 ? `${content.slice(0, 1999)}…` : content;
+
     // 2. Send the message
     const messageRes = await fetch(
       `https://discord.com/api/v10/channels/${targetChannel.id}/messages`,
@@ -232,7 +236,7 @@ export const sendDiscordMessageByChannelName = async (
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          content,
+          content: body,
           ...(allowedRoleMentionIds?.length || allowedUserMentionIds?.length
             ? {
                 allowed_mentions: {
