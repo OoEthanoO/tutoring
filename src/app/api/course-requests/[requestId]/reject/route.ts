@@ -2,7 +2,11 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { isFounder, resolveUserRole } from "@/lib/roles";
 import { getRequestUser } from "@/lib/authServer";
-import { sendEmail, sendDiscordMessageByChannelName } from "@/lib/notificationsServer";
+import {
+  sendEmail,
+  sendDiscordMessageByChannelName,
+  executivesChannelName,
+} from "@/lib/notificationsServer";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
@@ -81,7 +85,7 @@ export async function POST(
   }
 
   // Send notification to the executive who created the request
-  (async () => {
+  await (async () => {
     try {
       const execUser = Array.isArray(requestRecord.app_users)
         ? requestRecord.app_users[0]
@@ -111,7 +115,7 @@ export async function POST(
 Reason: ${note}
 
 If you'd like to revise and resubmit, please go back on the website, edit the course request, and resubmit.`;
-      await sendDiscordMessageByChannelName("executives", discordContent);
+      await sendDiscordMessageByChannelName(executivesChannelName(), discordContent);
     } catch (err) {
       console.error("Failed to send rejection notifications:", err);
     }

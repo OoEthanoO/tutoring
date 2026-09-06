@@ -3,7 +3,11 @@ import { createClient } from "@supabase/supabase-js";
 import { isFounder, resolveUserRole } from "@/lib/roles";
 import { getRequestUser } from "@/lib/authServer";
 import { relabelClassesForCourse } from "@/lib/classTools";
-import { sendEmail, sendDiscordMessageByChannelName } from "@/lib/notificationsServer";
+import {
+  sendEmail,
+  sendDiscordMessageByChannelName,
+  executivesChannelName,
+} from "@/lib/notificationsServer";
 import { normalizeGradeLevel } from "@/lib/serviceHours";
 import { classEndDate } from "@/lib/classTiming";
 
@@ -184,8 +188,10 @@ export async function POST(
     );
   }
 
-  // Send notifications
-  (async () => {
+  // Awaited: on Vercel the function can be frozen the moment the response is
+  // returned, and anything still in flight is lost. An approval that silently
+  // fails to tell anyone is worse than one that takes a second longer.
+  await (async () => {
     try {
       const execUser = Array.isArray(requestRecord.app_users) ? requestRecord.app_users[0] : requestRecord.app_users;
       const execEmail = execUser?.email;
@@ -237,7 +243,7 @@ export async function POST(
 
       const discordMention = execDiscordId ? `<@${execDiscordId}>` : `**${execUser.full_name || execUser.email}**`;
       const discordContent = `${discordMention} Your course request for **${courseTitle}** has been approved!\n\n**Finalized Details:**\n- **Max Students:** ${maxStudents || 'Unlimited'}\n**Classes:**\n${classDetails || 'No classes scheduled.'}`;
-      await sendDiscordMessageByChannelName("executives", discordContent);
+      await sendDiscordMessageByChannelName(executivesChannelName(), discordContent);
     } catch (err) {
       console.error("Failed to send approval notifications:", err);
     }
