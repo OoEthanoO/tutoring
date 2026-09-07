@@ -169,6 +169,7 @@
     display: null,
     captureMode: "display",
     sharedWindows: [],
+    overlayCorner: "bottom-right",
     microphoneId: null,
     microphoneName: null,
     outputId: null,
@@ -1298,25 +1299,27 @@
     const hotkey = state.hotkeyLabel;
     const muteHotkey = state.muteHotkeyLabel;
     const displayIndex = chosenDisplay()?.index ?? null;
+    // Where the tutor last dragged the pill to.
+    const corner = state.settings.overlayCorner || "bottom-right";
     const uploading = state.uploads.find((upload) => upload.uploading);
     if (uploading) {
       const progress = state.uploadProgress;
       const percent = progress && progress.total > 0 ? Math.round((progress.sent / progress.total) * 100) : 0;
-      return { mode: "uploading", title: `Uploading recording ${percent}%`, detail: "Keep the computer on and connected.", blocking: false, displayIndex };
+      return { mode: "uploading", title: `Uploading recording ${percent}%`, detail: "Keep the computer on and connected.", blocking: false, displayIndex, corner };
     }
     if (!session) {
       return state.uploads.length > 0
-        ? { mode: "uploading", title: "Recording waiting to upload", detail: "Retrying automatically.", blocking: false, displayIndex }
+        ? { mode: "uploading", title: "Recording waiting to upload", detail: "Retrying automatically.", blocking: false, displayIndex, corner }
         : { mode: "hidden" };
     }
     if (session.finalizing) {
-      return { mode: "uploading", title: "Finishing the recording…", detail: "", blocking: false, displayIndex };
+      return { mode: "uploading", title: "Finishing the recording…", detail: "", blocking: false, displayIndex, corner };
     }
     if (session.phase === "pre_arm" || session.phase === "armed") {
       if (state.deviceChoiceNeeded) {
-        return { mode: "attention", title: "Choose your devices in YanLearn Recorder", detail: `Class starts at ${formatClock(session.startsAtMs)}.`, blocking: session.phase === "armed", displayIndex };
+        return { mode: "attention", title: "Choose your devices in YanLearn Recorder", detail: `Class starts at ${formatClock(session.startsAtMs)}.`, blocking: session.phase === "armed", displayIndex, corner };
       }
-      return { mode: "armed", title: "Recorder ready — class starts in {countdown}", detail: "Recording starts automatically once you are in the voice channel.", blocking: false, displayIndex, countdownToMs: session.startsAtMs - state.clockOffsetMs };
+      return { mode: "armed", title: "Recorder ready — class starts in {countdown}", detail: "Recording starts automatically once you are in the voice channel.", blocking: false, displayIndex, corner, countdownToMs: session.startsAtMs - state.clockOffsetMs };
     }
     if (session.capturing && session.activeTarget?.kind === "frozen") {
       return {
@@ -1327,6 +1330,7 @@
           : `Students see the last shared window, frozen. Your microphone is still recording. Go back to a window you shared to carry on.`,
         blocking: true,
         displayIndex,
+        corner,
       };
     }
     if (session.capturing && session.muted) {
@@ -1338,6 +1342,7 @@
           `Press ${muteHotkey} to unmute.`,
         blocking: true,
         displayIndex,
+        corner,
       };
     }
     if (session.capturing) {
@@ -1347,27 +1352,28 @@
         detail: session.systemAudioActive ? `${session.courseTitle}` : `${session.courseTitle} — system audio off`,
         blocking: false,
         displayIndex,
+        corner,
         recordingSinceMs: session.recordingStartedAtMs ? session.recordingStartedAtMs - state.clockOffsetMs : Date.now(),
       };
     }
     if (state.deviceChoiceNeeded) {
-      return { mode: "attention", title: "NOT RECORDING — choose your devices", detail: "Open YanLearn Recorder and pick a display, microphone, and speaker.", blocking: true, displayIndex };
+      return { mode: "attention", title: "NOT RECORDING — choose your devices", detail: "Open YanLearn Recorder and pick a display, microphone, and speaker.", blocking: true, displayIndex, corner };
     }
     if (session.captureDisabled) {
-      return { mode: "attention", title: "NOT RECORDING — recording keeps failing", detail: "Open YanLearn Recorder and tell a founder.", blocking: true, displayIndex };
+      return { mode: "attention", title: "NOT RECORDING — recording keeps failing", detail: "Open YanLearn Recorder and tell a founder.", blocking: true, displayIndex, corner };
     }
     if (session.pauseMode === "manual") {
-      return { mode: "paused", title: "RECORDING PAUSED", detail: `You are in the class call but not recording. Press ${hotkey} to resume.`, blocking: true, displayIndex };
+      return { mode: "paused", title: "RECORDING PAUSED", detail: `You are in the class call but not recording. Press ${hotkey} to resume.`, blocking: true, displayIndex, corner };
     }
     if (session.pauseMode === "forced") {
       return session.inCall
-        ? { mode: "forced", title: "FORCE-PAUSED — NOT RECORDING", detail: `Recording will not resume by itself. Press ${hotkey} to resume.`, blocking: true, displayIndex }
-        : { mode: "forced", title: "Force-paused", detail: `Recording will not resume when you join the call. Press ${hotkey} to unpause.`, blocking: false, displayIndex };
+        ? { mode: "forced", title: "FORCE-PAUSED — NOT RECORDING", detail: `Recording will not resume by itself. Press ${hotkey} to resume.`, blocking: true, displayIndex, corner }
+        : { mode: "forced", title: "Force-paused", detail: `Recording will not resume when you join the call. Press ${hotkey} to unpause.`, blocking: false, displayIndex, corner };
     }
     if (!session.inCall) {
-      return { mode: "paused", title: "Paused — not in the class voice channel", detail: session.presenceReason || "Recording resumes the moment you join.", blocking: false, displayIndex };
+      return { mode: "paused", title: "Paused — not in the class voice channel", detail: session.presenceReason || "Recording resumes the moment you join.", blocking: false, displayIndex, corner };
     }
-    return { mode: "paused", title: "Starting recording…", detail: "", blocking: false, displayIndex };
+    return { mode: "paused", title: "Starting recording…", detail: "", blocking: false, displayIndex, corner };
   };
 
   // The overlay is the one call that used to be able to hang: creating its
@@ -1989,6 +1995,18 @@
     listen("update-progress", (event) => {
       state.update.progress = event.payload || null;
       renderUpdate();
+    });
+    listen("overlay-corner", (event) => {
+      const moved = String(event.payload || "").trim();
+      if (!moved || moved === state.settings.overlayCorner) {
+        return;
+      }
+      state.settings.overlayCorner = moved;
+      saveSettings();
+      // The overlay is already there; this keeps our idea of it in step so the
+      // next update does not put it back.
+      state.lastOverlayJson = "";
+      log(`Overlay moved to the ${moved.split("-").join(" ")} corner.`);
     });
     listen("hidden-to-tray", () => {
       log("YanLearn Recorder keeps running in the tray / menu bar.");

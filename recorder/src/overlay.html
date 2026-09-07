@@ -15,10 +15,30 @@
         -webkit-user-select: none;
       }
 
+      /* The pill fills its window, which is sized to fit it: every pixel of
+         that window takes mouse input, and any spare is a pixel of the lesson
+         the tutor cannot click. */
       #pill {
         position: absolute;
-        right: 8px;
-        bottom: 8px;
+        left: 0;
+        top: 0;
+        cursor: grab;
+      }
+
+      #pill.dragging {
+        cursor: grabbing;
+      }
+
+      /* Drop targets, shown only while the pill is held. */
+      .guide {
+        position: absolute;
+        box-sizing: border-box;
+        border: 2px dashed rgba(255, 255, 255, 0.9);
+        border-radius: 999px;
+        background: rgba(17, 18, 20, 0.28);
+        box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.45), inset 0 0 0 2px rgba(0, 0, 0, 0.35);
+      }
+      #pill {
         display: flex;
         align-items: center;
         gap: 10px;
@@ -150,6 +170,7 @@
       <div class="detail" id="banner-detail"></div>
     </div>
     <div id="identify" hidden></div>
+    <div id="guides"></div>
 
     <script>
       (function () {
@@ -159,6 +180,44 @@
           var el = document.getElementById("identify");
           el.textContent = identify;
           el.hidden = false;
+          return;
+        }
+
+        // A transparent sheet over the whole display, showing where the pill
+        // can be dropped. Only ever visible while it is being held.
+        if (params.get("guides")) {
+          var guideBox = document.getElementById("guides");
+          var drawGuides = function (spec) {
+            var width = Math.max(40, Number(spec && spec.width) || 280);
+            var height = Math.max(24, Number(spec && spec.height) || 44);
+            var margin = Number(spec && spec.margin) || 16;
+            var bottom = Number(spec && spec.bottomMargin) || 72;
+            var corners = [
+              { left: margin, top: margin },
+              { right: margin, top: margin },
+              { left: margin, bottom: bottom },
+              { right: margin, bottom: bottom },
+            ];
+            guideBox.innerHTML = "";
+            for (var i = 0; i < corners.length; i++) {
+              var guide = document.createElement("div");
+              guide.className = "guide";
+              guide.style.width = width + "px";
+              guide.style.height = height + "px";
+              for (var edge in corners[i]) {
+                guide.style[edge] = corners[i][edge] + "px";
+              }
+              guideBox.appendChild(guide);
+            }
+          };
+          drawGuides(null);
+          if (window.__TAURI__) {
+            // Sent on every drag: the pill's size changes with its text, and
+            // the outlines have to match the thing being dragged.
+            window.__TAURI__.event.listen("corner-guides", function (event) {
+              drawGuides(event.payload);
+            });
+          }
           return;
         }
 
@@ -215,6 +274,7 @@
         function apply(state) {
           current = state && typeof state === "object" ? state : null;
           render();
+          syncSize();
         }
 
         // Cheap one-second tick only refreshes the elapsed/countdown text.
@@ -231,6 +291,86 @@
             apply(event.payload);
           });
         }
+
+        // Dragging the pill between corners. The window follows the pointer and
+        // lands in whichever corner it was nearest when let go.
+        var dragPill = document.getElementById("pill");
+        var lastWidth = 0;
+        var lastHeight = 0;
+        var dragging = false;
+
+        // The window is sized to the pill, because it is the one overlay that
+        // takes mouse input: every pixel of it that is not the pill is a pixel
+        // of the lesson the tutor cannot click.
+        function syncSize() {
+          if (!tauri || !current || current.blocking || dragPill.hidden) {
+            return;
+          }
+          var rect = dragPill.getBoundingClientRect();
+          var width = Math.ceil(rect.width);
+          var height = Math.ceil(rect.height);
+          if (!width || !height) {
+            return;
+          }
+          if (Math.abs(width - lastWidth) < 2 && Math.abs(height - lastHeight) < 2) {
+            return;
+          }
+          lastWidth = width;
+          lastHeight = height;
+          tauri.core.invoke("resize_overlay", { width: width, height: height }).catch(function () {});
+        }
+
+        function endDrag(event) {
+          if (!dragging) {
+            return;
+          }
+          dragging = false;
+          dragPill.classList.remove("dragging");
+          if (event && event.pointerId !== undefined) {
+            try {
+              dragPill.releasePointerCapture(event.pointerId);
+            } catch (error) {
+              // already released
+            }
+          }
+          tauri.core.invoke("hide_corner_guides").catch(function () {});
+          tauri.core.invoke("snap_overlay").catch(function () {});
+        }
+
+        dragPill.addEventListener("pointerdown", function (event) {
+          if (event.button !== 0 || !tauri) {
+            return;
+          }
+          dragging = true;
+          dragPill.classList.add("dragging");
+          // Capture keeps the moves coming when the pointer outruns the window,
+          // which it does on any quick drag.
+          try {
+            dragPill.setPointerCapture(event.pointerId);
+          } catch (error) {
+            // not fatal; the drag just ends if the pointer leaves
+          }
+          var rect = dragPill.getBoundingClientRect();
+          tauri.core
+            .invoke("show_corner_guides", {
+              width: Math.ceil(rect.width),
+              height: Math.ceil(rect.height),
+            })
+            .catch(function () {});
+          event.preventDefault();
+        });
+
+        dragPill.addEventListener("pointermove", function (event) {
+          if (!dragging || (!event.movementX && !event.movementY)) {
+            return;
+          }
+          tauri.core
+            .invoke("nudge_overlay", { dx: event.movementX, dy: event.movementY })
+            .catch(function () {});
+        });
+
+        dragPill.addEventListener("pointerup", endDrag);
+        dragPill.addEventListener("pointercancel", endDrag);
       })();
     </script>
   </body>

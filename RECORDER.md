@@ -36,7 +36,7 @@ recordings. **Mandatory for every class from 2026‑09‑09.**
      until they press it again;
    * pressed while outside the call → *forced pause*: joining the call does
      **not** resume recording until they press it again.
-6. A small click‑through overlay pill (bottom‑right of the recorded display)
+6. A small overlay pill (draggable to any corner of the recorded display)
    always shows REC / paused / force‑paused / armed / uploading. It is
    content‑protected, so it does not appear in Discord screen shares (or, on
    Windows, in the recording itself).
@@ -175,6 +175,30 @@ uploads failed).
    Discord vars are the existing ones.
 4. `npm install` (adds `@aws-sdk/client-s3` and `@aws-sdk/s3-request-presigner`),
    then push to `master` and run `npm test` / `tsc` — see the status note above.
+
+### Moving the status pill
+
+The pill can be dragged to any corner of the recorded display. Holding it puts a
+dashed outline in each corner — a transparent, click-through, content-protected
+sheet over the whole display (`show_corner_guides`) — so it is obvious both that
+the pill moves and where it can go. Letting go drops it in whichever corner its
+middle was nearest (`snap_overlay`), and the choice is remembered in
+`settings.overlayCorner`.
+
+Two things follow from the pill accepting mouse input, since it can no longer be
+click-through:
+
+* **The window is sized to the pill**, not to a fixed box. Every pixel of that
+  window swallows a click the tutor meant for whatever is underneath, so the
+  page measures the pill after each render and asks for a matching window
+  (`resize_overlay`) — around 104×52 rather than the old 360×56.
+* **The banner stays click-through and centred.** It is large, it appears
+  exactly when something is wrong, and it must never sit between a tutor and
+  what they are teaching with. Only the pill is draggable.
+
+`nudge_overlay` moves the window by pointer deltas rather than to an absolute
+position, because the webview knows how far the pointer moved but not where its
+own window is on the desktop.
 
 ## Muting yourself, and trying the recorder
 
