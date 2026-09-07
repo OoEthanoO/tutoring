@@ -3,6 +3,8 @@ import { getAdminClient } from "@/lib/authServer";
 import { classEndMs } from "@/lib/classTiming";
 import { discordVoiceLookupEnabled, isAnyAccountInVoiceChannel } from "@/lib/discordVoice";
 import { getRecorderUser } from "@/lib/recorderAuth";
+import { classUsesDiscordVoiceSystem } from "@/lib/discordLiveChannels";
+import { isFounder, resolveUserRole } from "@/lib/roles";
 import {
   pickActiveRecorderClass,
   recorderActivePollMs,
@@ -107,7 +109,7 @@ export async function POST(request: NextRequest) {
   const windowEndMs = nowMs + recorderPreArmBeforeStartMs;
   const { data: courseRows, error: coursesError } = await adminClient
     .from("courses")
-    .select("id, title, course_classes(id, title, starts_at, duration_hours)")
+    .select("id, title, created_by, created_by_email, course_classes(id, title, starts_at, duration_hours)")
     .or(`created_by.eq.${user.id},co_tutor_id.eq.${user.id}`)
     .is("deleted_at", null)
     .gte("course_classes.starts_at", new Date(windowStartMs).toISOString())
@@ -115,11 +117,74 @@ export async function POST(request: NextRequest) {
   if (coursesError) {
     return NextResponse.json({ error: coursesError.message }, { status: 500 });
   }
+  // The recorder only has anything to do with classes held in a Discord voice
+  // channel: it records while the tutor is in that channel, so for a class on
+  // Schoolhouse or the legacy Zoom flow there is nothing it can ever capture.
+  // Claiming one anyway used to arm the app and hold it locked for hours over a
+  // class it could not record.
+  const creatorIds = Array.from(
+    new Set(
+      (courseRows ?? [])
+        .map((course) => String(course.created_by ?? "").trim())
+        .filter((id) => id.length > 0)
+    )
+  );
+  const creatorById = new Map<string, { email: string; role: string | null }>();
+  if (creatorIds.length > 0) {
+    const { data: creatorRows } = await adminClient
+      .from("app_users")
+      .select("id, email, role")
+      .in("id", creatorIds);
+    for (const row of creatorRows ?? []) {
+      creatorById.set(String(row.id), {
+        email: String(row.email ?? ""),
+        role: row.role ? String(row.role) : null,
+      });
+    }
+  }
+
+  // The Zoom-era cutoff is judged by a course's *first* class, which the window
+  // above deliberately does not include.
+  const courseIds = Array.from(new Set((courseRows ?? []).map((course) => String(course.id))));
+  const firstClassMsByCourse = new Map<string, number>();
+  if (courseIds.length > 0) {
+    const { data: allClassRows } = await adminClient
+      .from("course_classes")
+      .select("course_id, starts_at")
+      .in("course_id", courseIds);
+    for (const row of allClassRows ?? []) {
+      const startsAtMs = new Date(String(row.starts_at)).getTime();
+      if (!Number.isFinite(startsAtMs)) {
+        continue;
+      }
+      const courseId = String(row.course_id);
+      const known = firstClassMsByCourse.get(courseId);
+      if (known === undefined || startsAtMs < known) {
+        firstClassMsByCourse.set(courseId, startsAtMs);
+      }
+    }
+  }
+
+  const courseOnDiscordVoice = (course: { id: unknown; created_by?: unknown; created_by_email?: unknown }, classStartMs: number) => {
+    const creator = creatorById.get(String(course.created_by ?? ""));
+    const email = creator?.email || String(course.created_by_email ?? "");
+    const founderTaught = isFounder(resolveUserRole(email, creator?.role ?? null));
+    const firstClassMs = firstClassMsByCourse.get(String(course.id));
+    return classUsesDiscordVoiceSystem({
+      founderTaught,
+      firstClassDate: firstClassMs === undefined ? null : new Date(firstClassMs),
+      classStart: new Date(classStartMs),
+    });
+  };
+
   const candidates: ClassCandidate[] = [];
   for (const course of courseRows ?? []) {
     for (const cls of course.course_classes ?? []) {
       const startsAtMs = new Date(String(cls.starts_at)).getTime();
       if (!Number.isFinite(startsAtMs) || startsAtMs < windowStartMs || startsAtMs > windowEndMs) {
+        continue;
+      }
+      if (!courseOnDiscordVoice(course, startsAtMs)) {
         continue;
       }
       candidates.push({

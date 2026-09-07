@@ -208,7 +208,11 @@ fn register_hotkeys(app: AppHandle, pause: String, mute: String) -> Result<(), S
                     let _ = app.emit("mute-hotkey", ());
                 }
             })
-            .map_err(|e| format!("Could not register the mute hotkey {mute}: {e}"))?;
+            .map_err(|e| {
+                format!(
+                    "Could not register the mute hotkey {mute} — another app is probably using it. Everything else still works; mute from the app window instead. ({e})"
+                )
+            })?;
     }
     Ok(())
 }

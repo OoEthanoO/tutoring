@@ -147,7 +147,11 @@ links useless to third parties, and the file is gone after 7 days.
 ### Compliance
 
 `recorder_class_sessions.first_seen_at` is when the tutor's app first reported
-the class. The class‑reminders cron, in the tick containing each class start
+the class. The recorder only ever claims classes held in a Discord voice channel — a
+Schoolhouse or legacy Zoom class has no live channel, so there is nothing it
+could record — and it does not hold the app open before
+`recorderMandatoryFromMs`.
+The class‑reminders cron, in the tick containing each class start
 (only for classes with a live‑channel row, only from 2026‑09‑09), posts to the
 executives channel when the recorder was missing or opened <5 min early — once
 per class (`class_reminder_logs` type `recorder_not_open`). The same cron runs

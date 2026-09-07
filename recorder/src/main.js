@@ -1048,6 +1048,13 @@
 
   // --- Decisions -------------------------------------------------------------------
 
+  // The recorder is only mandatory from the date the server names; before that
+  // it records when asked but never locks anyone in.
+  const recorderEnforced = () => {
+    const from = state.tick?.mandatoryFromMs;
+    return typeof from === "number" ? serverNow() >= from : true;
+  };
+
   const setQuitLock = async (locked) => {
     if (state.quitLocked === locked) {
       return;
@@ -1091,9 +1098,13 @@
     // A dry run never holds the quit lock. Trapping someone in a practice
     // session is worse than the lost realism, and it looks like the app is
     // broken rather than doing its job.
-    await setQuitLock(
-      session.test ? uploadsPending : session.phase !== "pre_arm" || session.finalizing || uploadsPending
-    );
+    //
+    // Neither does a class before the recorder is mandatory: until then it is
+    // a tool a tutor may use, not one that may hold their computer shut. A
+    // recording that already exists still locks whatever the date, because that
+    // is about not losing a class rather than about enforcement.
+    const classLock = recorderEnforced() && (session.phase !== "pre_arm" || session.finalizing);
+    await setQuitLock(session.test ? uploadsPending : classLock || uploadsPending);
     if (session.finalizing) {
       render();
       await updateOverlay();
