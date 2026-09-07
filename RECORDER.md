@@ -87,7 +87,7 @@ recorder/                      Tauri 2 app ("YanLearn Recorder")
   src-tauri/src/windowlist.rs  open windows + which one has focus (Win32 / CoreGraphics)
   sysaudio/main.swift          macOS ScreenCaptureKit system-audio helper
   scripts/fetch-ffmpeg.mjs     downloads the static ffmpeg sidecar per target
-.github/workflows/recorder-release.yml   builds mac arm64 / mac x64 / win x64 on `recorder-v*` tags
+.github/workflows/recorder-release.yml   builds mac arm64 / win x64 on `recorder-v*` tags
 
 src/lib/recorderPolicy.ts      the rules (phases, lock, compliance, 7-day expiry) — unit tested
 src/lib/recordings.ts          access checks, playback tokens, expiry sweep, storage paths
@@ -354,11 +354,15 @@ hand.
 
 CI: push a tag `recorder-v0.1.0` (version in `recorder/package.json`,
 `recorder/src-tauri/tauri.conf.json` and `recorder/src-tauri/Cargo.toml`) →
-GitHub release with `.dmg` (Apple Silicon and Intel), `.msi` / `-setup.exe`, the
+GitHub release with `.dmg` (Apple Silicon), `.msi` / `-setup.exe`, the
 signed updater artifacts and `latest.json`. The Help tab and tutor banner link
 to `releases/latest` for first installs; after that every open recorder picks
 the release up by itself (see "Automatic updates"). The matrix runs one job at
-a time because all three merge into the same `latest.json` asset.
+a time because both merge into the same `latest.json` asset. Intel Macs are not
+built (September 2026): nobody at YanLearn runs one, and the job doubled every
+release. Restoring it means re-adding the `macos-15-intel` matrix entry — note
+that any Intel Mac already running the app stops receiving updates while it is
+gone, because `latest.json` is rebuilt per release and drops `darwin-x86_64`.
 
 Locally (needs Node 20, Rust stable, and on macOS Xcode CLT):
 

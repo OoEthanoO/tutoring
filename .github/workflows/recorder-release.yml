@@ -1,6 +1,6 @@
 name: YanLearn Recorder release
 
-# Builds the desktop recorder for macOS (Apple Silicon + Intel) and Windows and
+# Builds the desktop recorder for macOS (Apple Silicon) and Windows and
 # attaches the installers to a GitHub release. Trigger by pushing a tag such as
 # `recorder-v0.1.0` (the version should match recorder/package.json and
 # recorder/src-tauri/tauri.conf.json) or manually from the Actions tab.
@@ -36,12 +36,13 @@ jobs:
           - os: macos-latest
             target: aarch64-apple-darwin
             swift_target: arm64-apple-macos13.0
-          # Intel Macs. The macos-13 image was retired in December 2025, so that
-          # label never picks up a runner; macos-15-intel is its replacement and
-          # is supported until August 2027.
-          - os: macos-15-intel
-            target: x86_64-apple-darwin
-            swift_target: x86_64-apple-macos13.0
+          # Intel Macs were dropped in September 2026: nobody at YanLearn runs
+          # one, and the job doubled the wall-clock time of every release
+          # because the matrix builds one at a time. Adding `macos-15-intel`
+          # with target `x86_64-apple-darwin` back here is all it takes to
+          # restore it -- but an Intel Mac that already has the app will have
+          # stopped receiving updates in the meantime, since latest.json is
+          # rebuilt per release and would no longer carry a darwin-x86_64 entry.
           - os: windows-latest
             target: x86_64-pc-windows-msvc
     runs-on: ${{ matrix.os }}
@@ -126,7 +127,7 @@ jobs:
           projectPath: recorder
           tagName: ${{ github.ref_type == 'tag' && github.ref_name || 'recorder-dev' }}
           releaseName: "YanLearn Recorder ${{ github.ref_type == 'tag' && github.ref_name || 'development build' }}"
-          releaseBody: "Download the installer for your computer: `.dmg` for macOS (Apple Silicon or Intel), `.msi` or `-setup.exe` for Windows. See RECORDER.md in the repository for setup instructions. Recorders that are already installed update themselves to this version the next time they are open and not in a class."
+          releaseBody: "Download the installer for your computer: `.dmg` for macOS (Apple Silicon), `.msi` or `-setup.exe` for Windows. See RECORDER.md in the repository for setup instructions. Recorders that are already installed update themselves to this version the next time they are open and not in a class."
           # NSIS (-setup.exe) updates install per-user without a UAC prompt;
           # the .msi would need one.
           updaterJsonPreferNsis: true
