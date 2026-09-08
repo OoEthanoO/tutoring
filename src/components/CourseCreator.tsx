@@ -185,13 +185,13 @@ export default function CourseCreator({ editData, onSuccess, onCancel }: CourseC
       <div className="space-y-8 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6">
         <header className="space-y-1">
           <p className="text-[0.65rem] font-bold uppercase tracking-[0.2em] text-[var(--muted)]">
-            {editData ? "Edit Request" : "Submit Request"}
+            {editData?.id ? "Edit Request" : "Submit Request"}
           </p>
           <h2 className="text-lg font-semibold text-[var(--foreground)]">
-            {editData ? "Edit your course creation request" : "Submit a course creation request"}
+            {editData?.id ? "Edit your course creation request" : "Submit a course creation request"}
           </h2>
           <p className="text-sm text-[var(--muted)]">
-            {editData ? "Your changes will be saved as a draft or sent back for review." : "Your request will be reviewed by founders before being added to the catalog."}
+            {editData?.id ? "Your changes will be saved as a draft or sent back for review." : "Your request will be reviewed by founders before being added to the catalog."}
           </p>
         </header>
 
@@ -372,7 +372,7 @@ export default function CourseCreator({ editData, onSuccess, onCancel }: CourseC
               disabled={isSubmitting}
               className={`w-full rounded-full border border-[var(--foreground)] px-6 py-3 text-sm font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-70 ${onCancel ? "w-2/3" : ""}`}
             >
-              {isSubmitting ? "Submitting..." : editData ? "Save changes" : "Submit course request"}
+              {isSubmitting ? "Submitting..." : editData?.id ? "Save changes" : "Submit course request"}
             </button>
           </div>
         </form>

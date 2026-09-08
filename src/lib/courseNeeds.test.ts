@@ -1,11 +1,23 @@
 import { describe, expect, it } from "vitest";
 import {
   buildCourseNeedsMessage,
+  courseNeedKey,
   escapeDiscordMarkdown,
   maxCourseNeeds,
   parseCourseNeeds,
+  summariseCourseNeedsSend,
   validateCourseNeeds,
 } from "./courseNeeds";
+
+describe("courseNeedKey", () => {
+  it("treats the same course typed differently as one entry", () => {
+    expect(courseNeedKey("  Grade 6   FRENCH ")).toBe(courseNeedKey("grade 6 french"));
+  });
+
+  it("keeps different courses apart", () => {
+    expect(courseNeedKey("Grade 6 French")).not.toBe(courseNeedKey("Grade 7 French"));
+  });
+});
 
 describe("parseCourseNeeds", () => {
   it("takes a single course as typed", () => {
@@ -109,5 +121,50 @@ describe("buildCourseNeedsMessage", () => {
   it("uses the site URL it is given", () => {
     const message = buildCourseNeedsMessage({ needs: ["x"], siteUrl: "https://example.test" });
     expect(message).toContain("https://example.test");
+  });
+});
+
+describe("summariseCourseNeedsSend", () => {
+  it("names the one course it announced", () => {
+    const message = summariseCourseNeedsSend({
+      added: ["Grade 6 French"],
+      alreadyListed: [],
+      channel: "everyone",
+    });
+    expect(message).toBe("YanBot asked for a tutor for “Grade 6 French” in #everyone.");
+  });
+
+  it("counts several", () => {
+    const message = summariseCourseNeedsSend({
+      added: ["Grade 6 French", "Grade 9 Math"],
+      alreadyListed: [],
+    });
+    expect(message).toContain("tutors for 2 courses in #everyone");
+  });
+
+  it("says why a course already on the list was not announced again", () => {
+    const message = summariseCourseNeedsSend({ added: [], alreadyListed: ["Grade 6 French"] });
+    expect(message).toContain("already on the list");
+    expect(message).not.toContain("YanBot asked");
+  });
+
+  it("reports both halves of a mixed send", () => {
+    const message = summariseCourseNeedsSend({
+      added: ["Grade 9 Math"],
+      alreadyListed: ["Grade 6 French", "Grade 11 Chemistry"],
+    });
+    expect(message).toContain("Grade 9 Math");
+    expect(message).toContain("2 courses were already on the list");
+  });
+});
+
+describe("buildCourseNeedsMessage and the running list", () => {
+  it("points tutors at the list of everything still needed", () => {
+    expect(buildCourseNeedsMessage({ needs: ["Grade 6 French"] })).toContain(
+      "Every course we still need is listed there."
+    );
+    expect(buildCourseNeedsMessage({ needs: ["Grade 6 French", "Grade 9 Math"] })).toContain(
+      "Every course we still need is listed there."
+    );
   });
 });

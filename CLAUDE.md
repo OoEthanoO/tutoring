@@ -48,9 +48,12 @@ bearer (see the `cron:reminders:*` npm scripts).
   pure functions in `src/lib/tutorPresence.ts`.
 - `src/components/DashboardMenus.tsx` — home page tab router; admin panels
   live in `AdminUserManager.tsx` (Admin → Manage accounts). Admin Tools
-  there includes "Course needs": the trio types courses nobody teaches yet and
-  YanBot asks the tutors in Discord to send course requests
-  (`src/lib/courseNeeds.ts`, `api/admin/course-needs`).
+  there includes "Course needs": the trio types courses nobody teaches yet,
+  YanBot asks the tutors in Discord to send course requests, and the courses
+  stay on a running list (`course_needs` table) that every executive sees in
+  Course requests until the trio removes them. Adding is what announces — a
+  course already on the list is not announced twice (`src/lib/courseNeeds.ts`,
+  `api/course-needs`, `CourseNeedsList.tsx`).
 - Founder-taught courses ran on Schoolhouse rather than Discord; from
   2026-09-08 (Toronto) their classes use the same live voice channels,
   reminders and attendance as everyone else. The rule is per class, not per

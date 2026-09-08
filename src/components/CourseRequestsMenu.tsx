@@ -7,6 +7,7 @@ import { suggestNextClassStart } from "@/lib/classSchedule";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import CourseCreator from "./CourseCreator";
+import CourseNeedsList, { type CourseNeed } from "./CourseNeedsList";
 
 type RequestRecord = {
   id: string;
@@ -42,7 +43,8 @@ export default function CourseRequestsMenu() {
   const [isFounderAccess, setIsFounderAccess] = useState(false);
   const [requests, setRequests] = useState<RequestRecord[]>([]);
   const [isCreatorModalOpen, setIsCreatorModalOpen] = useState(false);
-  const [editData, setEditData] = useState<RequestRecord | null>(null);
+  // Either a request being edited, or just a title to start a new one with.
+  const [editData, setEditData] = useState<Partial<RequestRecord> | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [, setError] = useState("");
   const [actioningId, setActioningId] = useState<string | null>(null);
@@ -59,6 +61,11 @@ export default function CourseRequestsMenu() {
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [rejectNote, setRejectNote] = useState<string>("");
 
+  // Courses nobody teaches yet. The trio keeps the list; everyone else reads it
+  // and can start a request already titled with the course.
+  const [courseNeeds, setCourseNeeds] = useState<CourseNeed[]>([]);
+  const [removingNeedId, setRemovingNeedId] = useState<string | null>(null);
+
   useEffect(() => {
     const load = async () => {
       const user = await getCurrentUser();
@@ -73,6 +80,7 @@ export default function CourseRequestsMenu() {
       setIsFounderAccess(isFounder(resolvedRole));
 
       fetchRequests();
+      fetchCourseNeeds();
     };
 
     load();
@@ -103,6 +111,41 @@ export default function CourseRequestsMenu() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const fetchCourseNeeds = async () => {
+    try {
+      const res = await fetch("/api/course-needs");
+      if (res.ok) {
+        const data = (await res.json()) as { needs?: CourseNeed[] };
+        setCourseNeeds(data.needs ?? []);
+      }
+    } catch {
+      // The list is a prompt, not the point of the page; leave it empty.
+    }
+  };
+
+  // Offering to teach a listed course: the request form, already titled.
+  const requestListedCourse = (need: CourseNeed) => {
+    setEditData({ title: need.need });
+    setIsCreatorModalOpen(true);
+  };
+
+  const removeCourseNeed = async (need: CourseNeed) => {
+    if (removingNeedId) {
+      return;
+    }
+    setRemovingNeedId(need.id);
+    const res = await fetch("/api/course-needs", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: need.id }),
+    });
+    if (res.ok) {
+      const data = (await res.json().catch(() => null)) as { needs?: CourseNeed[] } | null;
+      setCourseNeeds(data?.needs ?? courseNeeds.filter((entry) => entry.id !== need.id));
+    }
+    setRemovingNeedId(null);
   };
 
   const handleReject = (id: string) => {
@@ -333,11 +376,30 @@ export default function CourseRequestsMenu() {
         </button>
       </div>
 
+      {courseNeeds.length > 0 && (
+        <section className="space-y-3 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6">
+          <div className="space-y-1">
+            <h2 className="text-lg font-semibold text-[var(--foreground)]">Courses we need</h2>
+            <p className="text-sm text-[var(--muted)]">
+              {isFounderAccess
+                ? "Nobody teaches these yet. Remove one once a tutor takes it on."
+                : "Nobody teaches these yet. If you can teach one, send a course request for it."}
+            </p>
+          </div>
+          <CourseNeedsList
+            needs={courseNeeds}
+            onRequest={requestListedCourse}
+            onRemove={isFounderAccess ? removeCourseNeed : undefined}
+            busyId={removingNeedId}
+          />
+        </section>
+      )}
+
       {isCreatorModalOpen && (
         <div className="fixed top-0 left-0 z-50 flex h-[100dvh] w-[100dvw] items-center justify-center p-4 bg-black/50 backdrop-blur-sm shadow-xl">
           <div className="relative w-full max-w-2xl bg-[var(--background)] rounded-2xl border border-[var(--border)] overflow-hidden my-auto max-h-[90dvh] flex flex-col">
             <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border)] bg-[var(--surface)]">
-              <h2 className="text-lg font-bold">{editData ? "Edit course request" : "Submit course request"}</h2>
+              <h2 className="text-lg font-bold">{editData?.id ? "Edit course request" : "Submit course request"}</h2>
               <button 
                 onClick={() => { 
                   setIsCreatorModalOpen(false); 

@@ -11,6 +11,8 @@ import { isExecutive, isFounder, resolveUserRole } from "@/lib/roles";
 import AdminBannedEmails from "@/components/AdminBannedEmails";
 import AdminApprovedDiscordAccounts from "@/components/AdminApprovedDiscordAccounts";
 import CourseAttendance from "@/components/CourseAttendance";
+import CourseNeedsList, { type CourseNeed } from "@/components/CourseNeedsList";
+import { summariseCourseNeedsSend } from "@/lib/courseNeeds";
 import TutorApplicationFormModal from "@/components/TutorApplicationFormModal";
 
 type AdminUser = {
@@ -161,6 +163,11 @@ export default function AdminUserManager() {
   const [isSyncingNames, setIsSyncingNames] = useState(false);
   const [courseNeeds, setCourseNeeds] = useState("");
   const [isSendingCourseNeeds, setIsSendingCourseNeeds] = useState(false);
+  const [courseNeedsList, setCourseNeedsList] = useState<CourseNeed[]>([]);
+  const [isLoadingCourseNeeds, setIsLoadingCourseNeeds] = useState(true);
+  const [courseNeedsError, setCourseNeedsError] = useState("");
+  const [removingCourseNeedId, setRemovingCourseNeedId] = useState<string | null>(null);
+  const [isAnnouncingCourseNeeds, setIsAnnouncingCourseNeeds] = useState(false);
   const [discordReminderRecipientMode, setDiscordReminderRecipientMode] =
     useState<DiscordEmailRecipientMode>("blacklist");
   const [discordReminderEmailList, setDiscordReminderEmailList] = useState("");
@@ -392,6 +399,30 @@ export default function AdminUserManager() {
     };
 
     fetchSchools();
+  }, [isFounderAccess]);
+
+  useEffect(() => {
+    if (!isFounderAccess) {
+      return;
+    }
+
+    const loadCourseNeeds = async () => {
+      setIsLoadingCourseNeeds(true);
+      setCourseNeedsError("");
+      const response = await fetch("/api/course-needs").catch(() => null);
+      if (!response || !response.ok) {
+        // An empty list and a list that failed to load look identical
+        // otherwise, and this one is the list of work nobody is doing.
+        setCourseNeedsError("Could not load the course needs.");
+        setIsLoadingCourseNeeds(false);
+        return;
+      }
+      const data = (await response.json()) as { needs?: CourseNeed[] };
+      setCourseNeedsList(data.needs ?? []);
+      setIsLoadingCourseNeeds(false);
+    };
+
+    loadCourseNeeds();
   }, [isFounderAccess]);
 
   useEffect(() => {
@@ -1424,7 +1455,9 @@ export default function AdminUserManager() {
     setIsFixingClasses(false);
   };
 
-  // Ask the tutors in Discord for someone to teach a course we have no tutor for.
+  // Add courses nobody teaches yet to the running list. Adding is what makes
+  // YanBot ask the tutors for them; courses already on the list are not
+  // announced again.
   const sendCourseNeeds = async () => {
     const typed = courseNeeds.trim();
     if (!typed || isSendingCourseNeeds) {
@@ -1434,15 +1467,27 @@ export default function AdminUserManager() {
     setIsSendingCourseNeeds(true);
     setStatus({ type: "idle", message: "" });
 
-    const response = await fetch("/api/admin/course-needs", {
+    const response = await fetch("/api/course-needs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ needs: typed }),
     });
 
     const payload = (await response.json().catch(() => null)) as
-      | { error?: string; needs?: string[]; channel?: string }
+      | {
+          error?: string;
+          added?: string[];
+          alreadyListed?: string[];
+          channel?: string;
+          needs?: CourseNeed[];
+        }
       | null;
+
+    // The list comes back either way: a Discord failure still saved the
+    // courses, and the panel should show that rather than look unchanged.
+    if (payload?.needs) {
+      setCourseNeedsList(payload.needs);
+    }
 
     if (!response.ok) {
       setStatus({
@@ -1453,15 +1498,91 @@ export default function AdminUserManager() {
       return;
     }
 
-    const count = payload?.needs?.length ?? 0;
     setStatus({
       type: "success",
-      message: `YanBot asked for ${count === 1 ? "a tutor" : `tutors for ${count} courses`} in #${
-        payload?.channel ?? "everyone"
-      }.`,
+      message: summariseCourseNeedsSend({
+        added: payload?.added ?? [],
+        alreadyListed: payload?.alreadyListed ?? [],
+        channel: payload?.channel ?? "everyone",
+      }),
     });
     setCourseNeeds("");
     setIsSendingCourseNeeds(false);
+  };
+
+  // Someone took the course on (or it is no longer wanted): cross it off.
+  const removeCourseNeed = async (need: CourseNeed) => {
+    if (removingCourseNeedId) {
+      return;
+    }
+
+    setRemovingCourseNeedId(need.id);
+    setStatus({ type: "idle", message: "" });
+
+    const response = await fetch("/api/course-needs", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: need.id }),
+    });
+
+    const payload = (await response.json().catch(() => null)) as
+      | { error?: string; needs?: CourseNeed[] }
+      | null;
+
+    if (!response.ok) {
+      setStatus({
+        type: "error",
+        message: payload?.error ?? "Could not remove that course need.",
+      });
+      setRemovingCourseNeedId(null);
+      return;
+    }
+
+    setCourseNeedsList(payload?.needs ?? courseNeedsList.filter((entry) => entry.id !== need.id));
+    setStatus({ type: "success", message: `Removed “${need.need}” from the course needs.` });
+    setRemovingCourseNeedId(null);
+  };
+
+  // Retry for courses that reached the list but never reached Discord.
+  const announcePendingCourseNeeds = async () => {
+    if (isAnnouncingCourseNeeds) {
+      return;
+    }
+
+    setIsAnnouncingCourseNeeds(true);
+    setStatus({ type: "idle", message: "" });
+
+    const response = await fetch("/api/course-needs", { method: "PATCH" });
+    const payload = (await response.json().catch(() => null)) as
+      | { error?: string; announced?: string[]; channel?: string; needs?: CourseNeed[] }
+      | null;
+
+    if (payload?.needs) {
+      setCourseNeedsList(payload.needs);
+    }
+
+    if (!response.ok) {
+      setStatus({
+        type: "error",
+        message: payload?.error ?? "Could not announce the course needs.",
+      });
+      setIsAnnouncingCourseNeeds(false);
+      return;
+    }
+
+    const announced = payload?.announced ?? [];
+    setStatus({
+      type: "success",
+      message:
+        announced.length === 0
+          ? "Every course on the list has already been announced."
+          : summariseCourseNeedsSend({
+              added: announced,
+              alreadyListed: [],
+              channel: payload?.channel ?? "everyone",
+            }),
+    });
+    setIsAnnouncingCourseNeeds(false);
   };
 
   const syncProfileNames = async () => {
@@ -1580,8 +1701,10 @@ export default function AdminUserManager() {
             Course needs
           </p>
           <p className="text-xs text-[var(--muted)]">
-            Courses we have no tutor for. YanBot announces them to the tutors and asks whoever can
-            teach one to send a course request. One course per line.
+            The running list of courses we have no tutor for. Adding one makes YanBot ask the tutors
+            to send a course request; the list stays in Course requests for them to check, so remove
+            a course once somebody takes it on. One course per line — a course already on the list is
+            not announced twice.
           </p>
         </div>
         <textarea
@@ -1600,7 +1723,35 @@ export default function AdminUserManager() {
           >
             {isSendingCourseNeeds ? "Sending..." : "Send course needs"}
           </button>
+          {courseNeedsList.some((need) => !need.announced_at) ? (
+            <button
+              type="button"
+              onClick={announcePendingCourseNeeds}
+              disabled={isAnnouncingCourseNeeds}
+              className="rounded-full border border-amber-500 px-4 py-2 text-xs font-semibold text-amber-700 transition hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-70 dark:text-amber-300 dark:hover:bg-amber-900/20"
+            >
+              {isAnnouncingCourseNeeds ? "Announcing..." : "Announce again"}
+            </button>
+          ) : null}
           <span className="text-xs text-[var(--muted)]">Posted publicly, mentioning the tutor roles.</span>
+        </div>
+
+        <div className="space-y-2 border-t border-[var(--border)] pt-3">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
+            On the list {isLoadingCourseNeeds ? "" : `(${courseNeedsList.length})`}
+          </p>
+          {isLoadingCourseNeeds ? (
+            <p className="text-xs text-[var(--muted)]">Loading...</p>
+          ) : courseNeedsError ? (
+            <p className="text-xs text-red-600 dark:text-red-400">{courseNeedsError}</p>
+          ) : (
+            <CourseNeedsList
+              needs={courseNeedsList}
+              onRemove={removeCourseNeed}
+              busyId={removingCourseNeedId}
+              emptyMessage="Nothing on the list — every course we need has a tutor."
+            />
+          )}
         </div>
       </div>
 
