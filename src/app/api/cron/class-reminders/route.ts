@@ -719,62 +719,26 @@ export async function POST(request: NextRequest) {
   }
 
   // Persist a compact Discord sync health snapshot for the admin panel — the
-  // cron response body is not surfaced anywhere. On OK <-> failing transitions
-  // also ping the founders channel so breakage is noticed without opening the
-  // admin panel. Best-effort: this must never break the reminder run (it also
-  // no-ops until the discord_sync_status migration is applied).
+  // cron response body is not surfaced anywhere. Best-effort: this must never
+  // break the reminder run (it also no-ops until the discord_sync_status
+  // migration is applied).
   try {
     const syncOk =
       discordSync.errors.length === 0 && discordSync.skippedReason === null;
 
-    const { data: previousStatusRow, error: previousStatusError } =
-      await adminClient
-        .from("site_settings")
-        .select("discord_sync_status")
-        .eq("id", true)
-        .single();
-
-    if (!previousStatusError) {
-      const previousStatus =
-        (previousStatusRow?.discord_sync_status as { ok?: boolean } | null) ??
-        null;
-
-      await adminClient
-        .from("site_settings")
-        .update({
-          discord_sync_status: {
-            ran_at: new Date().toISOString(),
-            ok: syncOk,
-            skipped_reason: discordSync.skippedReason,
-            error_count: discordSync.errors.length,
-            errors: discordSync.errors.slice(0, 10),
-            kicked_member_count: discordSync.kickedMemberCount,
-          },
-        })
-        .eq("id", true);
-
-      if (
-        previousStatus &&
-        typeof previousStatus.ok === "boolean" &&
-        previousStatus.ok !== syncOk &&
-        foundersChannelId
-      ) {
-        const content = syncOk
-          ? "✅ **Discord sync recovered** — the previous sync errors have cleared."
-          : [
-              "⚠️ **Discord sync is failing.**",
-              ...discordSync.errors
-                .slice(0, 3)
-                .map((item) => `- ${item.slice(0, 300)}`),
-              discordSync.errors.length > 3
-                ? `…and ${discordSync.errors.length - 3} more (see Admin Tools on the website).`
-                : "",
-            ]
-              .filter(Boolean)
-              .join("\n");
-        await sendDiscordChannelMessage(foundersChannelId, content);
-      }
-    }
+    await adminClient
+      .from("site_settings")
+      .update({
+        discord_sync_status: {
+          ran_at: new Date().toISOString(),
+          ok: syncOk,
+          skipped_reason: discordSync.skippedReason,
+          error_count: discordSync.errors.length,
+          errors: discordSync.errors.slice(0, 10),
+          kicked_member_count: discordSync.kickedMemberCount,
+        },
+      })
+      .eq("id", true);
   } catch {
     // Sync health reporting is best-effort only.
   }

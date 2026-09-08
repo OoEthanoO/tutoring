@@ -46,8 +46,8 @@ bearer (see the `cron:reminders:*` npm scripts).
   and creates/updates temporary live class voice channels under the "Live"
   category (tutor early access 15 min before start, students 5 min). Persists
   a sync health snapshot to `site_settings.discord_sync_status` (shown in
-  Admin → Manage accounts → Admin Tools; founders channel pinged on OK↔failing
-  transitions). Also records attendance from voice states and warns absent
+  Admin → Manage accounts → Admin Tools; sync failures do not send Discord
+  notifications). Also records attendance from voice states and warns absent
   tutors/students — see `CLASS_PRESENCE_WARNINGS.md`; the timing rules are
   pure functions in `src/lib/tutorPresence.ts`.
 - `src/components/DashboardMenus.tsx` — home page tab router; admin panels
