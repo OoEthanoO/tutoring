@@ -37,6 +37,10 @@ bearer (see the `cron:reminders:*` npm scripts).
   kicks human members not linked to a website account (unless listed in
   `approved_discord_accounts`), manages roles (base + per-course), channels,
   and nicknames. Aborts if the approved-accounts table is missing (by design).
+  Anything it does not manage is deleted, so removing a role or channel from
+  this file is how you retire it. The supplementary Social Media / Science
+  Tutor / Math Tutor / Nonprofit Team / Development Team roles and channels
+  were retired that way in September 2026 — do not re-add them.
 - `src/app/api/cron/class-reminders/route.ts` — cron tick (auth:
   `CRON_SECRET` bearer). Runs the Discord sync, sends email/Discord reminders,
   and creates/updates temporary live class voice channels under the "Live"
@@ -73,7 +77,11 @@ bearer (see the `cron:reminders:*` npm scripts).
   `src/app/api/recordings/**` (student playback: token + range-proxy stream),
   `src/lib/recorderPolicy.ts` (phases / lock / compliance / 7-day expiry — pure,
   unit tested), `src/lib/recordings.ts` (access checks, playback tokens, expiry
-  sweep). The class-reminders cron runs the expiry sweep and the "recorder not
+  sweep). Recording is per course: `courses.recordings_enabled` (copied from
+  the tick on the course request, changeable later by the trio in Manage
+  courses). A course with it off is invisible to the recorder — the tick never
+  claims its classes, the cron never warns its tutor, and the dashboard notice
+  is hidden. Courses that existed before September 2026 were migrated to off. The class-reminders cron runs the expiry sweep and the "recorder not
   open" warning. Recordings live in a private S3-compatible bucket (Cloudflare R2 /
   Backblaze B2 free tier — `src/lib/recordingStorage.ts`, env `RECORDINGS_S3_*`;
   Supabase Storage is deliberately not used) and are only reached through the

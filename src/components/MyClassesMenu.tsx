@@ -19,6 +19,8 @@ type UpcomingClass = {
   starts_at: string;
   duration_hours: number;
   role_in_course: "student" | "tutor" | "founder";
+  /** False when this course opted out of YanLearn Recorder. */
+  recordings_enabled?: boolean;
   tutor_name?: string | null;
   students?: Array<{ name: string | null; email: string | null }>;
 };
@@ -146,7 +148,11 @@ export default function MyClassesMenu() {
     return null;
   }
 
-  const teachesAClass = classes.some((cls) => cls.role_in_course !== "student");
+  // Only tutors of courses that are actually recorded are told about the
+  // recorder: a course with recordings off exempts them from the app.
+  const teachesARecordedClass = classes.some(
+    (cls) => cls.role_in_course !== "student" && cls.recordings_enabled !== false
+  );
 
   return (
     <section className="space-y-6 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6">
@@ -182,7 +188,7 @@ export default function MyClassesMenu() {
         </p>
       ) : null}
 
-      {teachesAClass ? <RecorderNotice /> : null}
+      {teachesARecordedClass ? <RecorderNotice /> : null}
 
       <div className="space-y-3">
         {classes.map((cls) => {

@@ -41,6 +41,8 @@ type Course = {
   max_students?: number | null;
   donation_fee?: number | null;
   grade_level?: number | null;
+  /** Recorded with YanLearn Recorder. Off exempts the tutor from the app. */
+  recordings_enabled?: boolean;
   created_by?: string | null;
   created_by_name?: string | null;
   created_by_email?: string | null;
@@ -133,6 +135,7 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
   const [editCourseMaxStudents, setEditCourseMaxStudents] = useState<string>("");
   const [editCourseDonationFee, setEditCourseDonationFee] = useState<string>("");
   const [editCourseGradeLevel, setEditCourseGradeLevel] = useState<string>("");
+  const [editCourseRecordingsEnabled, setEditCourseRecordingsEnabled] = useState(false);
   const [editCompletedStartDate, setEditCompletedStartDate] = useState("");
   const [editCompletedEndDate, setEditCompletedEndDate] = useState("");
   const [editCompletedClassCount, setEditCompletedClassCount] = useState("");
@@ -804,6 +807,7 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
     setEditCourseMaxStudents(course.max_students ? String(course.max_students) : "");
     setEditCourseDonationFee(course.donation_fee ? String(course.donation_fee) : "");
     setEditCourseGradeLevel(course.grade_level ? String(course.grade_level) : "");
+    setEditCourseRecordingsEnabled(course.recordings_enabled === true);
     setEditCompletedStartDate(course.completed_start_date ?? "");
     setEditCompletedEndDate(course.completed_end_date ?? "");
     setEditCompletedClassCount(course.completed_class_count ? String(course.completed_class_count) : "");
@@ -817,6 +821,7 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
     setEditCourseMaxStudents("");
     setEditCourseDonationFee("");
     setEditCourseGradeLevel("");
+    setEditCourseRecordingsEnabled(false);
     setEditCompletedStartDate("");
     setEditCompletedEndDate("");
     setEditCompletedClassCount("");
@@ -845,6 +850,7 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
         maxStudents: isFounder(role) ? (editCourseMaxStudents ? Number(editCourseMaxStudents) : null) : undefined,
         donationFee: isHighRankingChiefExecutive(role) ? (editCourseDonationFee ? Number(editCourseDonationFee) : null) : undefined,
         gradeLevel: isFounder(role) ? (editCourseGradeLevel ? Number(editCourseGradeLevel) : null) : undefined,
+        recordingsEnabled: isFounder(role) ? editCourseRecordingsEnabled : undefined,
         completedStartDate: isFounder(role) ? (editCompletedStartDate || null) : undefined,
         completedEndDate: isFounder(role) ? (editCompletedEndDate || null) : undefined,
         completedClassCount: isFounder(role) ? (editCompletedClassCount ? Number(editCompletedClassCount) : null) : undefined,
@@ -1350,6 +1356,32 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
                       </div>
                     ) : null}
                     {isFounder(role) ? (
+                      <div className="space-y-1 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
+                        <div className="flex items-start gap-3">
+                          <input
+                            id={`course-recordings-${course.id}`}
+                            type="checkbox"
+                            checked={editCourseRecordingsEnabled}
+                            onChange={(event) => setEditCourseRecordingsEnabled(event.target.checked)}
+                            className="mt-0.5 h-4 w-4 rounded border-[var(--border)] bg-[var(--background)] text-[var(--foreground)] focus:ring-0"
+                          />
+                          <div>
+                            <label
+                              htmlFor={`course-recordings-${course.id}`}
+                              className="text-sm font-semibold text-[var(--foreground)]"
+                            >
+                              Record classes with YanLearn Recorder
+                            </label>
+                            <p className="mt-1 text-xs text-[var(--muted)]">
+                              {editCourseRecordingsEnabled
+                                ? "The tutor is asked to keep the app open for every class."
+                                : "The tutor is not asked to install or open the app for this course."}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
+                    {isFounder(role) ? (
                       <input
                         type="text"
                         value={editCourseShortName}
@@ -1404,6 +1436,11 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
                   <div>
                     <p className="text-sm font-semibold text-[var(--foreground)]">
                       {course.title}
+                      {course.recordings_enabled === false ? (
+                        <span className="ml-2 rounded-full border border-[var(--border)] px-2 py-0.5 text-[0.6rem] font-semibold text-[var(--muted)]">
+                          No recordings
+                        </span>
+                      ) : null}
                     </p>
                     {isFounder(role) && course.short_name ? (
                       <p className="text-xs text-[var(--muted)]">

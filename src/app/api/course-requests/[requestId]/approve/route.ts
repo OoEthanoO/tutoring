@@ -119,6 +119,9 @@ export async function POST(
       co_tutor_id: requestRecord.co_tutor_id,
       co_tutor_name: requestRecord.is_co_taught && coTutorUser ? coTutorName : null,
       co_tutor_email: requestRecord.is_co_taught && coTutorUser ? (coTutorUser.email ?? null) : null,
+      // The tutor answered this on the request; anything but an explicit no
+      // means the course is recorded.
+      recordings_enabled: requestRecord.recordings_enabled !== false,
     })
     .select("id")
     .single();

@@ -109,7 +109,7 @@ export async function POST(request: NextRequest) {
   const windowEndMs = nowMs + recorderPreArmBeforeStartMs;
   const { data: courseRows, error: coursesError } = await adminClient
     .from("courses")
-    .select("id, title, created_by, created_by_email, course_classes(id, title, starts_at, duration_hours)")
+    .select("id, title, created_by, created_by_email, recordings_enabled, course_classes(id, title, starts_at, duration_hours)")
     .or(`created_by.eq.${user.id},co_tutor_id.eq.${user.id}`)
     .is("deleted_at", null)
     .gte("course_classes.starts_at", new Date(windowStartMs).toISOString())
@@ -179,6 +179,12 @@ export async function POST(request: NextRequest) {
 
   const candidates: ClassCandidate[] = [];
   for (const course of courseRows ?? []) {
+    // Courses that opted out of recording are not the recorder's business at
+    // all: claiming one would arm the app and hold it locked over a class it
+    // is not supposed to capture.
+    if (course.recordings_enabled === false) {
+      continue;
+    }
     for (const cls of course.course_classes ?? []) {
       const startsAtMs = new Date(String(cls.starts_at)).getTime();
       if (!Number.isFinite(startsAtMs) || startsAtMs < windowStartMs || startsAtMs > windowEndMs) {

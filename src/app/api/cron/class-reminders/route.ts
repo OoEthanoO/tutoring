@@ -226,10 +226,6 @@ const baseRoleNames = new Set([
   "CEO",
   "COO",
   "Chief Executive",
-  "Social Media",
-  "Science Tutor",
-  "Math Tutor",
-  "Nonprofit Team",
   "Founder",
   "Strike",
 ]);
@@ -3500,7 +3496,7 @@ ${tutorWasPresent ? "" : "<p><strong>Note:</strong> you were not detected in the
     const recorderTickWindowMs = 2 * 60 * 1000;
     const { data: startingClasses } = await adminClient
       .from("course_classes")
-      .select("id, title, starts_at, course:courses(id, title, created_by, deleted_at)")
+      .select("id, title, starts_at, course:courses(id, title, created_by, deleted_at, recordings_enabled)")
       .gte("starts_at", new Date(recorderNowMs - recorderTickWindowMs).toISOString())
       .lte("starts_at", new Date(recorderNowMs).toISOString());
 
@@ -3510,6 +3506,11 @@ ${tutorWasPresent ? "" : "<p><strong>Note:</strong> you were not detected in the
         | null;
       const tutorId = String(course?.created_by ?? "").trim();
       if (!course || course.deleted_at || !tutorId) {
+        continue;
+      }
+      // A course that is not recorded exempts its tutor from the recorder, so
+      // there is nothing to warn them about.
+      if ((course as { recordings_enabled?: boolean | null }).recordings_enabled === false) {
         continue;
       }
       const startsAtMs = new Date(String(classRow.starts_at)).getTime();

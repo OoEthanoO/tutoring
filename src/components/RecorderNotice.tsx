@@ -22,7 +22,8 @@ export default function RecorderNotice() {
         Pause with <span className="font-semibold">Ctrl+Alt+P</span> (macOS:{" "}
         <span className="font-semibold">⌘+Option+P</span>). Recordings are only visible to the
         students enrolled in your course and are deleted after 7 days. The app keeps itself up to
-        date, so you only download it once. See the Help tab for details.
+        date, so you only download it once. Courses marked as not recorded are exempt — you will not see
+        this notice once every course you teach is one of them. See the Help tab for details.
       </p>
       <a
         href={recorderDownloadUrl}

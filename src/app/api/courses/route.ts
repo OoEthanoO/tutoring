@@ -47,6 +47,7 @@ export async function POST(request: NextRequest) {
       completedClassCount?: number;
       maxStudents?: number;
       gradeLevel?: number | string | null;
+      recordingsEnabled?: boolean;
       classes?: { title?: string; startsAt?: string; durationHours?: number }[];
     }
     | null;
@@ -67,6 +68,9 @@ export async function POST(request: NextRequest) {
   // Drives the tutor's service-hour rate (grade 11/12 courses earn 2 hours per
   // class), so only the founder trio may set it.
   const gradeLevel = normalizeGradeLevel(body?.gradeLevel);
+  // Same default as a course request: recorded unless someone says otherwise.
+  // A completed course is history, so it is never marked for recording.
+  const recordingsEnabled = !isCompleted && body?.recordingsEnabled !== false;
   const classes = Array.isArray(body?.classes) ? body?.classes ?? [] : [];
   const creatorName =
     String(user.full_name ?? "").trim() || user.email || "Unknown tutor";
@@ -125,9 +129,10 @@ export async function POST(request: NextRequest) {
       created_by: user.id,
       created_by_name: creatorName,
       created_by_email: user.email ?? null,
+      recordings_enabled: recordingsEnabled,
     })
     .select(
-      "id, title, short_name, description, is_completed, completed_start_date, completed_end_date, completed_class_count, max_students, donation_fee, grade_level, created_by, created_by_name, created_by_email, is_co_taught, co_tutor_id, co_tutor_name, co_tutor_email, created_at, deleted_at"
+      "id, title, short_name, description, is_completed, completed_start_date, completed_end_date, completed_class_count, max_students, donation_fee, grade_level, created_by, created_by_name, created_by_email, is_co_taught, co_tutor_id, co_tutor_name, co_tutor_email, recordings_enabled, created_at, deleted_at"
     )
     .single();
 
@@ -218,7 +223,7 @@ export async function GET(request: NextRequest) {
   let query = adminClient
     .from("courses")
     .select(
-      "id, title, short_name, description, is_completed, completed_start_date, completed_end_date, completed_class_count, max_students, donation_fee, grade_level, created_by, created_by_name, created_by_email, is_co_taught, co_tutor_id, co_tutor_name, co_tutor_email, created_at, deleted_at, course_classes(id, title, starts_at, duration_hours, created_at), course_enrollments(count)"
+      "id, title, short_name, description, is_completed, completed_start_date, completed_end_date, completed_class_count, max_students, donation_fee, grade_level, created_by, created_by_name, created_by_email, is_co_taught, co_tutor_id, co_tutor_name, co_tutor_email, recordings_enabled, created_at, deleted_at, course_classes(id, title, starts_at, duration_hours, created_at), course_enrollments(count)"
     );
 
   if (trash) {
@@ -440,6 +445,7 @@ export async function PATCH(request: NextRequest) {
       completedStartDate?: string | null;
       completedEndDate?: string | null;
       completedClassCount?: number | null;
+      recordingsEnabled?: boolean;
       restore?: boolean;
     }
     | null;
@@ -486,6 +492,8 @@ export async function PATCH(request: NextRequest) {
     typeof body.completedEndDate === "string" ? body.completedEndDate.trim() : undefined;
   const completedClassCount =
     typeof body.completedClassCount === "number" ? Math.floor(body.completedClassCount) : undefined;
+  const recordingsEnabled =
+    typeof body.recordingsEnabled === "boolean" ? body.recordingsEnabled : undefined;
 
   if (title !== undefined && !title) {
     return NextResponse.json({ error: "Title is required." }, { status: 400 });
@@ -499,6 +507,7 @@ export async function PATCH(request: NextRequest) {
     maxStudents === undefined &&
     donationFee === undefined &&
     gradeLevel === undefined &&
+    recordingsEnabled === undefined &&
     body.restore !== true
   ) {
     return NextResponse.json(
@@ -530,6 +539,7 @@ export async function PATCH(request: NextRequest) {
     completed_start_date?: string | null;
     completed_end_date?: string | null;
     completed_class_count?: number | null;
+    recordings_enabled?: boolean;
     deleted_at?: string | null;
   } = {};
   if (title !== undefined) {
@@ -537,6 +547,11 @@ export async function PATCH(request: NextRequest) {
   }
   if (body.restore === true) {
     updatePayload.deleted_at = null;
+  }
+  if (recordingsEnabled !== undefined) {
+    // Turning it off exempts the tutor from YanLearn Recorder for this course:
+    // no reminder to open it, and the app never claims its classes.
+    updatePayload.recordings_enabled = recordingsEnabled;
   }
   if (description !== undefined) {
     updatePayload.description = description ? description : null;
@@ -638,7 +653,7 @@ export async function PATCH(request: NextRequest) {
 
   const { data, error: updateError } = await updateQuery
     .select(
-      "id, title, short_name, description, is_completed, completed_start_date, completed_end_date, completed_class_count, max_students, donation_fee, grade_level, created_by, created_by_name, created_by_email, is_co_taught, co_tutor_id, co_tutor_name, co_tutor_email, created_at, deleted_at"
+      "id, title, short_name, description, is_completed, completed_start_date, completed_end_date, completed_class_count, max_students, donation_fee, grade_level, created_by, created_by_name, created_by_email, is_co_taught, co_tutor_id, co_tutor_name, co_tutor_email, recordings_enabled, created_at, deleted_at"
     )
     .single();
 

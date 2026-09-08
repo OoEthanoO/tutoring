@@ -23,6 +23,7 @@ type RequestRecord = {
   created_by: string;
   created_at: string;
   is_co_taught?: boolean;
+  recordings_enabled?: boolean;
   co_tutor_id?: string;
   app_users: { full_name: string; email: string };
   co_tutor?: { full_name: string; email: string };
@@ -444,6 +445,11 @@ export default function CourseRequestsMenu() {
                           Co-taught
                         </span>
                       )}
+                      {req.recordings_enabled === false && (
+                        <span className="ml-2 text-xs font-medium text-[var(--muted)] bg-[var(--background)] px-2 py-0.5 rounded-full border border-[var(--border)]">
+                          No recordings
+                        </span>
+                      )}
                     </h3>
                     <p className="text-sm text-[var(--muted)]">
                       Primary Tutor: {req.app_users?.full_name || req.app_users?.email}
@@ -696,6 +702,11 @@ export default function CourseRequestsMenu() {
                       {req.is_co_taught && (
                         <span className="ml-2 text-xs font-medium text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
                           Co-taught
+                        </span>
+                      )}
+                      {req.recordings_enabled === false && (
+                        <span className="ml-2 text-xs font-medium text-[var(--muted)] bg-[var(--background)] px-2 py-0.5 rounded-full border border-[var(--border)]">
+                          No recordings
                         </span>
                       )}
                     </h3>

@@ -144,7 +144,8 @@ export default function HelpMenu() {
                         Starting <span className="font-semibold">September 9, 2026</span>, every class must be recorded with the
                         YanLearn Recorder desktop app (macOS and Windows). Recordings are uploaded to YanLearn automatically,
                         can only be watched by the students enrolled in that course, cannot be downloaded, and are deleted 7 days
-                        after the class.
+                        after the class. Courses marked as not recorded are the exception: you are not asked to run the app for
+                        them at all.
                     </p>
                     <ol className="list-decimal list-outside text-sm text-[var(--foreground)] space-y-1 pl-5">
                         <li>

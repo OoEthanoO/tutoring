@@ -39,6 +39,8 @@ type UpcomingClass = {
   role_in_course: "student" | "tutor" | "founder";
   tutor_name: string;
   students?: { name: string | null; email: string | null }[];
+  /** Whether this class is recorded with YanLearn Recorder. */
+  recordings_enabled?: boolean;
 };
 
 export async function GET(request: NextRequest) {
@@ -105,7 +107,7 @@ export async function GET(request: NextRequest) {
   let query = adminClient
     .from("courses")
     .select(
-      "id, title, created_by, created_by_name, created_by_email, deleted_at, course_classes(id, title, starts_at, duration_hours), course_enrollments(student_name, student_email)"
+      "id, title, created_by, created_by_name, created_by_email, deleted_at, recordings_enabled, course_classes(id, title, starts_at, duration_hours), course_enrollments(student_name, student_email)"
     )
     .is("deleted_at", null);
 
@@ -141,6 +143,7 @@ export async function GET(request: NextRequest) {
             role_in_course: isUsuallyTutor ? "tutor" : "founder",
             tutor_name: course.created_by_name || course.created_by_email || "Unknown tutor",
             students,
+            recordings_enabled: course.recordings_enabled !== false,
           });
           seenClassIds.add(cls.id);
         }

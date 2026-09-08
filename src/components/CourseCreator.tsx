@@ -26,6 +26,7 @@ type CourseRequestEditData = {
   start_date?: string;
   notes?: string;
   status?: string;
+  recordings_enabled?: boolean;
 };
 
 type CourseCreatorProps = {
@@ -47,6 +48,10 @@ export default function CourseCreator({ editData, onSuccess, onCancel }: CourseC
   const initialStartDate = editData?.start_date ? new Date(editData.start_date + 'T12:00:00Z') : new Date();
   const [startDate, setStartDate] = useState<Date | null>(initialStartDate);
   const [notes, setNotes] = useState(editData?.notes || "");
+  // Recording is the default: unticking it is a deliberate exception.
+  const [recordingsEnabled, setRecordingsEnabled] = useState(
+    editData?.recordings_enabled !== false
+  );
 
   const [status, setStatus] = useState<StatusState>({
     type: "idle",
@@ -54,6 +59,8 @@ export default function CourseCreator({ editData, onSuccess, onCancel }: CourseC
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  // Unticking recordings is warned about once, when it is unticked.
+  const [showNoRecordingsWarning, setShowNoRecordingsWarning] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -136,6 +143,7 @@ export default function CourseCreator({ editData, onSuccess, onCancel }: CourseC
           totalClasses,
           startDate: startDate?.toISOString().split('T')[0],
           notes: notes.trim(),
+          recordingsEnabled,
           status: isEditing && editData?.status === "rejected" ? "draft" : undefined,
         }),
       });
@@ -356,6 +364,38 @@ export default function CourseCreator({ editData, onSuccess, onCancel }: CourseC
             />
           </div>
 
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
+            <div className="flex items-start gap-3">
+              <input
+                id="course-recordings-enabled"
+                type="checkbox"
+                checked={recordingsEnabled}
+                onChange={(event) => {
+                  if (event.target.checked) {
+                    setRecordingsEnabled(true);
+                    return;
+                  }
+                  // Stays ticked until they have read what unticking costs.
+                  setShowNoRecordingsWarning(true);
+                }}
+                className="mt-0.5 h-4 w-4 rounded border-[var(--border)] bg-[var(--background)] text-[var(--foreground)] focus:ring-0"
+              />
+              <div>
+                <label
+                  htmlFor="course-recordings-enabled"
+                  className="text-sm font-semibold text-[var(--foreground)]"
+                >
+                  Record classes with YanLearn Recorder
+                </label>
+                <p className="mt-1 text-xs text-[var(--muted)]">
+                  {recordingsEnabled
+                    ? "You will run YanLearn Recorder for every class. Recordings are visible only to your enrolled students and are deleted after 7 days."
+                    : "Untick only if this course should not be recorded. You will not be asked to install or open YanLearn Recorder for it."}
+                </p>
+              </div>
+            </div>
+          </div>
+
           <div className="flex gap-2">
             {onCancel && (
               <button
@@ -377,6 +417,45 @@ export default function CourseCreator({ editData, onSuccess, onCancel }: CourseC
           </div>
         </form>
       </div>
+
+      {showNoRecordingsWarning && (
+        <div className="fixed top-0 left-0 z-[60] flex h-[100dvh] w-[100dvw] items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-transparent"
+            onClick={() => setShowNoRecordingsWarning(false)}
+          ></div>
+          <div className="relative w-full max-w-md animate-in fade-in zoom-in duration-200 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-[0_8px_30px_rgb(0,0,0,0.12)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.5)]">
+            <h3 className="text-lg font-semibold text-[var(--foreground)]">
+              Fewer students will enroll
+            </h3>
+            <p className="mt-3 text-sm text-[var(--muted)] leading-relaxed">
+              Expect this course to fill less than it otherwise would. Students are less inclined to
+              enroll in a course with no class recordings: they cannot catch up on a class they miss,
+              and they cannot review one afterwards. If you turn recordings off, please make sure it
+              is worth that cost.
+            </p>
+            <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => setShowNoRecordingsWarning(false)}
+                className="rounded-full bg-[var(--foreground)] px-4 py-2 text-xs font-semibold text-[var(--background)] hover:opacity-90 transition"
+              >
+                Keep recordings on
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setRecordingsEnabled(false);
+                  setShowNoRecordingsWarning(false);
+                }}
+                className="rounded-full border border-[var(--border)] px-4 py-2 text-xs font-semibold text-[var(--muted)] hover:bg-[var(--border)] hover:text-[var(--foreground)] transition"
+              >
+                Continue without recordings
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showConfirmModal && (
         <div className="fixed top-0 left-0 z-[60] flex h-[100dvh] w-[100dvw] items-center justify-center p-4">
