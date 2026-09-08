@@ -166,6 +166,7 @@ export default function AdminUserManager() {
   const [courseNeedsList, setCourseNeedsList] = useState<CourseNeed[]>([]);
   const [isLoadingCourseNeeds, setIsLoadingCourseNeeds] = useState(true);
   const [courseNeedsError, setCourseNeedsError] = useState("");
+  const [courseNeedsChannel, setCourseNeedsChannel] = useState("executives");
   const [removingCourseNeedId, setRemovingCourseNeedId] = useState<string | null>(null);
   const [isAnnouncingCourseNeeds, setIsAnnouncingCourseNeeds] = useState(false);
   const [discordReminderRecipientMode, setDiscordReminderRecipientMode] =
@@ -417,8 +418,11 @@ export default function AdminUserManager() {
         setIsLoadingCourseNeeds(false);
         return;
       }
-      const data = (await response.json()) as { needs?: CourseNeed[] };
+      const data = (await response.json()) as { needs?: CourseNeed[]; channel?: string };
       setCourseNeedsList(data.needs ?? []);
+      if (data.channel) {
+        setCourseNeedsChannel(data.channel);
+      }
       setIsLoadingCourseNeeds(false);
     };
 
@@ -1503,7 +1507,7 @@ export default function AdminUserManager() {
       message: summariseCourseNeedsSend({
         added: payload?.added ?? [],
         alreadyListed: payload?.alreadyListed ?? [],
-        channel: payload?.channel ?? "everyone",
+        channel: payload?.channel ?? courseNeedsChannel,
       }),
     });
     setCourseNeeds("");
@@ -1579,7 +1583,7 @@ export default function AdminUserManager() {
           : summariseCourseNeedsSend({
               added: announced,
               alreadyListed: [],
-              channel: payload?.channel ?? "everyone",
+              channel: payload?.channel ?? courseNeedsChannel,
             }),
     });
     setIsAnnouncingCourseNeeds(false);
@@ -1733,7 +1737,9 @@ export default function AdminUserManager() {
               {isAnnouncingCourseNeeds ? "Announcing..." : "Announce again"}
             </button>
           ) : null}
-          <span className="text-xs text-[var(--muted)]">Posted publicly, mentioning the tutor roles.</span>
+          <span className="text-xs text-[var(--muted)]">
+            Posted in #{courseNeedsChannel}, mentioning the tutor roles.
+          </span>
         </div>
 
         <div className="space-y-2 border-t border-[var(--border)] pt-3">

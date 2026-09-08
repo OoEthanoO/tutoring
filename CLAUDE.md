@@ -49,9 +49,10 @@ bearer (see the `cron:reminders:*` npm scripts).
 - `src/components/DashboardMenus.tsx` — home page tab router; admin panels
   live in `AdminUserManager.tsx` (Admin → Manage accounts). Admin Tools
   there includes "Course needs": the trio types courses nobody teaches yet,
-  YanBot asks the tutors in Discord to send course requests, and the courses
-  stay on a running list (`course_needs` table) that every executive sees in
-  Course requests until the trio removes them. Adding is what announces — a
+  YanBot asks the tutors to send course requests in the executives channel
+  (never the everyone channel; the obsolete Chief Executive role is never
+  pinged), and the courses stay on a running list (`course_needs` table) that
+  every executive sees in Course requests until the trio removes them. Adding is what announces — a
   course already on the list is not announced twice (`src/lib/courseNeeds.ts`,
   `api/course-needs`, `CourseNeedsList.tsx`).
 - Founder-taught courses ran on Schoolhouse rather than Discord; from

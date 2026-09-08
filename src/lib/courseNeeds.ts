@@ -113,7 +113,7 @@ export const buildCourseNeedsMessage = ({
 export const summariseCourseNeedsSend = ({
   added,
   alreadyListed,
-  channel = "everyone",
+  channel = "executives",
 }: {
   /** Needs that are new, and so were announced. */
   added: string[];

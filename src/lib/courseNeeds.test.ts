@@ -129,9 +129,9 @@ describe("summariseCourseNeedsSend", () => {
     const message = summariseCourseNeedsSend({
       added: ["Grade 6 French"],
       alreadyListed: [],
-      channel: "everyone",
+      channel: "executives",
     });
-    expect(message).toBe("YanBot asked for a tutor for “Grade 6 French” in #everyone.");
+    expect(message).toBe("YanBot asked for a tutor for “Grade 6 French” in #executives.");
   });
 
   it("counts several", () => {
@@ -139,7 +139,7 @@ describe("summariseCourseNeedsSend", () => {
       added: ["Grade 6 French", "Grade 9 Math"],
       alreadyListed: [],
     });
-    expect(message).toContain("tutors for 2 courses in #everyone");
+    expect(message).toContain("tutors for 2 courses in #executives");
   });
 
   it("says why a course already on the list was not announced again", () => {

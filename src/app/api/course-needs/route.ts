@@ -6,7 +6,11 @@ import {
   courseNeedKey,
   validateCourseNeeds,
 } from "@/lib/courseNeeds";
-import { getDiscordRoleIdByName, sendDiscordMessageByChannelName } from "@/lib/notificationsServer";
+import {
+  executivesChannelName,
+  getDiscordRoleIdByName,
+  sendDiscordMessageByChannelName,
+} from "@/lib/notificationsServer";
 
 /**
  * The running list of courses nobody teaches yet.
@@ -17,11 +21,14 @@ import { getDiscordRoleIdByName, sendDiscordMessageByChannelName } from "@/lib/n
  * deliberately not announced a second time.
  */
 
-/** Everyone is in this channel, so a call for tutors reaches all of them. */
-const channelName = String(process.env.DISCORD_EVERYONE_CHANNEL_NAME ?? "").trim() || "everyone";
+/**
+ * The tutors' channel. Course needs are internal — they are a call for
+ * executives to take a course on, not an announcement for the whole server.
+ */
+const channelName = () => executivesChannelName();
 
 /** The Discord roles held by people who can take a course on. */
-const tutorRoleNames = ["Chief Executive", "Executive", "Junior Executive"];
+const tutorRoleNames = ["Executive", "Junior Executive"];
 
 const siteUrl =
   String(process.env.NEXT_PUBLIC_SITE_URL ?? "").trim().replace(/\/+$/, "") ||
@@ -55,7 +62,7 @@ const announceNeeds = async (needs: string[]): Promise<boolean> => {
   });
 
   return sendDiscordMessageByChannelName(
-    channelName,
+    channelName(),
     content,
     // Only these roles may be pinged, whatever the course names contain.
     roleIds
@@ -112,7 +119,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    return NextResponse.json({ needs: await listNeeds(), channel: channelName });
+    return NextResponse.json({ needs: await listNeeds(), channel: channelName() });
   } catch {
     return NextResponse.json({ error: "Could not load the course needs." }, { status: 500 });
   }
@@ -187,7 +194,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         error:
-          `Added to the list, but YanBot could not post to #${channelName}. ` +
+          `Added to the list, but YanBot could not post to #${channelName()}. ` +
           "Check the bot token and that the channel exists, then use Announce again.",
         needs,
       },
@@ -199,7 +206,7 @@ export async function POST(request: NextRequest) {
     success: true,
     added: added.map((row) => row.need),
     alreadyListed,
-    channel: channelName,
+    channel: channelName(),
     needs,
   });
 }
@@ -235,7 +242,7 @@ export async function PATCH(request: NextRequest) {
   const sent = await announceNeeds(pending.map((row) => row.need));
   if (!sent) {
     return NextResponse.json(
-      { error: `YanBot still could not post to #${channelName}.` },
+      { error: `YanBot still could not post to #${channelName()}.` },
       { status: 502 }
     );
   }
@@ -251,7 +258,7 @@ export async function PATCH(request: NextRequest) {
   return NextResponse.json({
     success: true,
     announced: pending.map((row) => row.need),
-    channel: channelName,
+    channel: channelName(),
     needs: await listNeeds(),
   });
 }
