@@ -1,4 +1,4 @@
-export type UserRole = "CEO" | "COO" | "Chief Executive" | "founder" | "Executive" | "executive" | "Junior Executive" | "Student" | "student";
+export type UserRole = "CEO" | "COO" | "Chief Executive" | "founder" | "Executive" | "executive" | "Student" | "student";
 
 const fallbackFounderEmails = [
   "ethanxucoder@gmail.com",
@@ -32,12 +32,15 @@ const normalizeRole = (role?: string | null): UserRole | null => {
   if (value === "coo") return "COO";
   if (value === "chief executive") return "Chief Executive";
   if (value === "executive") return "executive";
-  if (value === "junior executive") return "Junior Executive";
+  // Junior Executive was retired in September 2026; anyone still stored with
+  // it is an executive whose Discord role is decided by whether they teach a
+  // course (see executiveStanding.ts).
+  if (value === "junior executive") return "executive";
   if (value === "founder") return "founder";
   if (value === "student") return "student";
   if (value === "tutor") return "executive";
   if (value === "exec") return "executive";
-  if (value === "junior exec") return "Junior Executive";
+  if (value === "junior exec") return "executive";
 
   return null;
 };
@@ -57,7 +60,6 @@ export const resolveUserRole = (
     "Chief Executive": 70,
     Executive: 60,
     executive: 60,
-    "Junior Executive": 50,
     Student: 10,
     student: 10,
   };
@@ -98,8 +100,7 @@ export const isExecutive = (role: UserRole | null): boolean =>
   role === "COO" ||
   role === "Chief Executive" ||
   role === "Executive" ||
-  role === "executive" ||
-  role === "Junior Executive";
+  role === "executive";
 
 export const isFounder = (role: UserRole | null): boolean =>
   role === "founder" || role === "CEO" || role === "COO";
@@ -108,4 +109,4 @@ export const isHighRankingChiefExecutive = (role: UserRole | null): boolean =>
   role === "founder" || role === "CEO" || role === "COO";
 
 export const canManageCourses = (role: UserRole | null): boolean =>
-  role ? (isFounder(role) || role === "Chief Executive" || role === "Executive" || role === "executive" || role === "Junior Executive") : false;
+  role ? (isFounder(role) || role === "Chief Executive" || role === "Executive" || role === "executive") : false;

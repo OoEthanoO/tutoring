@@ -20,7 +20,11 @@ export const normalizeStandardRole = (role: string | null | undefined) => {
   if (value === "coo") return "COO";
   if (value === "chief executive") return "Chief Executive";
   if (value === "executive" || value === "exec" || value === "tutor") return "Executive";
-  if (value === "junior executive" || value === "junior exec") return "Junior Executive";
+  // Junior Executive was retired in September 2026; stored values are plain
+  // executives. Whether they hold Executive or Pending in Discord is decided
+  // by their courses (src/lib/executiveStanding.ts) and does not affect the
+  // roster, which has its own "not listed until they own a course" rule below.
+  if (value === "junior executive" || value === "junior exec") return "Executive";
   return null;
 };
 

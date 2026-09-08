@@ -46,13 +46,13 @@ describe("isCountedTeamMember (public team size)", () => {
     }
   });
 
-  it("counts a junior executive who has not taught yet, unlike the roster", () => {
+  it("counts a hidden tutor who has not taught yet, unlike the roster", () => {
     expect(isCountedTeamMember(juniorNotTeaching, creators)).toBe(true);
     expect(isTeamRosterMember(juniorNotTeaching, creators)).toBe(false);
   });
 
   it("does not count a student carrying the is_junior flag", () => {
-    // The flag alone does not make someone a junior executive; counting them
+    // The flag alone does not make someone a tutor; counting them
     // would overstate the team size against the analytics executive count.
     expect(isCountedTeamMember(flaggedStudent, creators)).toBe(false);
   });
@@ -63,7 +63,7 @@ describe("isCountedTeamMember (public team size)", () => {
 });
 
 describe("countTeamMembers", () => {
-  it("counts the roster plus untaught junior executives only", () => {
+  it("counts the roster plus untaught hidden tutors only", () => {
     const everyone = [
       executive,
       founder,

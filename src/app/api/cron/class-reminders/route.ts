@@ -222,7 +222,7 @@ const readCourseIdFromTopic = (topic?: string | null) => {
 const baseRoleNames = new Set([
   "Student",
   "Executive",
-  "Junior Executive",
+  "Pending",
   "CEO",
   "COO",
   "Chief Executive",

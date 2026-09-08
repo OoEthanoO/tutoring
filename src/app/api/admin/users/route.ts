@@ -3,6 +3,7 @@ import path from "path";
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { isExecutive, isFounder, resolveUserRole, type UserRole } from "@/lib/roles";
+import { teachesCourseIds } from "@/lib/executiveStanding";
 import { getRequestUser } from "@/lib/authServer";
 import { fetchDiscordGuildMemberIds } from "@/lib/discordSync";
 import { classEndMs } from "@/lib/classTiming";
@@ -246,7 +247,7 @@ export async function GET(request: NextRequest) {
   let query = adminClient
     .from("app_users")
     .select(
-      "id, email, full_name, legal_name, role, created_at, tutor_promoted_at, discord_user_id, discord_username, discord_connected_at, is_junior, grade, school, strike_count, custom_role, executive_generation"
+      "id, email, full_name, legal_name, role, created_at, tutor_promoted_at, discord_user_id, discord_username, discord_connected_at, is_junior, pending_role_exempt, grade, school, strike_count, custom_role, executive_generation"
     )
     .ilike("email", search ? `%${search}%` : "%")
     .order("created_at", { ascending: false });
@@ -282,6 +283,11 @@ export async function GET(request: NextRequest) {
     discordJoined: null as boolean | null,
     hasUpcomingClasses: false,
     isJunior: item.is_junior,
+    // Founder-set: keeps the Executive Discord role without a course.
+    pendingRoleExempt: Boolean(item.pending_role_exempt),
+    // Filled in below: false means they hold Pending in Discord instead of
+    // Executive.
+    teachesCourse: false,
     grade: item.grade ?? "",
     school: item.school ?? "",
     strikeCount: item.strike_count || 0,
@@ -364,17 +370,25 @@ export async function GET(request: NextRequest) {
     const nowMs = Date.now();
     const upcomingUserIds = new Set<string>();
 
-    const [{ data: enrollmentRows }, { data: tutorCourseRows }] = await Promise.all([
-      adminClient
-        .from("course_enrollments")
-        .select("student_id, course:courses(deleted_at, course_classes(starts_at, duration_hours))")
-        .in("student_id", userIds),
-      adminClient
-        .from("courses")
-        .select("created_by, course_classes(starts_at, duration_hours)")
-        .is("deleted_at", null)
-        .in("created_by", userIds),
-    ]);
+    const [{ data: enrollmentRows }, { data: tutorCourseRows }, { data: coTutorCourseRows }] =
+      await Promise.all([
+        adminClient
+          .from("course_enrollments")
+          .select("student_id, course:courses(deleted_at, course_classes(starts_at, duration_hours))")
+          .in("student_id", userIds),
+        adminClient
+          .from("courses")
+          .select("created_by, course_classes(starts_at, duration_hours)")
+          .is("deleted_at", null)
+          .in("created_by", userIds),
+        // Co-taught courses count too, and they are not covered by the query
+        // above, which matches on the course's creator.
+        adminClient
+          .from("courses")
+          .select("co_tutor_id")
+          .is("deleted_at", null)
+          .in("co_tutor_id", userIds),
+      ]);
 
     for (const row of enrollmentRows ?? []) {
       // Supabase types a to-one embed as an array; it is a single object at runtime.
@@ -386,6 +400,13 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Who teaches at all, past or upcoming: this is what decides Executive vs
+    // Pending in Discord, so a finished course still counts.
+    const tutorUserIds = teachesCourseIds([
+      ...(tutorCourseRows ?? []),
+      ...(coTutorCourseRows ?? []),
+    ]);
+
     for (const row of tutorCourseRows ?? []) {
       if (row.created_by && hasFutureClass(row.course_classes, nowMs)) {
         upcomingUserIds.add(row.created_by);
@@ -394,6 +415,7 @@ export async function GET(request: NextRequest) {
 
     users.forEach((user) => {
       user.hasUpcomingClasses = upcomingUserIds.has(user.id);
+      user.teachesCourse = tutorUserIds.has(user.id);
     });
   }
 
@@ -431,6 +453,7 @@ export async function PATCH(request: NextRequest) {
       donationLink?: string;
       tutorPromotedAt?: string | null;
       isJunior?: boolean;
+      pendingRoleExempt?: boolean;
       grade?: string;
       school?: string;
       strikeCount?: number;
@@ -446,6 +469,7 @@ export async function PATCH(request: NextRequest) {
       body.donationLink === undefined &&
       body.tutorPromotedAt === undefined &&
       body.isJunior === undefined &&
+      body.pendingRoleExempt === undefined &&
       body.grade === undefined &&
       body.school === undefined &&
       body.strikeCount === undefined &&
@@ -508,7 +532,7 @@ export async function PATCH(request: NextRequest) {
         discord_connected_at: sourceUser.discord_connected_at,
       })
       .eq("id", body.userId)
-      .select("id, email, full_name, legal_name, role, created_at, tutor_promoted_at, discord_user_id, discord_username, discord_connected_at, is_junior, grade, school, strike_count, custom_role, executive_generation")
+      .select("id, email, full_name, legal_name, role, created_at, tutor_promoted_at, discord_user_id, discord_username, discord_connected_at, is_junior, pending_role_exempt, grade, school, strike_count, custom_role, executive_generation")
       .single();
 
     if (linkError || !updatedTarget) {
@@ -539,6 +563,7 @@ export async function PATCH(request: NextRequest) {
       discordJoined,
       discordConnectedAt: updatedTarget.discord_connected_at ?? null,
       isJunior: updatedTarget.is_junior ?? false,
+      pendingRoleExempt: Boolean(updatedTarget.pending_role_exempt),
       grade: updatedTarget.grade ?? "",
       school: updatedTarget.school ?? "",
       strikeCount: updatedTarget.strike_count || 0,
@@ -577,7 +602,7 @@ export async function PATCH(request: NextRequest) {
     body.tutorPromotedAt === null ? null : body.tutorPromotedAt;
 
   const updatePayload =
-    body.role || shouldUpdatePromotedAt || body.isJunior !== undefined || body.grade !== undefined || body.school !== undefined || body.strikeCount !== undefined || body.customRole !== undefined || body.generation !== undefined
+    body.role || shouldUpdatePromotedAt || body.isJunior !== undefined || body.pendingRoleExempt !== undefined || body.grade !== undefined || body.school !== undefined || body.strikeCount !== undefined || body.customRole !== undefined || body.generation !== undefined
       ? {
         role: body.role !== undefined ? (isExecutive(body.role as UserRole) ? "tutor" : body.role) : undefined,
         tutor_promoted_at: isPromotingToTutor
@@ -586,6 +611,8 @@ export async function PATCH(request: NextRequest) {
             ? normalizedPromotedAt
             : undefined,
         is_junior: body.isJunior !== undefined ? body.isJunior : undefined,
+        pending_role_exempt:
+          body.pendingRoleExempt !== undefined ? body.pendingRoleExempt : undefined,
         grade: body.grade !== undefined ? body.grade : undefined,
         school: body.school !== undefined ? body.school : undefined,
         strike_count: body.strikeCount !== undefined ? body.strikeCount : undefined,
@@ -600,13 +627,13 @@ export async function PATCH(request: NextRequest) {
       .update(updatePayload)
       .eq("id", body.userId)
       .select(
-        "id, email, full_name, legal_name, role, created_at, tutor_promoted_at, discord_user_id, discord_username, discord_connected_at, is_junior, grade, school, strike_count, custom_role, executive_generation"
+        "id, email, full_name, legal_name, role, created_at, tutor_promoted_at, discord_user_id, discord_username, discord_connected_at, is_junior, pending_role_exempt, grade, school, strike_count, custom_role, executive_generation"
       )
       .single()
     : await adminClient
       .from("app_users")
       .select(
-        "id, email, full_name, legal_name, role, created_at, tutor_promoted_at, discord_user_id, discord_username, discord_connected_at, is_junior, grade, school, strike_count, custom_role, executive_generation"
+        "id, email, full_name, legal_name, role, created_at, tutor_promoted_at, discord_user_id, discord_username, discord_connected_at, is_junior, pending_role_exempt, grade, school, strike_count, custom_role, executive_generation"
       )
       .eq("id", body.userId)
       .single();
@@ -721,6 +748,7 @@ export async function PATCH(request: NextRequest) {
     discordUsername: updatedUser.discord_username ?? null,
     discordConnectedAt: updatedUser.discord_connected_at ?? null,
     isJunior: updatedUser.is_junior ?? false,
+    pendingRoleExempt: Boolean(updatedUser.pending_role_exempt),
     grade: updatedUser.grade ?? "",
     school: updatedUser.school ?? "",
     strikeCount: updatedUser.strike_count || 0,

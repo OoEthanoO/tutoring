@@ -29,6 +29,10 @@ type AdminUser = {
   hasUpcomingClasses?: boolean;
   discordConnectedAt?: string | null;
   isJunior: boolean;
+  // Owns or co-teaches at least one course: false means Pending in Discord.
+  teachesCourse?: boolean;
+  // Founder-set: keep the Executive role without teaching a course.
+  pendingRoleExempt?: boolean;
   grade?: string;
   school?: string;
   strikeCount?: number;
@@ -851,6 +855,42 @@ export default function AdminUserManager() {
     setStatus({
       type: "success",
       message: `Updated junior status for ${data.user.fullName || data.user.email || "user"}.`,
+    });
+    setPendingId(null);
+  };
+
+  // An executive with no course of their own holds Pending in Discord. Some
+  // people are on the team without ever teaching, so the trio can exempt them.
+  const togglePendingExemption = async (userId: string, pendingRoleExempt: boolean) => {
+    setPendingId(userId);
+    setStatus({ type: "idle", message: "" });
+
+    const response = await fetch("/api/admin/users", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, pendingRoleExempt }),
+    });
+
+    if (!response.ok) {
+      const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+      setStatus({
+        type: "error",
+        message: payload?.error ?? "Could not update the Pending exception.",
+      });
+      setPendingId(null);
+      return;
+    }
+
+    const data = (await response.json()) as { user: AdminUser };
+    setUsers((current) => current.map((user) => (user.id === data.user.id ? data.user : user)));
+    const who = data.user.fullName || data.user.email || "User";
+    setStatus({
+      type: "success",
+      message: pendingRoleExempt
+        ? `${who} keeps the Executive role without teaching a course. It applies on the next Discord sync.`
+        : data.user.teachesCourse
+          ? `${who} teaches a course, so they stay an Executive.`
+          : `${who} holds Pending until they upload a course they teach. It applies on the next Discord sync.`,
     });
     setPendingId(null);
   };
@@ -2300,8 +2340,35 @@ export default function AdminUserManager() {
                             htmlFor={`junior-toggle-${user.id}`}
                             className="text-xs font-medium text-[var(--foreground)]"
                           >
-                            Junior Executive (Hidden from &quot;Our Team&quot; list)
+                            Hidden from &quot;Our Team&quot; until they own a course
                           </label>
+                        </div>
+                      ) : null}
+                      {user.role === "executive" ? (
+                        <div className="flex flex-wrap items-center gap-2">
+                          <input
+                            id={`pending-exempt-${user.id}`}
+                            type="checkbox"
+                            checked={!!user.pendingRoleExempt}
+                            disabled={isPending}
+                            onChange={(event) => togglePendingExemption(user.id, event.target.checked)}
+                            className="h-4 w-4 rounded border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)] transition focus:ring-0"
+                          />
+                          <label
+                            htmlFor={`pending-exempt-${user.id}`}
+                            className="text-xs font-medium text-[var(--foreground)]"
+                          >
+                            Executive without a course (skip Pending)
+                          </label>
+                          {user.teachesCourse ? null : user.pendingRoleExempt ? (
+                            <span className="rounded-full bg-[var(--border)] px-2 py-0.5 text-[0.6rem] font-semibold text-[var(--muted)]">
+                              Exempt
+                            </span>
+                          ) : (
+                            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[0.6rem] font-semibold text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
+                              Pending
+                            </span>
+                          )}
                         </div>
                       ) : null}
                       {user.role !== "founder" ? (

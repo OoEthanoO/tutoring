@@ -27,8 +27,12 @@ import {
  */
 const channelName = () => executivesChannelName();
 
-/** The Discord roles held by people who can take a course on. */
-const tutorRoleNames = ["Executive", "Junior Executive"];
+/**
+ * The Discord roles held by people who can take a course on. Pending is the
+ * role of an executive who has not uploaded a course yet, which is exactly who
+ * a course need is asking for.
+ */
+const tutorRoleNames = ["Executive", "Pending"];
 
 const siteUrl =
   String(process.env.NEXT_PUBLIC_SITE_URL ?? "").trim().replace(/\/+$/, "") ||

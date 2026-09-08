@@ -6,7 +6,7 @@ export default function RolesManagerMenu() {
   const [newRoleLevel, setNewRoleLevel] = useState("Executive");
   const [status, setStatus] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
-  const levels = ["CEO", "COO", "Chief Executive", "Executive", "Junior Executive", "Student"];
+  const levels = ["CEO", "COO", "Chief Executive", "Executive", "Student"];
 
   const fetchData = async () => {
     const rolesRes = await fetch("/api/admin/roles");

@@ -51,7 +51,7 @@ describe("computeCoreTotals — users", () => {
         users: [
           { id: "u1", email: "a@example.com", role: "student", created_at: iso(-HOUR) },
           { id: "u2", email: "b@example.com", role: "tutor", created_at: iso(-HOUR) },
-          { id: "u3", email: "c@example.com", role: "Junior Executive", created_at: iso(-HOUR) },
+          { id: "u3", email: "c@example.com", role: "Executive", created_at: iso(-HOUR) },
           { id: "u4", email: "d@example.com", role: null, created_at: iso(-HOUR) },
         ],
       })

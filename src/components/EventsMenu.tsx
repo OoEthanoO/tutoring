@@ -395,7 +395,7 @@ export default function EventsMenu() {
                 className="h-4 w-4 rounded border-[var(--border)] bg-[var(--background)] text-[var(--foreground)] focus:ring-0"
               />
               <label htmlFor="juniorExcluded" className="text-sm text-[var(--muted)]">
-                Exclude Junior Executives
+                Exclude tutors hidden from &quot;Our Team&quot;
               </label>
             </div>
 

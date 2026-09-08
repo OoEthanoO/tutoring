@@ -30,7 +30,9 @@ describe("resolveUserRole", () => {
   it("normalizes stored role aliases", () => {
     expect(resolveUserRole("a@b.com", "tutor")).toBe("executive");
     expect(resolveUserRole("a@b.com", "exec")).toBe("executive");
-    expect(resolveUserRole("a@b.com", "junior exec")).toBe("Junior Executive");
+    // Junior Executive was retired; stored values map to plain executive.
+    expect(resolveUserRole("a@b.com", "junior exec")).toBe("executive");
+    expect(resolveUserRole("a@b.com", "junior executive")).toBe("executive");
     expect(resolveUserRole("a@b.com", "ceo")).toBe("CEO");
     expect(resolveUserRole("a@b.com", "chief executive")).toBe("Chief Executive");
   });
@@ -43,7 +45,7 @@ describe("resolveUserRole", () => {
 
   it("picks the highest-priority custom role level", () => {
     expect(
-      resolveUserRole("a@b.com", "student", ["Junior Executive", "CEO"])
+      resolveUserRole("a@b.com", "student", ["Executive", "CEO"])
     ).toBe("CEO");
   });
 
@@ -62,7 +64,6 @@ describe("role predicates", () => {
     expect(isExecutive("CEO")).toBe(true);
     expect(isExecutive("Chief Executive")).toBe(true);
     expect(isExecutive("executive")).toBe(true);
-    expect(isExecutive("Junior Executive")).toBe(true);
     expect(isExecutive("student")).toBe(false);
     expect(isExecutive(null)).toBe(false);
   });
@@ -79,11 +80,10 @@ describe("role predicates", () => {
     expect(isFounder(null)).toBe(false);
   });
 
-  it("canManageCourses covers founder through Junior Executive", () => {
+  it("canManageCourses covers founder through Executive", () => {
     expect(canManageCourses("founder")).toBe(true);
     expect(canManageCourses("Chief Executive")).toBe(true);
     expect(canManageCourses("executive")).toBe(true);
-    expect(canManageCourses("Junior Executive")).toBe(true);
     expect(canManageCourses("student")).toBe(false);
     expect(canManageCourses(null)).toBe(false);
   });

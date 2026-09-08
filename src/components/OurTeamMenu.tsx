@@ -30,7 +30,6 @@ const roleOrder: { [key: string]: number } = {
   "Chief Executive": 2,
   Executive: 3,
   executive: 3,
-  "Junior Executive": 4,
 };
 
 const normalizeStandardRole = (role: string | null | undefined) => {
@@ -41,7 +40,8 @@ const normalizeStandardRole = (role: string | null | undefined) => {
   if (value === "coo") return "COO";
   if (value === "chief executive") return "Chief Executive";
   if (value === "executive" || value === "exec" || value === "tutor") return "Executive";
-  if (value === "junior executive" || value === "junior exec") return "Junior Executive";
+  // Junior Executive was retired; anyone stored with it is an Executive.
+  if (value === "junior executive" || value === "junior exec") return "Executive";
   return null;
 };
 
@@ -61,7 +61,6 @@ const standardRoleLabels = new Set([
   "COO",
   "Chief Executive",
   "Executive",
-  "Junior Executive",
 ]);
 
 export default function OurTeamMenu() {
@@ -146,7 +145,6 @@ export default function OurTeamMenu() {
     coo: teamMembers.filter((m) => !m.customRoleLabel && (m.customRole ?? m.role) === "COO"),
     chief_executive: teamMembers.filter((m) => !m.customRoleLabel && (m.customRole ?? m.role) === "Chief Executive"),
     executive: teamMembers.filter((m) => !m.customRoleLabel && (m.customRole ?? m.role) === "Executive"),
-    junior_executive: teamMembers.filter((m) => !m.customRoleLabel && (m.customRole ?? m.role) === "Junior Executive"),
   };
 
   const customRoleGroups = Array.from(
@@ -163,7 +161,6 @@ export default function OurTeamMenu() {
     coo: "COO",
     chief_executive: "Chief Executives",
     executive: "Executives",
-    junior_executive: "Junior Executives",
   };
 
   const images = [
@@ -283,18 +280,6 @@ export default function OurTeamMenu() {
             </div>
           )}
 
-          {groupedMembers.junior_executive.length > 0 && (
-            <div>
-              <h3 className="text-sm font-semibold uppercase tracking-wide text-[var(--foreground)]">{roleLabels.junior_executive}</h3>
-              <div className="flex flex-wrap gap-2">
-                {groupedMembers.junior_executive.map((member) => (
-                  <div key={member.id} className="group inline-flex items-center rounded-full border border-[var(--border)] bg-[var(--background-secondary)] px-3 py-1 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-[var(--background-tertiary)] hover:shadow-md">
-                    <p className="whitespace-nowrap text-sm font-medium text-[var(--foreground)]">{member.name}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
       </section>
 

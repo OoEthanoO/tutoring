@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { founderEmails, resolveUserRole } from "@/lib/roles";
+import { executiveStanding, teachesCourseIds } from "@/lib/executiveStanding";
 import { fetchFundraisingRaisedAmount } from "@/lib/fundraising";
 import { classEndMs } from "@/lib/classTiming";
 
@@ -50,7 +51,7 @@ type WebsiteUserRow = {
   role: string | null;
   discord_user_id: string | null;
   discord_username?: string | null;
-  is_junior: boolean | null;
+  pending_role_exempt?: boolean | null;
   strike_count?: number | null;
   custom_roles?: { name: string; role_level: string } | { name: string; role_level: string }[] | null;
 };
@@ -371,7 +372,7 @@ const buildCoursePermissionOverwrites = (
   guildId: string,
   courseRoleId: string,
   executiveRoleId: string,
-  juniorExecutiveRoleId: string,
+  pendingRoleId: string,
   founderRoleId: string,
   botUserId: string,
   ceoRoleId: string,
@@ -403,7 +404,7 @@ const buildCoursePermissionOverwrites = (
       deny: "0",
     },
     {
-      id: juniorExecutiveRoleId,
+      id: pendingRoleId,
       type: 0,
       allow: pinOnlyAllow,
       deny: "0",
@@ -498,7 +499,7 @@ const buildInfoPermissionOverwrites = (
 const buildTasksPermissionOverwrites = (
   guildId: string,
   executiveRoleId: string,
-  juniorExecutiveRoleId: string,
+  pendingRoleId: string,
   founderRoleId: string,
   botUserId: string,
   ceoRoleId: string,
@@ -524,7 +525,7 @@ const buildTasksPermissionOverwrites = (
       deny: String(sendMessagesPermission),
     },
     {
-      id: juniorExecutiveRoleId,
+      id: pendingRoleId,
       type: 0,
       allow: readOnlyAllow,
       deny: String(sendMessagesPermission),
@@ -565,7 +566,7 @@ const buildTasksPermissionOverwrites = (
 const buildReadmePermissionOverwrites = (
   guildId: string,
   executiveRoleId: string,
-  juniorExecutiveRoleId: string,
+  pendingRoleId: string,
   founderRoleId: string,
   botUserId: string,
   ceoRoleId: string,
@@ -591,7 +592,7 @@ const buildReadmePermissionOverwrites = (
       deny: String(sendMessagesPermission),
     },
     {
-      id: juniorExecutiveRoleId,
+      id: pendingRoleId,
       type: 0,
       allow: readOnlyAllow,
       deny: String(sendMessagesPermission),
@@ -718,7 +719,7 @@ const buildEveryoneVoicePermissionOverwrites = (
   guildId: string,
   studentRoleId: string,
   executiveRoleId: string,
-  juniorExecutiveRoleId: string,
+  pendingRoleId: string,
   founderRoleId: string,
   botUserId: string,
   ceoRoleId: string,
@@ -747,7 +748,7 @@ const buildEveryoneVoicePermissionOverwrites = (
       deny: "0",
     },
     {
-      id: juniorExecutiveRoleId,
+      id: pendingRoleId,
       type: 0,
       allow: activeAllow,
       deny: "0",
@@ -788,7 +789,7 @@ const buildEveryoneVoicePermissionOverwrites = (
 const buildCommitsPermissionOverwrites = (
   guildId: string,
   executiveRoleId: string,
-  juniorExecutiveRoleId: string,
+  pendingRoleId: string,
   founderRoleId: string,
   botUserId: string,
   ceoRoleId: string,
@@ -813,7 +814,7 @@ const buildCommitsPermissionOverwrites = (
       deny: String(sendMessagesPermission),
     },
     {
-      id: juniorExecutiveRoleId,
+      id: pendingRoleId,
       type: 0,
       allow: readOnlyAllow,
       deny: String(sendMessagesPermission),
@@ -1562,7 +1563,7 @@ export const runDiscordSync = async ({
     await Promise.all([
       adminClient
         .from("app_users")
-        .select("id, email, full_name, role, discord_user_id, discord_username, is_junior, strike_count, custom_roles(name, role_level)")
+        .select("id, email, full_name, role, discord_user_id, discord_username, pending_role_exempt, strike_count, custom_roles(name, role_level)")
         .not("email_verified_at", "is", null),
       adminClient
         .from("courses")
@@ -1599,6 +1600,9 @@ export const runDiscordSync = async ({
   const websiteUsers = (users ?? []) as WebsiteUserRow[];
   const websiteCourses = (courses ?? []) as CourseRow[];
   const websiteEnrollments = (enrollments ?? []) as CourseEnrollmentRow[];
+  // Everyone who owns or co-teaches a course. An executive outside this set
+  // holds Pending rather than Executive unless the trio exempted them.
+  const tutorUserIds = teachesCourseIds(websiteCourses);
   const nowMs = Date.now();
   const endedAtMsByCourseId = new Map<string, number>();
   for (const course of websiteCourses) {
@@ -1688,7 +1692,10 @@ export const runDiscordSync = async ({
   const chiefExecutiveRole = await ensureRole("Chief Executive", false);
   const studentRole = await ensureRole("Student", false);
   const executiveRole = await ensureRole("Executive", false);
-  const juniorExecutiveRole = await ensureRole("Junior Executive", false);
+  // Executives who have not uploaded a course they teach. Held instead of
+  // Executive, never alongside it; it keeps the channel access the retired
+  // Junior Executive role had.
+  const pendingRole = await ensureRole("Pending", false);
   const socialMediaRole = await ensureRole("Social Media", false);
   const scienceTutorsRole = await ensureRole("Science Tutor", false);
   const mathTutorsRole = await ensureRole("Math Tutor", false);
@@ -1697,13 +1704,34 @@ export const runDiscordSync = async ({
   const founderRole = await ensureRole("Founder", false);
   const strikeRole = await ensureRole("Strike", false);
 
+  // Junior Executive was retired in favour of Pending (September 2026).
+  // Deleting it strips it from every member, so nobody is left holding a role
+  // nothing manages; if it is already gone there is nothing to do.
+  const retiredJuniorRole = findRoleByName(mutableRoles, "Junior Executive");
+  if (retiredJuniorRole) {
+    try {
+      await apiClient.deleteGuildRole(discordGuildId, retiredJuniorRole.id);
+      const roleIndex = mutableRoles.findIndex((item) => item.id === retiredJuniorRole.id);
+      if (roleIndex >= 0) {
+        mutableRoles.splice(roleIndex, 1);
+      }
+    } catch (error) {
+      result.errors.push(
+        `Failed to delete the retired Junior Executive role: ${toErrorMessage(
+          error,
+          "Unknown delete role error."
+        )}`
+      );
+    }
+  }
+
   const baseRoleIds = new Set([
     ceoRole.id,
     cooRole.id,
     chiefExecutiveRole.id,
     studentRole.id,
     executiveRole.id,
-    juniorExecutiveRole.id,
+    pendingRole.id,
     founderRole.id,
     socialMediaRole.id,
     scienceTutorsRole.id,
@@ -1916,8 +1944,14 @@ export const runDiscordSync = async ({
     else if (websiteRole === "CEO") primaryHierarchyRoleId = ceoRole.id;
     else if (websiteRole === "COO") primaryHierarchyRoleId = cooRole.id;
     else if (websiteRole === "Chief Executive") primaryHierarchyRoleId = chiefExecutiveRole.id;
-    else if (websiteRole === "Executive" || websiteRole === "executive") primaryHierarchyRoleId = websiteUser.is_junior ? juniorExecutiveRole.id : executiveRole.id;
-    else if (websiteRole === "Junior Executive") primaryHierarchyRoleId = juniorExecutiveRole.id;
+    else if (websiteRole === "Executive" || websiteRole === "executive") {
+      const standing = executiveStanding({
+        role: websiteRole,
+        teachesCourse: tutorUserIds.has(String(websiteUser.id)),
+        exempt: Boolean(websiteUser.pending_role_exempt),
+      });
+      primaryHierarchyRoleId = standing === "pending" ? pendingRole.id : executiveRole.id;
+    }
 
     requiredBaseRoleIds.add(primaryHierarchyRoleId);
 
@@ -1938,10 +1972,10 @@ export const runDiscordSync = async ({
 
     const hierarchyRoleIds = [
       ceoRole.id, cooRole.id, chiefExecutiveRole.id, founderRole.id,
-      executiveRole.id, juniorExecutiveRole.id, studentRole.id
+      executiveRole.id, pendingRole.id, studentRole.id
     ];
 
-    const isExecTier = [ceoRole.id, cooRole.id, chiefExecutiveRole.id, executiveRole.id, juniorExecutiveRole.id].some(id => requiredBaseRoleIds.has(id));
+    const isExecTier = [ceoRole.id, cooRole.id, chiefExecutiveRole.id, executiveRole.id, pendingRole.id].some(id => requiredBaseRoleIds.has(id));
     // Discord caps server nicknames at 32 characters; compare the clamped
     // value so over-long names don't fail (and retry) on every run.
     const rawExpectedNick = primaryHierarchyRoleId !== studentRole.id ? null : (websiteUser.full_name || null);
@@ -2568,7 +2602,7 @@ export const runDiscordSync = async ({
       discordGuildId,
       courseRoleId,
       executiveRole.id,
-      juniorExecutiveRole.id,
+      pendingRole.id,
       founderRole.id,
       botUser.id,
       ceoRole.id,
@@ -2749,7 +2783,7 @@ export const runDiscordSync = async ({
     permissionOverwrites: buildReadmePermissionOverwrites(
       discordGuildId,
       executiveRole.id,
-      juniorExecutiveRole.id,
+      pendingRole.id,
       founderRole.id,
       botUser.id,
       ceoRole.id,
@@ -2765,7 +2799,7 @@ export const runDiscordSync = async ({
     permissionOverwrites: buildTasksPermissionOverwrites(
       discordGuildId,
       executiveRole.id,
-      juniorExecutiveRole.id,
+      pendingRole.id,
       founderRole.id,
       botUser.id,
       ceoRole.id,
@@ -2781,7 +2815,7 @@ export const runDiscordSync = async ({
     permissionOverwrites: buildCommitsPermissionOverwrites(
       discordGuildId,
       executiveRole.id,
-      juniorExecutiveRole.id,
+      pendingRole.id,
       founderRole.id,
       botUser.id,
       ceoRole.id,
@@ -3049,7 +3083,7 @@ export const runDiscordSync = async ({
       discordGuildId,
       executiveRole.id,
       botUser.id,
-      [founderRole.id, cooRole.id, ceoRole.id, chiefExecutiveRole.id, juniorExecutiveRole.id]
+      [founderRole.id, cooRole.id, ceoRole.id, chiefExecutiveRole.id, pendingRole.id]
     ),
   });
 
@@ -3122,7 +3156,7 @@ export const runDiscordSync = async ({
       discordGuildId,
       studentRole.id,
       executiveRole.id,
-      juniorExecutiveRole.id,
+      pendingRole.id,
       founderRole.id,
       botUser.id,
       ceoRole.id,
@@ -3139,7 +3173,7 @@ export const runDiscordSync = async ({
       discordGuildId,
       executiveRole.id,
       botUser.id,
-      [founderRole.id, cooRole.id, ceoRole.id, chiefExecutiveRole.id, juniorExecutiveRole.id]
+      [founderRole.id, cooRole.id, ceoRole.id, chiefExecutiveRole.id, pendingRole.id]
     ),
   });
 
