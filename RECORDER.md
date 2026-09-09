@@ -356,7 +356,8 @@ CI: push a tag `recorder-v0.1.0` (version in `recorder/package.json`,
 `recorder/src-tauri/tauri.conf.json` and `recorder/src-tauri/Cargo.toml`) →
 GitHub release with `.dmg` (Apple Silicon), `.msi` / `-setup.exe`, the
 signed updater artifacts and `latest.json`. The Help tab and tutor banner link
-to `releases/latest` for first installs; after that every open recorder picks
+to the public `/recorder` download page, whose platform buttons resolve the
+recommended installer from the latest GitHub release; after that every open recorder picks
 the release up by itself (see "Automatic updates"). The matrix runs one job at
 a time because both merge into the same `latest.json` asset. Intel Macs are not
 built (September 2026): nobody at YanLearn runs one, and the job doubled every

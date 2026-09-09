@@ -142,7 +142,7 @@ export async function middleware(request: NextRequest) {
 
   const maintenanceEnabled = await readMaintenanceMode();
   const isFounder = maintenanceEnabled ? await isFounderSession(request) : false;
-  const isPublicMaintenanceAccess = pathname === "/login" || pathname === "/login/" || pathname === maintenancePath || pathname === maintenancePath + "/";
+  const isPublicMaintenanceAccess = pathname === "/login" || pathname === "/login/" || pathname === maintenancePath || pathname === maintenancePath + "/" || pathname === "/recorder" || pathname.startsWith("/recorder/");
 
   const host = request.headers.get("host");
 

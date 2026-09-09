@@ -1,6 +1,6 @@
 "use client";
 
-export const recorderDownloadUrl = "https://github.com/OoEthanoO/tutoring/releases/latest";
+export const recorderDownloadUrl = "/recorder";
 
 /**
  * Shown to tutors: from 2026-09-09 every class must be recorded with the
@@ -27,8 +27,6 @@ export default function RecorderNotice() {
       </p>
       <a
         href={recorderDownloadUrl}
-        target="_blank"
-        rel="noreferrer"
         className="inline-block rounded-full border border-amber-500/40 px-3 py-1 text-xs font-semibold text-[var(--foreground)] transition-colors hover:bg-amber-500/20"
       >
         Download YanLearn Recorder (macOS &amp; Windows)

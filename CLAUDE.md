@@ -89,7 +89,8 @@ bearer (see the `cron:reminders:*` npm scripts).
   `.github/workflows/recorder-release.yml` on `recorder-v*` tags; installed apps
   then update themselves from that release's signed `latest.json`, but only
   while no class is armed, recording, or uploading (see "Automatic updates" in
-  `RECORDER.md`).
+  `RECORDER.md`). First-time installs use the public `/recorder` page, whose
+  stable platform links resolve the recommended installer from the latest release.
   Tutors can record the whole display or only windows they tick, in which case
   only the focused shared window is recorded and anything else freezes the
   picture (`windowlist.rs` + `crop`/`stillPath` in `capture.rs`).

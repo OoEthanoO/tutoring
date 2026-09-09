@@ -127,7 +127,7 @@ jobs:
           projectPath: recorder
           tagName: ${{ github.ref_type == 'tag' && github.ref_name || 'recorder-dev' }}
           releaseName: "YanLearn Recorder ${{ github.ref_type == 'tag' && github.ref_name || 'development build' }}"
-          releaseBody: "Download the installer for your computer: `.dmg` for macOS (Apple Silicon), `.msi` or `-setup.exe` for Windows. See RECORDER.md in the repository for setup instructions. Recorders that are already installed update themselves to this version the next time they are open and not in a class."
+          releaseBody: "Download the installer from https://learn.ethanyanxu.com/recorder. Recorders that are already installed update themselves to this version the next time they are open and not in a class."
           # NSIS (-setup.exe) updates install per-user without a UAC prompt;
           # the .msi would need one.
           updaterJsonPreferNsis: true
