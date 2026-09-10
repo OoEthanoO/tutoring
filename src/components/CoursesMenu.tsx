@@ -182,7 +182,6 @@ export default function CoursesMenu() {
   const [courses, setCourses] = useState<Course[]>([]);
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
   const [isEnrolling, setIsEnrolling] = useState(false);
-  const [hasOpenedDonationLink, setHasOpenedDonationLink] = useState(false);
   const [nowMs, setNowMs] = useState<number>(() => new Date().getTime());
   const [status, setStatus] = useState<StatusState>({
     type: "idle",
@@ -442,7 +441,6 @@ export default function CoursesMenu() {
   const isGuest = !userId;
 
   const openEnrollmentModal = (course: Course) => {
-    setHasOpenedDonationLink(false);
     setSelectedCourse(course);
   };
 
@@ -783,19 +781,10 @@ export default function CoursesMenu() {
                       href={selectedCourse.donation_link!}
                       target="_blank"
                       rel="noopener noreferrer"
-                      onClick={() => setHasOpenedDonationLink(true)}
-                      className={`block w-full rounded-full py-2 text-center text-xs font-bold transition active:scale-[0.98] ${hasOpenedDonationLink
-                        ? "border border-[var(--foreground)] text-[var(--foreground)] bg-transparent hover:bg-[var(--surface-muted)]"
-                        : "bg-[var(--foreground)] text-[var(--surface)] hover:opacity-90"
-                        }`}
+                      className="block w-full rounded-full bg-[var(--foreground)] py-2 text-center text-xs font-bold text-[var(--surface)] transition hover:opacity-90 active:scale-[0.98]"
                     >
-                      {hasOpenedDonationLink ? "Donation Link Opened ✓" : "Open Donation Link"}
+                      Open Donation Link
                     </a>
-                    <p className="text-[10px] text-[var(--muted)] leading-relaxed italic">
-                      If you have already donated but didn&apos;t click &quot;Submit Enrollment Request&quot;, simply click on
-                      the donation link above but do not make a donation again, and then fill out the form below.
-                    </p>
-
                   </div>
                 ) : (
                   <p className="text-xs font-semibold text-[var(--muted)]">
@@ -810,14 +799,13 @@ export default function CoursesMenu() {
                   initialSchool={user?.school}
                   initialStudentName={user?.full_name}
                   isSubmitting={isEnrolling}
-                  isConfirmDisabled={(requiresDonationLink && !hasOpenedDonationLink) || isFullCourse(selectedCourse) || isEnrolledInCourse(selectedCourse)}
+                  isConfirmDisabled={isFullCourse(selectedCourse) || isEnrolledInCourse(selectedCourse)}
                   isFull={isFullCourse(selectedCourse)}
                   isEnrolled={isEnrolledInCourse(selectedCourse)}
                   isGuest={isGuest}
                   enrollmentStatus={selectedCourse.enrollment_status}
                   onCancel={() => {
                     setSelectedCourse(null);
-                    setHasOpenedDonationLink(false);
                   }}
                   onSubmit={async (formData) => {
                     setIsEnrolling(true);
@@ -855,7 +843,6 @@ export default function CoursesMenu() {
                       )
                     );
                     setSelectedCourse(null);
-                    setHasOpenedDonationLink(false);
                     setIsEnrolling(false);
                   }}
                 />

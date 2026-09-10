@@ -94,22 +94,6 @@ export default function HelpMenu() {
                     </p>
                 </div>
 
-                {/* Troubleshooting Section */}
-                <div className="space-y-4 rounded-xl px-5 py-5 border border-red-200/50 bg-red-50/50 dark:border-red-900/50 dark:bg-red-950/30">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-red-600">
-                        Troubleshooting
-                    </p>
-
-                    <div className="space-y-3">
-                        <p className="text-sm text-[var(--foreground)] leading-relaxed">
-                            If the <span className="font-semibold">&quot;Submit Enrollment Request&quot;</span> button remains disabled after you have donated:
-                        </p>
-                        <p className="text-sm text-[var(--foreground)] leading-relaxed">
-                            Simply click the <span className="font-semibold">&quot;Open Donation Link&quot;</span> again. You <span className="font-semibold text-red-600">DO NOT</span> need to make a second donation. This will refresh the enrollment status and enable the submit button.
-                        </p>
-                    </div>
-                </div>
-
                 {/* Discord Section */}
                 <div className="space-y-4 rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] px-5 py-5">
                     <header className="space-y-1">
