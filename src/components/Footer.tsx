@@ -139,9 +139,11 @@ export default function Footer() {
   };
 
   return (
-    <footer className="mt-auto border-t border-[var(--border)] pt-6 text-center text-xs text-[var(--muted)]">
+    <>
+      <div aria-hidden="true" className="h-24 sm:h-20" />
+      <footer className="fixed inset-x-0 bottom-0 z-30 border-t border-[var(--border)] bg-[var(--surface-raised)] px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 text-center text-xs text-[var(--muted)] shadow-[0_-8px_24px_rgba(0,0,0,0.06)]">
       {pendingCommitCount !== null ? (
-        <div className="fixed bottom-4 left-1/2 z-[100] w-[min(92vw,34rem)] -translate-x-1/2 rounded-2xl border border-[var(--border)] bg-[var(--surface-raised)] px-4 py-3 shadow-xl backdrop-blur-md">
+        <div className="fixed bottom-28 left-1/2 z-[100] w-[min(92vw,34rem)] -translate-x-1/2 rounded-2xl border border-[var(--border)] bg-[var(--surface-raised)] px-4 py-3 shadow-xl backdrop-blur-md sm:bottom-20">
           <div className="flex flex-row items-center justify-between gap-3">
             <div className="text-left">
               <p className="text-sm font-semibold text-[var(--foreground)]">A newer version is available</p>
@@ -168,7 +170,7 @@ export default function Footer() {
           </div>
         </div>
       ) : null}
-      <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 px-4">
+      <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-center gap-x-4 gap-y-2">
         <a
           href="https://ethanyanxu.com"
           target="_blank"
@@ -328,6 +330,7 @@ export default function Footer() {
           </div>
         </div>
       ) : null}
-    </footer>
+      </footer>
+    </>
   );
 }
