@@ -140,10 +140,9 @@ export default function Footer() {
 
   return (
     <>
-      <div aria-hidden="true" className="h-24 sm:h-20" />
-      <footer className="fixed inset-x-0 bottom-0 z-30 border-t border-[var(--border)] bg-[var(--surface-raised)] px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 text-center text-xs text-[var(--muted)] shadow-[0_-8px_24px_rgba(0,0,0,0.06)]">
+      <div aria-hidden="true" className="h-16" />
       {pendingCommitCount !== null ? (
-        <div className="fixed bottom-28 left-1/2 z-[100] w-[min(92vw,34rem)] -translate-x-1/2 rounded-2xl border border-[var(--border)] bg-[var(--surface-raised)] px-4 py-3 shadow-xl backdrop-blur-md sm:bottom-20">
+        <div className="fixed bottom-20 left-1/2 z-[100] w-[min(92vw,34rem)] -translate-x-1/2 rounded-2xl border border-[var(--border)] bg-[var(--surface-raised)] px-4 py-3 shadow-xl backdrop-blur-md">
           <div className="flex flex-row items-center justify-between gap-3">
             <div className="text-left">
               <p className="text-sm font-semibold text-[var(--foreground)]">A newer version is available</p>
@@ -170,7 +169,8 @@ export default function Footer() {
           </div>
         </div>
       ) : null}
-      <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-center gap-x-4 gap-y-2">
+      <footer className="scrollbar-hide fixed bottom-[max(0.75rem,env(safe-area-inset-bottom))] left-1/2 z-30 w-fit max-w-[calc(100vw-2rem)] -translate-x-1/2 overflow-x-auto rounded-full border border-[var(--border)] bg-[var(--background)]/90 px-4 py-2 text-center text-xs text-[var(--muted)] shadow-sm backdrop-blur">
+        <div className="flex w-max items-center justify-center gap-4">
         <a
           href="https://ethanyanxu.com"
           target="_blank"
@@ -259,7 +259,8 @@ export default function Footer() {
             Instagram
           </span>
         </a>
-      </div>
+        </div>
+      </footer>
       {isFeedbackOpen ? (
         <div
           className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 px-4"
@@ -330,7 +331,6 @@ export default function Footer() {
           </div>
         </div>
       ) : null}
-      </footer>
     </>
   );
 }
