@@ -259,6 +259,25 @@ export default function Footer() {
             Instagram
           </span>
         </a>
+
+        <span
+          className="font-bold"
+          style={{
+            background: "linear-gradient(45deg, #045c35, #07c160, #2dc100)",
+            WebkitBackgroundClip: "text",
+            WebkitTextFillColor: "transparent",
+            backgroundClip: "text",
+          }}
+        >
+          WeChat: helloqujing
+        </span>
+
+        <a
+          href="mailto:yanlearnorg@gmail.com"
+          className="font-medium text-[var(--muted)] transition-colors hover:text-[var(--foreground)]"
+        >
+          Email: yanlearnorg@gmail.com
+        </a>
         </div>
       </footer>
       {isFeedbackOpen ? (
