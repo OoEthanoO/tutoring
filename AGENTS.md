@@ -70,7 +70,9 @@ bearer (see the `cron:reminders:*` npm scripts).
   **Pending** Discord role instead of Executive — never both — unless the trio
   ticks "Executive without a course" (`app_users.pending_role_exempt`) in
   Manage accounts. The rule is `src/lib/executiveStanding.ts`; `discordSync`
-  applies it and deletes the old Junior Executive guild role.
+  applies it and deletes the old Junior Executive guild role. CEO Shadow is a
+  seeded custom role at the Executive permission level: it grants no CEO or
+  founder authority and sits alongside the member's Executive/Pending standing.
 - `recorder/` — **YanLearn Recorder**, the Tauri 2 desktop app (macOS +
   Windows) tutors must run for every class from 2026-09-09; see `RECORDER.md`.
   Server side: `src/app/api/recorder/**` (bearer-token endpoints the app calls),
