@@ -214,7 +214,7 @@ export default function Footer() {
           onBlur={() => setIsSourceHovered(false)}
         >
           <span style={{ color: isSourceHovered ? "#3b82f6" : "var(--muted)" }}>
-            Source code
+            Source Code
           </span>
         </a>
 
