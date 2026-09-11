@@ -1,4 +1,9 @@
 import { founderEmails } from "./roles";
+import {
+  findDiscordCourseMessageTarget,
+  type DiscordCourseChannel,
+  type DiscordCourseRole,
+} from "./discordCourseMessages";
 
 const resendApiKey = process.env.RESEND_API_KEY ?? "";
 const resendFrom = process.env.RESEND_FROM ?? "";
@@ -9,11 +14,18 @@ type DiscordChannel = {
   id: string;
   type: number;
   name: string;
+  topic?: string | null;
+  permission_overwrites?: Array<{
+    id: string;
+    type: number;
+    allow?: string;
+  }>;
 };
 
 type DiscordRole = {
   id: string;
   name: string;
+  managed?: boolean;
 };
 
 const sleep = (ms: number) =>
@@ -262,6 +274,78 @@ export const sendDiscordMessageByChannelName = async (
     return false;
   }
 };
+
+/** Send to the channel managed for one course and permit only its role ping. */
+export const sendDiscordCourseRoleMessage = async (
+  courseId: string,
+  contentForRole: (roleId: string) => string
+): Promise<boolean> => {
+  if (!discordBotToken || !discordGuildId || !courseId) {
+    console.warn("Skipping course Discord message: Missing configuration or course id.");
+    return false;
+  }
+
+  try {
+    const [channelsRes, rolesRes] = await Promise.all([
+      fetch(`https://discord.com/api/v10/guilds/${discordGuildId}/channels`, {
+        headers: { Authorization: `Bot ${discordBotToken}` },
+      }),
+      fetch(`https://discord.com/api/v10/guilds/${discordGuildId}/roles`, {
+        headers: { Authorization: `Bot ${discordBotToken}` },
+      }),
+    ]);
+    if (!channelsRes.ok || !rolesRes.ok) {
+      console.error(
+        `Failed to resolve Discord course target: channels ${channelsRes.status}, roles ${rolesRes.status}`
+      );
+      return false;
+    }
+
+    const channels = (await channelsRes.json()) as DiscordCourseChannel[];
+    const roles = (await rolesRes.json()) as DiscordCourseRole[];
+    const target = findDiscordCourseMessageTarget({
+      courseId,
+      guildId: discordGuildId,
+      channels,
+      roles,
+    });
+    if (!target) {
+      console.error(`Discord course channel or role not found for course ${courseId}.`);
+      return false;
+    }
+
+    const content = contentForRole(target.roleId);
+    const body = content.length > 2000 ? `${content.slice(0, 1999)}…` : content;
+    const messageRes = await fetch(
+      `https://discord.com/api/v10/channels/${target.channelId}/messages`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bot ${discordBotToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          content: body,
+          allowed_mentions: {
+            parse: [],
+            roles: [target.roleId],
+            users: [],
+          },
+        }),
+      }
+    );
+    if (!messageRes.ok) {
+      const errorText = await messageRes.text().catch(() => "Unknown error");
+      console.error(`Failed to send recording announcement: ${errorText}`);
+      return false;
+    }
+    return true;
+  } catch (error) {
+    console.error("Error sending recording announcement:", error);
+    return false;
+  }
+};
+
 export const getDiscordRoleIdByName = async (roleName: string): Promise<string | null> => {
   if (!discordBotToken || !discordGuildId) return null;
   try {

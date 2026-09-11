@@ -54,6 +54,10 @@ import {
 } from "@/lib/tutorPresence";
 import { sendBccEmail } from "@/lib/notificationsServer";
 import { expireClassRecordings, type RecordingExpiryResult } from "@/lib/recordings";
+import {
+  retryPendingRecordingAnnouncements,
+  type RecordingAnnouncementRetryResult,
+} from "@/lib/recordingAnnouncements";
 import { recorderNotOpenReminderType, shouldWarnRecorderNotOpen } from "@/lib/recorderPolicy";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
@@ -3449,6 +3453,18 @@ ${tutorWasPresent ? "" : "<p><strong>Note:</strong> you were not detected in the
     );
   }
 
+  let recordingAnnouncements: RecordingAnnouncementRetryResult = {
+    announcedCount: 0,
+    errors: [],
+  };
+  try {
+    recordingAnnouncements = await retryPendingRecordingAnnouncements(adminClient);
+  } catch (error) {
+    recordingAnnouncements.errors.push(
+      `Recording announcement pass failed: ${error instanceof Error ? error.message : "Unknown error"}`
+    );
+  }
+
   const recorderNotOpenWarnings: { warnedClassIds: string[]; errors: string[] } = {
     warnedClassIds: [],
     errors: [],
@@ -3567,6 +3583,7 @@ ${tutorWasPresent ? "" : "<p><strong>Note:</strong> you were not detected in the
 
   return NextResponse.json({
     recordingExpiry,
+    recordingAnnouncements,
     recorderNotOpenWarnings,
     sentClassCount,
     sentEmailCount,

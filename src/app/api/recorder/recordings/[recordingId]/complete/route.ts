@@ -3,6 +3,7 @@ import { getAdminClient } from "@/lib/authServer";
 import { getRecorderUser } from "@/lib/recorderAuth";
 import { markRecordingReady } from "@/lib/recordings";
 import { getRecordingObjectSize } from "@/lib/recordingStorage";
+import { announceReadyRecording } from "@/lib/recordingAnnouncements";
 
 /**
  * The desktop app finished PUTting the file. Verify the object is really in the
@@ -29,53 +30,55 @@ export async function POST(
   const adminClient = getAdminClient();
   const { data: recording } = await adminClient
     .from("class_recordings")
-    .select("id, tutor_id, status, storage_bucket, storage_path, class_id")
+    .select("id, tutor_id, status, storage_bucket, storage_path, class_id, course_id, discord_announced_at")
     .eq("id", recordingId)
     .maybeSingle();
   if (!recording || recording.tutor_id !== user.id) {
     return NextResponse.json({ error: "Recording not found." }, { status: 404 });
   }
-  if (recording.status === "ready") {
+  if (recording.status === "ready" && recording.discord_announced_at) {
     return NextResponse.json({ ok: true, alreadyReady: true });
   }
-  if (recording.status !== "uploading") {
+  if (recording.status !== "uploading" && recording.status !== "ready") {
     return NextResponse.json({ error: "This recording can no longer be completed." }, { status: 409 });
   }
 
-  // Confirm the bytes actually landed before promising students a video.
-  let storedSize: number | null;
-  try {
-    storedSize = await getRecordingObjectSize(String(recording.storage_path));
-  } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Storage check failed." },
-      { status: 500 }
-    );
-  }
-  if (storedSize === null || storedSize <= 0) {
-    return NextResponse.json(
-      { error: "The uploaded file was not found in storage. Retry the upload." },
-      { status: 409 }
-    );
-  }
-  const reportedSize = Number(body?.sizeBytes);
-  const sizeBytes = storedSize > 0
-    ? Math.round(storedSize)
-    : Number.isFinite(reportedSize) && reportedSize > 0
-      ? Math.round(reportedSize)
-      : null;
-  const reportedDuration = Number(body?.durationSeconds);
-  const durationSeconds =
-    Number.isFinite(reportedDuration) && reportedDuration > 0 ? Math.round(reportedDuration) : null;
-
   const nowMs = Date.now();
-  const { error: updateError } = await markRecordingReady(adminClient, recordingId, {
-    nowMs,
-    sizeBytes,
-    durationSeconds,
-  });
-  if (updateError) {
-    return NextResponse.json({ error: updateError.message }, { status: 500 });
+  if (recording.status === "uploading") {
+    // Confirm the bytes actually landed before promising students a video.
+    let storedSize: number | null;
+    try {
+      storedSize = await getRecordingObjectSize(String(recording.storage_path));
+    } catch (error) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Storage check failed." },
+        { status: 500 }
+      );
+    }
+    if (storedSize === null || storedSize <= 0) {
+      return NextResponse.json(
+        { error: "The uploaded file was not found in storage. Retry the upload." },
+        { status: 409 }
+      );
+    }
+    const reportedSize = Number(body?.sizeBytes);
+    const sizeBytes = storedSize > 0
+      ? Math.round(storedSize)
+      : Number.isFinite(reportedSize) && reportedSize > 0
+        ? Math.round(reportedSize)
+        : null;
+    const reportedDuration = Number(body?.durationSeconds);
+    const durationSeconds =
+      Number.isFinite(reportedDuration) && reportedDuration > 0 ? Math.round(reportedDuration) : null;
+
+    const { error: updateError } = await markRecordingReady(adminClient, recordingId, {
+      nowMs,
+      sizeBytes,
+      durationSeconds,
+    });
+    if (updateError) {
+      return NextResponse.json({ error: updateError.message }, { status: 500 });
+    }
   }
 
   const nowIso = new Date(nowMs).toISOString();
@@ -91,5 +94,9 @@ export async function POST(
     { onConflict: "class_id,tutor_id" }
   );
 
-  return NextResponse.json({ ok: true });
+  // Discord availability must not make the desktop app upload the video again.
+  // A null timestamp is picked up by the class-reminders cron until it succeeds.
+  const discordAnnounced = await announceReadyRecording(adminClient, recording);
+
+  return NextResponse.json({ ok: true, discordAnnounced });
 }
