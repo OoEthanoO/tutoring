@@ -2,10 +2,11 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getAdminClient, getRequestUser } from "@/lib/authServer";
 import { isFounder, resolveUserRole } from "@/lib/roles";
 import { isRecordingWatchable } from "@/lib/recordings";
+import { uniqueRecordings, type RecordingIdentity } from "@/lib/recordingIdentity";
 
 export const dynamic = "force-dynamic";
 
-type RecordingListRow = {
+type RecordingListRow = RecordingIdentity & {
   id: string;
   class_id: string;
   course_id: string;
@@ -37,7 +38,7 @@ export async function GET(request: NextRequest) {
     adminClient
       .from("class_recordings")
       .select(
-        "id, class_id, course_id, tutor_id, status, duration_seconds, uploaded_at, expires_at, course:courses(title, created_by, co_tutor_id, created_by_name), class:course_classes(title, starts_at)"
+        "id, class_id, course_id, tutor_id, status, size_bytes, duration_seconds, recording_started_at, recording_ended_at, uploaded_at, expires_at, course:courses(title, created_by, co_tutor_id, created_by_name), class:course_classes(title, starts_at)"
       )
       .eq("status", "ready")
       .gt("expires_at", new Date(nowMs).toISOString())
@@ -52,7 +53,7 @@ export async function GET(request: NextRequest) {
   const enrolledCourseIds = new Set((enrollments ?? []).map((row) => String(row.course_id)));
   const founder = isFounder(role);
 
-  const recordings = ((rows ?? []) as unknown as RecordingListRow[])
+  const visibleRecordings = ((rows ?? []) as unknown as RecordingListRow[])
     .map((row) => ({
       ...row,
       // Supabase types a to-one embed as an array; it is a single object at runtime.
@@ -70,23 +71,23 @@ export async function GET(request: NextRequest) {
         return true;
       }
       return enrolledCourseIds.has(String(row.course_id));
-    })
-    .map((row) => ({
-      id: row.id,
-      classId: row.class_id,
-      courseId: row.course_id,
-      courseTitle: row.course?.title ?? "",
-      classTitle: row.class?.title ?? "",
-      tutorName: row.course?.created_by_name ?? "",
-      classStartsAt: row.class?.starts_at ?? null,
-      durationSeconds: row.duration_seconds,
-      uploadedAt: row.uploaded_at,
-      expiresAt: row.expires_at,
-      viewerRole:
-        founder || row.tutor_id === user.id || row.course?.created_by === user.id || row.course?.co_tutor_id === user.id
-          ? "tutor"
-          : "student",
-    }));
+    });
+  const recordings = uniqueRecordings(visibleRecordings).map((row) => ({
+    id: row.id,
+    classId: row.class_id,
+    courseId: row.course_id,
+    courseTitle: row.course?.title ?? "",
+    classTitle: row.class?.title ?? "",
+    tutorName: row.course?.created_by_name ?? "",
+    classStartsAt: row.class?.starts_at ?? null,
+    durationSeconds: row.duration_seconds,
+    uploadedAt: row.uploaded_at,
+    expiresAt: row.expires_at,
+    viewerRole:
+      founder || row.tutor_id === user.id || row.course?.created_by === user.id || row.course?.co_tutor_id === user.id
+        ? "tutor"
+        : "student",
+  }));
 
   return NextResponse.json({ recordings });
 }

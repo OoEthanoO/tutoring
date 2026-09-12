@@ -47,6 +47,14 @@ recordings. **Mandatory for every class from 2026‑09‑09.**
    recording under **My classes → Class recordings** for 7 days. The player has
    no download control and the stream refuses non‑media requests.
 
+Upload retries reuse the same recording row and storage path, identified by the
+tutor, class, capture timestamps, file size, and duration. This also covers older
+Recorder versions and concurrent upload requests. Existing matching duplicates
+are shown once in My classes; separate captures and co-tutors remain distinct.
+Files are retained until their normal expiry. No database migration is needed.
+The Recorder persists successful transfer and completion separately, so a failed
+completion request or local cleanup does not send the video again after recovery.
+
 ## Quality profile (decision)
 
 Chosen for legible text at the lowest CPU cost on low‑end laptops that are also

@@ -744,6 +744,8 @@
       nextAttemptMs: 0,
       recordingId: null,
       uploadUrl: null,
+      transferComplete: false,
+      completed: false,
       uploading: false,
     };
     await writeJson(`${dir}/pending.json`, upload);
@@ -781,48 +783,18 @@
     render();
     await updateOverlay();
     try {
-      if (!upload.uploadUrl) {
-        const created = await api("/api/recorder/recordings", {
-          method: "POST",
-          body: {
-            classId: upload.classId,
-            startedAt: new Date(upload.startedAtMs).toISOString(),
-            endedAt: new Date(upload.endedAtMs).toISOString(),
-            durationSeconds: upload.durationSeconds,
-            sizeBytes: upload.sizeBytes,
-            uploadReason: upload.reason,
-          },
-        });
-        if (created.status === 400 || created.status === 403 || created.status === 404) {
-          log(`The server refused this recording: ${created.data?.error || created.status}. Giving up on it.`);
-          await discardUpload(upload, "abandoned");
-          return;
-        }
-        if (!created.ok) {
-          throw new Error(created.data?.error || `HTTP ${created.status}`);
-        }
-        upload.recordingId = created.data.recordingId;
-        upload.uploadUrl = created.data.uploadUrl;
-        await persistUpload(upload);
-      }
-      state.uploadProgress = { sent: 0, total: upload.sizeBytes };
-      const result = await invoke("upload_file", {
-        path: upload.outputPath,
-        url: upload.uploadUrl,
-        contentType: "video/mp4",
+      const result = await window.RecorderUploads.finishUpload(upload, {
+        api,
+        uploadFile: (args) => {
+          state.uploadProgress = { sent: 0, total: upload.sizeBytes };
+          return invoke("upload_file", args);
+        },
+        persist: persistUpload,
       });
-      if (result.status < 200 || result.status >= 300) {
-        // A rejected signed URL is not worth retrying; start over with a new one.
-        upload.uploadUrl = null;
-        upload.recordingId = null;
-        throw new Error(`upload returned ${result.status} ${result.body}`);
-      }
-      const completed = await api(`/api/recorder/recordings/${upload.recordingId}/complete`, {
-        method: "POST",
-        body: { sizeBytes: upload.sizeBytes, durationSeconds: upload.durationSeconds },
-      });
-      if (!completed.ok) {
-        throw new Error(completed.data?.error || `HTTP ${completed.status}`);
+      if (!result.uploaded) {
+        log(`The server refused this recording: ${result.error}. Giving up on it.`);
+        await discardUpload(upload, "abandoned");
+        return;
       }
       log(`Uploaded the recording for ${upload.courseTitle || upload.classId}.`);
       await discardUpload(upload, "uploaded");
@@ -841,8 +813,8 @@
 
   const discardUpload = async (upload, reason) => {
     state.pendingFinished = { classId: upload.classId, reason };
-    state.uploads = state.uploads.filter((entry) => entry !== upload);
     await invoke("remove_path", { path: upload.dir });
+    state.uploads = state.uploads.filter((entry) => entry !== upload);
     scheduleTick(500);
   };
 

@@ -200,7 +200,9 @@ export const markRecordingReady = async (
       ...(sizeBytes !== null ? { size_bytes: sizeBytes } : {}),
       ...(durationSeconds !== null ? { duration_seconds: durationSeconds } : {}),
     })
-    .eq("id", recordingId);
+    .eq("id", recordingId)
+    .eq("status", "uploading")
+    .select("id");
 };
 
 /** Uploads that never completed are given up on after this long. */

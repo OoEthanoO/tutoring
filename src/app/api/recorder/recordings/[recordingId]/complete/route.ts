@@ -71,13 +71,26 @@ export async function POST(
     const durationSeconds =
       Number.isFinite(reportedDuration) && reportedDuration > 0 ? Math.round(reportedDuration) : null;
 
-    const { error: updateError } = await markRecordingReady(adminClient, recordingId, {
+    const { data: updatedRows, error: updateError } = await markRecordingReady(adminClient, recordingId, {
       nowMs,
       sizeBytes,
       durationSeconds,
     });
     if (updateError) {
       return NextResponse.json({ error: updateError.message }, { status: 500 });
+    }
+    if (!updatedRows?.length) {
+      const { data: current, error } = await adminClient.from("class_recordings")
+        .select("status").eq("id", recordingId).maybeSingle();
+      if (error) {
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+      if (current?.status !== "ready") {
+        return NextResponse.json({ error: "This recording can no longer be completed." }, { status: 409 });
+      }
+      // A concurrent request completed it. That request (or the cron) announces
+      // the recording; this retry must not reset expiry or send another ping.
+      return NextResponse.json({ ok: true, alreadyReady: true });
     }
   }
 
