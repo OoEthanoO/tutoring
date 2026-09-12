@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { founderEmails, resolveUserRole } from "@/lib/roles";
 import { executiveStanding, teachesCourseIds } from "@/lib/executiveStanding";
+import { buildCourseConcludedDiscordMessage } from "@/lib/discordCourseMessages";
 import { fetchFundraisingRaisedAmount } from "@/lib/fundraising";
 import { classEndMs } from "@/lib/classTiming";
 
@@ -2559,7 +2560,12 @@ export const runDiscordSync = async ({
       try {
         await apiClient.createChannelMessage(
           existingChannel.id,
-          `**The course has officially concluded!** <@&${courseRoleId}>\n\nThis channel will remain open for one more week to allow you to save any notes, resources, or final discussions.\n\n**Deletion Date:** in 7 days\nAfter this time, this channel and its corresponding role will be permanently deleted. Please make sure to save any important materials before then.`
+          buildCourseConcludedDiscordMessage({
+            roleId: courseRoleId,
+            // The same instant the sweep uses, so the date in the message is
+            // the date the channel actually goes.
+            deletionAtMs: endedAtMs + deletionDelayMs,
+          })
         );
         nextFlags += "w";
       } catch (error) {
