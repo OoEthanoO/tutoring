@@ -83,6 +83,7 @@
   };
 
   const $ = (id) => document.getElementById(id);
+  let exercises = null;
 
   // --- Utilities ---------------------------------------------------------------
 
@@ -135,7 +136,7 @@
 
   const saveSettings = () => invoke("save_settings", { settings: state.settings });
 
-  const api = async (path, { method = "GET", body, auth = true } = {}) => {
+  const api = async (path, { method = "GET", body, auth = true, signal } = {}) => {
     const headers = { Accept: "application/json" };
     if (body !== undefined) {
       headers["Content-Type"] = "application/json";
@@ -145,6 +146,7 @@
     }
     const response = await fetch(`${state.settings.serverUrl}${path}`, {
       method,
+      signal,
       headers,
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
@@ -1200,6 +1202,7 @@
     if (state.session) {
       return;
     }
+    exercises?.reset();
     const now = serverNow();
     state.session = {
       test: true,
@@ -1235,6 +1238,7 @@
     if (!session || !session.test) {
       return;
     }
+    exercises?.reset();
     state.session = null;
     state.lastFocusKey = null;
     closeDonePrompt();
@@ -1402,7 +1406,7 @@
     if (state.update.installing) {
       return false;
     }
-    if (state.quitLocked || state.session || state.uploads.length > 0) {
+    if (state.quitLocked || state.session || state.uploads.length > 0 || exercises?.active()) {
       return false;
     }
     // Signed out there is no class to interrupt — and an update is the only
@@ -1551,6 +1555,7 @@
     $("view-login").hidden = name !== "login";
     $("view-main").hidden = name !== "main";
     $("panel-devices").hidden = name !== "devices";
+    $("panel-exercises").hidden = name !== "exercises";
   };
 
   const render = () => {
@@ -1880,6 +1885,7 @@
       }
       state.settings.token = null;
       state.settings.user = null;
+      exercises?.reset();
       await saveSettings();
       state.online = false;
       state.tick = null;
@@ -2043,6 +2049,10 @@
       }
     }
     state.recordingsDir = await invoke("recordings_dir");
+    exercises = window.createRecorderExercises({ api, showView, context: () => ({
+      token: state.settings?.token, serverUrl: state.settings?.serverUrl,
+      test: !!state.session?.test, classId: state.session?.classId || state.tick?.active?.classId,
+    }) });
     wireEvents();
     try {
       await invoke("register_hotkeys", {

@@ -4,8 +4,10 @@ import LoginPageClient from "@/components/LoginPageClient";
 import { getSessionUser } from "@/lib/authServer";
 import { isFounder, resolveUserRole } from "@/lib/roles";
 import { getMaintenanceMode } from "@/lib/siteSettings";
+import { exerciseReturnTo } from "@/lib/classExercises";
 
-export default async function LoginPage() {
+export default async function LoginPage({ searchParams }: { searchParams: Promise<{ next?: string }> }) {
+  const returnTo = exerciseReturnTo((await searchParams).next);
   const cookieStore = await cookies();
   const token = cookieStore.get("session")?.value;
   const user = await getSessionUser(token);
@@ -18,9 +20,9 @@ export default async function LoginPage() {
       // Do not redirect to "/", they are stuck in maintenance mode.
       // Let them see the login page so they can sign in as a founder.
     } else {
-      redirect("/");
+      redirect(returnTo);
     }
   }
 
-  return <LoginPageClient maintenanceEnabled={maintenanceEnabled} />;
+  return <LoginPageClient maintenanceEnabled={maintenanceEnabled} returnTo={returnTo} />;
 }

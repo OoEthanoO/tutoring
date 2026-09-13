@@ -66,6 +66,7 @@
 
       <div class="actions">
         <button type="button" id="mute-button" hidden>Mute my mic</button>
+        <button type="button" id="exercises-button">Class exercises</button>
         <button type="button" id="test-button">Try the recorder</button>
         <button type="button" id="devices-button">Devices</button>
         <button type="button" id="refresh-button">Check now</button>
@@ -79,6 +80,32 @@
         <summary>Activity</summary>
         <pre id="log"></pre>
       </details>
+    </section>
+
+    <section id="panel-exercises" class="view" hidden>
+      <div class="actions"><button type="button" id="exercises-back">Back to recorder</button><h1>Class exercises</h1></div>
+      <p class="notice" id="exercises-test" hidden>Practice only. Questions and sample answers stay in this app; nothing is sent to YanLearn or Discord.</p>
+      <label>Class<select id="exercises-class"></select></label>
+      <p class="muted small">Your classes from the past and next 30 days, including courses without recordings.</p>
+      <div class="actions"><button type="button" id="exercises-refresh">Refresh classes</button><button type="button" id="exercises-copy">Copy class link</button><button type="button" id="exercises-announce" hidden>Retry Discord announcement</button></div>
+      <input type="text" id="exercises-link" readonly aria-label="Class exercise link" />
+      <p id="exercises-message" class="small" role="status"></p>
+      <div id="exercises-current" class="card" hidden>
+        <div class="state-row"><strong id="exercises-number"></strong><span id="exercises-countdown" class="timer" role="timer"></span></div>
+        <pre id="exercises-prompt" class="exercise-code"></pre>
+        <div class="actions"><button type="button" id="exercises-stop">Stop timer & freeze submissions</button><button type="button" id="exercises-sample" hidden>Add practice student answer</button></div>
+      </div>
+      <form id="exercises-publish" class="card">
+        <h2>Share a new question</h2>
+        <label>Question<textarea id="exercises-draft" rows="5" maxlength="16000" required spellcheck="false" placeholder="Write a question, or paste an exercise with code…"></textarea></label>
+        <label>Time limit (minutes)<input type="number" id="exercises-duration" min="0.2" max="120" step="0.1" value="3" required /></label>
+        <p class="muted small">Sharing starts the countdown and freezes the previous question. Students keep using the same link.</p>
+        <button type="submit" class="primary" id="exercises-send">Share question & start timer</button>
+      </form>
+      <h2>Student responses</h2>
+      <label>Question to review<select id="exercises-review"></select></label>
+      <p class="muted small" id="exercises-summary"></p>
+      <div id="exercises-responses"></div>
     </section>
 
     <!-- Devices -->
@@ -161,6 +188,7 @@
     <script src="windowmath.js"></script>
     <script src="uploads.js"></script>
     <script src="sessionPolicy.js"></script>
+    <script src="exercises.js"></script>
     <script src="main.js"></script>
   </body>
 </html>

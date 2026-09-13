@@ -16,10 +16,9 @@ bearer (see the `cron:reminders:*` npm scripts).
   creates `src/generated/commits.json` — typecheck fails until it exists).
 - Typecheck: `./node_modules/.bin/tsc --noEmit`
 - Lint: `./node_modules/.bin/eslint src`
-- Tests: `npm test` (vitest; unit tests for pure logic — `src/lib/`
-  (discordSync helpers, live-channel overwrites, roles, recorder CORS) and
-  `recorder/src/windowmath.js` (window matching / crop maths). No
-  integration/UI tests).
+- Tests: `npm test` (Vitest; pure logic and API authorization tests in `src/lib/`,
+  Recorder helpers, and exercise interface tests using jsdom. The exercise
+  migration and RPC timing rules also run in PostgreSQL via PGlite).
 - Local dev needs `.env.local` (Supabase URL/keys, Discord bot token); without
   it the app cannot run against data.
 - Recorder app: `cd recorder && npm install && node scripts/fetch-ffmpeg.mjs &&
@@ -107,6 +106,14 @@ bearer (see the `cron:reminders:*` npm scripts).
   Tutors can record the whole display or only windows they tick, in which case
   only the focused shared window is recorded and anything else freezes the
   picture (`windowlist.rs` + `crop`/`stillPath` in `capture.rs`).
+- In-class exercises: Recorder's `exercises.js` panel uses `/api/recorder/exercises`;
+  enrolled students use the single `/class-exercises/[classId]` link and private
+  `/api/class-exercises/[classId]` endpoints. See `CLASS_EXERCISES.md`. Exercises
+  work even with course recordings off. All mutations use the service-only
+  `class_exercise_action` RPC with a shared room lock and database clock; never
+  replace that with separate check-then-write queries. Students see only their
+  own attempts. The first question announces the link in the course channel;
+  later questions reuse it. Practice mode stays local with no exercise API calls.
 
 ## Conventions
 

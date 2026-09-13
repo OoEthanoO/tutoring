@@ -254,6 +254,19 @@ where a real class shows its course title. A real class always wins: if one
 becomes active while a test is running, the test ends and the real session
 takes over.
 
+## In-class exercises
+
+Use **Class exercises** in Recorder to share timed questions through one private
+student link per class. YanBot posts that link in the course channel with the
+first question, and **Copy class link** is always available. Tutors can read named
+responses, mark them correct or incorrect, and send feedback; students can revise
+incorrect answers until the timer expires or is stopped. Line breaks and code
+indentation are preserved. Exercises work even with course recordings off.
+
+Practice mode includes local sample submissions and sends nothing to the server.
+See [CLASS_EXERCISES.md](CLASS_EXERCISES.md) for controls, the required migration,
+deployment order, privacy checks, and timer behavior.
+
 ## Recording windows instead of the whole display
 
 In **Devices → What to record** a tutor can switch from "the whole display" to

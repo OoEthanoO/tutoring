@@ -278,7 +278,8 @@ export const sendDiscordMessageByChannelName = async (
 /** Send to the channel managed for one course and permit only its role ping. */
 export const sendDiscordCourseRoleMessage = async (
   courseId: string,
-  contentForRole: (roleId: string) => string
+  contentForRole: (roleId: string) => string,
+  options?: { nonce: string }
 ): Promise<boolean> => {
   if (!discordBotToken || !discordGuildId || !courseId) {
     console.warn("Skipping course Discord message: Missing configuration or course id.");
@@ -326,6 +327,7 @@ export const sendDiscordCourseRoleMessage = async (
         },
         body: JSON.stringify({
           content: body,
+          ...(options ? { nonce: options.nonce, enforce_nonce: true } : {}),
           allowed_mentions: {
             parse: [],
             roles: [target.roleId],
@@ -336,12 +338,12 @@ export const sendDiscordCourseRoleMessage = async (
     );
     if (!messageRes.ok) {
       const errorText = await messageRes.text().catch(() => "Unknown error");
-      console.error(`Failed to send recording announcement: ${errorText}`);
+      console.error(`Failed to send course announcement: ${errorText}`);
       return false;
     }
     return true;
   } catch (error) {
-    console.error("Error sending recording announcement:", error);
+    console.error("Error sending course announcement:", error);
     return false;
   }
 };

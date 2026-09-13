@@ -7,7 +7,7 @@ import { setHasUnsavedData } from "@/lib/unsavedData";
 
 type Mode = "signin" | "signup" | "forgot";
 
-export default function LoginPageClient({ maintenanceEnabled = false }: { maintenanceEnabled?: boolean }) {
+export default function LoginPageClient({ maintenanceEnabled = false, returnTo = "/" }: { maintenanceEnabled?: boolean; returnTo?: string }) {
   const [mode, setMode] = useState<Mode>("signin");
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
@@ -115,11 +115,11 @@ export default function LoginPageClient({ maintenanceEnabled = false }: { mainte
 
         const fullNameValue = payload.user?.full_name;
         if (!fullNameValue || String(fullNameValue).trim().length === 0) {
-          router.replace("/onboarding");
+          router.replace(`/onboarding?next=${encodeURIComponent(returnTo)}`);
           return;
         }
 
-        router.replace("/");
+        router.replace(returnTo);
       }
     } catch (err) {
       const message =

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { broadcastAuthChange } from "@/lib/authClient";
+import { exerciseReturnTo } from "@/lib/classExercises";
 
 export default function OnboardingPage() {
   const router = useRouter();
@@ -40,7 +41,7 @@ export default function OnboardingPage() {
     broadcastAuthChange();
     setStatus("Thanks! Your profile is updated.");
     setIsSubmitting(false);
-    router.replace("/");
+    router.replace(exerciseReturnTo(new URLSearchParams(window.location.search).get("next")));
   };
 
   return (

@@ -107,6 +107,9 @@ label.check {
 input[type="email"],
 input[type="password"],
 input[type="url"],
+input[type="text"],
+input[type="number"],
+textarea,
 select {
   width: 100%;
   padding: 9px 10px;
@@ -116,6 +119,15 @@ select {
   color: var(--fg);
   font-size: 14px;
 }
+
+textarea { resize: vertical; min-height: 80px; }
+textarea, .exercise-code { font-family: Consolas, "SFMono-Regular", monospace; line-height: 1.6; tab-size: 4; user-select: text; }
+.exercise-code { white-space: pre-wrap; overflow-wrap: anywhere; margin: 8px 0; }
+#exercises-link { user-select: text; font-size: 12px; }
+#exercises-responses { display: grid; gap: 12px; }
+.exercise-response summary { cursor: pointer; font-weight: 600; }
+.exercise-response form { margin-top: 12px; }
+#exercises-countdown { margin-left: auto; font-variant-numeric: tabular-nums; }
 
 form {
   display: flex;

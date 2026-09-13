@@ -33,6 +33,7 @@
     "xlsx": "https://cdn.sheetjs.com/xlsx-latest/xlsx-latest.tgz"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8",
     "@tailwindcss/postcss": "^4.2.1",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^20",
@@ -40,6 +41,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "^16.2.1",
+    "jsdom": "^30.0.1",
     "postcss": "^8.5.10",
     "supabase": "^2.95.3",
     "tailwindcss": "^4.2.1",
