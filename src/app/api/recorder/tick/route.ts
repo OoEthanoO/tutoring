@@ -131,10 +131,11 @@ export async function POST(request: NextRequest) {
   );
   const creatorById = new Map<string, { email: string; role: string | null }>();
   if (creatorIds.length > 0) {
-    const { data: creatorRows } = await adminClient
+    const { data: creatorRows, error: creatorError } = await adminClient
       .from("app_users")
       .select("id, email, role")
       .in("id", creatorIds);
+    if (creatorError) return NextResponse.json({ error: creatorError.message }, { status: 503 });
     for (const row of creatorRows ?? []) {
       creatorById.set(String(row.id), {
         email: String(row.email ?? ""),
@@ -148,10 +149,11 @@ export async function POST(request: NextRequest) {
   const courseIds = Array.from(new Set((courseRows ?? []).map((course) => String(course.id))));
   const firstClassMsByCourse = new Map<string, number>();
   if (courseIds.length > 0) {
-    const { data: allClassRows } = await adminClient
+    const { data: allClassRows, error: firstClassError } = await adminClient
       .from("course_classes")
       .select("course_id, starts_at")
       .in("course_id", courseIds);
+    if (firstClassError) return NextResponse.json({ error: firstClassError.message }, { status: 503 });
     for (const row of allClassRows ?? []) {
       const startsAtMs = new Date(String(row.starts_at)).getTime();
       if (!Number.isFinite(startsAtMs)) {
@@ -230,7 +232,9 @@ export async function POST(request: NextRequest) {
       releasedIds.add(String(row.class_id));
     }
     for (const candidate of candidates) {
-      candidate.released = releasedIds.has(candidate.id);
+      // An older client may already have finalized after a premature channel
+      // deletion. Keep assigning the live class so it can record the remainder.
+      candidate.released = nowMs >= candidate.endsAtMs && releasedIds.has(candidate.id);
     }
   }
 
@@ -282,14 +286,18 @@ export async function POST(request: NextRequest) {
   }
 
   // --- Live voice channel and the tutor's presence in it -----------------------
-  const { data: liveChannel } = await adminClient
+  const { data: liveChannel, error: liveChannelError } = await adminClient
     .from("discord_live_class_channels")
     .select("discord_channel_id, deleted_at, created_at")
     .eq("class_id", classRow.id)
     .maybeSingle();
   const liveChannelId = liveChannel ? String(liveChannel.discord_channel_id) : null;
-  const liveChannelDeleted = Boolean(liveChannel?.deleted_at);
-  const liveChannelExists = Boolean(liveChannelId) && !liveChannelDeleted;
+  const removedAtMs = liveChannel?.deleted_at ? Date.parse(liveChannel.deleted_at) : null;
+  // A deletion before the real end is an interruption, even before recovery
+  // repairs its row. Older Recorder versions also need a non-finalizing tick.
+  const liveChannelDeleted = removedAtMs !== null && Number.isFinite(removedAtMs) &&
+    removedAtMs >= classRow.endsAtMs && nowMs >= classRow.endsAtMs;
+  const liveChannelExists = !liveChannelError && Boolean(liveChannelId) && !liveChannel?.deleted_at;
 
   let tutorInLiveChannel: boolean | null = null;
   let presenceReason: string | null = null;
@@ -316,10 +324,12 @@ export async function POST(request: NextRequest) {
       }
     }
   } else if (phase === "live" || phase === "after_end") {
-    tutorInLiveChannel = false;
-    presenceReason = liveChannelDeleted
+    tutorInLiveChannel = liveChannelDeleted ? false : null;
+    presenceReason = liveChannelError
+      ? "Could not read the live channel; keeping the previous recording state."
+      : liveChannelDeleted
       ? "The live voice channel has been deleted."
-      : "The live voice channel has not been created yet.";
+      : "Waiting for the live voice channel to be created or recovered.";
   }
 
   // A class whose channel never existed at all cannot be "deleted"; the

@@ -496,6 +496,7 @@
       startsAtMs: session.startsAtMs,
       endsAtMs: session.endsAtMs,
       segments: session.segments,
+      currentSegment: session.currentSegment ? { ...session.currentSegment, endedAtMs: serverNow() } : null,
     });
   };
 
@@ -503,17 +504,8 @@
     const dir = sessionDir(active.classId);
     await invoke("ensure_dir", { path: dir });
     const meta = await readJson(`${dir}/meta.json`);
-    const segments = [];
-    for (const segment of meta?.segments || []) {
-      try {
-        const size = await invoke("file_size", { path: segment.path });
-        if (size > 0) {
-          segments.push({ ...segment, sizeBytes: size });
-        }
-      } catch {
-        // The file is gone; skip it.
-      }
-    }
+    const segments = await window.RecorderSessionPolicy.recoverSegments(meta,
+      (path) => invoke("file_size", { path }));
     state.session = {
       classId: active.classId,
       dir,
@@ -586,7 +578,7 @@
       }
       return;
     }
-    const index = session.segments.length + 1;
+    const index = window.RecorderSessionPolicy.nextSegmentNumber(session.segments);
     const path = `${session.dir}/seg-${String(index).padStart(3, "0")}.mp4`;
     const config = {
       outputPath: path,
@@ -661,6 +653,13 @@
     session.activeTarget = null;
     let recorded = null;
     if (session.currentSegment) {
+      if (!stopped.sizeBytes) {
+        try {
+          stopped.sizeBytes = await invoke("file_size", { path: session.currentSegment.path });
+        } catch {
+          // Only keep a segment whose bytes can be verified on disk.
+        }
+      }
       const segment = { ...session.currentSegment, endedAtMs: serverNow(), sizeBytes: stopped.sizeBytes || 0 };
       if (segment.sizeBytes > 0) {
         session.segments.push(segment);
@@ -849,17 +848,17 @@
         continue;
       }
       const meta = await readJson(`${entry.path}/meta.json`);
-      const segments = [];
-      for (const segment of meta?.segments || []) {
-        try {
-          const size = await invoke("file_size", { path: segment.path });
-          if (size > 0) {
-            segments.push({ ...segment, sizeBytes: size });
-          }
-        } catch {
-          // gone
-        }
+      if (!state.session && meta && Number.isFinite(meta.endsAtMs) && serverNow() < meta.endsAtMs) {
+        await createSession({
+          classId: meta.classId || entry.name, courseTitle: meta.courseTitle, classTitle: meta.classTitle,
+          startsAtMs: meta.startsAtMs, endsAtMs: meta.endsAtMs,
+          phase: serverNow() < meta.startsAtMs ? "armed" : "live", liveChannel: null,
+        });
+        log("Recovered the ongoing class; waiting for the server to restore its connection.");
+        continue;
       }
+      const segments = await window.RecorderSessionPolicy.recoverSegments(meta,
+        (path) => invoke("file_size", { path }));
       if (segments.length === 0) {
         await invoke("remove_path", { path: entry.path });
         continue;
@@ -979,6 +978,12 @@
 
   const applyTick = async (tick) => {
     const active = tick.active;
+    if (window.RecorderSessionPolicy.retainSession(state.session, active, serverNow())) {
+      state.session.presenceReason = "Waiting for the class connection to recover.";
+      await persistMeta();
+      await evaluate();
+      return;
+    }
     // A real class always wins over a dry run.
     if (state.session?.test && active) {
       await endTestMode();
@@ -1015,6 +1020,7 @@
       }
       session.inCall = active.tutorInLiveChannel;
     }
+    await persistMeta();
     await evaluate();
   };
 
@@ -1105,7 +1111,7 @@
       return;
     }
 
-    if (session.mustFinalize) {
+    if (window.RecorderSessionPolicy.canFinalizeRemovedChannel(session, serverNow())) {
       log("The live voice channel has been removed.");
       await finalize("channel_deleted");
       return;

@@ -50,6 +50,12 @@ bearer (see the `cron:reminders:*` npm scripts).
   notifications). Also records attendance from voice states and warns absent
   tutors/students — see `CLASS_PRESENCE_WARNINGS.md`; the timing rules are
   pure functions in `src/lib/tutorPresence.ts`.
+  Live voice channels must never be deleted before the current class end.
+  Their 5-minute empty and 30-minute tutor-absence clocks start only afterwards
+  (`discordLiveChannels.ts` / `liveChannelCleanup.ts`). Guild sync preserves
+  Live-category channels even if their registry query fails or creation is in
+  flight; unknown orphan channels are retained. Recorder ticks must not finalize
+  a class over a premature channel deletion or failed database lookup.
 - `src/components/DashboardMenus.tsx` — home page tab router; admin panels
   live in `AdminUserManager.tsx` (Admin → Manage accounts). Admin Tools
   there includes "Course needs": the trio types courses nobody teaches yet,

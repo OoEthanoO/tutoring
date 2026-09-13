@@ -93,7 +93,8 @@ export const recorderQuitLocked = (phase: RecorderPhase | null): boolean =>
 
 /**
  * Whether the recorder must finalize (upload whatever it has) right now: the
- * live voice channel is gone, so the tutor cannot go back and teach.
+ * the class has ended and its live voice channel is gone. Losing a channel
+ * mid-class is recoverable and must never release the recording session.
  */
 export const recorderMustFinalize = ({
   phase,
@@ -102,7 +103,7 @@ export const recorderMustFinalize = ({
   phase: RecorderPhase | null;
   /** The class's live channel existed and has since been deleted. */
   liveChannelDeleted: boolean;
-}): boolean => (phase === "live" || phase === "after_end") && liveChannelDeleted;
+}): boolean => phase === "after_end" && liveChannelDeleted;
 
 export type RecorderCompliance = "ok" | "late" | "missing";
 

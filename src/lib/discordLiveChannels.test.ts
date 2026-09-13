@@ -168,7 +168,7 @@ describe("decideLiveChannelCleanup", () => {
         emptySinceMs: null,
         tutorPresent: true,
         tutorLookupFailed: false,
-        tutorLastSeenMs: at(240),
+        tutorAbsentSinceMs: at(240),
       })
     ).toBe("keep");
   });
@@ -286,22 +286,21 @@ describe("decideLiveChannelCleanup", () => {
       expect(
         decide({
           ...occupiedByStudents,
-          nowMs: at(5),
-          tutorLastSeenMs: at(-26),
+          nowMs: at(31),
+          tutorAbsentSinceMs: at(0),
         })
       ).toBe("delete");
     });
 
-    it("counts absence from the last sighting, including time before the class ended", () => {
-      // Left 40 minutes before the end: already past 30 minutes at the end, so
-      // the first post-end tick clears it.
+    it("does not count absence accumulated before the class ended", () => {
+      // An old timer must not make the first post-end tick delete the room.
       expect(
         decide({
           ...occupiedByStudents,
           nowMs: at(1),
-          tutorLastSeenMs: at(-40),
+          tutorAbsentSinceMs: at(-40),
         })
-      ).toBe("delete");
+      ).toBe("keep");
     });
 
     it("holds at exactly 30 minutes", () => {
@@ -309,7 +308,7 @@ describe("decideLiveChannelCleanup", () => {
         decide({
           ...occupiedByStudents,
           nowMs: at(0) + 1 + liveChannelTutorAbsenceMs,
-          tutorLastSeenMs: at(0) + 1,
+          tutorAbsentSinceMs: at(0) + 1,
         })
       ).toBe("keep");
     });
@@ -320,7 +319,7 @@ describe("decideLiveChannelCleanup", () => {
           ...occupiedByStudents,
           nowMs: at(600),
           tutorPresent: true,
-          tutorLastSeenMs: at(-30),
+          tutorAbsentSinceMs: at(-30),
         })
       ).toBe("keep");
     });
@@ -333,7 +332,7 @@ describe("decideLiveChannelCleanup", () => {
           ...occupiedByStudents,
           nowMs: at(600),
           tutorLookupFailed: true,
-          tutorLastSeenMs: at(-600),
+          tutorAbsentSinceMs: at(-600),
         })
       ).toBe("keep");
 
@@ -341,7 +340,7 @@ describe("decideLiveChannelCleanup", () => {
         decide({
           ...occupiedByStudents,
           nowMs: at(600),
-          tutorLastSeenMs: null,
+          tutorAbsentSinceMs: null,
         })
       ).toBe("keep");
     });
@@ -353,7 +352,7 @@ describe("decideLiveChannelCleanup", () => {
         decide({
           ...occupiedByStudents,
           nowMs: at(-5),
-          tutorLastSeenMs: at(-90),
+          tutorAbsentSinceMs: at(-90),
         })
       ).toBe("keep");
     });
@@ -364,7 +363,7 @@ describe("decideLiveChannelCleanup", () => {
           ...occupiedByStudents,
           nowMs: at(3),
           someonePresent: false,
-          tutorLastSeenMs: at(-1),
+          tutorAbsentSinceMs: at(-1),
         })
       ).toBe("mark-empty");
     });

@@ -1,3 +1,5 @@
+import { classEndMs } from "@/lib/classTiming";
+
 // Permission overwrites for the temporary live class voice channels created by
 // the class-reminders cron. Lives in lib (rather than the route file) so the
 // logic can be unit-tested — route files may only export route handlers.
@@ -18,12 +20,57 @@ export const liveChannelEmptyConfirmMs = 5 * 60 * 1000;
  * indefinitely, because students who never leave mean the emptiness clock above
  * never starts.
  *
- * Absence is measured from when the tutor was last seen in the channel (their
- * `class_attendance.last_seen_at`), so it can already have been running for most
- * of the class by the time the class ends; a tutor who never joined at all
- * counts as absent since the scheduled start.
+ * Absence is observed and persisted AFTER the scheduled end. A tutor returning
+ * or an unsuccessful lookup resets the clock; attendance history does not
+ * count towards this timer.
  */
 export const liveChannelTutorAbsenceMs = 30 * 60 * 1000;
+
+/** An unreadable schedule must never become permission to delete a channel. */
+export const liveClassEndMs = (schedule: { starts_at: string; duration_hours: unknown } | null): number | null => {
+  if (!schedule) return null;
+  const start = Date.parse(schedule.starts_at);
+  const duration = Number(schedule.duration_hours);
+  return Number.isFinite(start) && Number.isFinite(duration) && duration > 0
+    ? classEndMs(start, duration)
+    : null;
+};
+
+/** Live voice channels belong to the class lifecycle, never the guild sweep. */
+export const preserveLiveVoiceChannel = ({
+  channel, liveCategoryIds, trackedChannelIds, registryLoaded,
+}: {
+  channel: { id: string; type: number; parent_id?: string | null };
+  liveCategoryIds: Set<string>;
+  trackedChannelIds: Set<string>;
+  registryLoaded: boolean;
+}): boolean => channel.type === 2 && (
+  !registryLoaded || liveCategoryIds.has(channel.parent_id ?? "") || trackedChannelIds.has(channel.id)
+);
+
+export type LiveChannelPresence = {
+  nowMs: number;
+  endsAtMs: number;
+  someonePresent: boolean;
+  lookupFailed: boolean;
+  tutorPresent: boolean;
+  tutorLookupFailed: boolean;
+  emptySinceMs: number | null;
+  tutorAbsentSinceMs: number | null;
+};
+
+/** Both countdowns start with a known absence after the class ends. */
+export const observeLiveChannelPresence = (state: LiveChannelPresence) => {
+  const afterEnd = Number.isFinite(state.nowMs) && Number.isFinite(state.endsAtMs) && state.nowMs > state.endsAtMs;
+  const continueClock = (previous: number | null) => previous !== null && Number.isFinite(previous) &&
+    previous >= state.endsAtMs && previous <= state.nowMs ? previous : state.nowMs;
+  return {
+    emptySinceMs: afterEnd && !state.lookupFailed && !state.someonePresent && !state.tutorPresent
+      ? continueClock(state.emptySinceMs) : null,
+    tutorAbsentSinceMs: afterEnd && !state.tutorLookupFailed && !state.tutorPresent
+      ? continueClock(state.tutorAbsentSinceMs) : null,
+  };
+};
 
 /**
  * Courses whose first class falls on or after this date run their lessons in
@@ -102,7 +149,7 @@ export type LiveChannelCleanupDecision = "keep" | "mark-empty" | "clear-empty" |
  *  - the tutor's own voice state was read successfully (`tutorLookupFailed`
  *    covers not knowing who the tutor is, too);
  *  - the tutor is not in the call right now;
- *  - and they were last in it MORE than liveChannelTutorAbsenceMs ago.
+ *  - and their confirmed post-class absence exceeds liveChannelTutorAbsenceMs.
  * Students still in the call do not block this one — that is the whole point of
  * it, since otherwise they keep the channel alive forever.
  *
@@ -125,7 +172,7 @@ export const decideLiveChannelCleanup = ({
   emptySinceMs,
   tutorPresent = false,
   tutorLookupFailed = true,
-  tutorLastSeenMs = null,
+  tutorAbsentSinceMs = null,
 }: {
   nowMs: number;
   endsAtMs: number;
@@ -141,22 +188,22 @@ export const decideLiveChannelCleanup = ({
    */
   tutorLookupFailed?: boolean;
   /**
-   * When the tutor was last seen in this class's channel, falling back to the
-   * scheduled start when they never joined at all.
+   * First confirmed absence after class end, reset whenever they return or
+   * their presence cannot be determined.
    */
-  tutorLastSeenMs?: number | null;
+  tutorAbsentSinceMs?: number | null;
 }): LiveChannelCleanupDecision => {
-  if (!Number.isFinite(endsAtMs) || nowMs <= endsAtMs) {
+  if (!Number.isFinite(nowMs) || !Number.isFinite(endsAtMs) || nowMs <= endsAtMs) {
     return "keep";
   }
 
   if (
     !tutorLookupFailed &&
     !tutorPresent &&
-    tutorLastSeenMs !== null &&
-    Number.isFinite(tutorLastSeenMs) &&
+    tutorAbsentSinceMs !== null &&
+    Number.isFinite(tutorAbsentSinceMs) &&
     // Strictly greater: "more than 30 minutes", not "at least".
-    nowMs - tutorLastSeenMs > liveChannelTutorAbsenceMs
+    nowMs - Math.max(endsAtMs, tutorAbsentSinceMs) > liveChannelTutorAbsenceMs
   ) {
     return "delete";
   }
@@ -165,7 +212,7 @@ export const decideLiveChannelCleanup = ({
     return "keep";
   }
 
-  if (someonePresent) {
+  if (someonePresent || tutorPresent) {
     return emptySinceMs === null ? "keep" : "clear-empty";
   }
 
@@ -174,7 +221,7 @@ export const decideLiveChannelCleanup = ({
   }
 
   // Strictly greater: "more than 5 minutes", not "at least".
-  return nowMs - emptySinceMs > liveChannelEmptyConfirmMs ? "delete" : "keep";
+  return nowMs - Math.max(endsAtMs, emptySinceMs) > liveChannelEmptyConfirmMs ? "delete" : "keep";
 };
 
 const viewChannelPermission = 1024;

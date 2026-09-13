@@ -62,8 +62,8 @@ describe("recorderQuitLocked", () => {
 });
 
 describe("recorderMustFinalize", () => {
-  it("forces the upload once the live channel is gone during or after the class", () => {
-    expect(recorderMustFinalize({ phase: "live", liveChannelDeleted: true })).toBe(true);
+  it("only forces upload after class end, preserving mid-class channel recovery", () => {
+    expect(recorderMustFinalize({ phase: "live", liveChannelDeleted: true })).toBe(false);
     expect(recorderMustFinalize({ phase: "after_end", liveChannelDeleted: true })).toBe(true);
   });
 

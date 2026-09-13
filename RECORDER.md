@@ -55,6 +55,15 @@ Files are retained until their normal expiry. No database migration is needed.
 The Recorder persists successful transfer and completion separately, so a failed
 completion request or local cleanup does not send the video again after recovery.
 
+A voice channel disappearing before the scheduled class end never completes
+the recording. The server keeps the class assigned and treats a missing channel
+or failed lookup as unknown while recovery runs. Existing segments stay in the
+session, and capture resumes when the tutor reconnects. The desktop app also
+retains an ongoing session across a temporarily missing class tick and persists
+its current segment for recovery after restart. Automatic finalization on voice
+channel deletion applies only after class end. These desktop recovery changes
+require a new Recorder release; the server protections also help older installs.
+
 ## Quality profile (decision)
 
 Chosen for legible text at the lowest CPU cost on low‑end laptops that are also

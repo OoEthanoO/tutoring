@@ -64,17 +64,29 @@ the scheduled end; past it, either:
 - **Nobody is in the call** and has not been for more than 5 minutes. Any
   sighting of anyone resets that clock, and an unreadable voice state or guild
   member list counts as "unknown", never as empty.
-- **The tutor has been out of the call for more than 30 minutes**, measured from
-  their `class_attendance.last_seen_at` (the scheduled start if they never
-  joined at all). This one deletes the channel *with students still in it* — a
+- **The tutor has been out of the call for more than 30 minutes after class end**,
+  measured from the first confirmed post-class absence in `tutor_absent_since`.
+  This one deletes the channel *with students still in it* — a
   room the tutor left half an hour ago is a hangout, and since the first rule
   needs the call to go empty, students who never leave would otherwise keep a
   temporary channel alive indefinitely. It still requires reading the tutor's
   voice state successfully and finding them absent right now.
 
-Because absence is counted from the last sighting rather than from the end of
-class, a tutor who walked out 30+ minutes before the end loses the channel on
-the first tick after the scheduled end.
+Both clocks start only after the scheduled end, and reset on return or an
+unknown presence lookup. Attendance history from the lesson never counts toward
+cleanup. The deletion guard re-reads the current `course_classes` schedule and
+the channel row immediately before calling Discord, so a schedule extension or
+recovered channel cannot be deleted using stale data.
+
+The general Discord sync preserves Live-category voice channels, including
+new channels whose database insert is still in flight. If the registry lookup
+fails, it skips voice-channel deletion. Channels with no known class schedule
+are retained instead of being deleted by age, and the Live category stays in
+place. Recovery clears deletion/countdown markers and allows two minutes to
+rejoin before tutor absence warnings resume.
+
+Apply `supabase/migrations/20260913010000_live_channel_cleanup_safety.sql` before
+deploying these rules.
 
 ## Strikes
 

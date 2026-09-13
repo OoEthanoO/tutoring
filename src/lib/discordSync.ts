@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { founderEmails, resolveUserRole } from "@/lib/roles";
 import { executiveStanding, teachesCourseIds } from "@/lib/executiveStanding";
 import { buildCourseConcludedDiscordMessage } from "@/lib/discordCourseMessages";
+import { preserveLiveVoiceChannel } from "@/lib/discordLiveChannels";
 import { fetchFundraisingRaisedAmount } from "@/lib/fundraising";
 import { classEndMs } from "@/lib/classTiming";
 
@@ -3361,16 +3362,24 @@ export const runDiscordSync = async ({
 
   // Preserve temporary live-class voice channels (created by the class-reminders
   // cron). Their lifecycle is owned by that cron, so the sweep below must not
-  // delete them. Any row without deleted_at is considered live.
+  // delete them, including when a row has a stale deletion marker or a channel
+  // has just been created and its row has not been saved yet.
+  let liveRegistryLoaded = false;
+  const trackedLiveChannelIds = new Set<string>();
+  const liveCategoryIds = new Set(mutableChannels.filter(
+    (channel) => channel.type === discordCategoryChannelType && channel.name.trim().toLowerCase() === liveCategoryName.toLowerCase()
+  ).map((channel) => channel.id));
   try {
-    const { data: liveClassRows } = await adminClient
+    const { data: liveClassRows, error } = await adminClient
       .from("discord_live_class_channels")
-      .select("discord_channel_id")
-      .is("deleted_at", null);
+      .select("discord_channel_id");
+    if (error) throw new Error(error.message);
+    if (!Array.isArray(liveClassRows)) throw new Error("Live channel registry did not return a list.");
+    liveRegistryLoaded = true;
     for (const row of liveClassRows ?? []) {
       const liveChannelId = String(row.discord_channel_id ?? "").trim();
       if (liveChannelId) {
-        allowedVoiceChannelIds.add(liveChannelId);
+        trackedLiveChannelIds.add(liveChannelId);
       }
     }
   } catch (error) {
@@ -3389,6 +3398,7 @@ export const runDiscordSync = async ({
   if (liveCategory) {
     allowedCategoryIds.add(liveCategory.id);
   }
+  for (const id of liveCategoryIds) allowedCategoryIds.add(id);
 
   for (const channel of [...mutableChannels]) {
     if (channel.type === discordCategoryChannelType) {
@@ -3402,7 +3412,9 @@ export const runDiscordSync = async ({
       channel.type === discordVoiceChannelType &&
       allowedVoiceChannelIds.has(channel.id);
 
-    if (isAllowedTextChannel || isAllowedVoiceChannel) {
+    if (isAllowedTextChannel || isAllowedVoiceChannel || preserveLiveVoiceChannel({
+      channel, liveCategoryIds, trackedChannelIds: trackedLiveChannelIds, registryLoaded: liveRegistryLoaded,
+    })) {
       continue;
     }
 

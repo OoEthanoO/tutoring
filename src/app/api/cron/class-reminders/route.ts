@@ -10,8 +10,11 @@ import {
   classUsesDiscordVoiceSystem,
   buildLiveVoicePermissionOverwrites,
   decideLiveChannelCleanup,
+  liveClassEndMs,
+  observeLiveChannelPresence,
   normalizeVoiceChannelName,
 } from "@/lib/discordLiveChannels";
+import { deleteFinishedLiveChannel } from "@/lib/liveChannelCleanup";
 import { formatDiscordTimestampWithRelative } from "@/lib/discordTimestamp";
 import {
   buildScheduleSnapshot,
@@ -1116,10 +1119,12 @@ export async function POST(request: NextRequest) {
   // grant them the same access as the tutor. Missing table or query failure
   // degrades to "no extra accounts" rather than blocking reminders.
   const approvedExtraIdsByOwnerDiscordId = new Map<string, string[]>();
+  let approvedAccountsLookupFailed = false;
   {
-    const { data: approvedRows } = await adminClient
+    const { data: approvedRows, error: approvedError } = await adminClient
       .from("approved_discord_accounts")
       .select("discord_user_id, owner_user_id");
+    approvedAccountsLookupFailed = Boolean(approvedError);
     const ownerIds = Array.from(
       new Set(
         (approvedRows ?? [])
@@ -1128,10 +1133,11 @@ export async function POST(request: NextRequest) {
       )
     );
     if (ownerIds.length > 0) {
-      const { data: ownerRows } = await adminClient
+      const { data: ownerRows, error: ownerError } = await adminClient
         .from("app_users")
         .select("id, discord_user_id")
         .in("id", ownerIds);
+      approvedAccountsLookupFailed ||= Boolean(ownerError);
       const ownerDiscordIdById = new Map<string, string>();
       for (const owner of ownerRows ?? []) {
         const ownerId = String(owner.id ?? "").trim();
@@ -1206,13 +1212,15 @@ export async function POST(request: NextRequest) {
     }
   };
 
+  const liveChannelCleanupErrors: string[] = [];
   if (discordRemindersEnabled && !discordReminderSkippedReason && discordGuildId) {
     const { data: activeLiveChannels, error: activeLiveChannelsError } = await adminClient
       .from("discord_live_class_channels")
       .select(
-        "id, class_id, course_id, discord_channel_id, tutor_discord_user_id, starts_at, ends_at, empty_since"
+        "id, class_id, course_id, discord_channel_id, tutor_discord_user_id, starts_at, ends_at, empty_since, tutor_absent_since, class:course_classes(starts_at, duration_hours)"
       )
       .is("deleted_at", null);
+    if (activeLiveChannelsError) liveChannelCleanupErrors.push(activeLiveChannelsError.message);
 
     // Everyone who could legitimately still be in a live channel. The stored
     // tutor_discord_user_id is only ever the course's primary tutor, so on a
@@ -1221,44 +1229,24 @@ export async function POST(request: NextRequest) {
     const occupantIdsByCourseId = new Map<string, string[]>();
     const tutorDiscordIdsByCourseId = new Map<string, Set<string>>();
     let guildMembersForOccupancy: { id: string; roles: string[] }[] | null = null;
+    let tutorRosterFailed = approvedAccountsLookupFailed;
     // Only rows past their scheduled end can be deleted, so a class that is
     // simply in progress costs no extra queries and no extra Discord calls —
     // nothing here runs until there is something that could be cleaned up.
     const rowsPastEnd = (activeLiveChannels ?? []).filter((row) => {
-      const endsAtMs = new Date(String(row.ends_at)).getTime();
-      return Number.isFinite(endsAtMs) && Date.now() > endsAtMs;
+      const endsAtMs = liveClassEndMs(Array.isArray(row.class) ? row.class[0] ?? null : row.class);
+      return endsAtMs !== null && Date.now() > endsAtMs;
     });
     const courseIdsToResolve = Array.from(
       new Set(rowsPastEnd.map((row) => String(row.course_id)).filter(Boolean))
     );
 
-    // How long the tutor has been out of each channel, for the absence rule in
-    // decideLiveChannelCleanup. The attendance poll only runs while a class is in
-    // progress, so for a finished class last_seen_at is exactly when the tutor
-    // was last in the room.
-    const tutorLastSeenMsByLiveClassId = new Map<string, number>();
-    const classIdsPastEnd = Array.from(
-      new Set(rowsPastEnd.map((row) => String(row.class_id)).filter(Boolean))
-    );
-    if (classIdsPastEnd.length > 0) {
-      const { data: tutorAttendanceRows } = await adminClient
-        .from("class_attendance")
-        .select("class_id, last_seen_at")
-        .in("class_id", classIdsPastEnd)
-        .eq("is_tutor", true);
-      for (const row of tutorAttendanceRows ?? []) {
-        const lastSeenMs = new Date(String(row.last_seen_at ?? "")).getTime();
-        if (Number.isFinite(lastSeenMs)) {
-          tutorLastSeenMsByLiveClassId.set(String(row.class_id), lastSeenMs);
-        }
-      }
-    }
-
     if (courseIdsToResolve.length > 0) {
-      const { data: liveCourseRows } = await adminClient
+      const { data: liveCourseRows, error: liveCourseError } = await adminClient
         .from("courses")
         .select("id, created_by, co_tutor_id")
         .in("id", courseIdsToResolve);
+      tutorRosterFailed ||= Boolean(liveCourseError) || (liveCourseRows ?? []).length !== courseIdsToResolve.length;
       const { data: liveEnrollmentRows } = await adminClient
         .from("course_enrollments")
         .select("course_id, student_id")
@@ -1290,11 +1278,12 @@ export async function POST(request: NextRequest) {
       );
       const discordIdByUserId = new Map<string, string>();
       if (allMemberIds.length > 0) {
-        const { data: memberRows } = await adminClient
+        const { data: memberRows, error: memberError } = await adminClient
           .from("app_users")
           .select("id, discord_user_id")
           .in("id", allMemberIds)
           .not("discord_user_id", "is", null);
+        tutorRosterFailed ||= Boolean(memberError);
         for (const row of memberRows ?? []) {
           const discordId = String(row.discord_user_id ?? "").trim();
           if (discordId) {
@@ -1364,11 +1353,18 @@ export async function POST(request: NextRequest) {
     }
 
     for (const liveChannel of activeLiveChannels ?? []) {
-      const endsAtMs = new Date(String(liveChannel.ends_at)).getTime();
+      const schedule = Array.isArray(liveChannel.class) ? liveChannel.class[0] ?? null : liveChannel.class;
+      const endsAtMs = liveClassEndMs(schedule);
       // Nothing before the scheduled end is ever a candidate. Past it, deletion
       // still requires proving either that the call is empty or that the tutor
       // has been out of it for half an hour (see decideLiveChannelCleanup).
-      if (Number.isNaN(endsAtMs) || Date.now() <= endsAtMs) {
+      if (endsAtMs === null || Date.now() <= endsAtMs) {
+        // Also discard clocks from a former schedule if the class was extended.
+        if (liveChannel.empty_since || liveChannel.tutor_absent_since) {
+          await adminClient.from("discord_live_class_channels")
+            .update({ empty_since: null, tutor_absent_since: null })
+            .eq("id", String(liveChannel.id)).eq("discord_channel_id", liveChannel.discord_channel_id);
+        }
         continue;
       }
 
@@ -1389,7 +1385,7 @@ export async function POST(request: NextRequest) {
       }
 
       let tutorPresent = false;
-      let tutorPollFailed = false;
+      let tutorPollFailed = tutorRosterFailed;
       for (const candidateId of tutorCandidateIds) {
         try {
           const voiceChannelId = await getDiscordUserVoiceChannelId(discordGuildId, candidateId);
@@ -1431,116 +1427,41 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // A tutor with no attendance row never joined this class at all, so they
-      // have been out of the call since it was scheduled to start.
-      const scheduledStartMs = new Date(String(liveChannel.starts_at)).getTime();
-      const tutorLastSeenMs =
-        tutorLastSeenMsByLiveClassId.get(String(liveChannel.class_id)) ??
-        (Number.isFinite(scheduledStartMs) ? scheduledStartMs : null);
-
-      const decision = decideLiveChannelCleanup({
+      const presence = {
         nowMs: Date.now(),
         endsAtMs,
         someonePresent,
         lookupFailed,
-        emptySinceMs: liveChannel.empty_since
-          ? new Date(String(liveChannel.empty_since)).getTime()
-          : null,
         tutorPresent,
         tutorLookupFailed: tutorCandidateIds.size === 0 || tutorPollFailed,
-        tutorLastSeenMs,
-      });
-
-      if (decision === "keep") {
+        emptySinceMs: liveChannel.empty_since ? Date.parse(liveChannel.empty_since) : null,
+        tutorAbsentSinceMs: liveChannel.tutor_absent_since ? Date.parse(liveChannel.tutor_absent_since) : null,
+      };
+      const clocks = observeLiveChannelPresence(presence);
+      const { error: clockError } = await adminClient.from("discord_live_class_channels")
+        .update({
+          empty_since: clocks.emptySinceMs === null ? null : new Date(clocks.emptySinceMs).toISOString(),
+          tutor_absent_since: clocks.tutorAbsentSinceMs === null ? null : new Date(clocks.tutorAbsentSinceMs).toISOString(),
+        })
+        .eq("id", String(liveChannel.id)).eq("discord_channel_id", channelId).is("deleted_at", null);
+      if (clockError) {
+        liveChannelCleanupErrors.push(clockError.message);
         continue;
       }
-
-      if (decision === "clear-empty") {
-        // The lesson is still going — reset the emptiness clock.
-        await adminClient
-          .from("discord_live_class_channels")
-          .update({ empty_since: null })
-          .eq("id", String(liveChannel.id));
-        continue;
-      }
-
-      if (decision === "mark-empty") {
-        await adminClient
-          .from("discord_live_class_channels")
-          .update({ empty_since: new Date().toISOString() })
-          .eq("id", String(liveChannel.id));
-        continue;
-      }
+      if (decideLiveChannelCleanup({ ...presence, ...clocks }) !== "delete") continue;
 
       try {
-        await deleteDiscordChannel(channelId);
+        await deleteFinishedLiveChannel({
+          adminClient, rowId: String(liveChannel.id), channelId, presence,
+          deleteChannel: deleteDiscordChannel,
+        });
       } catch (error) {
-        // "Unknown Channel" means it is already gone — safe to mark deleted.
-        // Any other failure (rate limit, outage) leaves the row active so the
-        // next tick retries instead of silently leaking the channel.
-        const message = error instanceof Error ? error.message.toLowerCase() : "";
-        if (!message.includes("unknown channel")) {
-          continue;
-        }
+        liveChannelCleanupErrors.push(error instanceof Error ? error.message : "Live channel cleanup failed.");
       }
-
-      await adminClient
-        .from("discord_live_class_channels")
-        .update({ deleted_at: new Date().toISOString() })
-        .eq("id", String(liveChannel.id));
     }
 
-    // Orphan sweep: hard-deleting a class cascades away its
-    // discord_live_class_channels row, leaving its voice channel with no
-    // record that any cleanup path would ever visit. Remove voice channels
-    // under "Live" that no in-window or active row references and that are
-    // old enough (channel ids are snowflakes carrying a creation timestamp)
-    // to rule out an in-flight creation.
-    try {
-      const liveCategory = guildChannels.find(
-        (ch) =>
-          ch.type === discordCategoryChannelType &&
-          ch.name === defaultLiveCategoryName
-      );
-      // If the active-rows query failed we cannot tell which channels are in use,
-      // and sweeping on an empty reference set would delete live lessons. Skip.
-      if (liveCategory && !activeLiveChannelsError) {
-        const referencedChannelIds = new Set(
-          (activeLiveChannels ?? []).map((row) => String(row.discord_channel_id))
-        );
-        const { data: inWindowRows } = await adminClient
-          .from("discord_live_class_channels")
-          .select("discord_channel_id")
-          .gt("ends_at", new Date().toISOString());
-        for (const row of inWindowRows ?? []) {
-          referencedChannelIds.add(String(row.discord_channel_id));
-        }
-
-        const discordEpochMs = 1420070400000;
-        const minOrphanAgeMs = 10 * 60 * 1000;
-        for (const channel of guildChannels) {
-          if (
-            channel.type !== discordVoiceChannelType ||
-            channel.parent_id !== liveCategory.id ||
-            referencedChannelIds.has(channel.id)
-          ) {
-            continue;
-          }
-          const createdAtMs =
-            Number(BigInt(channel.id) >> BigInt(22)) + discordEpochMs;
-          if (Date.now() - createdAtMs < minOrphanAgeMs) {
-            continue;
-          }
-          try {
-            await deleteDiscordChannel(channel.id);
-          } catch {
-            // Retried on the next tick.
-          }
-        }
-      }
-    } catch {
-      // The sweep is best-effort and must never break the tick.
-    }
+    // An untracked channel has no trustworthy class end time. Never delete it
+    // based on channel age or a missing row; it may be a lesson being recovered.
   }
 
   let sentDiscordFollowUpCount = 0;
@@ -1570,15 +1491,43 @@ export async function POST(request: NextRequest) {
     // Rows whose class has not yet ended. We intentionally do NOT filter on
     // deleted_at: a row may have been marked deleted prematurely while its channel
     // was being wrongly removed, and we still want to restore it mid-class.
-    const { data: liveRows } = await adminClient
+    const { data: storedLiveRows, error: liveRecoveryError } = classesInLiveWindow.length ? await adminClient
       .from("discord_live_class_channels")
-      .select("id, class_id, course_id, discord_channel_id, tutor_discord_user_id, starts_at, ends_at")
-      .gte("ends_at", new Date(nowMs).toISOString());
+      .select("id, class_id, course_id, discord_channel_id, tutor_discord_user_id, starts_at, ends_at, deleted_at")
+      .in("class_id", classesInLiveWindow.map((row) => row.id)) : { data: [], error: null };
+    if (liveRecoveryError) {
+      liveChannelRecovery.skipped.push({ classId: "lookup", reason: liveRecoveryError.message });
+    }
+    const currentClassById = new Map(classesInLiveWindow.map((row) => [row.id, row]));
+    const liveRows = (storedLiveRows ?? []).map((row) => {
+      const current = currentClassById.get(String(row.class_id))!;
+      return {
+        ...row, starts_at: current.starts_at,
+        ends_at: new Date(classEndMs(Date.parse(current.starts_at), current.duration_hours)).toISOString(),
+      };
+    });
+    let recoverySnapshotReady = !liveRecoveryError;
+    try {
+      guildChannels = await listDiscordGuildChannels(discordGuildId);
+    } catch {
+      recoverySnapshotReady = false;
+    }
+    for (const row of recoverySnapshotReady ? liveRows : []) {
+      if (!guildChannels.some((channel) => channel.id === row.discord_channel_id)) continue;
+      const { error } = await adminClient.from("discord_live_class_channels")
+        .update({
+          starts_at: row.starts_at, ends_at: row.ends_at, deleted_at: null,
+          empty_since: null, tutor_absent_since: null,
+          ...(row.deleted_at ? { recovered_at: new Date(nowMs).toISOString() } : {}),
+        })
+        .eq("id", row.id).eq("discord_channel_id", row.discord_channel_id);
+      if (error) liveChannelRecovery.skipped.push({ classId: String(row.class_id), reason: error.message });
+    }
 
     const liveRowsByClassId = new Map(
       (liveRows ?? []).map((row) => [String(row.class_id), row])
     );
-    const missingLiveRows = classesInLiveWindow
+    const missingLiveRows = (recoverySnapshotReady ? classesInLiveWindow : [])
       .filter((classRow) => !liveRowsByClassId.has(classRow.id))
       .filter((classRow) => {
         const course = readCourse(classRow.course);
@@ -1627,7 +1576,7 @@ export async function POST(request: NextRequest) {
         };
       });
 
-    const liveRowsForRecovery = [...(liveRows ?? []), ...missingLiveRows];
+    const liveRowsForRecovery = [...(recoverySnapshotReady ? liveRows : []), ...missingLiveRows];
     liveChannelRecovery.activeRows = liveRowsForRecovery.length;
 
     const recoverable = liveRowsForRecovery.filter((row) => {
@@ -1717,19 +1666,26 @@ export async function POST(request: NextRequest) {
             });
             guildChannels.push(recreatedChannel);
             if (row.id) {
-              await adminClient
+              const { error } = await adminClient
                 .from("discord_live_class_channels")
-                .update({ discord_channel_id: recreatedChannel.id, deleted_at: null })
-                .eq("id", String(row.id));
+                .update({
+                  discord_channel_id: recreatedChannel.id, deleted_at: null,
+                  starts_at: row.starts_at, ends_at: row.ends_at,
+                  empty_since: null, tutor_absent_since: null, recovered_at: new Date().toISOString(),
+                })
+                .eq("id", String(row.id)).eq("discord_channel_id", row.discord_channel_id);
+              if (error) throw new Error(error.message);
             } else {
-              await adminClient.from("discord_live_class_channels").insert({
+              const { error } = await adminClient.from("discord_live_class_channels").insert({
                 class_id: String(row.class_id),
                 course_id: String(row.course_id),
                 discord_channel_id: recreatedChannel.id,
                 tutor_discord_user_id: tutorDiscordId,
                 starts_at: String(row.starts_at),
                 ends_at: String(row.ends_at),
+                recovered_at: new Date().toISOString(),
               });
+              if (error) throw new Error(error.message);
             }
             liveChannelRecovery.recreated += 1;
           } catch (error) {
@@ -1751,28 +1707,10 @@ export async function POST(request: NextRequest) {
   if (discordRemindersEnabled && !discordReminderSkippedReason && discordGuildId) {
     try {
       guildChannels = await listDiscordGuildChannels(discordGuildId);
-      const liveCategory = guildChannels.find(
-        (ch) => ch.type === discordCategoryChannelType && ch.name === defaultLiveCategoryName
-      );
-      if (liveCategory) {
-        const hasLiveChildren = guildChannels.some(
-          (ch) => String(ch.parent_id ?? "") === liveCategory.id
-        );
-        const { data: remainingLiveRows } = await adminClient
-          .from("discord_live_class_channels")
-          .select("id")
-          .is("deleted_at", null)
-          .limit(1);
-
-        if (!hasLiveChildren && (remainingLiveRows ?? []).length === 0) {
-          await deleteDiscordChannel(liveCategory.id);
-          guildChannels = guildChannels.filter((ch) => ch.id !== liveCategory.id);
-        }
-      }
     } catch (error) {
       failedClasses.push({
         classId: "live-category-cleanup",
-        reason: `Failed to clean up empty Live category: ${error instanceof Error ? error.message : "Unknown error."}`,
+        reason: `Failed to refresh live channels: ${error instanceof Error ? error.message : "Unknown error."}`,
       });
     }
   }
@@ -1814,7 +1752,7 @@ export async function POST(request: NextRequest) {
       // Classes whose live voice channel should currently be active.
       const { data: liveSessions } = await adminClient
         .from("discord_live_class_channels")
-        .select("class_id, course_id, discord_channel_id, tutor_discord_user_id, starts_at, ends_at")
+        .select("class_id, course_id, discord_channel_id, tutor_discord_user_id, starts_at, ends_at, recovered_at")
         .is("deleted_at", null)
         .lte("starts_at", new Date(attendanceNow + attendanceLeadMs).toISOString())
         .gte("ends_at", new Date(attendanceNow - attendanceTrailMs).toISOString());
@@ -1954,7 +1892,7 @@ export async function POST(request: NextRequest) {
           const classId = String(session.class_id);
           const courseId = String(session.course_id);
           const channelId = String(session.discord_channel_id ?? "").trim();
-          if (!channelId) {
+          if (!channelId || !guildChannels.some((channel) => channel.id === channelId)) {
             continue;
           }
           const sessionStartMs = new Date(String(session.starts_at)).getTime();
@@ -2016,7 +1954,8 @@ export async function POST(request: NextRequest) {
                 }
               }
               tutorLastSeenMsByClassId.set(classId, attendanceNow);
-            } else if (tutorPollSucceeded) {
+            } else if (tutorPollSucceeded && (!session.recovered_at ||
+              attendanceNow - Date.parse(session.recovered_at) > 2 * 60 * 1000)) {
               // Not in the class channel. Which warning that earns depends on
               // whether they have ever been in it: never — a no-show, before or
               // after the start; once and now gone — they left early.
@@ -3594,6 +3533,7 @@ ${tutorWasPresent ? "" : "<p><strong>Note:</strong> you were not detected in the
     autoCloseErrors: autoCloseResult.errors,
     failedClasses,
     liveChannelRecovery,
+    liveChannelCleanupErrors,
     attendanceRecorded,
     tutorLeftEarlyWarnings,
     tutorNotJoinedWarnings,
