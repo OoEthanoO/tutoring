@@ -106,6 +106,10 @@ bearer (see the `cron:reminders:*` npm scripts).
   Tutors can record the whole display or only windows they tick, in which case
   only the focused shared window is recorded and anything else freezes the
   picture (`windowlist.rs` + `crop`/`stillPath` in `capture.rs`).
+- Recorder macOS releases require the Apple signing/notarization secrets in
+  `MACOS_NOTARIZATION.md`. The workflow uploads to a draft, checks the app,
+  recording helpers, updater archive and notarized DMG, then publishes only
+  after both platforms pass. Keep the updater signing key unchanged.
 - In-class exercises: Recorder's `exercises.js` panel uses `/api/recorder/exercises`;
   enrolled students use the single `/class-exercises/[classId]` link and private
   `/api/class-exercises/[classId]` endpoints. See `CLASS_EXERCISES.md`. Exercises

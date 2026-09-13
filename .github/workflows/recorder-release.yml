@@ -5,9 +5,9 @@ name: YanLearn Recorder release
 # `recorder-v0.1.0` (the version should match recorder/package.json and
 # recorder/src-tauri/tauri.conf.json) or manually from the Actions tab.
 #
-# The builds are unsigned: macOS users must right-click → Open the first time
-# (or the app needs an Apple Developer ID certificate — see RECORDER.md), and
-# Windows SmartScreen shows a "More info → Run anyway" prompt.
+# macOS releases require Developer ID signing and Apple notarization. See
+# MACOS_NOTARIZATION.md for the one-time credentials setup. Windows installers
+# still do not have Authenticode signing.
 #
 # Installed copies update themselves from the `latest.json` attached to the
 # newest published release, so every build must be signed with the updater key
@@ -23,8 +23,32 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: recorder-release-${{ github.ref_type == 'tag' && github.ref_name || 'recorder-dev' }}
+  cancel-in-progress: false
+
 jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Check release credentials and destination
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: node recorder/scripts/check-release-signing.mjs
+
   build:
+    needs: preflight
     strategy:
       fail-fast: false
       # One job at a time: each build merges its platform into the shared
@@ -115,7 +139,7 @@ jobs:
       - name: Generate app icons
         run: npm run icons
 
-      - name: Build and release
+      - name: Build and upload to draft release
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -123,14 +147,52 @@ jobs:
           # installing anything.
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # Tauri imports the .p12 into a temporary keychain, signs the app and
+          # sidecars, submits the app to Apple, and staples the accepted ticket.
+          APPLE_CERTIFICATE: ${{ runner.os == 'macOS' && secrets.APPLE_CERTIFICATE || '' }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ runner.os == 'macOS' && secrets.APPLE_CERTIFICATE_PASSWORD || '' }}
+          APPLE_SIGNING_IDENTITY: ${{ runner.os == 'macOS' && secrets.APPLE_SIGNING_IDENTITY || '' }}
+          APPLE_ID: ${{ runner.os == 'macOS' && secrets.APPLE_ID || '' }}
+          APPLE_PASSWORD: ${{ runner.os == 'macOS' && secrets.APPLE_PASSWORD || '' }}
+          APPLE_TEAM_ID: ${{ runner.os == 'macOS' && secrets.APPLE_TEAM_ID || '' }}
         with:
           projectPath: recorder
           tagName: ${{ github.ref_type == 'tag' && github.ref_name || 'recorder-dev' }}
+          releaseCommitish: ${{ github.sha }}
           releaseName: "YanLearn Recorder ${{ github.ref_type == 'tag' && github.ref_name || 'development build' }}"
           releaseBody: "Download the installer from https://learn.ethanyanxu.com/recorder. Recorders that are already installed update themselves to this version the next time they are open and not in a class."
           # NSIS (-setup.exe) updates install per-user without a UAC prompt;
           # the .msi would need one.
           updaterJsonPreferNsis: true
-          releaseDraft: ${{ github.ref_type != 'tag' }}
+          # No public installers or updater manifest until BOTH platforms pass
+          # and the macOS app/archive and DMG have been verified.
+          releaseDraft: true
           prerelease: false
           args: --target ${{ matrix.target }}
+
+      - name: Notarize the DMG and verify macOS artifacts
+        if: runner.os == 'macOS'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || 'recorder-dev' }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: node scripts/verify-macos-release.mjs ${{ matrix.target }}
+
+  publish:
+    needs: build
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Publish the verified release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: node recorder/scripts/publish-recorder-release.mjs

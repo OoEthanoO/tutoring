@@ -339,8 +339,9 @@ installer again.
   `https://github.com/OoEthanoO/tutoring/releases/latest/download/latest.json`.
 * Each artifact is signed with a minisign key; `plugins.updater.pubkey` in
   `tauri.conf.json` is its public half and the app installs nothing whose
-  signature does not verify. That signature is the whole security story for an
-  app that is otherwise unsigned (no Developer ID, no Authenticode).
+  signature does not verify. macOS release builds also require Developer ID
+  signing and Apple notarization (see `MACOS_NOTARIZATION.md`); Windows
+  installers still lack Authenticode signing.
 * **When it updates** is decided by `updateSafeNow()` in `src/main.js`: only
   while the app is connected to the server (so "no class" is a fresh fact),
   with no class session, nothing waiting to upload, no quit lock, and the next
@@ -407,10 +408,13 @@ environment; `npm run dev` does not bundle and is unaffected.
 
 macOS also needs the helper: `swiftc -O -target arm64-apple-macos13.0 -framework ScreenCaptureKit -framework CoreMedia -framework AVFoundation sysaudio/main.swift -o src-tauri/binaries/sysaudio-aarch64-apple-darwin`.
 
-Builds are **unsigned**. macOS shows "unidentified developer" (right‑click →
-Open, or add an Apple Developer ID cert + notarization to the workflow);
-Windows SmartScreen shows "More info → Run anyway". Signing is the main thing
-to add before rolling out to all tutors.
+The macOS release workflow now requires a Developer ID Application certificate
+and notarization credentials, and publishes only after its Apple checks and both
+platform builds pass. See [MACOS_NOTARIZATION.md](MACOS_NOTARIZATION.md) for the
+one-time setup; all six Apple secret names are configured, with actual signing
+and notarization acceptance checked by the macOS build.
+Historical releases remain unsigned by Apple until replaced by a new release.
+Windows SmartScreen still shows "More info → Run anyway".
 
 ## Known limitations / follow‑ups
 

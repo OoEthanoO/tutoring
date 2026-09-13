@@ -1,5 +1,9 @@
 {
   "bundle": {
-    "externalBin": ["binaries/ffmpeg", "binaries/sysaudio"]
+    "externalBin": ["binaries/ffmpeg", "binaries/sysaudio"],
+    "macOS": {
+      "hardenedRuntime": true,
+      "entitlements": "Entitlements.plist"
+    }
   }
 }
