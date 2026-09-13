@@ -1,12 +1,10 @@
+import { isFounder as hasManagementAccess, resolveAccountRole, type AccountRole } from "@/lib/roles";
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { recorderCorsHeaders } from "@/lib/recorderCors";
 
 const guardedPaths = ["/onboarding"];
 const maintenancePath = "/maintenance";
-const founderEmails = (process.env.NEXT_PUBLIC_FOUNDER_EMAIL ?? "ethanxucoder@gmail.com")
-  .split(",")
-  .map((e) => e.trim().toLowerCase());
 
 const readMaintenanceMode = async () => {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
@@ -89,7 +87,7 @@ const isFounderSession = async (request: NextRequest) => {
   }
 
   const userParams = new URLSearchParams({
-    select: "email,role",
+    select: "email,role,custom_role,custom_roles(role_level)",
     id: `eq.${userId}`,
     limit: "1",
   });
@@ -108,18 +106,13 @@ const isFounderSession = async (request: NextRequest) => {
     return false;
   }
 
-  const users = (await userResponse.json().catch(() => [])) as Array<{
-    email?: string | null;
-    role?: string | null;
-  }>;
+  const users = (await userResponse.json().catch(() => [])) as AccountRole[];
   const user = users[0];
   if (!user) {
     return false;
   }
 
-  const role = String(user.role ?? "").toLowerCase();
-  const email = String(user.email ?? "").toLowerCase();
-  return role === "founder" || founderEmails.includes(email);
+  return hasManagementAccess(resolveAccountRole(user));
 };
 
 export async function middleware(request: NextRequest) {

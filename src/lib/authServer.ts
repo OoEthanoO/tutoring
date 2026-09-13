@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
-import { isFounder, resolveUserRole } from "@/lib/roles";
+import { isFounder, resolveAccountRole, canImpersonateAccount } from "@/lib/roles";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
@@ -64,7 +64,7 @@ export const getSessionUser = async (token?: string | null) => {
     return null;
   }
 
-  return resolvedUser as SessionUser;
+  return { ...resolvedUser, role: resolveAccountRole(resolvedUser) } as SessionUser;
 };
 
 export const getRequestActor = async (
@@ -82,10 +82,7 @@ export const getRequestUser = async (
     return null;
   }
 
-  const customRoleLevels = Array.isArray(actor.custom_roles)
-    ? actor.custom_roles.map((r) => r.role_level).filter(Boolean)
-    : [actor.custom_roles?.role_level].filter((level): level is string => Boolean(level));
-  const actorRole = resolveUserRole(actor.email, actor.role ?? null, customRoleLevels);
+  const actorRole = resolveAccountRole(actor);
   const impersonatedUserId =
     request.cookies.get(IMPERSONATE_COOKIE)?.value?.trim() ?? "";
   if (!isFounder(actorRole) || !impersonatedUserId) {
@@ -101,11 +98,11 @@ export const getRequestUser = async (
     .eq("id", impersonatedUserId)
     .maybeSingle();
 
-  if (!impersonatedUser) {
+  if (!impersonatedUser || !canImpersonateAccount(actorRole, resolveAccountRole(impersonatedUser))) {
     return actor;
   }
 
-  return impersonatedUser as SessionUser;
+  return { ...impersonatedUser, role: resolveAccountRole(impersonatedUser) } as SessionUser;
 };
 
 export const getRequestAuthContext = async (
@@ -121,10 +118,7 @@ export const getRequestAuthContext = async (
     };
   }
 
-  const customRoleLevels = Array.isArray(actor.custom_roles)
-    ? actor.custom_roles.map((r) => r.role_level).filter(Boolean)
-    : [actor.custom_roles?.role_level].filter((level): level is string => Boolean(level));
-  const actorRole = resolveUserRole(actor.email, actor.role ?? null, customRoleLevels);
+  const actorRole = resolveAccountRole(actor);
   const impersonatedUserId =
     request.cookies.get(IMPERSONATE_COOKIE)?.value?.trim() ?? "";
 
@@ -146,7 +140,7 @@ export const getRequestAuthContext = async (
     .eq("id", impersonatedUserId)
     .maybeSingle();
 
-  if (!impersonatedUser) {
+  if (!impersonatedUser || !canImpersonateAccount(actorRole, resolveAccountRole(impersonatedUser))) {
     return {
       actor,
       user: actor,
@@ -157,7 +151,7 @@ export const getRequestAuthContext = async (
 
   return {
     actor,
-    user: impersonatedUser as SessionUser,
+    user: { ...impersonatedUser, role: resolveAccountRole(impersonatedUser) } as SessionUser,
     isImpersonating: impersonatedUser.id !== actor.id,
     impersonatedUserId: impersonatedUser.id,
   };

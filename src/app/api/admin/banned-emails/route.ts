@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getAdminClient, getRequestAuthContext } from "@/lib/authServer";
 import { isFounder, resolveUserRole } from "@/lib/roles";
+import { checkLeadershipProtection } from "@/lib/accountProtection";
 
 export async function GET(request: NextRequest) {
   const { actor } = await getRequestAuthContext(request);
@@ -43,6 +44,8 @@ export async function POST(request: NextRequest) {
   }
 
   const adminClient = getAdminClient();
+  const protection = await checkLeadershipProtection(adminClient, actor, { email });
+  if (protection) return NextResponse.json({ error: protection.error }, { status: protection.status });
   const { error } = await adminClient
     .from("banned_emails")
     .insert({ email });

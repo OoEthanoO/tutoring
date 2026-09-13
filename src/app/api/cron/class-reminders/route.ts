@@ -231,6 +231,8 @@ const baseRoleNames = new Set([
   "Executive",
   "Pending",
   "CEO",
+  "CEO Shadow",
+  "COO Shadow",
   "COO",
   "Chief Executive",
   "Founder",
@@ -688,6 +690,7 @@ export async function POST(request: NextRequest) {
   let founderRoleId: string | null = null;
   let ceoRoleId: string | null = null;
   let cooRoleId: string | null = null;
+  let shadowRoleIds: string[] = [];
 
   if (!discordRemindersEnabled) {
     discordReminderSkippedReason =
@@ -717,6 +720,7 @@ export async function POST(request: NextRequest) {
       ceoRoleId = ceoRole?.id ?? null;
       const cooRole = guildRoles.find((r) => r.name === "COO");
       cooRoleId = cooRole?.id ?? null;
+      shadowRoleIds = guildRoles.filter((r) => r.name === "CEO Shadow" || r.name === "COO Shadow").map((r) => r.id);
     } catch (error) {
       discordReminderSkippedReason =
         error instanceof Error
@@ -1336,7 +1340,7 @@ export async function POST(request: NextRequest) {
         for (const [courseId, discordIds] of occupantIdsByCourseId) {
           const target = discordCourseTargetByCourseId.get(courseId);
           const admittedRoleIds = new Set(
-            [target?.roleId, ceoRoleId, cooRoleId].filter((id): id is string => Boolean(id))
+            [target?.roleId, ceoRoleId, cooRoleId, ...shadowRoleIds].filter((id): id is string => Boolean(id))
           );
           if (admittedRoleIds.size === 0) {
             continue;
@@ -1653,6 +1657,7 @@ export async function POST(request: NextRequest) {
               botUserId,
               ceoRoleId,
               cooRoleId,
+              shadowRoleIds,
               tutorDiscordUserId: tutorDiscordId,
               extraMemberDiscordUserIds:
                 approvedExtraIdsByOwnerDiscordId.get(tutorDiscordId) ?? [],
@@ -2635,6 +2640,7 @@ ${tutorWasPresent ? "" : "<p><strong>Note:</strong> you were not detected in the
                     botUserId,
                     ceoRoleId,
                     cooRoleId,
+                    shadowRoleIds,
                     tutorDiscordUserId: tutorDiscordIdForChannel,
                     extraMemberDiscordUserIds:
                       approvedExtraIdsByOwnerDiscordId.get(tutorDiscordIdForChannel) ?? [],
@@ -2813,6 +2819,7 @@ ${tutorWasPresent ? "" : "<p><strong>Note:</strong> you were not detected in the
                       botUserId,
                       ceoRoleId,
                       cooRoleId,
+                      shadowRoleIds,
                       tutorDiscordUserId: tutorDiscordIdForFallback,
                       extraMemberDiscordUserIds:
                         approvedExtraIdsByOwnerDiscordId.get(tutorDiscordIdForFallback) ?? [],
@@ -2864,6 +2871,7 @@ ${tutorWasPresent ? "" : "<p><strong>Note:</strong> you were not detected in the
                     botUserId,
                     ceoRoleId,
                     cooRoleId,
+                    shadowRoleIds,
                     tutorDiscordUserId: tutorDiscordIdForUpdate,
                     extraMemberDiscordUserIds:
                       approvedExtraIdsByOwnerDiscordId.get(tutorDiscordIdForUpdate) ?? [],

@@ -29,10 +29,14 @@ bearer (see the `cron:reminders:*` npm scripts).
 ## Architecture
 
 - `src/app/api/**` — route handlers. Admin routes gate on
-  `isFounder(resolveUserRole(...))` — the founder/CEO/COO trio — via
+  `isFounder(resolveUserRole(...))` — founder/CEO/COO and their Shadows — via
   `getRequestAuthContext`/`getRequestUser` + `getAdminClient` from
   `src/lib/authServer.ts`. Client admin components use the same `isFounder`
-  gate; keep both sides trio-aligned (decided July 2026).
+  gate. Sessions resolve custom roles centrally. `isTopLeadership` identifies
+  the protected founder/CEO/COO tier; `isFounder` is the management-access gate.
+  Shadows cannot change top leadership access, impersonate them, ban/delete
+  them, transfer their Discord identities, or grant top-tier roles. Enforce
+  this server-side with `accountProtection.ts`, including custom-role aliases.
 - `src/lib/discordSync.ts` — single owner of Discord guild state. Each run
   kicks human members not linked to a website account (unless listed in
   `approved_discord_accounts`), manages roles (base + per-course), channels,
@@ -76,9 +80,10 @@ bearer (see the `cron:reminders:*` npm scripts).
   **Pending** Discord role instead of Executive — never both — unless the trio
   ticks "Executive without a course" (`app_users.pending_role_exempt`) in
   Manage accounts. The rule is `src/lib/executiveStanding.ts`; `discordSync`
-  applies it and deletes the old Junior Executive guild role. CEO Shadow is a
-  seeded custom role at the Executive permission level: it grants no CEO or
-  founder authority and sits alongside the member's Executive/Pending standing.
+  applies it and deletes the old Junior Executive guild role. CEO Shadow and
+  COO Shadow are seeded management roles with separate identities below both
+  CEO and COO. See `LEADERSHIP_SHADOWS.md` for the protected account operations,
+  migration, and Discord permission limits.
 - `recorder/` — **YanLearn Recorder**, the Tauri 2 desktop app (macOS +
   Windows) tutors must run for every class from 2026-09-09; see `RECORDER.md`.
   Server side: `src/app/api/recorder/**` (bearer-token endpoints the app calls),

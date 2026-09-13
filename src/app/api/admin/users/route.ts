@@ -1,8 +1,9 @@
+import { checkLeadershipProtection } from "@/lib/accountProtection";
 import fs from "fs";
 import path from "path";
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { isExecutive, isFounder, resolveUserRole, type UserRole } from "@/lib/roles";
+import { isExecutive, isFounder, resolveUserRole, resolveAccountRole, canAssignRole, leadershipProtectionMessage, type UserRole } from "@/lib/roles";
 import { teachesCourseIds } from "@/lib/executiveStanding";
 import { getRequestUser } from "@/lib/authServer";
 import { fetchDiscordGuildMemberIds } from "@/lib/discordSync";
@@ -247,7 +248,7 @@ export async function GET(request: NextRequest) {
   let query = adminClient
     .from("app_users")
     .select(
-      "id, email, full_name, legal_name, role, created_at, tutor_promoted_at, discord_user_id, discord_username, discord_connected_at, is_junior, pending_role_exempt, grade, school, strike_count, custom_role, executive_generation"
+      "id, email, full_name, legal_name, role, created_at, tutor_promoted_at, discord_user_id, discord_username, discord_connected_at, is_junior, pending_role_exempt, grade, school, strike_count, custom_role, custom_roles(role_level), executive_generation"
     )
     .ilike("email", search ? `%${search}%` : "%")
     .order("created_at", { ascending: false });
@@ -274,7 +275,7 @@ export async function GET(request: NextRequest) {
     createdAt: item.created_at,
     lastSignInAt: null,
     fullName: item.full_name ?? "",
-    role: resolveUserRole(item.email, item.role ?? null),
+    role: resolveAccountRole(item),
     donationLink: "",
     tutorPromotedAt: item.tutor_promoted_at ?? null,
     discordUserId: item.discord_user_id ?? null,
@@ -491,12 +492,36 @@ export async function PATCH(request: NextRequest) {
     auth: { persistSession: false },
   });
 
+  const changesAccess = body.role !== undefined || body.customRole !== undefined ||
+    body.isJunior !== undefined || body.pendingRoleExempt !== undefined ||
+    body.strikeCount !== undefined || body.transferDiscordFromEmail !== undefined;
+  if (changesAccess) {
+    const protection = await checkLeadershipProtection(adminClient, user, { id: body.userId });
+    if (protection) return NextResponse.json({ error: protection.error }, { status: protection.status });
+  }
+  const actorRole = resolveAccountRole(user);
+  if (body.role && !canAssignRole(actorRole, resolveUserRole(null, body.role))) {
+    return NextResponse.json({ error: leadershipProtectionMessage }, { status: 403 });
+  }
+  if (body.customRole) {
+    const { data: definition, error } = await adminClient.from("custom_roles")
+      .select("name, role_level").eq("name", body.customRole).maybeSingle();
+    if (error) return NextResponse.json({ error: "Could not verify the requested role." }, { status: 503 });
+    if (!definition) return NextResponse.json({ error: "Unknown custom role." }, { status: 400 });
+    const requestedRole = resolveAccountRole({ custom_role: definition.name, custom_roles: definition });
+    if (!canAssignRole(actorRole, requestedRole)) {
+      return NextResponse.json({ error: leadershipProtectionMessage }, { status: 403 });
+    }
+  }
+
   if (body.transferDiscordFromEmail) {
     const emailToSearch = normalizeEmail(body.transferDiscordFromEmail);
+    const sourceProtection = await checkLeadershipProtection(adminClient, user, { email: emailToSearch });
+    if (sourceProtection) return NextResponse.json({ error: sourceProtection.error }, { status: sourceProtection.status });
     const { data: sourceUser, error: sourceError } = await adminClient
       .from("app_users")
       .select("id, discord_user_id, discord_username, discord_connected_at")
-      .ilike("email", emailToSearch)
+      .ilike("email", emailToSearch.replace(/[%_\\]/g, "\\$&"))
       .single();
 
     if (sourceError || !sourceUser) {
@@ -532,7 +557,7 @@ export async function PATCH(request: NextRequest) {
         discord_connected_at: sourceUser.discord_connected_at,
       })
       .eq("id", body.userId)
-      .select("id, email, full_name, legal_name, role, created_at, tutor_promoted_at, discord_user_id, discord_username, discord_connected_at, is_junior, pending_role_exempt, grade, school, strike_count, custom_role, executive_generation")
+      .select("id, email, full_name, legal_name, role, created_at, tutor_promoted_at, discord_user_id, discord_username, discord_connected_at, is_junior, pending_role_exempt, grade, school, strike_count, custom_role, custom_roles(role_level), executive_generation")
       .single();
 
     if (linkError || !updatedTarget) {
@@ -555,7 +580,7 @@ export async function PATCH(request: NextRequest) {
       createdAt: updatedTarget.created_at,
       lastSignInAt: null,
       fullName: updatedTarget.full_name ?? "",
-      role: resolveUserRole(updatedTarget.email, updatedTarget.role ?? null),
+      role: resolveAccountRole(updatedTarget),
       donationLink: "", // We don't fetch it here, UI will preserve existing state if we just return what we have or we can ignore it
       tutorPromotedAt: updatedTarget.tutor_promoted_at ?? null,
       discordUserId: updatedTarget.discord_user_id ?? null,
@@ -617,7 +642,7 @@ export async function PATCH(request: NextRequest) {
         school: body.school !== undefined ? body.school : undefined,
         strike_count: body.strikeCount !== undefined ? body.strikeCount : undefined,
         last_strike_at: body.strikeCount === 0 ? null : (body.strikeCount !== undefined && body.strikeCount > 0 ? new Date().toISOString() : undefined),
-        custom_role: body.customRole !== undefined ? body.customRole : undefined,
+        custom_role: body.role === "student" ? null : body.customRole !== undefined ? body.customRole : undefined,
         executive_generation: body.generation !== undefined ? body.generation : undefined,
       }
       : null;
@@ -627,13 +652,13 @@ export async function PATCH(request: NextRequest) {
       .update(updatePayload)
       .eq("id", body.userId)
       .select(
-        "id, email, full_name, legal_name, role, created_at, tutor_promoted_at, discord_user_id, discord_username, discord_connected_at, is_junior, pending_role_exempt, grade, school, strike_count, custom_role, executive_generation"
+        "id, email, full_name, legal_name, role, created_at, tutor_promoted_at, discord_user_id, discord_username, discord_connected_at, is_junior, pending_role_exempt, grade, school, strike_count, custom_role, custom_roles(role_level), executive_generation"
       )
       .single()
     : await adminClient
       .from("app_users")
       .select(
-        "id, email, full_name, legal_name, role, created_at, tutor_promoted_at, discord_user_id, discord_username, discord_connected_at, is_junior, pending_role_exempt, grade, school, strike_count, custom_role, executive_generation"
+        "id, email, full_name, legal_name, role, created_at, tutor_promoted_at, discord_user_id, discord_username, discord_connected_at, is_junior, pending_role_exempt, grade, school, strike_count, custom_role, custom_roles(role_level), executive_generation"
       )
       .eq("id", body.userId)
       .single();
@@ -738,10 +763,7 @@ export async function PATCH(request: NextRequest) {
     createdAt: updatedUser.created_at,
     lastSignInAt: null,
     fullName: updatedUser.full_name ?? "",
-    role: resolveUserRole(
-      updatedUser.email,
-      updatedUser.role ?? null
-    ),
+    role: resolveAccountRole(updatedUser),
     donationLink: body.donationLink ?? "",
     tutorPromotedAt: updatedUser.tutor_promoted_at ?? null,
     discordUserId: updatedUser.discord_user_id ?? null,
@@ -1122,6 +1144,9 @@ export async function DELETE(request: NextRequest) {
   const adminClient = createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false },
   });
+
+  const protection = await checkLeadershipProtection(adminClient, user, { id: body.userId });
+  if (protection) return NextResponse.json({ error: protection.error }, { status: protection.status });
 
   // Make user's courses into limbo courses before deleting the user
   await adminClient

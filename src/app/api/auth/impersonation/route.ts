@@ -4,7 +4,7 @@ import {
   getRequestActor,
   IMPERSONATE_COOKIE,
 } from "@/lib/authServer";
-import { isFounder, resolveUserRole } from "@/lib/roles";
+import { isFounder, resolveAccountRole, canImpersonateAccount, leadershipProtectionMessage } from "@/lib/roles";
 
 const maxCookieAgeSeconds = 60 * 60 * 24 * 30;
 
@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
-  if (!isFounder(resolveUserRole(actor.email, actor.role ?? null))) {
+  if (!isFounder(resolveAccountRole(actor))) {
     return NextResponse.json({ error: "Forbidden." }, { status: 403 });
   }
 
@@ -27,14 +27,21 @@ export async function POST(request: NextRequest) {
   }
 
   const adminClient = getAdminClient();
-  const { data: targetUser } = await adminClient
+  const { data: targetUser, error } = await adminClient
     .from("app_users")
-    .select("id")
+    .select("id, email, role, custom_role, custom_roles(role_level)")
     .eq("id", userId)
     .maybeSingle();
 
+  if (error) {
+    return NextResponse.json({ error: "Could not verify the target account." }, { status: 503 });
+  }
   if (!targetUser) {
     return NextResponse.json({ error: "User not found." }, { status: 404 });
+  }
+
+  if (!canImpersonateAccount(resolveAccountRole(actor), resolveAccountRole(targetUser))) {
+    return NextResponse.json({ error: leadershipProtectionMessage }, { status: 403 });
   }
 
   const response = NextResponse.json({ success: true });
@@ -56,7 +63,7 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
-  if (!isFounder(resolveUserRole(actor.email, actor.role ?? null))) {
+  if (!isFounder(resolveAccountRole(actor))) {
     return NextResponse.json({ error: "Forbidden." }, { status: 403 });
   }
 

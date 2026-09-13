@@ -6,12 +6,14 @@ export default function RolesManagerMenu() {
   const [newRoleLevel, setNewRoleLevel] = useState("Executive");
   const [status, setStatus] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
-  const levels = ["CEO", "COO", "Chief Executive", "Executive", "Student"];
+  const [levels, setLevels] = useState<string[]>([]);
 
   const fetchData = async () => {
     const rolesRes = await fetch("/api/admin/roles");
     if (rolesRes.ok) {
-      setRoleDefinitions((await rolesRes.json()).roles);
+      const data = await rolesRes.json();
+      setRoleDefinitions(data.roles);
+      setLevels(data.allowedRoleLevels ?? []);
     }
   };
 
@@ -54,6 +56,7 @@ export default function RolesManagerMenu() {
       <div>
         <h1 className="text-2xl font-bold tracking-tight text-[var(--foreground)]">Role Manager</h1>
         <p className="text-sm text-[var(--muted)]">Manage role definitions and assign them to users.</p>
+        <p className="mt-2 text-sm text-[var(--muted)]">CEO Shadow and COO Shadow have management access. Only the founder, CEO, and COO can grant top leadership roles or change their access.</p>
       </div>
 
       <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-6">

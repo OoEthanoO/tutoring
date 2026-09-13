@@ -1,3 +1,4 @@
+import { mirrorLeadershipAccess, orderLeadershipRoles, shadowDiscordPermissions } from "@/lib/leadershipDiscord";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { founderEmails, resolveUserRole } from "@/lib/roles";
 import { executiveStanding, teachesCourseIds } from "@/lib/executiveStanding";
@@ -92,6 +93,7 @@ type DiscordRole = {
   name: string;
   position?: number;
   managed?: boolean;
+  permissions?: string;
 };
 
 type DiscordPermissionOverwrite = {
@@ -1085,7 +1087,7 @@ class DiscordApiClient {
     });
   }
 
-  updateGuildRole(guildId: string, roleId: string, payload: { name?: string }) {
+  updateGuildRole(guildId: string, roleId: string, payload: { name?: string; permissions?: string }) {
     return this.request<DiscordRole>({
       method: "PATCH",
       path: `/guilds/${guildId}/roles/${roleId}`,
@@ -1666,6 +1668,42 @@ export const runDiscordSync = async ({
 
   const ceoRole = await ensureRole("CEO", false);
   const cooRole = await ensureRole("COO", false);
+  const founderRole = await ensureRole("Founder", false);
+  const ceoShadowRole = await ensureRole("CEO Shadow", false);
+  const cooShadowRole = await ensureRole("COO Shadow", false);
+  const shadowPairs = [
+    { leaderId: ceoRole.id, shadowId: ceoShadowRole.id },
+    { leaderId: cooRole.id, shadowId: cooShadowRole.id },
+  ];
+  const withShadowAccess = (overwrites: DiscordPermissionOverwrite[]) => mirrorLeadershipAccess(overwrites, shadowPairs);
+  // Establish and verify the hierarchy before granting shadow permissions or
+  // assigning these roles. If the bot cannot enforce it, do not elevate anyone.
+  const protectedHierarchyReady = (roles: DiscordRole[]) => {
+    const positionOf = (id: string) => roles.find((r) => r.id === id)?.position ?? -1;
+    return [founderRole, ceoRole, cooRole, ceoShadowRole, cooShadowRole].every((r) => positionOf(r.id) >= 0) &&
+      Math.min(positionOf(founderRole.id), positionOf(ceoRole.id), positionOf(cooRole.id)) > Math.max(positionOf(ceoShadowRole.id), positionOf(cooShadowRole.id));
+  };
+  if (!protectedHierarchyReady(mutableRoles)) {
+    const hierarchy = orderLeadershipRoles(mutableRoles.filter((r) => r.id !== discordGuildId));
+    const positionedRoles = await apiClient.updateGuildRolePositions(discordGuildId,
+      hierarchy.map((role, index) => ({ id: role.id, position: index + 1, managed: role.managed }))
+        .filter((role) => !role.managed).map(({ id, position }) => ({ id, position })));
+    if (!protectedHierarchyReady(positionedRoles)) {
+      throw new Error("Cannot elevate Shadow roles: Founder, CEO, and COO must be above them in Discord.");
+    }
+    for (const role of positionedRoles) {
+      const existing = mutableRoles.find((r) => r.id === role.id);
+      if (existing) existing.position = role.position;
+    }
+  }
+  for (const [leader, shadow] of [[ceoRole, ceoShadowRole], [cooRole, cooShadowRole]]) {
+    // Do not grant native powers that could bypass the protected website gates.
+    const permissions = shadowDiscordPermissions(leader.permissions ?? "0");
+    if (shadow.permissions !== permissions) {
+      await apiClient.updateGuildRole(discordGuildId, shadow.id, { permissions });
+      shadow.permissions = permissions;
+    }
+  }
   const chiefExecutiveRole = await ensureRole("Chief Executive", false);
   const studentRole = await ensureRole("Student", false);
   const executiveRole = await ensureRole("Executive", false);
@@ -1673,7 +1711,6 @@ export const runDiscordSync = async ({
   // Executive, never alongside it; it keeps the channel access the retired
   // Junior Executive role had.
   const pendingRole = await ensureRole("Pending", false);
-  const founderRole = await ensureRole("Founder", false);
   const strikeRole = await ensureRole("Strike", false);
 
   // Social Media, Science Tutor, Math Tutor, Nonprofit Team and Development
@@ -1707,6 +1744,7 @@ export const runDiscordSync = async ({
   }
 
   const baseRoleIds = new Set([
+    ceoShadowRole.id, cooShadowRole.id,
     ceoRole.id,
     cooRole.id,
     chiefExecutiveRole.id,
@@ -1919,6 +1957,8 @@ export const runDiscordSync = async ({
     if (isHardcodedFounder || websiteRole === "founder") primaryHierarchyRoleId = founderRole.id;
     else if (websiteRole === "CEO") primaryHierarchyRoleId = ceoRole.id;
     else if (websiteRole === "COO") primaryHierarchyRoleId = cooRole.id;
+    else if (websiteRole === "CEO Shadow") primaryHierarchyRoleId = ceoShadowRole.id;
+    else if (websiteRole === "COO Shadow") primaryHierarchyRoleId = cooShadowRole.id;
     else if (websiteRole === "Chief Executive") primaryHierarchyRoleId = chiefExecutiveRole.id;
     else if (websiteRole === "Executive" || websiteRole === "executive") {
       const standing = executiveStanding({
@@ -1947,11 +1987,12 @@ export const runDiscordSync = async ({
     }
 
     const hierarchyRoleIds = [
+      ceoShadowRole.id, cooShadowRole.id,
       ceoRole.id, cooRole.id, chiefExecutiveRole.id, founderRole.id,
       executiveRole.id, pendingRole.id, studentRole.id
     ];
 
-    const isExecTier = [ceoRole.id, cooRole.id, chiefExecutiveRole.id, executiveRole.id, pendingRole.id].some(id => requiredBaseRoleIds.has(id));
+    const isExecTier = [ceoShadowRole.id, cooShadowRole.id, ceoRole.id, cooRole.id, chiefExecutiveRole.id, executiveRole.id, pendingRole.id].some(id => requiredBaseRoleIds.has(id));
     // Discord caps server nicknames at 32 characters; compare the clamped
     // value so over-long names don't fail (and retry) on every run.
     const rawExpectedNick = primaryHierarchyRoleId !== studentRole.id ? null : (websiteUser.full_name || null);
@@ -2576,7 +2617,7 @@ export const runDiscordSync = async ({
 
     const expectedTopic = getCourseTopicMarker(course.id, nextFlags);
     const expectedParentId = coursesCategory.id;
-    const expectedOverwrites = buildCoursePermissionOverwrites(
+    const expectedOverwrites = withShadowAccess(buildCoursePermissionOverwrites(
       discordGuildId,
       courseRoleId,
       executiveRole.id,
@@ -2586,7 +2627,7 @@ export const runDiscordSync = async ({
       ceoRole.id,
       cooRole.id,
       chiefExecutiveRole.id
-    );
+    ));
 
 
     if (!existingChannel) {
@@ -2669,6 +2710,7 @@ export const runDiscordSync = async ({
     parentId: string | null;
     permissionOverwrites: DiscordPermissionOverwrite[];
   }) => {
+    permissionOverwrites = withShadowAccess(permissionOverwrites);
     let existing = findChannelByNameAndType(mutableChannels, name, channelType);
     if (!existing && oldName) {
       existing = findChannelByNameAndType(mutableChannels, oldName, channelType);
@@ -3500,13 +3542,14 @@ export const runDiscordSync = async ({
     return a.name.localeCompare(b.name);
   });
 
-  otherRoles.sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
+  const orderedOtherRoles = orderLeadershipRoles(otherRoles);
 
-  const sortedRoles = [...courseRoles, ...otherRoles];
+  const sortedRoles = [...courseRoles, ...orderedOtherRoles];
   const rolePositionsPayload = sortedRoles.map((role, index) => ({
     id: role.id,
     position: index + 1,
-  }));
+    managed: role.managed,
+  })).filter((role) => !role.managed).map(({ id, position }) => ({ id, position }));
 
   try {
     const updatedRoles = await apiClient.updateGuildRolePositions(discordGuildId, rolePositionsPayload);

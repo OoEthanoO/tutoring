@@ -28,6 +28,14 @@ const baseParams = {
 };
 
 describe("buildLiveVoicePermissionOverwrites", () => {
+  it("gives leadership shadows the same live-class access as CEO/COO", () => {
+    const overwrites = buildLiveVoicePermissionOverwrites({
+      ...baseParams, ceoRoleId: "ceo", cooRoleId: "coo", shadowRoleIds: ["ceo-shadow", "coo-shadow"],
+    });
+    for (const id of ["ceo", "coo", "ceo-shadow", "coo-shadow"]) {
+      expect(overwrites).toContainEqual({ id, type: 0, allow: allowJoin, deny: "0" });
+    }
+  });
   it("denies @everyone and admits only bot and tutor by default", () => {
     const overwrites = buildLiveVoicePermissionOverwrites(baseParams);
 

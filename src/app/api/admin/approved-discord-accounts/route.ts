@@ -1,7 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getAdminClient, getRequestAuthContext } from "@/lib/authServer";
 import { fetchDiscordGuildMemberIds } from "@/lib/discordSync";
-import { isExecutive, isFounder, resolveUserRole } from "@/lib/roles";
+import { isExecutive, isFounder, resolveUserRole, resolveAccountRole, canManageAccountAccess } from "@/lib/roles";
+import { checkLeadershipProtection } from "@/lib/accountProtection";
 
 const discordUserIdPattern = /^\d{17,20}$/;
 
@@ -26,7 +27,7 @@ export async function GET(request: NextRequest) {
         .order("created_at", { ascending: false }),
       adminClient
         .from("app_users")
-        .select("id, full_name, email, role")
+        .select("id, full_name, email, role, custom_role, custom_roles(role_level)")
         .not("email_verified_at", "is", null)
         .order("full_name", { ascending: true }),
       fetchDiscordGuildMemberIds({ maxAgeMs: 30_000 }),
@@ -39,14 +40,15 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const userById = new Map<string, { full_name: string | null; email: string | null }>();
+  const userById = new Map<string, { full_name: string | null; email: string | null; canManage: boolean }>();
   const tutors: { id: string; name: string; email: string }[] = [];
   for (const user of userRows ?? []) {
     userById.set(String(user.id), {
       full_name: user.full_name ?? null,
       email: user.email ?? null,
+      canManage: canManageAccountAccess(resolveAccountRole(actor), resolveAccountRole(user)),
     });
-    if (isExecutive(resolveUserRole(user.email, user.role ?? null))) {
+    if (isExecutive(resolveAccountRole(user)) && canManageAccountAccess(resolveAccountRole(actor), resolveAccountRole(user))) {
       tutors.push({
         id: String(user.id),
         name: String(user.full_name ?? "").trim(),
@@ -64,6 +66,7 @@ export async function GET(request: NextRequest) {
         created_at: account.created_at,
         owner_name: owner?.full_name ?? null,
         owner_email: owner?.email ?? null,
+        canManage: owner?.canManage ?? false,
         // true/false when the guild lookup succeeded, null when unknown.
         in_server: guildMemberIds
           ? guildMemberIds.has(String(account.discord_user_id))
@@ -102,7 +105,10 @@ export async function POST(request: NextRequest) {
 
   const adminClient = getAdminClient();
 
-  const [{ data: owner }, { data: linkedUsers }] = await Promise.all([
+  const ownerProtection = await checkLeadershipProtection(adminClient, actor, { id: ownerUserId });
+  if (ownerProtection) return NextResponse.json({ error: ownerProtection.error }, { status: ownerProtection.status });
+
+  const [{ data: owner, error: ownerError }, { data: linkedUsers, error: linkedError }] = await Promise.all([
     adminClient.from("app_users").select("id").eq("id", ownerUserId).maybeSingle(),
     // A Discord ID already linked to a website account is managed through that
     // account; approving it here is almost certainly a mistyped ID.
@@ -112,6 +118,10 @@ export async function POST(request: NextRequest) {
       .eq("discord_user_id", discordUserId)
       .limit(1),
   ]);
+
+  if (ownerError || linkedError) {
+    return NextResponse.json({ error: "Could not verify the Discord account's ownership." }, { status: 503 });
+  }
 
   if (!owner) {
     return NextResponse.json(
@@ -173,6 +183,13 @@ export async function DELETE(request: NextRequest) {
   }
 
   const adminClient = getAdminClient();
+  const { data: account, error: accountError } = await adminClient.from("approved_discord_accounts")
+    .select("owner_user_id").eq("discord_user_id", discordUserId).maybeSingle();
+  if (accountError) return NextResponse.json({ error: "Could not verify the account owner." }, { status: 503 });
+  if (account?.owner_user_id) {
+    const protection = await checkLeadershipProtection(adminClient, actor, { id: account.owner_user_id });
+    if (protection) return NextResponse.json({ error: protection.error }, { status: protection.status });
+  }
   const { error } = await adminClient
     .from("approved_discord_accounts")
     .delete()

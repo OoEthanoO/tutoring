@@ -13,6 +13,7 @@ type ApprovedAccount = {
   created_at: string;
   owner_name: string | null;
   owner_email: string | null;
+  canManage: boolean;
   // true/false from the guild lookup, null when Discord is not configured.
   in_server: boolean | null;
 };
@@ -280,7 +281,9 @@ export default function AdminApprovedDiscordAccounts() {
                   <td className="px-4 py-3 text-right">
                     <button
                       onClick={() => handleRemoveAccount(item.discord_user_id)}
-                      className="text-red-500 hover:text-red-600 hover:underline"
+                      disabled={!item.canManage}
+                      title={item.canManage ? undefined : "Top leadership access is protected."}
+                      className="text-red-500 hover:text-red-600 hover:underline disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       Remove
                     </button>

@@ -7,7 +7,7 @@ import {
   getAuthContext,
   onAuthChange,
 } from "@/lib/authClient";
-import { isExecutive, isFounder, resolveUserRole } from "@/lib/roles";
+import { isExecutive, isFounder, isTopLeadership, resolveUserRole, resolveAccountRole, canManageAccountAccess, canAssignRole, type UserRole } from "@/lib/roles";
 import AdminBannedEmails from "@/components/AdminBannedEmails";
 import AdminApprovedDiscordAccounts from "@/components/AdminApprovedDiscordAccounts";
 import CourseAttendance from "@/components/CourseAttendance";
@@ -19,7 +19,7 @@ type AdminUser = {
   id: string;
   email: string | null;
   fullName: string;
-  role: "founder" | "executive" | "student";
+  role: UserRole;
   donationLink?: string;
   tutorPromotedAt?: string | null;
   discordUserId?: string | null;
@@ -123,6 +123,7 @@ type TutorApplication = {
 export default function AdminUserManager() {
   const router = useRouter();
   const backdropClickedRef = useRef(false);
+  const [actorRole, setActorRole] = useState<UserRole | null>(null);
   const [isFounderAccess, setIsFounderAccess] = useState(false);
   const [users, setUsers] = useState<AdminUser[]>([]);
   // Every tutor who has opted out, not just those on the current page.
@@ -133,7 +134,7 @@ export default function AdminUserManager() {
     "all" | "not_connected" | "connected_not_joined" | "connected_joined"
   >("all");
   const [classesFilter, setClassesFilter] = useState<"all" | "upcoming" | "none">("all");
-  const [availableCustomRoles, setAvailableCustomRoles] = useState<{name: string}[]>([]);
+  const [availableCustomRoles, setAvailableCustomRoles] = useState<{name: string; role_level: string}[]>([]);
   const [verifiedFilter, setVerifiedFilter] = useState<"all" | "verified" | "unverified">(
     "all"
   );
@@ -282,6 +283,7 @@ export default function AdminUserManager() {
       const user = auth.user;
       const role = resolveUserRole(user?.email ?? null, user?.role ?? null);
       setIsFounderAccess(isFounder(role));
+      setActorRole(auth.actor ? resolveAccountRole(auth.actor) : null);
       if (isFounder(role)) {
         setImpersonatedUserId(auth.impersonatedUserId);
         const rolesRes = await fetch("/api/admin/roles");
@@ -523,7 +525,7 @@ export default function AdminUserManager() {
         if (roleFilter === "all") {
           return true;
         }
-        return user.role === roleFilter;
+        return roleFilter === "executive" ? isExecutive(user.role) : user.role === roleFilter;
       })
       .filter((user) => {
         if (onboardingFilter === "all") {
@@ -2131,6 +2133,7 @@ export default function AdminUserManager() {
       <div className="space-y-3">
         {filteredUsers.slice(0, visibleUserCount).map((user) => {
           const isPending = pendingId === user.id;
+          const canChangeAccess = canManageAccountAccess(actorRole, user.role);
           return (
             <div
               key={user.id}
@@ -2236,7 +2239,8 @@ export default function AdminUserManager() {
                 </p>
               </div>
               <div className="flex flex-col gap-2">
-                {!isFounder(user.role) ? (
+                {!canChangeAccess && <p className="text-xs text-[var(--muted)]">Top leadership access is protected.</p>}
+                {!isTopLeadership(user.role) && canChangeAccess ? (
                   <button
                     type="button"
                     disabled={isPending}
@@ -2248,7 +2252,7 @@ export default function AdminUserManager() {
                 ) : null}
                 <button
                   type="button"
-                  disabled={isPending}
+                  disabled={isPending || !canChangeAccess}
                   onClick={() => transferDiscord(user.id)}
                   className="rounded-full border border-[var(--foreground)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-70"
                 >
@@ -2265,7 +2269,7 @@ export default function AdminUserManager() {
                   </button>
                 ) : (
                   <>
-                    {!isFounder(user.role) ? (
+                    {!isTopLeadership(user.role) && canChangeAccess ? (
                       <button
                         type="button"
                         disabled={isPending}
@@ -2278,7 +2282,7 @@ export default function AdminUserManager() {
                     <div className="space-y-4 rounded-xl border border-[var(--border)]/70 bg-[var(--surface)] px-3 py-3">
                       <div className="space-y-2">
                         <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
-                          {isFounder(user.role) ? "Founder settings" : "Executive settings"}
+                          {isFounder(user.role) ? "Leadership settings" : "Executive settings"}
                         </p>
                         
                         {availableCustomRoles.length > 0 && (
@@ -2287,12 +2291,12 @@ export default function AdminUserManager() {
                             <select
                               value={user.customRole || ""}
                               onChange={(e) => updateCustomRole(user.id, e.target.value || null)}
-                              disabled={isPending}
+                              disabled={isPending || !canChangeAccess}
                               className="rounded-lg border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-xs text-[var(--foreground)] w-full max-w-xs focus:border-[var(--foreground)] focus:outline-none"
                             >
                               <option value="">None (Default)</option>
                               {availableCustomRoles.map((r) => (
-                                <option key={r.name} value={r.name}>{r.name}</option>
+                                <option key={r.name} value={r.name} disabled={!canAssignRole(actorRole, resolveAccountRole({ custom_role: r.name, custom_roles: r }))}>{r.name}</option>
                               ))}
                             </select>
                           </div>
@@ -2326,7 +2330,7 @@ export default function AdminUserManager() {
                         />
                       </div>
                       
-                      {user.role !== "founder" ? (
+                      {!isTopLeadership(user.role) && canChangeAccess ? (
                         <div className="flex items-center gap-2">
                           <input
                             id={`junior-toggle-${user.id}`}
@@ -2371,7 +2375,7 @@ export default function AdminUserManager() {
                           )}
                         </div>
                       ) : null}
-                      {user.role !== "founder" ? (
+                      {!isTopLeadership(user.role) && canChangeAccess ? (
                         <div className="flex items-center gap-2">
                           <span className="text-xs font-medium text-red-500">
                             {user.strikeCount ?? 0} strike{(user.strikeCount ?? 0) === 1 ? "" : "s"}
@@ -2426,7 +2430,7 @@ export default function AdminUserManager() {
                           {isPending ? "Saving..." : "Save link"}
                         </button>
                       </div>
-                      {user.role !== "founder" ? (
+                      {!isTopLeadership(user.role) && canChangeAccess ? (
                         <div className="flex flex-wrap items-center gap-2">
                           <label className="text-xs text-[var(--muted)]">
                             Promotion time
@@ -2455,7 +2459,7 @@ export default function AdminUserManager() {
                     </div>
                   </>
                 )}
-                {user.role !== "founder" ? (
+                {!isTopLeadership(user.role) && canChangeAccess ? (
                   <>
                     <div className="space-y-2 rounded-xl border border-[var(--border)]/70 bg-[var(--surface)] px-3 py-3">
                       <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
@@ -2533,7 +2537,7 @@ export default function AdminUserManager() {
                     ) : null}
                     <button
                       type="button"
-                      disabled={isPending}
+                      disabled={isPending || !canChangeAccess}
                       onClick={() => deleteAccount(user)}
                       className="rounded-full border border-red-200 px-4 py-2 text-xs font-semibold text-red-500 transition hover:border-red-400 disabled:cursor-not-allowed disabled:opacity-70"
                     >

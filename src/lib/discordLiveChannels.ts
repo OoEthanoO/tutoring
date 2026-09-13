@@ -259,6 +259,7 @@ export const buildLiveVoicePermissionOverwrites = ({
   botUserId,
   ceoRoleId,
   cooRoleId,
+  shadowRoleIds = [],
   tutorDiscordUserId,
   extraMemberDiscordUserIds,
   courseRoleId,
@@ -267,6 +268,7 @@ export const buildLiveVoicePermissionOverwrites = ({
   botUserId: string;
   ceoRoleId: string | null;
   cooRoleId: string | null;
+  shadowRoleIds?: string[];
   tutorDiscordUserId: string;
   // Approved extra accounts owned by the tutor (e.g. a second Discord account
   // used in lesson calls); they get the same access window as the tutor.
@@ -318,6 +320,9 @@ export const buildLiveVoicePermissionOverwrites = ({
   }
   if (cooRoleId) {
     overwrites.push({ id: cooRoleId, type: 0, allow: allowJoin, deny: "0" });
+  }
+  for (const id of shadowRoleIds) {
+    overwrites.push({ id, type: 0, allow: allowJoin, deny: "0" });
   }
 
   if (courseRoleId) {

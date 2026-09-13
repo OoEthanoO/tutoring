@@ -5,6 +5,8 @@ import {
   isFounder,
   resolveRoleByEmail,
   resolveUserRole,
+  resolveAccountRole, isTopLeadership, isLeadershipShadow,
+  canManageAccountAccess, canAssignRole, canImpersonateAccount,
 } from "@/lib/roles";
 
 // Uses the fallback founder list (NEXT_PUBLIC_FOUNDER_EMAIL is unset in tests).
@@ -19,6 +21,45 @@ describe("resolveRoleByEmail", () => {
   it("defaults everyone else to student", () => {
     expect(resolveRoleByEmail("someone@example.com")).toBe("student");
     expect(resolveRoleByEmail(null)).toBe("student");
+  });
+});
+
+describe("leadership shadow boundaries", () => {
+  it.each(["CEO Shadow", "COO Shadow"] as const)("grants %s management access without top leadership identity", (shadow) => {
+    expect(resolveUserRole(null, `  ${shadow.toLowerCase()}  `)).toBe(shadow);
+    expect(resolveAccountRole({ role: "tutor", custom_role: shadow, custom_roles: { role_level: shadow } })).toBe(shadow);
+    expect(isFounder(shadow)).toBe(true);
+    expect(isExecutive(shadow)).toBe(true);
+    expect(canManageCourses(shadow)).toBe(true);
+    expect(isLeadershipShadow(shadow)).toBe(true);
+    expect(isTopLeadership(shadow)).toBe(false);
+    for (const top of ["founder", "CEO", "COO"] as const) {
+      expect(canManageAccountAccess(shadow, top)).toBe(false);
+      expect(canAssignRole(shadow, top)).toBe(false);
+      expect(canImpersonateAccount(shadow, top)).toBe(false);
+      expect(canManageAccountAccess(top, shadow)).toBe(true);
+      expect(canAssignRole(top, shadow)).toBe(true);
+    }
+    for (const lower of ["CEO Shadow", "COO Shadow", "executive", "student"] as const) {
+      expect(canManageAccountAccess(shadow, lower)).toBe(true);
+      expect(canAssignRole(shadow, lower)).toBe(true);
+      expect(canImpersonateAccount(shadow, lower)).toBe(true);
+    }
+  });
+  it("does not downgrade CEO or COO when they hold a subordinate custom role", () => {
+    expect(resolveUserRole(null, "CEO", "COO Shadow")).toBe("CEO");
+    expect(resolveUserRole(null, "COO", "CEO Shadow")).toBe("COO");
+    expect(resolveUserRole(null, "CEO", "Executive")).toBe("CEO");
+    expect(resolveUserRole(founderEmail, "CEO Shadow")).toBe("founder");
+  });
+  it("recognizes protected aliases by their authoritative custom role level", () => {
+    const role = resolveAccountRole({ role: "tutor", custom_role: "Operations lead", custom_roles: { role_level: "COO" } });
+    expect(role).toBe("COO");
+    expect(canManageAccountAccess("CEO Shadow", role)).toBe(false);
+  });
+  it("does not grant management to ordinary executives", () => {
+    expect(canManageAccountAccess("executive", "student")).toBe(false);
+    expect(canAssignRole("student", "CEO Shadow")).toBe(false);
   });
 });
 
