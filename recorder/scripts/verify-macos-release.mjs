@@ -23,7 +23,8 @@ function verifyApp(app, teamId) {
     run("codesign", ["--verify", "--strict", target]);
     const details = run("codesign", ["--display", "--verbose=4", target]);
     verifySignatureDetails(details.stdout + details.stderr, teamId);
-    const entitlements = run("codesign", ["--display", "--entitlements", "-", target]).stdout;
+    // Modern codesign defaults to a human-readable dictionary, not a plist.
+    const entitlements = run("codesign", ["--display", "--entitlements", "-", "--xml", target]).stdout;
     const values = JSON.parse(run("plutil", ["-convert", "json", "-o", "-", "-"], { input: entitlements }).stdout);
     if (values["com.apple.security.device.audio-input"] !== true || values["com.apple.security.get-task-allow"] === true) throw new Error(`Invalid recording entitlements for ${binary}.`);
   }
@@ -38,6 +39,7 @@ export function verifyMacRelease(target, env = process.env) {
   const appName = "YanLearn Recorder.app";
   const app = path.join(bundle, "macos", appName);
   verifyApp(app, env.APPLE_TEAM_ID);
+  console.log("Verified the signed, stapled app and its recording helpers.");
 
   // The updater must contain the stapled app too, not just the local .app.
   const archive = path.join(bundle, "macos", `${appName}.tar.gz`);
@@ -45,6 +47,7 @@ export function verifyMacRelease(target, env = process.env) {
   try {
     run("tar", ["-xzf", archive, "-C", scratch]);
     verifyApp(path.join(scratch, appName), env.APPLE_TEAM_ID);
+    console.log("Verified the app extracted from the updater archive.");
 
     const dmgs = readdirSync(path.join(bundle, "dmg")).filter(name => name.endsWith(".dmg"));
     if (dmgs.length !== 1) throw new Error("Expected exactly one macOS installer.");
@@ -54,8 +57,10 @@ export function verifyMacRelease(target, env = process.env) {
     verifySignatureDetails(details.stdout + details.stderr, env.APPLE_TEAM_ID, false);
     // Tauri notarizes the app; the outer DMG needs its own submission/ticket.
     const credentials = ["--apple-id", env.APPLE_ID, "--password", env.APPLE_PASSWORD, "--team-id", env.APPLE_TEAM_ID];
+    console.log("Submitting the DMG to Apple for notarization.");
     const result = JSON.parse(run("xcrun", ["notarytool", "submit", dmg, ...credentials, "--wait", "--timeout", "30m", "--output-format", "json"]).stdout);
     if (result.status !== "Accepted") throw new Error(`Apple did not accept the DMG (${result.status ?? "unknown"}; submission ${result.id ?? "unknown"}).`);
+    console.log(`Apple accepted the DMG (submission ${result.id}).`);
     run("xcrun", ["stapler", "staple", dmg]);
     run("xcrun", ["stapler", "validate", dmg]);
     run("spctl", ["--assess", "--type", "open", "--context", "context:primary-signature", "--verbose=2", dmg]);
