@@ -186,35 +186,57 @@ fn main_window_visible(app: AppHandle) -> bool {
         .unwrap_or(false)
 }
 
-/// Register the pause and mute hotkeys. Each gets its own handler so the
-/// webview knows which one was pressed; an empty combo leaves it unregistered.
+#[derive(Serialize)]
+struct RegisteredHotkeys {
+    pause: Option<String>,
+    mute: Option<String>,
+    warnings: Vec<String>,
+}
+
+/// Report what actually registered: Windows may reserve a combo for another
+/// app. Try a separate mute combo then, and let the UI show the working keys.
+/// A pause failure must not prevent mute registration (or vice versa).
 #[tauri::command]
-fn register_hotkeys(app: AppHandle, pause: String, mute: String) -> Result<(), String> {
+fn register_hotkeys(app: AppHandle, pause: String, mute: String) -> Result<RegisteredHotkeys, String> {
     let shortcuts = app.global_shortcut();
     shortcuts.unregister_all().map_err(|e| e.to_string())?;
+    let mut registered = RegisteredHotkeys { pause: None, mute: None, warnings: Vec::new() };
     if !pause.trim().is_empty() {
-        shortcuts
+        match shortcuts
             .on_shortcut(pause.as_str(), |app, _shortcut, event| {
                 if matches!(event.state(), ShortcutState::Pressed) {
                     let _ = app.emit("hotkey", ());
                 }
             })
-            .map_err(|e| format!("Could not register the pause hotkey {pause}: {e}"))?;
+        {
+            Ok(()) => registered.pause = Some(pause.clone()),
+            Err(e) => registered.warnings.push(format!("Could not register the pause hotkey {pause}: {e}")),
+        }
     }
     if !mute.trim().is_empty() {
-        shortcuts
-            .on_shortcut(mute.as_str(), |app, _shortcut, event| {
+        let fallback = "CmdOrCtrl+Alt+Shift+M";
+        let candidates = if mute == fallback { vec![mute.as_str()] } else { vec![mute.as_str(), fallback] };
+        for combo in candidates {
+            // Never replace the pause handler with a mute handler.
+            if registered.pause.as_deref() == Some(combo) {
+                registered.warnings.push(format!("The mute hotkey {combo} is already used for pause."));
+                continue;
+            }
+            match shortcuts.on_shortcut(combo, |app, _shortcut, event| {
                 if matches!(event.state(), ShortcutState::Pressed) {
                     let _ = app.emit("mute-hotkey", ());
                 }
             })
-            .map_err(|e| {
-                format!(
-                    "Could not register the mute hotkey {mute} — another app is probably using it. Everything else still works; mute from the app window instead. ({e})"
-                )
-            })?;
+            {
+                Ok(()) => {
+                    registered.mute = Some(combo.to_string());
+                    break;
+                }
+                Err(e) => registered.warnings.push(format!("Could not register the mute hotkey {combo}: {e}")),
+            }
+        }
     }
-    Ok(())
+    Ok(registered)
 }
 
 fn show_main(app: &AppHandle) {

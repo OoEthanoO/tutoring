@@ -234,6 +234,14 @@ the rest of the class.
 It does **not** mute them in Discord. The students in the call still hear them;
 only the recording is affected, and the banner says so.
 
+If another application has already registered the mute shortcut, Recorder tries
+`Ctrl+Alt+Shift+M` (`⌘+Option+Shift+M` on macOS). A visible notice explains the
+conflict, and both the controls and the overlay show the shortcut that actually
+registered. If neither combination is available, use **Mute my mic** /
+**Unmute my mic** in the app. Pause and mute register independently, so a
+conflict with one does not disable the other. The preferred shortcut is retried
+when Recorder restarts. This applies to both real classes and test mode.
+
 **Test mode** ("Try the recorder") runs a dry class so a tutor can feel the
 controls before their first real one. It is deliberately identical to a lesson
 — the same overlays with the same wording, the pause and mute hotkeys, and the

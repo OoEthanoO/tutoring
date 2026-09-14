@@ -70,6 +70,7 @@
     recovered: false,
     hotkeyLabel: "Ctrl+Alt+P",
     muteHotkeyLabel: "Ctrl+Alt+M",
+    hotkeyWarning: "",
     update: {
       info: null,
       lastCheckAt: 0,
@@ -1170,6 +1171,36 @@
 
   // --- Mute and test mode ---------------------------------------------------------
 
+  const formatHotkey = (shortcut) => shortcut
+    .replace(/CmdOrCtrl/g, state.info?.platform === "macos" ? "⌘" : "Ctrl")
+    .replace(/Alt/g, state.info?.platform === "macos" ? "Option" : "Alt");
+
+  const registerHotkeys = async () => {
+    const pause = state.settings.hotkey || DEFAULT_HOTKEY;
+    const mute = state.settings.muteHotkey || DEFAULT_MUTE_HOTKEY;
+    state.hotkeyWarning = "";
+    state.hotkeyLabel = null;
+    state.muteHotkeyLabel = null;
+    try {
+      const registered = await invoke("register_hotkeys", { pause, mute });
+      state.hotkeyLabel = registered.pause ? formatHotkey(registered.pause) : null;
+      state.muteHotkeyLabel = registered.mute ? formatHotkey(registered.mute) : null;
+      for (const warning of registered.warnings) log(warning);
+      const notices = [];
+      if (!registered.pause) notices.push(`Pause shortcut ${formatHotkey(pause)} is unavailable.`);
+      if (!registered.mute) {
+        notices.push("Mute shortcut is unavailable. Use the Mute my mic button.");
+      } else if (registered.mute !== mute) {
+        notices.push(`${formatHotkey(mute)} is unavailable. Use ${state.muteHotkeyLabel} to mute or unmute instead.`);
+      }
+      state.hotkeyWarning = notices.join(" ");
+    } catch (error) {
+      log(`Could not register keyboard shortcuts: ${error}`);
+      state.hotkeyWarning = "Keyboard shortcuts are unavailable. Use the Mute my mic button. Restart Recorder to try registering shortcuts again.";
+    }
+    if (state.hotkeyWarning) log(state.hotkeyWarning);
+  };
+
   // Muting drops the tutor's microphone from the *recording*. It does not mute
   // them in Discord — students in the call still hear them — so the overlay
   // says so.
@@ -1332,7 +1363,7 @@
         title: "MICROPHONE MUTED",
         detail:
           `Your voice is not being recorded — students in the call still hear you. ` +
-          `Press ${muteHotkey} to unmute.`,
+          (muteHotkey ? `Press ${muteHotkey} to unmute.` : "Click Unmute my mic in YanLearn Recorder."),
         blocking: true,
         displayIndex,
         corner,
@@ -1567,8 +1598,10 @@
     const pill = $("connection-pill");
     pill.textContent = state.online ? "Connected" : settings.token ? "Reconnecting…" : "Signed out";
     pill.className = `status-pill${state.online ? " online" : ""}`;
-    $("hotkey-label").textContent = state.hotkeyLabel;
-    $("mute-hotkey-label").textContent = state.muteHotkeyLabel;
+    $("hotkey-label").textContent = state.hotkeyLabel || "Unavailable";
+    $("mute-hotkey-label").textContent = state.muteHotkeyLabel || "Use Mute my mic";
+    $("hotkey-notice").hidden = !state.hotkeyWarning;
+    $("hotkey-notice").textContent = state.hotkeyWarning;
 
     if (!settings.token) {
       if ($("view-login").hidden && $("panel-devices").hidden) {
@@ -2054,14 +2087,7 @@
       test: !!state.session?.test, classId: state.session?.classId || state.tick?.active?.classId,
     }) });
     wireEvents();
-    try {
-      await invoke("register_hotkeys", {
-        pause: state.settings.hotkey || DEFAULT_HOTKEY,
-        mute: state.settings.muteHotkey || DEFAULT_MUTE_HOTKEY,
-      });
-    } catch (error) {
-      log(`${error}`);
-    }
+    await registerHotkeys();
     render();
     showView(state.settings.token ? "main" : "login");
     await refreshDevices();
