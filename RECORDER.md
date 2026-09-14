@@ -411,8 +411,8 @@ macOS also needs the helper: `swiftc -O -target arm64-apple-macos13.0 -framework
 The macOS release workflow now requires a Developer ID Application certificate
 and notarization credentials, and publishes only after its Apple checks and both
 platform builds pass. See [MACOS_NOTARIZATION.md](MACOS_NOTARIZATION.md) for the
-one-time setup; all six Apple secret names are configured, with actual signing
-and notarization acceptance checked by the macOS build.
+one-time setup and validation evidence: Apple accepted the app and DMG in the
+draft build, and both platform builds passed.
 Historical releases remain unsigned by Apple until replaced by a new release.
 Windows SmartScreen still shows "More info → Run anyway".
 

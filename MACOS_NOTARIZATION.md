@@ -1,10 +1,11 @@
 # YanLearn Recorder: macOS signing and notarization
 
-The release workflow is prepared for Developer ID signing and notarization.
-Actual Apple acceptance is pending the first macOS build;
-an unsigned historical release does not become notarized when this code ships.
-The latest published Recorder release was `recorder-v0.5.0` when setup began.
-Use a new version/tag for the first notarized release.
+Developer ID signing and notarization passed in the
+[validation build](https://github.com/OoEthanoO/tutoring/actions/runs/34777686521).
+Apple accepted both the app and the DMG installer. The artifacts remain in the
+`recorder-dev` draft; the latest public release is still `recorder-v0.5.0`.
+Use a new version/tag to distribute the notarized build. Historical releases
+do not become notarized when this workflow is merged.
 
 ## Setup status (September 13, 2026)
 
@@ -121,10 +122,27 @@ on each Mac; notarization does not grant capture permissions automatically.
 
 ## Validation and first release
 
-Local tests cover credential rejection, artifact metadata checks, updater
-completeness, and the draft/publish workflow gate. Windows cannot run Apple's
-`codesign`, `notarytool`, `stapler`, or Gatekeeper checks. The first actual macOS
-CI run must pass those checks before this setup can be called notarized.
+Seven local tests cover credential rejection, artifact metadata checks, updater
+completeness, and the draft/publish workflow gate. The macOS and Windows jobs
+both passed in run `34777686521`, built from commit
+`ec52f9fd0e11c13974d04b0c59ed508e2bd6bab4`:
+
+- Apple app submission: `051c82f4-d3b0-4d1a-8845-4ee32b02454f`, **Accepted**.
+- Apple DMG submission: `9b54889e-e87b-46d4-86c3-7fbfafb1844b`, **Accepted**.
+- App and recording-helper signatures, timestamps, hardened runtime and audio
+  entitlements passed; the app extracted from the updater archive passed too.
+- Stapled tickets and Gatekeeper assessments passed for the app and DMG.
+- Windows installers and signed updater artifacts were built successfully.
+- Both platform entries in the uploaded `latest.json` point to existing draft
+  assets and match their uploaded signature files.
+- The public publish job was correctly skipped for this manual branch build.
+
+Entitlement inspection explicitly uses `codesign --display --entitlements -
+--xml`: current macOS otherwise prints a human-readable dictionary that cannot
+be parsed as a plist.
+
+An interactive launch, capture-permission and installed-app update test on a
+user's Mac remains to be done; CI notarization does not exercise those flows.
 
 After publishing, download the DMG from YanLearn on a Mac, install and launch
 normally, grant capture permissions, test microphone and system audio, and
