@@ -1,11 +1,10 @@
 # YanLearn Recorder: macOS signing and notarization
 
-Developer ID signing and notarization passed in the
-[validation build](https://github.com/OoEthanoO/tutoring/actions/runs/34777686521).
-Apple accepted both the app and the DMG installer. The artifacts remain in the
-`recorder-dev` draft; the latest public release is still `recorder-v0.5.0`.
-Use a new version/tag to distribute the notarized build. Historical releases
-do not become notarized when this workflow is merged.
+Developer ID signing and notarization are included in the published
+[v0.5.1 release](https://github.com/OoEthanoO/tutoring/releases/tag/recorder-v0.5.1).
+Both platform builds, Apple's app and DMG checks, and publication passed in the
+[release workflow](https://github.com/OoEthanoO/tutoring/actions/runs/34796311420).
+Historical releases do not become notarized retroactively.
 
 ## Setup status (September 13, 2026)
 
@@ -36,8 +35,9 @@ For future credential replacement, use
 The supplied certificate uses Apple's G1 intermediate and expires on
 **February 1, 2027 at 22:12:15 UTC**. Replace it before signing releases after
 that date; choose the current Developer ID certificate authority on renewal.
-The first validation uses a manual build from a separate branch and keeps the
-artifacts in a draft release. This does not deploy the website or publish an update.
+The initial validation used a manual build from a separate branch and kept the
+artifacts in the `recorder-dev` draft. That run did not publish an update;
+the versioned v0.5.1 build subsequently passed and was published.
 
 ## Certificate creation and replacement
 
@@ -120,22 +120,25 @@ The Windows build and the Apple-silicon-only platform selection are preserved.
 Microphone, Screen Recording, and system-audio consent still need to be granted
 on each Mac; notarization does not grant capture permissions automatically.
 
-## Validation and first release
+## Validation and publication
 
 Seven local tests cover credential rejection, artifact metadata checks, updater
 completeness, and the draft/publish workflow gate. The macOS and Windows jobs
-both passed in run `34777686521`, built from commit
-`ec52f9fd0e11c13974d04b0c59ed508e2bd6bab4`:
+both passed in run `34796311420`, built from commit
+`23a488337a00981bff0bc9a9f189f7006dc0e8bd` (`recorder-v0.5.1`):
 
-- Apple app submission: `051c82f4-d3b0-4d1a-8845-4ee32b02454f`, **Accepted**.
-- Apple DMG submission: `9b54889e-e87b-46d4-86c3-7fbfafb1844b`, **Accepted**.
+- Apple app submission: `a23e0a80-cd7f-43af-a771-c3fc999db610`, **Accepted**.
+- Apple DMG submission: `68a24395-9cbd-4caa-a27e-eb1546ef2834`, **Accepted**.
 - App and recording-helper signatures, timestamps, hardened runtime and audio
   entitlements passed; the app extracted from the updater archive passed too.
 - Stapled tickets and Gatekeeper assessments passed for the app and DMG.
 - Windows installers and signed updater artifacts were built successfully.
-- Both platform entries in the uploaded `latest.json` point to existing draft
+- Both platform entries in the public `latest.json` point to available release
   assets and match their uploaded signature files.
-- The public publish job was correctly skipped for this manual branch build.
+- The publish job succeeded; the public automatic-update endpoint serves 0.5.1.
+
+The earlier manual validation passed in run `34777686521`; its development
+artifacts remain in draft and are not used by automatic updates.
 
 Entitlement inspection explicitly uses `codesign --display --entitlements -
 --xml`: current macOS otherwise prints a human-readable dictionary that cannot

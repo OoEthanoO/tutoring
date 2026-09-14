@@ -4,12 +4,12 @@ Desktop app (macOS + Windows) that records tutors' classes and uploads them to
 YanLearn, plus the website side that stores, protects, serves, and expires those
 recordings. **Mandatory for every class from 2026‑09‑09.**
 
-> Status (2026‑09‑04): `recorder-v0.1.0` was built and released on 2026‑09‑03 —
-> the workflow is green on all three targets, so the app compiles and bundles.
-> What is still unproven is everything that only shows up at runtime (the
-> `wasapi` loopback, the macOS helper, a real class end to end) and the
-> automatic updater added in 0.2.0, which by its nature cannot be exercised
-> until a second release exists to update *to*.
+> Status (2026-09-13): [v0.5.1](https://github.com/OoEthanoO/tutoring/releases/tag/recorder-v0.5.1)
+> is published for Windows x64 and Apple silicon Macs. Both native builds
+> passed, and the Mac app, recording helpers, updater archive and DMG passed
+> signing/notarization checks. The public updater manifest serves 0.5.1 using
+> the existing trust key. Interactive capture, hotkey and installed-app update
+> checks on actual devices remain separate from CI verification.
 
 ## What the tutor experiences
 
@@ -419,9 +419,9 @@ macOS also needs the helper: `swiftc -O -target arm64-apple-macos13.0 -framework
 The macOS release workflow now requires a Developer ID Application certificate
 and notarization credentials, and publishes only after its Apple checks and both
 platform builds pass. See [MACOS_NOTARIZATION.md](MACOS_NOTARIZATION.md) for the
-one-time setup and validation evidence: Apple accepted the app and DMG in the
-draft build, and both platform builds passed.
-Historical releases remain unsigned by Apple until replaced by a new release.
+one-time setup and validation evidence: Apple accepted the app and DMG for the
+published v0.5.1 release, and both platform builds passed.
+Historical releases are not retroactively signed or notarized by Apple.
 Windows SmartScreen still shows "More info → Run anyway".
 
 ## Known limitations / follow‑ups
