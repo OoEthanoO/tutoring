@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { recorderDownloadUrl } from "@/components/RecorderNotice";
 
 export default function HelpMenu() {
     const [contactEmail, setContactEmail] = useState("yanlearnorg@gmail.com");
@@ -112,49 +111,6 @@ export default function HelpMenu() {
                         <li>Select <span className="font-semibold">Connect Discord</span>.</li>
                         <li>Follow the prompts to authorize and join.</li>
                     </ol>
-                </div>
-
-                {/* Recorder Section (tutors) */}
-                <div className="space-y-4 rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] px-5 py-5">
-                    <header className="space-y-1">
-                        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--muted)]">
-                            For tutors
-                        </p>
-                        <h3 className="text-base font-semibold text-[var(--foreground)]">
-                            YanLearn Recorder
-                        </h3>
-                    </header>
-                    <p className="text-sm text-[var(--foreground)] leading-relaxed">
-                        Starting <span className="font-semibold">September 9, 2026</span>, every class must be recorded with the
-                        YanLearn Recorder desktop app (macOS and Windows). Recordings are uploaded to YanLearn automatically,
-                        can only be watched by the students enrolled in that course, cannot be downloaded, and are deleted 7 days
-                        after the class. Courses marked as not recorded are the exception: you are not asked to run the app for
-                        them at all.
-                    </p>
-                    <ol className="list-decimal list-outside text-sm text-[var(--foreground)] space-y-1 pl-5">
-                        <li>
-                            <a href={recorderDownloadUrl} className="font-semibold underline decoration-2 decoration-[var(--border)] underline-offset-4 hover:decoration-[var(--foreground)]">Download the app</a>{" "}
-                            and sign in with your YanLearn account. On macOS, allow <span className="font-semibold">Screen Recording</span> and <span className="font-semibold">Microphone</span> access when asked. You only ever download it once: the app updates itself between classes.
-                        </li>
-                        <li>If you have more than one display, microphone, or speaker, the app asks you to choose which ones to record before each class.</li>
-                        <li>
-                            By default the app records your whole display. In <span className="font-semibold">Devices → What to record</span> you can instead pick
-                            <span className="font-semibold"> only the windows you tick</span>. Then only the window you are actually working in is recorded, and only if you ticked it — on any other window the picture freezes on the last shared window and a banner tells you so, while your microphone and the class audio keep recording.
-                        </li>
-                        <li>Have the app open <span className="font-semibold">at least 5 minutes before</span> the class starts. From then until the class is uploaded it cannot be closed.</li>
-                        <li>Recording starts by itself at the start time whenever you are in the class voice channel. It pauses when you leave the call and resumes the moment you rejoin.</li>
-                        <li>
-                            Press <span className="font-semibold">Try the recorder</span> in the app any time to have a practice run: every control, banner and overlay behaves exactly as it will in a lesson, but nothing is recorded and nothing is sent to YanLearn.
-                        </li>
-                        <li>
-                            Press <span className="font-semibold">Ctrl+Alt+M</span> (macOS: <span className="font-semibold">⌘+Option+M</span>) to mute your microphone in the recording. Your voice stops being recorded until you press it again, and a banner reminds you the whole time. This does not mute you in Discord — your students still hear you.
-                        </li>
-                        <li>Press <span className="font-semibold">Ctrl+Alt+P</span> (macOS: <span className="font-semibold">⌘+Option+P</span>) to pause. A pause while you are in the call shows a large reminder until you resume; a pause while you are outside the call is a <span className="font-semibold">forced pause</span> and recording will not resume by itself when you rejoin.</li>
-                        <li>When the class end time has passed and you leave the call, the app asks whether the class is done. Answer <span className="font-semibold">Yes</span> to upload. If you answer No, the recording is uploaded automatically once the live voice channel is removed.</li>
-                    </ol>
-                    <p className="text-xs text-[var(--muted)]">
-                        The app is designed to be light on your computer: it records the chosen display at 720p and 10 frames per second, and its status overlay is hidden from Discord screen sharing.
-                    </p>
                 </div>
 
                 <div className="space-y-3 pt-4 border-t border-[var(--border)]">
