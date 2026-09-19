@@ -1,7 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getRequestUser } from "@/lib/authServer";
-import { resolveUserRole } from "@/lib/roles";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
@@ -59,16 +58,14 @@ export async function GET(request: NextRequest) {
     .map((course) => ({ ...course, enrollment_status: "enrolled" }));
 
   // Also fetch pending/rejected enrollment requests
-  const userRole = resolveUserRole(user.email ?? null, user.role ?? null);
-  const allowedStatuses = userRole === "founder" ? ["pending"] : ["pending", "rejected"];
 
   const { data: requestData } = await adminClient
     .from("course_enrollment_requests")
     .select(
-      "status, course:courses(id, title, description, is_completed, completed_start_date, completed_end_date, completed_class_count, created_by_name, created_by_email, created_at, course_classes(id, title, starts_at, duration_hours, created_at))"
+      "status, rejection_reason, course:courses(id, title, description, is_completed, completed_start_date, completed_end_date, completed_class_count, created_by_name, created_by_email, created_at, course_classes(id, title, starts_at, duration_hours, created_at))"
     )
     .eq("student_id", user.id)
-    .in("status", allowedStatuses)
+    .in("status", ["pending", "rejected"])
     .order("created_at", { ascending: false });
 
   const requestCourses = (requestData ?? [])
@@ -79,6 +76,7 @@ export async function GET(request: NextRequest) {
     .map((item) => ({
       ...(item.course as object),
       enrollment_status: item.status === "pending" ? "pending" : "rejected",
+      enrollment_rejection_reason: item.status === "rejected" ? item.rejection_reason : null,
     }));
 
   const courses = [...enrolledCourses, ...requestCourses];

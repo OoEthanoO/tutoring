@@ -248,7 +248,7 @@ export async function GET(request: NextRequest) {
   const { data: requestData } = user
     ? await adminClient
       .from("course_enrollment_requests")
-      .select("id, course_id, status")
+      .select("id, course_id, status, rejection_reason")
       .eq("student_id", user.id)
     : { data: [] };
 
@@ -259,11 +259,12 @@ export async function GET(request: NextRequest) {
       .eq("student_id", user.id)
     : { data: [] };
 
-  const requestByCourse = new Map<string, { id: string; status: string }>();
+  const requestByCourse = new Map<string, { id: string; status: string; rejectionReason: string | null }>();
   (requestData ?? []).forEach((request) => {
     requestByCourse.set(request.course_id, {
       id: request.id,
       status: request.status,
+      rejectionReason: request.rejection_reason,
     });
   });
 
@@ -297,21 +298,12 @@ export async function GET(request: NextRequest) {
     (creatorUsers ?? []).map((row) => [row.id, row.strike_count ?? 0])
   );
 
-  const userRole = user
-    ? resolveUserRole(user.email, user.role ?? null)
-    : null;
-
   const courses = data.map((course) => {
     const request = requestByCourse.get(course.id);
     const enrolled = enrolledSet.has(course.id);
-    let enrollmentStatus: string | null = enrolled
+    const enrollmentStatus: string | null = enrolled
       ? "enrolled"
       : request?.status ?? null;
-
-    // Founders should never be stuck with "rejected" – let them re-enroll.
-    if (isFounder(userRole) && enrollmentStatus === "rejected") {
-      enrollmentStatus = null;
-    }
 
     return {
       ...course,
@@ -320,6 +312,7 @@ export async function GET(request: NextRequest) {
       created_by_strike_count: strikesMap.get(course.created_by ?? "") ?? 0,
       enrollment_status: enrollmentStatus,
       enrollment_request_id: request?.id ?? null,
+      enrollment_rejection_reason: enrollmentStatus === "rejected" ? request?.rejectionReason ?? null : null,
     };
   });
 

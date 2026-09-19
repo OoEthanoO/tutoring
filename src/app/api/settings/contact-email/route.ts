@@ -10,8 +10,9 @@ export async function GET() {
     .eq("id", true)
     .single();
 
-  if (error || !data || !data.contact_email) {
-    return NextResponse.json({ contact_email: "ethanxucoder@gmail.com" });
+  // Replace the retired personal address in existing settings as well as the fallback.
+  if (error || !data || !data.contact_email || data.contact_email.trim().toLowerCase() === "ethanxucoder@gmail.com") {
+    return NextResponse.json({ contact_email: "yanlearnorg@gmail.com" });
   }
 
   return NextResponse.json({ contact_email: data.contact_email });

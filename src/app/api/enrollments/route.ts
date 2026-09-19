@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
   const { data: requests, error: listError } = await adminClient
     .from("course_enrollment_requests")
     .select(
-      "id, status, created_at, student_id, course_id, student_name, student_email, course:courses(id, title, created_by, created_by_name, created_by_email, max_students, course_enrollments(count))"
+      "id, status, rejection_reason, created_at, student_id, course_id, student_name, student_email, course:courses(id, title, created_by, created_by_name, created_by_email, max_students, course_enrollments(count))"
     )
     .order("created_at", { ascending: false });
 
@@ -57,7 +57,8 @@ export async function GET(request: NextRequest) {
     .from("student_applications")
     .select("*")
     .in("student_id", studentIds)
-    .in("course_id", courseIds);
+    .in("course_id", courseIds)
+    .order("created_at", { ascending: false });
 
   const requestsWithApps = requests.map(request => {
     const application = applications?.find(

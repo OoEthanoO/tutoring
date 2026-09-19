@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import Link from "next/link";
 import { getCurrentUser, onAuthChange } from "@/lib/authClient";
 import { MarkdownText } from "@/lib/parseMarkdown";
 import { classDurationMinutes, classEndMs } from "@/lib/classTiming";
@@ -35,6 +36,7 @@ type Course = {
   created_at: string;
   course_classes: CourseClass[];
   enrollment_status?: string | null;
+  enrollment_rejection_reason?: string | null;
 };
 
 const formatCompletedDate = (value?: string | null) => {
@@ -184,6 +186,12 @@ export default function EnrolledCoursesMenu() {
                   </span>
                 )}
               </div>
+              {course.enrollment_status === "rejected" && (
+                <div className="mt-3 space-y-2 text-xs text-[var(--foreground)]">
+                  {course.enrollment_rejection_reason && <p className="whitespace-pre-wrap break-words">Reason: {course.enrollment_rejection_reason}</p>}
+                  <Link href="/?menu=all_courses" className="font-semibold underline underline-offset-2">View courses and re-enroll</Link>
+                </div>
+              )}
               {course.description ? (
                 <div className="mt-3 text-xs text-[var(--muted)]">
                   <MarkdownText text={course.description} />

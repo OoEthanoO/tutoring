@@ -1,4 +1,5 @@
 "use client";
+import { enrollmentBlocksApplication } from "@/lib/enrollmentRequests";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -76,6 +77,7 @@ type Course = {
   created_at: string;
   course_classes: CourseClass[];
   enrollment_status?: "pending" | "approved" | "rejected" | "enrolled" | null;
+  enrollment_rejection_reason?: string | null;
   donation_link?: string | null;
   co_tutor_name?: string | null;
   co_tutor_email?: string | null;
@@ -182,6 +184,7 @@ export default function CoursesMenu() {
   const [courses, setCourses] = useState<Course[]>([]);
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
   const [isEnrolling, setIsEnrolling] = useState(false);
+  const [hasOpenedDonationLink, setHasOpenedDonationLink] = useState(false);
   const [nowMs, setNowMs] = useState<number>(() => new Date().getTime());
   const [status, setStatus] = useState<StatusState>({
     type: "idle",
@@ -331,12 +334,7 @@ export default function CoursesMenu() {
   }, []);
 
   const isEnrolledInCourse = useCallback((course: Course) => {
-    return (
-      course.enrollment_status === "enrolled" ||
-      course.enrollment_status === "pending" ||
-      course.enrollment_status === "approved" ||
-      course.enrollment_status === "rejected"
-    );
+    return enrollmentBlocksApplication(course.enrollment_status);
   }, []);
 
   const availableCourses = useMemo(
@@ -441,6 +439,7 @@ export default function CoursesMenu() {
   const isGuest = !userId;
 
   const openEnrollmentModal = (course: Course) => {
+    setHasOpenedDonationLink(false);
     setSelectedCourse(course);
   };
 
@@ -708,6 +707,13 @@ export default function CoursesMenu() {
                 </button>
               </div>
 
+              {selectedCourse.enrollment_status === "rejected" && (
+                <div className="space-y-2 rounded-xl border border-[var(--border)] p-4 text-sm text-[var(--foreground)]">
+                  <p className="font-semibold">Your previous enrollment request was rejected.</p>
+                  {selectedCourse.enrollment_rejection_reason && <p className="whitespace-pre-wrap break-words">Reason: {selectedCourse.enrollment_rejection_reason}</p>}
+                  <p className="text-xs text-[var(--muted)]">You can submit a new application while enrollment is open and places are available.</p>
+                </div>
+              )}
               {!isGuest && !isCourseEnded && !isFullCourse(selectedCourse) && !isEnrolledInCourse(selectedCourse) && (
                 <div className="flex items-start gap-2 rounded-lg border border-amber-400 bg-amber-50 px-3 py-2 dark:border-amber-700 dark:bg-amber-950/30">
                   <span className="mt-0.5 flex-shrink-0 text-amber-600 text-base leading-none" aria-hidden="true">⚠️</span>
@@ -781,10 +787,22 @@ export default function CoursesMenu() {
                       href={selectedCourse.donation_link!}
                       target="_blank"
                       rel="noopener noreferrer"
+                      onClick={() => setHasOpenedDonationLink(true)}
+                      onAuxClick={(event) => {
+                        if (event.button === 1) setHasOpenedDonationLink(true);
+                      }}
                       className="block w-full rounded-full bg-[var(--foreground)] py-2 text-center text-xs font-bold text-[var(--surface)] transition hover:opacity-90 active:scale-[0.98]"
                     >
-                      Open Donation Link
+                      {hasOpenedDonationLink ? "Donation Link Opened ✓" : "Open Donation Link"}
                     </a>
+                    <p role="status" className="text-xs text-[var(--muted)]">
+                      {hasOpenedDonationLink
+                        ? "You can now submit your enrollment request after filling out the form below."
+                        : "Open the donation link to unlock enrollment submission."}
+                    </p>
+                    <p className="text-[10px] text-[var(--muted)] leading-relaxed">
+                      If you have already donated for this course, open the link again to unlock the form. You do not need to donate again.
+                    </p>
                   </div>
                 ) : (
                   <p className="text-xs font-semibold text-[var(--muted)]">
@@ -799,7 +817,7 @@ export default function CoursesMenu() {
                   initialSchool={user?.school}
                   initialStudentName={user?.full_name}
                   isSubmitting={isEnrolling}
-                  isConfirmDisabled={isFullCourse(selectedCourse) || isEnrolledInCourse(selectedCourse)}
+                  isConfirmDisabled={(requiresDonationLink && !hasOpenedDonationLink) || isFullCourse(selectedCourse) || isEnrolledInCourse(selectedCourse)}
                   isFull={isFullCourse(selectedCourse)}
                   isEnrolled={isEnrolledInCourse(selectedCourse)}
                   isGuest={isGuest}
@@ -838,7 +856,7 @@ export default function CoursesMenu() {
                     setCourses((current) =>
                       current.map((course) =>
                         course.id === selectedCourse!.id
-                          ? { ...course, enrollment_status: "pending" }
+                          ? { ...course, enrollment_status: "pending", enrollment_rejection_reason: null }
                           : course
                       )
                     );

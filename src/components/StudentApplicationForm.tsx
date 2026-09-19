@@ -53,6 +53,7 @@ export default function StudentApplicationForm({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting || isConfirmDisabled || isGuest || isFull || isEnrolled) return;
     onSubmit(form);
   };
 
@@ -210,13 +211,13 @@ export default function StudentApplicationForm({
                 ? "Not Signed In"
                 : enrollmentStatus === "pending"
                 ? "Under Review"
-                : enrollmentStatus === "rejected"
-                  ? "Rejected"
-                  : isEnrolled 
+                  : isEnrolled
                     ? "Already Enrolled" 
                     : isFull 
                       ? "Course Full" 
-                      : "Submit Enrollment Request"}
+                      : enrollmentStatus === "rejected"
+                        ? "Re-enroll in this course"
+                        : "Submit Enrollment Request"}
           </span>
         </button>
       </div>

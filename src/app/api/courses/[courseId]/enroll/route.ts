@@ -1,14 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getRequestUser } from "@/lib/authServer";
-import { isFounder, resolveUserRole } from "@/lib/roles";
 import { notifyFounders } from "@/lib/notificationsServer";
+import { escapeEnrollmentEmailHtml } from "@/lib/enrollmentRequests";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
-// const resendApiKey = process.env.RESEND_API_KEY ?? "";
-// const resendFrom = process.env.RESEND_FROM ?? "";
 
 export async function POST(
   request: NextRequest,
@@ -81,12 +79,16 @@ export async function POST(
     );
   }
 
-  const { data: existingEnrollment } = await adminClient
+  const { data: existingEnrollment, error: enrollmentLookupError } = await adminClient
     .from("course_enrollments")
     .select("id")
     .eq("course_id", courseId)
     .eq("student_id", user.id)
     .maybeSingle();
+
+  if (enrollmentLookupError) {
+    return NextResponse.json({ error: "Unable to check existing enrollment. Please try again." }, { status: 500 });
+  }
 
   if (existingEnrollment) {
     return NextResponse.json(
@@ -95,41 +97,24 @@ export async function POST(
     );
   }
 
-  const { data: existingRequest } = await adminClient
+  const { data: existingRequest, error: requestLookupError } = await adminClient
     .from("course_enrollment_requests")
-    .select("id, status")
+    .select("id, status, created_at")
     .eq("course_id", courseId)
     .eq("student_id", user.id)
     .maybeSingle();
 
-  if (existingRequest) {
-    const role = resolveUserRole(user.email, user.role ?? null);
-
-    if (existingRequest.status === "rejected") {
-      if (isFounder(role)) {
-        // Founders can re-enroll after rejection.
-        await adminClient
-          .from("course_enrollment_requests")
-          .delete()
-          .eq("id", existingRequest.id);
-      } else {
-        return NextResponse.json(
-          { error: "Enrollment request has been rejected." },
-          { status: 400 }
-        );
-      }
-    } else if (existingRequest.status === "approved") {
-      // Stale approved request can exist if a founder manually removed enrollment.
-      await adminClient
-        .from("course_enrollment_requests")
-        .delete()
-        .eq("id", existingRequest.id);
-    } else {
-      return NextResponse.json(
-        { error: `Enrollment request already ${existingRequest.status}.` },
-        { status: 400 }
-      );
-    }
+  if (requestLookupError) {
+    return NextResponse.json({ error: "Unable to check your enrollment request. Please try again." }, { status: 500 });
+  }
+  // Rejected applicants of every role may reapply. Approved requests can also
+  // outlive a manually removed enrollment. Do not erase either before the new
+  // application has been validated and saved.
+  if (existingRequest && !["rejected", "approved"].includes(existingRequest.status)) {
+    return NextResponse.json(
+      { error: `Enrollment request already ${existingRequest.status}.` },
+      { status: 400 }
+    );
   }
 
   const body = (await request.json().catch(() => null)) as {
@@ -143,13 +128,9 @@ export async function POST(
   } | null;
 
   if (
-    !body?.guardianEmail ||
-    !body?.studentFullName ||
-    !body?.schoolName ||
-    !body?.grade ||
-    !body?.parentGuardianName ||
-    !body?.parentGuardianPhone ||
-    !body?.consentName
+    !body || ![body.guardianEmail, body.studentFullName, body.schoolName, body.grade,
+      body.parentGuardianName, body.parentGuardianPhone, body.consentName]
+      .every(value => typeof value === "string" && value.trim())
   ) {
     return NextResponse.json(
       { error: "Missing application details." },
@@ -198,28 +179,34 @@ export async function POST(
   const studentName =
     String(user.full_name ?? "").trim() || user.email || "Unnamed student";
 
-  const { data: requestData, error: requestError } = await adminClient
-    .from("course_enrollment_requests")
-    .insert({
-      course_id: courseId,
-      student_id: user.id,
-      student_name: studentName,
-      student_email: user.email ?? null,
-      status: "pending",
-    })
+  const requestValues = {
+    course_id: courseId,
+    student_id: user.id,
+    student_name: studentName,
+    student_email: user.email ?? null,
+    status: "pending",
+  };
+  const writeRequest = existingRequest
+    ? adminClient.from("course_enrollment_requests")
+      .update({ ...requestValues, rejection_reason: null, decided_at: null, created_at: new Date().toISOString() })
+      .eq("id", existingRequest.id)
+      .eq("status", existingRequest.status)
+      .eq("created_at", existingRequest.created_at)
+    : adminClient.from("course_enrollment_requests").insert(requestValues);
+  const { data: requestData, error: requestError } = await writeRequest
     .select("id, course_id, student_id, status, created_at")
-    .single();
+    .maybeSingle();
 
   if (requestError || !requestData) {
     return NextResponse.json(
-      { error: requestError?.message ?? "Failed to create request." },
-      { status: 500 }
+      { error: requestError?.message ?? "Your enrollment request changed. Refresh and try again." },
+      { status: requestError ? 500 : 409 }
     );
   }
 
   const courseTitle = course?.title ?? "a course";
   const subject = "New enrollment request submitted";
-  const html = `<p>${studentName} requested enrollment in <strong>${courseTitle}</strong>.</p>`;
+  const html = `<p>${escapeEnrollmentEmailHtml(studentName)} requested enrollment in <strong>${escapeEnrollmentEmailHtml(courseTitle)}</strong>.</p>`;
   
   await notifyFounders(subject, html);
 

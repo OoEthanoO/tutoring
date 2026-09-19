@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { getCurrentUser, onAuthChange } from "@/lib/authClient";
 import { isFounder, resolveUserRole } from "@/lib/roles";
+import { MAX_ENROLLMENT_REJECTION_REASON_LENGTH, parseEnrollmentRejectionReason } from "@/lib/enrollmentRequests";
 
 type RequestCourse = {
   id: string;
@@ -29,6 +30,7 @@ type StudentApplication = {
 type EnrollmentRequest = {
   id: string;
   status: string;
+  rejection_reason?: string | null;
   created_at: string;
   student_name?: string | null;
   student_email?: string | null;
@@ -50,6 +52,8 @@ export default function ManageEnrollmentsMenu() {
   });
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [rejectingId, setRejectingId] = useState<string | null>(null);
+  const [rejectionReason, setRejectionReason] = useState("");
 
   useEffect(() => {
     const load = async () => {
@@ -103,6 +107,11 @@ export default function ManageEnrollmentsMenu() {
     const course = target?.course?.title || "this course";
 
     let finalAction = action;
+    const reason = action === "reject" ? parseEnrollmentRejectionReason(rejectionReason) : null;
+    if (action === "reject" && !reason) {
+      setStatus({ type: "error", message: `Enter a rejection reason (1–${MAX_ENROLLMENT_REJECTION_REASON_LENGTH} characters).` });
+      return;
+    }
 
     if (action === "approve" && target?.course?.max_students) {
       const enrolled = target.course.course_enrollments?.[0]?.count ?? 0;
@@ -117,43 +126,45 @@ export default function ManageEnrollmentsMenu() {
       }
     } else if (action === "approve") {
       if (!window.confirm(`Approve enrollment for ${student} in ${course}?`)) return;
-    } else {
-      if (!window.confirm(`Reject enrollment for ${student} in ${course}?`)) return;
     }
 
     setPendingId(requestId);
     setStatus({ type: "idle", message: "" });
 
-    const response = await fetch(`/api/enrollments/${requestId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: finalAction }),
-    });
-
-    if (!response.ok) {
+    try {
+      const response = await fetch(`/api/enrollments/${requestId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: finalAction, rejectionReason: reason, submittedAt: target?.created_at }),
+      });
       const payload = (await response.json().catch(() => null)) as
-        | { error?: string }
+        | { error?: string; request?: Partial<EnrollmentRequest>; emailSent?: boolean }
         | null;
+      if (!response.ok) throw new Error(payload?.error ?? "Unable to update request.");
+
+      setRequests(current => current.map(item => item.id === requestId
+        ? { ...item, ...payload?.request }
+        : item));
+      setRejectingId(null);
+      setRejectionReason("");
+      setStatus({
+        type: action === "reject" && payload?.emailSent === false ? "error" : "success",
+        message: action === "reject" && payload?.emailSent === false
+          ? "Enrollment rejected and reason saved, but the email could not be sent."
+          : finalAction === "expand_and_approve"
+            ? "Enrollment approved (max students expanded)."
+            : finalAction === "approve"
+              ? "Enrollment approved."
+              : "Enrollment rejected. The reason has been emailed to the applicant.",
+      });
+    } catch (error) {
       setStatus({
         type: "error",
-        message: payload?.error ?? "Unable to update request.",
+        message: error instanceof Error ? error.message : "Unable to update request.",
       });
+    } finally {
       setPendingId(null);
-      return;
     }
-
-    setRequests((current) =>
-      current.filter((request) => request.id !== requestId)
-    );
-    setStatus({
-      type: "success",
-      message: finalAction === "expand_and_approve"
-        ? "Enrollment approved (max students expanded)."
-        : finalAction === "approve"
-          ? "Enrollment approved."
-          : "Enrollment rejected.",
-    });
-    setPendingId(null);
   };
 
   if (!isFounderAccess) {
@@ -265,6 +276,11 @@ export default function ManageEnrollmentsMenu() {
                 {request.status === "rejected" && (
                   <div className="w-full pb-2 text-xs font-semibold text-red-500">
                     This request was previously rejected. You can still approve it.
+                    {request.rejection_reason && (
+                      <p className="mt-2 whitespace-pre-wrap break-words font-normal text-[var(--foreground)]">
+                        Reason: {request.rejection_reason}
+                      </p>
+                    )}
                   </div>
                 )}
                 {request.status === "approved" && (
@@ -286,13 +302,40 @@ export default function ManageEnrollmentsMenu() {
                   <button
                     type="button"
                     disabled={isPending}
-                    onClick={() => updateRequest(request.id, "reject")}
+                    onClick={() => { setRejectingId(request.id); setRejectionReason(""); setStatus({ type: "idle", message: "" }); }}
                     className="rounded-full border border-[var(--border)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:border-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-70"
                   >
                     Reject
                   </button>
                 )}
               </div>
+              {rejectingId === request.id && request.status === "pending" && (
+                <form className="space-y-3 rounded-xl border border-[var(--border)] p-4" onSubmit={event => {
+                  event.preventDefault();
+                  void updateRequest(request.id, "reject");
+                }}>
+                  <label htmlFor={`rejection-reason-${request.id}`} className="block text-sm font-semibold text-[var(--foreground)]">
+                    Rejection reason
+                  </label>
+                  <p className="text-xs text-[var(--muted)]">This reason will be emailed to the applicant. They can correct their application and enroll again.</p>
+                  <textarea
+                    id={`rejection-reason-${request.id}`}
+                    value={rejectionReason}
+                    onChange={event => setRejectionReason(event.target.value)}
+                    required
+                    maxLength={MAX_ENROLLMENT_REJECTION_REASON_LENGTH}
+                    rows={4}
+                    disabled={isPending}
+                    className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] p-3 text-sm text-[var(--foreground)]"
+                  />
+                  <div className="flex flex-wrap gap-2">
+                    <button type="submit" disabled={isPending || !rejectionReason.trim()} className="rounded-full bg-[var(--foreground)] px-4 py-2 text-xs font-semibold text-[var(--background)] disabled:opacity-50">
+                      {isPending ? "Rejecting…" : "Reject and email reason"}
+                    </button>
+                    <button type="button" disabled={isPending} onClick={() => { setRejectingId(null); setRejectionReason(""); }} className="rounded-full border border-[var(--border)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] disabled:opacity-50">Cancel</button>
+                  </div>
+                </form>
+              )}
             </div>
           );
         })}

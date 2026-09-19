@@ -4,12 +4,12 @@ import { isFounder, resolveUserRole } from "@/lib/roles";
 import { classOnSchoolhouse } from "@/lib/discordLiveChannels";
 import { getRequestUser } from "@/lib/authServer";
 import { notifyCourseTutorsOfNewEnrollment } from "@/lib/courseChangeNotifications";
+import { sendEmail } from "@/lib/notificationsServer";
+import { enrollmentRejectionEmail, escapeEnrollmentEmailHtml, MAX_ENROLLMENT_REJECTION_REASON_LENGTH, parseEnrollmentRejectionReason } from "@/lib/enrollmentRequests";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
-const resendApiKey = process.env.RESEND_API_KEY ?? "";
-const resendFrom = process.env.RESEND_FROM ?? "";
 
 type Action = "approve" | "reject" | "expand_and_approve";
 
@@ -22,26 +22,6 @@ type EnrollmentRequestCourse = {
   created_by_email: string | null;
   max_students: number | null;
   course_enrollments: { count: number }[] | null;
-};
-
-const sendEmail = async (to: string, subject: string, html: string) => {
-  if (!resendApiKey || !resendFrom) {
-    return;
-  }
-
-  await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${resendApiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from: resendFrom,
-      to,
-      subject,
-      html,
-    }),
-  });
 };
 
 export async function PATCH(
@@ -82,12 +62,20 @@ export async function PATCH(
   }
 
   const body = (await request.json().catch(() => null)) as
-    | { action?: Action }
+    | { action?: Action; rejectionReason?: unknown; submittedAt?: string }
     | null;
 
   const action = body?.action;
   if (action !== "approve" && action !== "reject" && action !== "expand_and_approve") {
     return NextResponse.json({ error: "Invalid action." }, { status: 400 });
+  }
+
+  const rejectionReason = action === "reject" ? parseEnrollmentRejectionReason(body?.rejectionReason) : null;
+  if (action === "reject" && !rejectionReason) {
+    return NextResponse.json(
+      { error: `Enter a rejection reason (1–${MAX_ENROLLMENT_REJECTION_REASON_LENGTH} characters).` },
+      { status: 400 }
+    );
   }
 
   const adminClient = createClient(supabaseUrl, serviceRoleKey, {
@@ -97,7 +85,7 @@ export async function PATCH(
   const { data: requestData, error: requestError } = await adminClient
     .from("course_enrollment_requests")
     .select(
-      "id, course_id, student_id, student_name, student_email, status, course:courses(id, title, short_name, created_by_name, created_by, created_by_email, max_students, course_enrollments(count))"
+      "id, course_id, student_id, student_name, student_email, status, created_at, course:courses(id, title, short_name, created_by_name, created_by, created_by_email, max_students, course_enrollments(count))"
     )
     .eq("id", requestId)
     .single();
@@ -111,6 +99,10 @@ export async function PATCH(
 
   const isPending = requestData.status === "pending";
   const isRejectedButApproving = requestData.status === "rejected" && (action === "approve" || action === "expand_and_approve");
+
+  if (body?.submittedAt && new Date(body.submittedAt).getTime() !== new Date(requestData.created_at).getTime()) {
+    return NextResponse.json({ error: "This student has submitted a new application. Refresh before reviewing it." }, { status: 409 });
+  }
 
   if (!isPending && !isRejectedButApproving) {
     return NextResponse.json(
@@ -169,15 +161,18 @@ export async function PATCH(
     .update({
       status: (action === "approve" || action === "expand_and_approve") ? "approved" : "rejected",
       decided_at: now,
+      rejection_reason: rejectionReason,
     })
     .eq("id", requestId)
-    .select("id, status, decided_at")
-    .single();
+    .eq("status", requestData.status)
+    .eq("created_at", requestData.created_at)
+    .select("id, status, decided_at, rejection_reason")
+    .maybeSingle();
 
   if (updateError || !updatedRequest) {
     return NextResponse.json(
-      { error: updateError?.message ?? "Failed to update request." },
-      { status: 500 }
+      { error: updateError?.message ?? "This request changed while you were reviewing it. Refresh and try again." },
+      { status: updateError ? 500 : 409 }
     );
   }
 
@@ -186,6 +181,13 @@ export async function PATCH(
     Array.isArray(requestData.course)
       ? requestData.course[0]?.title ?? "course"
       : (requestData.course as { title?: string } | null)?.title ?? "course";
+
+  // Await delivery before the serverless function returns, and make failures
+  // visible to the reviewer without undoing the saved decision.
+  if (action === "reject") {
+    const emailSent = await sendEmail(studentEmail, `Enrollment update: ${courseTitle}`, enrollmentRejectionEmail(courseTitle, rejectionReason!));
+    return NextResponse.json({ request: updatedRequest, emailSent });
+  }
   const tutorId = Array.isArray(requestData.course)
     ? requestData.course[0]?.created_by
     : (requestData.course as { created_by?: string } | null)?.created_by;
@@ -240,7 +242,7 @@ export async function PATCH(
         ? `Enrollment approved: ${courseTitle}`
         : `Enrollment update: ${courseTitle}`;
     const html = isApproval
-        ? `<p>Your enrollment request for <strong>${courseTitle}</strong> has been approved.</p>
+        ? `<p>Your enrollment request for <strong>${escapeEnrollmentEmailHtml(courseTitle)}</strong> has been approved.</p>
            <p>Please attend the class 5 minutes before the start time:</p>
            ${isSchoolhouseCourse ? 
              `<p>This course is hosted on Schoolhouse! Please join the session via the Schoolhouse platform. If you don't have a Schoolhouse account yet, please create one using this link: <a href="https://schoolhouse.world/?ref=u-mx1o1c1hti">https://schoolhouse.world/?ref=u-mx1o1c1hti</a></p>` 
@@ -255,7 +257,7 @@ export async function PATCH(
               </ol>` : ""}
               <p>You will receive a notification in the Discord server with a link to the voice channel 5 minutes before the class starts. Please make sure to join the server if you haven't already.</p>`
            }`
-        : `<p>Your enrollment request for <strong>${courseTitle}</strong> has been rejected.</p>`;
+        : enrollmentRejectionEmail(courseTitle, rejectionReason ?? "");
 
     await sendEmail(studentEmail, subject, html);
   }

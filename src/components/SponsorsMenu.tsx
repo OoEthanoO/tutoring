@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 
 export default function SponsorsMenu() {
-  const [contactEmail, setContactEmail] = useState("ethanxucoder@gmail.com");
+  const [contactEmail, setContactEmail] = useState("yanlearnorg@gmail.com");
 
   useEffect(() => {
     fetch("/api/settings/contact-email")

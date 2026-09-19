@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { recorderDownloadUrl } from "@/components/RecorderNotice";
 
 export default function HelpMenu() {
-    const [contactEmail, setContactEmail] = useState("ethanxucoder@gmail.com");
+    const [contactEmail, setContactEmail] = useState("yanlearnorg@gmail.com");
 
     useEffect(() => {
         fetch("/api/settings/contact-email")
