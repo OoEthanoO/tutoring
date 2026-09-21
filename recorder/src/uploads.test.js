@@ -16,6 +16,27 @@ const setup = () => ({
 });
 
 describe("Recorder upload recovery", () => {
+  it("renews a stalled transfer URL after restart without changing recording identity", async () => {
+    const upload = pending();
+    const deps = setup();
+    let saved;
+    deps.persist.mockImplementation(async (value) => { saved = structuredClone(value); });
+    deps.uploadFile.mockRejectedValueOnce(new Error("Upload stalled without progress"));
+    await expect(uploads.finishUpload(upload, deps)).rejects.toThrow("stalled");
+    expect(saved).toMatchObject({ recordingId: "one", uploadUrl: null, outputPath: "recording.mp4" });
+    await uploads.finishUpload(saved, deps);
+    expect(deps.uploadFile).toHaveBeenCalledTimes(2);
+    const creates = deps.api.mock.calls.filter(([url]) => url === "/api/recorder/recordings");
+    expect(creates[1][1].body).toEqual(creates[0][1].body);
+  });
+
+  it("reports transfer and verification as separate stages", async () => {
+    const deps = setup();
+    const onStage = vi.fn();
+    await uploads.finishUpload(pending(), { ...deps, onStage });
+    expect(onStage.mock.calls.flat()).toEqual(["requesting", "uploading", "confirming"]);
+  });
+
   it("retries a failed completion without PUTting the video again, including after restart", async () => {
     const upload = pending();
     const deps = setup();

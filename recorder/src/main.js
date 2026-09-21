@@ -68,6 +68,9 @@
     quitLocked: false,
     lastOverlayJson: "",
     recovered: false,
+    recoveryErrors: [],
+    uploadWorkerRunning: false,
+    preparingRecording: null,
     hotkeyLabel: "Ctrl+Alt+P",
     muteHotkeyLabel: "Ctrl+Alt+M",
     hotkeyWarning: "",
@@ -124,12 +127,8 @@
   };
 
   const readJson = async (path) => {
-    try {
-      const text = await invoke("read_text_file", { path });
-      return text ? JSON.parse(text) : null;
-    } catch {
-      return null;
-    }
+    const text = await invoke("read_text_file", { path });
+    return text === null ? null : JSON.parse(text);
   };
 
   const writeJson = (path, value) =>
@@ -145,19 +144,30 @@
     if (auth && state.settings.token) {
       headers.Authorization = `Bearer ${state.settings.token}`;
     }
-    const response = await fetch(`${state.settings.serverUrl}${path}`, {
-      method,
-      signal,
-      headers,
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-    });
-    let data = null;
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    const timeout = setTimeout(abort, 30000);
+    if (signal?.aborted) abort();
+    signal?.addEventListener("abort", abort, { once: true });
     try {
-      data = await response.json();
-    } catch {
-      data = null;
+      const response = await fetch(`${state.settings.serverUrl}${path}`, {
+        method,
+        signal: controller.signal,
+        headers,
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+      });
+      let data = null;
+      try {
+        data = await response.json();
+      } catch {
+        if (controller.signal.aborted) throw new Error("The server request timed out or was cancelled.");
+        data = null;
+      }
+      return { ok: response.ok, status: response.status, data };
+    } finally {
+      clearTimeout(timeout);
+      signal?.removeEventListener("abort", abort);
     }
-    return { ok: response.ok, status: response.status, data };
   };
 
   // --- Settings ----------------------------------------------------------------
@@ -456,7 +466,7 @@
       return;
     }
     const session = state.session;
-    if (session.finalizing || !(session.phase === "live" || session.phase === "after_end")) {
+    if (session.finalizing || session.finalizeReason || !(session.phase === "live" || session.phase === "after_end")) {
       return;
     }
     // Held across the whole tick: switching segments takes longer than the poll
@@ -498,6 +508,7 @@
       classTitle: session.classTitle,
       startsAtMs: session.startsAtMs,
       endsAtMs: session.endsAtMs,
+      finalizeReason: session.finalizeReason || null,
       segments: session.segments,
       currentSegment: session.currentSegment ? { ...session.currentSegment, endedAtMs: serverNow() } : null,
     });
@@ -529,6 +540,8 @@
       prompted: false,
       promptOpen: false,
       finalizing: false,
+      finalizeReason: meta?.finalizeReason || null,
+      nextFinalizeAttemptMs: 0,
       captureFailures: 0,
       captureDisabled: false,
       nextCaptureAttemptMs: 0,
@@ -647,6 +660,8 @@
       return null;
     }
     let stopped = { sizeBytes: 0, seconds: 0 };
+    // Checkpoint before native shutdown so a forced close is recoverable.
+    await persistMeta();
     try {
       stopped = await invoke("stop_capture");
     } catch (error) {
@@ -714,21 +729,20 @@
     if (usable.length === 0) {
       log(`Nothing was recorded for ${courseTitle || classId}.`);
       state.pendingFinished = { classId, reason: "no_recording" };
-      await invoke("remove_path", { path: dir });
+      log(`Local files have been kept at ${dir}.`);
       return;
     }
     const outputPath = `${dir}/recording.mp4`;
-    let sizeBytes = 0;
-    let uploadPath = outputPath;
+    state.preparingRecording = courseTitle || classId;
+    render();
+    let sizeBytes;
     try {
       sizeBytes = await invoke("concat_segments", { segments: usable.map((segment) => segment.path), output: outputPath });
-    } catch (error) {
-      // Fall back to the largest playable segment rather than losing the class.
-      const largest = usable.reduce((best, segment) => (segment.sizeBytes > best.sizeBytes ? segment : best), usable[0]);
-      uploadPath = largest.path;
-      sizeBytes = largest.sizeBytes;
-      log(`Could not combine the segments (${error}); uploading the largest one instead.`);
+    } finally {
+      state.preparingRecording = null;
+      render();
     }
+    if (!sizeBytes) throw new Error("Preparing the recording produced an empty file. All segments have been kept.");
     const durationSeconds = Math.round(
       usable.reduce((sum, segment) => sum + Math.max(0, ((segment.endedAtMs || segment.startedAtMs) - segment.startedAtMs) / 1000), 0)
     );
@@ -736,7 +750,7 @@
       classId,
       dir,
       courseTitle: courseTitle || "",
-      outputPath: uploadPath,
+      outputPath,
       sizeBytes,
       startedAtMs: usable[0].startedAtMs,
       endedAtMs: usable[usable.length - 1].endedAtMs || usable[usable.length - 1].startedAtMs,
@@ -757,21 +771,32 @@
 
   const finalize = async (reason) => {
     const session = state.session;
-    if (!session || session.finalizing) {
+    if (!session || session.finalizing || Date.now() < (session.nextFinalizeAttemptMs || 0)) {
       return;
     }
     session.finalizing = true;
+    session.finalizeReason = reason;
     closeDonePrompt();
     render();
-    await updateOverlay();
-    if (session.capturing) {
-      await stopSegment();
+    try {
+      await persistMeta();
+      await updateOverlay();
+      log("Stopping capture and saving the recording. Your files stay on this computer until upload is confirmed.");
+      if (session.capturing) {
+        await stopSegment();
+      }
+      log(`Preparing the class recording (${reason.replace(/_/g, " ")}).`);
+      await finalizeSegments(session, reason);
+      clearSession();
+      processUploads();
+    } catch (error) {
+      session.finalizing = false;
+      session.nextFinalizeAttemptMs = Date.now() + 30000;
+      log(`Could not prepare the recording (${error}). Files kept at ${session.dir}; retrying in 30 s.`);
+    } finally {
+      render();
+      scheduleTick(500);
     }
-    log(`Finishing the class (${reason.replace(/_/g, " ")}).`);
-    await finalizeSegments(session, reason);
-    clearSession();
-    await processUploads();
-    scheduleTick(500);
   };
 
   const persistUpload = (upload) => writeJson(`${upload.dir}/pending.json`, upload);
@@ -787,6 +812,7 @@
     try {
       const result = await window.RecorderUploads.finishUpload(upload, {
         api,
+        onStage: (stage) => { upload.stage = stage; render(); void updateOverlay(); },
         uploadFile: (args) => {
           state.uploadProgress = { sent: 0, total: upload.sizeBytes };
           return invoke("upload_file", args);
@@ -794,14 +820,16 @@
         persist: persistUpload,
       });
       if (!result.uploaded) {
-        log(`The server refused this recording: ${result.error}. Giving up on it.`);
-        await discardUpload(upload, "abandoned");
+        upload.blockedError = String(result.error);
+        await persistUpload(upload);
+        log(`Upload paused: ${result.error}. Recording kept at ${upload.dir}. Click Refresh to retry after resolving this.`);
         return;
       }
       log(`Uploaded the recording for ${upload.courseTitle || upload.classId}.`);
       await discardUpload(upload, "uploaded");
     } catch (error) {
       const delay = Math.min(120000, 5000 * 2 ** Math.min(upload.attempts, 5));
+      upload.lastError = String(error);
       upload.nextAttemptMs = Date.now() + delay;
       log(`Upload failed (${error}). Retrying in ${Math.round(delay / 1000)} s.`);
       await persistUpload(upload);
@@ -820,12 +848,19 @@
     scheduleTick(500);
   };
 
-  const processUploads = async () => {
-    for (const upload of [...state.uploads]) {
-      if (!upload.uploading && Date.now() >= upload.nextAttemptMs) {
+  const processUploads = () => {
+    if (state.uploadWorkerRunning || !state.settings.token || state.session?.test) return;
+    const ready = state.uploads.filter((upload) => !upload.uploading && !upload.blockedError && Date.now() >= upload.nextAttemptMs);
+    if (!ready.length) return;
+    state.uploadWorkerRunning = true;
+    // A long transfer must not stop class ticks or the next class recording.
+    void (async () => {
+      for (const upload of ready) {
+        if (!state.settings.token || state.session?.test) break;
         await attemptUpload(upload);
       }
-    }
+    })().catch((error) => log(`Upload processing error: ${error}. Local files have been kept.`))
+      .finally(() => { state.uploadWorkerRunning = false; scheduleTick(500); });
   };
 
   /** On startup: pick up segments and pending uploads from a previous run. */
@@ -833,53 +868,57 @@
     if (state.recovered) {
       return;
     }
-    state.recovered = true;
-    let entries = [];
-    try {
-      entries = await invoke("list_dir", { path: state.recordingsDir });
-    } catch {
-      return;
-    }
+    const entries = await invoke("list_dir", { path: state.recordingsDir });
+    state.recoveryErrors = [];
     for (const entry of entries.filter((item) => item.isDir)) {
-      if (state.session && state.session.classId === entry.name) {
+      if (state.session?.classId === entry.name || state.uploads.some((upload) => upload.dir === entry.path)) {
         continue; // adopted by createSession
       }
-      const pending = await readJson(`${entry.path}/pending.json`);
-      if (pending && pending.outputPath) {
-        state.uploads.push({ ...pending, dir: entry.path, uploading: false, nextAttemptMs: 0 });
-        log(`Found an upload from a previous run for ${pending.courseTitle || entry.name}.`);
-        continue;
+      try {
+        const pending = await readJson(`${entry.path}/pending.json`);
+        if (pending && pending.outputPath) {
+          state.uploads.push({ ...pending, dir: entry.path, uploading: false, nextAttemptMs: 0 });
+          log(`Found an upload from a previous run for ${pending.courseTitle || entry.name}.`);
+          continue;
+        }
+        const meta = await readJson(`${entry.path}/meta.json`);
+        if (!state.session && meta && !meta.finalizeReason && Number.isFinite(meta.endsAtMs) && serverNow() < meta.endsAtMs) {
+          await createSession({
+            classId: meta.classId || entry.name, courseTitle: meta.courseTitle, classTitle: meta.classTitle,
+            startsAtMs: meta.startsAtMs, endsAtMs: meta.endsAtMs,
+            phase: serverNow() < meta.startsAtMs ? "armed" : "live", liveChannel: null,
+          });
+          log("Recovered the ongoing class; waiting for the server to restore its connection.");
+          continue;
+        }
+        const segments = await window.RecorderSessionPolicy.recoverSegments(meta,
+          (path) => invoke("file_size", { path }));
+        if (segments.length === 0) {
+          const files = await invoke("list_dir", { path: entry.path });
+          if (files.some((file) => file.size > 0 && /\.mp4$/i.test(file.name))) {
+            throw new Error("Video files exist but their recording metadata could not be recovered");
+          }
+          continue;
+        }
+        log(`Recovering a recording from a previous run (${meta?.courseTitle || entry.name}).`);
+        await finalizeSegments(
+          { classId: entry.name, dir: entry.path, segments, courseTitle: meta?.courseTitle },
+          meta?.finalizeReason || "recovered"
+        );
+      } catch (error) {
+        state.recoveryErrors.push(entry.path);
+        log(`Could not recover ${entry.name}: ${error}. Files kept at ${entry.path}. Click Refresh to retry.`);
       }
-      const meta = await readJson(`${entry.path}/meta.json`);
-      if (!state.session && meta && Number.isFinite(meta.endsAtMs) && serverNow() < meta.endsAtMs) {
-        await createSession({
-          classId: meta.classId || entry.name, courseTitle: meta.courseTitle, classTitle: meta.classTitle,
-          startsAtMs: meta.startsAtMs, endsAtMs: meta.endsAtMs,
-          phase: serverNow() < meta.startsAtMs ? "armed" : "live", liveChannel: null,
-        });
-        log("Recovered the ongoing class; waiting for the server to restore its connection.");
-        continue;
-      }
-      const segments = await window.RecorderSessionPolicy.recoverSegments(meta,
-        (path) => invoke("file_size", { path }));
-      if (segments.length === 0) {
-        await invoke("remove_path", { path: entry.path });
-        continue;
-      }
-      log(`Recovering a recording from a previous run (${meta?.courseTitle || entry.name}).`);
-      await finalizeSegments(
-        { classId: entry.name, dir: entry.path, segments, courseTitle: meta?.courseTitle },
-        "recovered"
-      );
     }
-    await processUploads();
+    state.recovered = true;
+    processUploads();
   };
 
   // --- Tick loop -----------------------------------------------------------------
 
   const currentStateLabel = () => {
     const session = state.session;
-    if (state.uploads.some((upload) => upload.uploading)) {
+    if (!session && state.uploads.some((upload) => upload.uploading)) {
       return "uploading";
     }
     if (!session) {
@@ -910,6 +949,8 @@
     if (state.settings.token && !state.tickBusy) {
       state.tickBusy = true;
       try {
+        // Recover uploads before the server can adopt that class a second time.
+        if (!state.recovered) await recoverLeftovers();
         await runTick();
         if (state.tick && state.tick.pollIntervalMs) {
           interval = state.tick.pollIntervalMs;
@@ -981,6 +1022,10 @@
 
   const applyTick = async (tick) => {
     const active = tick.active;
+    if (!state.session && active && state.uploads.some((upload) => upload.classId === active.classId)) {
+      await evaluate();
+      return;
+    }
     if (window.RecorderSessionPolicy.retainSession(state.session, active, serverNow())) {
       state.session.presenceReason = "Waiting for the class connection to recover.";
       await persistMeta();
@@ -1005,6 +1050,7 @@
     if (state.session && state.session.classId !== active.classId && !state.session.finalizing) {
       await finalize("channel_deleted");
     }
+    if (state.session && state.session.classId !== active.classId) return;
     if (!state.session) {
       await createSession(active);
     }
@@ -1069,7 +1115,7 @@
 
   const evaluateInner = async () => {
     const session = state.session;
-    const uploadsPending = state.uploads.length > 0;
+    const uploadsPending = state.uploads.some((upload) => !upload.blockedError);
     if (!session) {
       await setQuitLock(uploadsPending);
       render();
@@ -1089,6 +1135,10 @@
     if (session.finalizing) {
       render();
       await updateOverlay();
+      return;
+    }
+    if (session.finalizeReason) {
+      await finalize(session.finalizeReason);
       return;
     }
 
@@ -1326,12 +1376,16 @@
     // Where the tutor last dragged the pill to.
     const corner = state.settings.overlayCorner || "bottom-right";
     const uploading = state.uploads.find((upload) => upload.uploading);
-    if (uploading) {
+    if (!session && uploading) {
       const progress = state.uploadProgress;
       const percent = progress && progress.total > 0 ? Math.round((progress.sent / progress.total) * 100) : 0;
-      return { mode: "uploading", title: `Uploading recording ${percent}%`, detail: "Keep the computer on and connected.", blocking: false, displayIndex, corner };
+      const title = uploading.stage === "confirming" ? "Verifying uploaded recording" : `Uploading recording ${percent}%`;
+      return { mode: "uploading", title, detail: "Keep the computer on and connected.", blocking: false, displayIndex, corner };
     }
     if (!session) {
+      if (state.recoveryErrors.length || state.uploads.some((upload) => upload.blockedError)) {
+        return { mode: "attention", title: "Recording saved — upload needs attention", detail: "Open Recorder and check the log. Files have been kept.", blocking: false, displayIndex, corner };
+      }
       return state.uploads.length > 0
         ? { mode: "uploading", title: "Recording waiting to upload", detail: "Retrying automatically.", blocking: false, displayIndex, corner }
         : { mode: "hidden" };
@@ -1652,12 +1706,20 @@
         : "The recorder arms itself 15 minutes before each of your classes. Keep it open.";
       dot.className = `dot${uploading ? " uploading" : ""}`;
       $("state-text").textContent = uploading
-        ? "Uploading recording"
+        ? (uploading.stage === "confirming" ? "Verifying uploaded recording" : uploading.stage === "requesting" ? "Connecting for upload" : "Uploading recording")
+        : state.preparingRecording
+          ? "Preparing recording for upload"
+        : state.recoveryErrors.length || state.uploads.some((upload) => upload.blockedError)
+          ? "Recording saved — upload needs attention"
         : state.uploads.length > 0
           ? "Recording waiting to upload"
           : "Idle";
       timer.textContent = "";
-      $("presence-text").textContent = "";
+      $("presence-text").textContent = state.recoveryErrors.length || state.uploads.some((upload) => upload.blockedError)
+        ? "Your recording files are kept on this computer. Check the log for details; click Refresh to retry."
+        : uploading && state.uploadProgress?.total > 0
+          ? `${Math.round(state.uploadProgress.sent / state.uploadProgress.total * 100)}% sent. Keep Recorder open until the server confirms the upload.`
+          : state.uploads.length ? "Your recording is saved on this computer and will retry automatically." : "";
       return;
     }
 
@@ -1668,7 +1730,11 @@
     let text = "";
     let cls = "";
     if (session.finalizing) {
-      text = "Finishing the recording";
+      text = state.preparingRecording ? "Preparing recording for upload" : "Stopping capture and saving recording";
+      cls = "uploading";
+      timer.textContent = "";
+    } else if (session.finalizeReason) {
+      text = "Recording saved — retrying preparation";
       cls = "uploading";
       timer.textContent = "";
     } else if (session.phase === "pre_arm") {
@@ -1978,7 +2044,15 @@
       state.settings.encoder = null;
       saveSettings();
     });
-    $("refresh-button").addEventListener("click", () => scheduleTick(0));
+    $("refresh-button").addEventListener("click", () => {
+      state.recovered = false;
+      for (const upload of state.uploads) {
+        upload.blockedError = null;
+        upload.nextAttemptMs = 0;
+      }
+      if (state.session) state.session.nextFinalizeAttemptMs = 0;
+      scheduleTick(0);
+    });
     $("mute-button").addEventListener("click", () => {
       const session = state.session;
       if (session) {

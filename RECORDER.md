@@ -64,6 +64,43 @@ its current segment for recovery after restart. Automatic finalization on voice
 channel deletion applies only after class end. These desktop recovery changes
 require a new Recorder release; the server protections also help older installs.
 
+## Upload shutdown and recovery fix (v0.5.2)
+
+Version 0.5.1 can hang while stopping macOS system audio: the worker blocks
+reading the helper's stdout during silence, and the synchronous stop command
+joins that worker on the app's main thread. This can show the spinning beach
+ball before the recording has even reached the network upload stage.
+
+The fix moves capture shutdown off the UI thread and makes the audio worker
+cancellable during silence and socket backpressure. Uploads run in the
+background so class ticks and a following class continue normally. A transfer
+with no progress for two to three minutes is cancelled and retried; API calls time out
+after 30 seconds. The UI separates preparation, transfer, and server verification.
+
+Recording metadata and upload checkpoints are replaced atomically. Startup
+loads existing uploads before adopting a class from the server, and recovers
+the interrupted current segment as well as completed ones. Refused uploads,
+unreadable metadata, orphaned videos, and failed concatenation keep their local
+files and show a log message. **Refresh** retries those recordings. The app
+deletes local recordings only after the server confirms completion; it no
+longer falls back to one segment and deletes the rest if concatenation fails.
+
+For a recording missing from the website after a forced close, check the Mac:
+
+1. Sign in to Recorder with the same tutor account and check the log.
+2. In Finder, choose **Go → Go to Folder** and enter
+   `~/Library/Application Support/com.yanlearn.recorder/recordings`.
+3. Keep the class folders, `.mp4` files, `meta.json`, and `pending.json` intact.
+   Copy the affected class folder somewhere safe before trying manual recovery.
+   The presence of video files determines whether local recovery is possible;
+   the fix cannot restore files an older version already deleted.
+
+The server accepts automatic recovery uploads within seven days of class end.
+No database migration is needed. These client fixes require Recorder v0.5.2;
+publishing website code alone cannot fix an installed 0.5.1 app.
+Release CI runs the native regression tests on both Windows and macOS before
+building the installers.
+
 ## Quality profile (decision)
 
 Chosen for legible text at the lowest CPU cost on low‑end laptops that are also

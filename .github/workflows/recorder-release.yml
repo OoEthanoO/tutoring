@@ -139,6 +139,9 @@ jobs:
       - name: Generate app icons
         run: npm run icons
 
+      - name: Test native capture shutdown and upload recovery
+        run: cargo test --manifest-path src-tauri/Cargo.toml --lib --release --target ${{ matrix.target }}
+
       - name: Build and upload to draft release
         uses: tauri-apps/tauri-action@v0
         env:

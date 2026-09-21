@@ -5,6 +5,7 @@
 //! the always-on-top status overlay, the global pause hotkey, the tray icon,
 //! the quit lock, file storage, and the streaming upload.
 
+mod atomic_file;
 mod capture;
 mod overlay;
 mod sysaudio;
@@ -71,7 +72,7 @@ fn load_settings(app: AppHandle) -> Result<serde_json::Value, String> {
 fn save_settings(app: AppHandle, settings: serde_json::Value) -> Result<(), String> {
     let path = data_dir(&app)?.join("settings.json");
     let text = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
-    std::fs::write(&path, text).map_err(|e| e.to_string())
+    atomic_file::write(&path, text.as_bytes()).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -95,7 +96,8 @@ fn list_dir(path: String) -> Result<Vec<DirEntryInfo>, String> {
     let mut out = Vec::new();
     let entries = match std::fs::read_dir(&path) {
         Ok(entries) => entries,
-        Err(_) => return Ok(out),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(out),
+        Err(err) => return Err(format!("Could not list {path}: {err}")),
     };
     for entry in entries.flatten() {
         let Ok(meta) = entry.metadata() else { continue };
@@ -126,7 +128,7 @@ fn read_text_file(path: String) -> Result<Option<String>, String> {
 
 #[tauri::command]
 fn write_text_file(path: String, contents: String) -> Result<(), String> {
-    std::fs::write(&path, contents).map_err(|e| e.to_string())
+    atomic_file::write(Path::new(&path), contents.as_bytes()).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

@@ -799,32 +799,42 @@ pub struct CaptureStopped {
 }
 
 #[tauri::command]
-pub fn stop_capture(app: AppHandle) -> Result<CaptureStopped, String> {
+pub async fn stop_capture(app: AppHandle) -> Result<CaptureStopped, String> {
+    // ffmpeg shutdown and joining the audio worker must never block Cocoa's
+    // main thread (or the Windows WebView message loop).
+    tauri::async_runtime::spawn_blocking(move || stop_capture_blocking(app))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+fn stop_capture_blocking(app: AppHandle) -> Result<CaptureStopped, String> {
     let state = app.state::<AppState>();
     let session = state
         .capture
         .lock()
         .map_err(|_| "capture state is poisoned")?
         .take();
+    let feeder = state.system_audio.lock()
+        .map_err(|_| "system audio state is poisoned")?.take();
     let mut result = CaptureStopped {
         seconds: 0.0,
         size_bytes: 0,
         output_path: String::new(),
     };
+    let mut stop_result = Ok(());
     if let Some(mut session) = session {
         result.seconds = session.started_at.elapsed().as_secs_f64();
-        session.stop()?;
+        stop_result = session.stop();
         result.output_path = session.output_path.to_string_lossy().to_string();
         result.size_bytes = std::fs::metadata(&session.output_path)
             .map(|meta| meta.len())
             .unwrap_or(0);
     }
     // ffmpeg is gone; now the feeder may stop too.
-    if let Ok(mut guard) = state.system_audio.lock() {
-        if let Some(mut feeder) = guard.take() {
-            feeder.stop();
-        }
+    if let Some(mut feeder) = feeder {
+        feeder.stop();
     }
+    stop_result?;
     Ok(result)
 }
 

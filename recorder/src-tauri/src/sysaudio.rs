@@ -48,6 +48,9 @@ impl SystemAudioFeeder {
             };
             let _ = stream.set_nonblocking(false);
             let _ = stream.set_nodelay(true);
+            // A stopped/unresponsive ffmpeg must not leave the feeder stuck in
+            // write_all, preventing its stop flag from being checked.
+            let _ = stream.set_write_timeout(Some(Duration::from_secs(1)));
             if let Err(err) = feed(output_device_id, stream, stop_flag) {
                 eprintln!("system audio feeder stopped: {err}");
             }
@@ -121,7 +124,8 @@ impl RealtimePacer {
         // Only pad once we are more than 50 ms behind; real packets close smaller gaps.
         let threshold = SAMPLE_RATE * BYTES_PER_FRAME / 20;
         if expected > self.written + threshold {
-            let missing = ((expected - self.written) / BYTES_PER_FRAME) * BYTES_PER_FRAME;
+            let missing = (((expected - self.written) / BYTES_PER_FRAME) * BYTES_PER_FRAME)
+                .min(SAMPLE_RATE * BYTES_PER_FRAME / 4);
             let zeros = vec![0u8; missing as usize];
             stream.write_all(&zeros)?;
             self.written += missing;
@@ -228,44 +232,73 @@ pub fn list_output_devices() -> Result<Vec<AudioDevice>, String> {
 #[cfg(target_os = "macos")]
 fn feed(
     _output_device_id: Option<String>,
-    mut stream: TcpStream,
+    stream: TcpStream,
     stop: Arc<AtomicBool>,
 ) -> Result<(), String> {
-    use std::io::Read;
     use std::process::Stdio;
 
     let helper = crate::capture::sidecar_path("sysaudio")?;
-    let mut child = crate::capture::command(&helper)
+    let child = crate::capture::command(&helper)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()
         .map_err(|e| format!("Failed to start the system audio helper: {e}"))?;
+    feed_helper(child, stream, stop)
+}
+
+#[cfg(any(target_os = "macos", test))]
+fn feed_helper(
+    mut child: std::process::Child,
+    mut stream: TcpStream,
+    stop: Arc<AtomicBool>,
+) -> Result<(), String> {
+    use std::io::Read;
+    use std::sync::mpsc::{sync_channel, RecvTimeoutError};
+
     let mut stdout = child
         .stdout
         .take()
         .ok_or("system audio helper has no stdout")?;
-    let mut buffer = vec![0u8; 16 * 1024];
+    // ScreenCaptureKit may produce no audio at all once a call ends. A blocking
+    // stdout.read on this worker would never see stop=true. Keep that read on
+    // its own thread, with a bounded queue and a cancellable receive here.
+    let (sender, receiver) = sync_channel(8);
+    let reader = std::thread::spawn(move || {
+        let mut buffer = vec![0u8; 16 * 1024];
+        loop {
+            let packet = match stdout.read(&mut buffer) {
+                Ok(0) => break,
+                Ok(count) => Ok(buffer[..count].to_vec()),
+                Err(err) if err.kind() == ErrorKind::Interrupted => continue,
+                Err(err) => Err(err.to_string()),
+            };
+            let failed = packet.is_err();
+            if sender.send(packet).is_err() || failed { break; }
+        }
+    });
     let mut pacer = RealtimePacer::new();
     let result = loop {
         if stop.load(Ordering::SeqCst) {
             break Ok(());
         }
-        match stdout.read(&mut buffer) {
-            Ok(0) => break Err("the system audio helper exited".to_string()),
-            Ok(count) => {
-                if let Err(err) = stream.write_all(&buffer[..count]) {
+        match receiver.recv_timeout(Duration::from_millis(50)) {
+            Ok(Ok(bytes)) => {
+                if let Err(err) = stream.write_all(&bytes) {
                     break Err(err.to_string());
                 }
-                pacer.account(count);
-                if let Err(err) = pacer.pad_silence(&mut stream) {
-                    break Err(err.to_string());
-                }
+                pacer.account(bytes.len());
             }
-            Err(err) if err.kind() == ErrorKind::Interrupted => continue,
-            Err(err) => break Err(err.to_string()),
+            Ok(Err(err)) => break Err(err),
+            Err(RecvTimeoutError::Disconnected) => break Err("the system audio helper exited".into()),
+            Err(RecvTimeoutError::Timeout) => {}
+        }
+        if let Err(err) = pacer.pad_silence(&mut stream) {
+            break Err(err.to_string());
         }
     };
+    // Release a reader blocked on the bounded queue before closing the child.
+    drop(receiver);
     // Closing stdin tells the helper to exit; kill it if it does not.
     drop(child.stdin.take());
     let deadline = Instant::now() + Duration::from_secs(2);
@@ -277,6 +310,7 @@ fn feed(
     }
     let _ = child.kill();
     let _ = child.wait();
+    let _ = reader.join();
     result
 }
 
@@ -287,4 +321,48 @@ fn feed(
     _stop: Arc<AtomicBool>,
 ) -> Result<(), String> {
     Err("System audio capture is not supported on this platform.".into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Read;
+    use std::process::Stdio;
+
+    // Run in a child process: emulate ScreenCaptureKit keeping stdout open
+    // but producing no audio after the call ends.
+    #[test]
+    #[ignore = "subprocess fixture"]
+    fn silent_helper() {
+        let mut input = Vec::new();
+        std::io::stdin().read_to_end(&mut input).unwrap();
+    }
+
+    #[test]
+    fn silent_audio_helper_can_be_stopped_without_waiting_for_more_audio() {
+        let child = crate::capture::command(&std::env::current_exe().unwrap())
+            .args(["--exact", "sysaudio::tests::silent_helper", "--ignored", "--nocapture"])
+            .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null())
+            .spawn().unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let stream = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+        stream.set_write_timeout(Some(Duration::from_secs(1))).unwrap();
+        let (mut audio, _) = listener.accept().unwrap();
+        let drain = std::thread::spawn(move || {
+            let mut bytes = Vec::new();
+            audio.read_to_end(&mut bytes).unwrap();
+            bytes.len()
+        });
+        let stop = Arc::new(AtomicBool::new(false));
+        let worker_stop = stop.clone();
+        let (done, result) = std::sync::mpsc::channel();
+        let worker = std::thread::spawn(move || {
+            done.send(feed_helper(child, stream, worker_stop)).unwrap();
+        });
+        std::thread::sleep(Duration::from_millis(200));
+        stop.store(true, Ordering::SeqCst);
+        assert!(result.recv_timeout(Duration::from_secs(4)).expect("audio shutdown hung").is_ok());
+        worker.join().unwrap();
+        assert!(drain.join().unwrap() > 0, "silent input should still provide audio frames");
+    }
 }

@@ -3,10 +3,11 @@
 (function (root) {
   "use strict";
 
-  const finishUpload = async (upload, { api, uploadFile, persist }) => {
+  const finishUpload = async (upload, { api, uploadFile, persist, onStage = () => {} }) => {
     if (upload.completed) return { uploaded: true };
     if (!upload.transferComplete) {
       if (!upload.uploadUrl || !upload.recordingId) {
+        onStage("requesting");
         const created = await api("/api/recorder/recordings", {
           method: "POST",
           body: {
@@ -28,19 +29,31 @@
         await persist(upload);
       }
       if (!upload.transferComplete) {
-        const result = await uploadFile({
-          path: upload.outputPath,
-          url: upload.uploadUrl,
-          contentType: "video/mp4",
-        });
+        onStage("uploading");
+        let result;
+        try {
+          result = await uploadFile({
+            path: upload.outputPath,
+            url: upload.uploadUrl,
+            contentType: "video/mp4",
+          });
+        } catch (error) {
+          // The old signed URL may expire while offline/asleep. Renew it on
+          // retry, always using the same recording identity and local file.
+          upload.uploadUrl = null;
+          await persist(upload);
+          throw error;
+        }
         if (result.status < 200 || result.status >= 300) {
           upload.uploadUrl = null; // Renew the URL, retaining the capture identity.
+          await persist(upload);
           throw new Error(`upload returned ${result.status} ${result.body}`);
         }
         upload.transferComplete = true;
         await persist(upload);
       }
     }
+    onStage("confirming");
     const completed = await api(`/api/recorder/recordings/${upload.recordingId}/complete`, {
       method: "POST",
       body: { sizeBytes: upload.sizeBytes, durationSeconds: upload.durationSeconds },
@@ -50,6 +63,7 @@
         // The server could not find the uploaded object; allow a fresh PUT.
         upload.transferComplete = false;
         upload.uploadUrl = null;
+        await persist(upload);
       }
       throw new Error(completed.data?.error || `HTTP ${completed.status}`);
     }
