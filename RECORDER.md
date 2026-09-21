@@ -4,12 +4,18 @@ Desktop app (macOS + Windows) that records tutors' classes and uploads them to
 YanLearn, plus the website side that stores, protects, serves, and expires those
 recordings. **Mandatory for every class from 2026‑09‑09.**
 
-> Status (2026-09-13): [v0.5.1](https://github.com/OoEthanoO/tutoring/releases/tag/recorder-v0.5.1)
+> Status (2026-09-21): [v0.5.2](https://github.com/OoEthanoO/tutoring/releases/tag/recorder-v0.5.2)
 > is published for Windows x64 and Apple silicon Macs. Both native builds
 > passed, and the Mac app, recording helpers, updater archive and DMG passed
-> signing/notarization checks. The public updater manifest serves 0.5.1 using
+> signing/notarization checks. The public updater manifest serves 0.5.2 using
 > the existing trust key. Interactive capture, hotkey and installed-app update
 > checks on actual devices remain separate from CI verification.
+
+Release run [35656423465](https://github.com/OoEthanoO/tutoring/actions/runs/35656423465)
+built commit `b7901bf60ff43060b8d1d4751fde2e1c4eb89d07`. The native shutdown and
+upload regression tests passed on both platforms. YanLearn's download page and
+both installer redirects serve v0.5.2; public updater assets are available and
+their signature files match the manifest.
 
 ## What the tutor experiences
 

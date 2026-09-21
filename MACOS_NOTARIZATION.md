@@ -1,9 +1,9 @@
 # YanLearn Recorder: macOS signing and notarization
 
 Developer ID signing and notarization are included in the published
-[v0.5.1 release](https://github.com/OoEthanoO/tutoring/releases/tag/recorder-v0.5.1).
+[v0.5.2 release](https://github.com/OoEthanoO/tutoring/releases/tag/recorder-v0.5.2).
 Both platform builds, Apple's app and DMG checks, and publication passed in the
-[release workflow](https://github.com/OoEthanoO/tutoring/actions/runs/34796311420).
+[release workflow](https://github.com/OoEthanoO/tutoring/actions/runs/35656423465).
 Historical releases do not become notarized retroactively.
 
 ## Setup status (September 13, 2026)
@@ -122,6 +122,20 @@ on each Mac; notarization does not grant capture permissions automatically.
 
 ## Validation and publication
 
+The v0.5.2 release passed on September 21, 2026, in run `35656423465`, built
+from commit `b7901bf60ff43060b8d1d4751fde2e1c4eb89d07` (`recorder-v0.5.2`):
+
+- Apple app submission: `8418b87c-c388-4ff0-8734-85c10a7cbb03`, **Accepted**.
+- Apple DMG submission: `3217fab2-5b51-4ed4-95bd-83dffb965836`, **Accepted**.
+- App, helpers, updater archive and DMG passed signature, entitlement,
+  stapled-ticket and Gatekeeper checks.
+- Native shutdown and upload regression tests passed on both macOS and Windows.
+- Both platform installers and updater downloads are available publicly;
+  updater signature files match the manifest, and YanLearn's download page and
+  platform links serve v0.5.2.
+
+### Initial v0.5.1 verification
+
 Seven local tests cover credential rejection, artifact metadata checks, updater
 completeness, and the draft/publish workflow gate. The macOS and Windows jobs
 both passed in run `34796311420`, built from commit
@@ -135,7 +149,7 @@ both passed in run `34796311420`, built from commit
 - Windows installers and signed updater artifacts were built successfully.
 - Both platform entries in the public `latest.json` point to available release
   assets and match their uploaded signature files.
-- The publish job succeeded; the public automatic-update endpoint serves 0.5.1.
+- The publish job succeeded; the public automatic-update endpoint served 0.5.1.
 
 The earlier manual validation passed in run `34777686521`; its development
 artifacts remain in draft and are not used by automatic updates.
