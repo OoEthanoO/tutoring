@@ -7,7 +7,7 @@ const scripts = [...html.matchAll(/<script src="([^"]+)"/g)]
   .map(([, path]) => readFileSync(`recorder/src/${path}`, "utf8"));
 const $ = id => document.getElementById(id);
 const rootDir = "recordings";
-let invoke, files, directories, sizes, active, transfer, concat, serverCreate;
+let invoke, files, directories, sizes, active, transfer, concat, serverCreate, listeners;
 const calls = name => invoke.mock.calls.filter(([command]) => command === name);
 const tickCalls = () => fetch.mock.calls.filter(([url]) => url.endsWith("/tick"));
 const jsonResponse = (data, status = 200) => ({ ok: status >= 200 && status < 300, status, json: async () => data });
@@ -78,7 +78,8 @@ beforeEach(() => {
       default: return undefined;
     }
   });
-  window.__TAURI__ = { core: { invoke }, event: { listen: vi.fn(async () => {}) } };
+  listeners = new Map();
+  window.__TAURI__ = { core: { invoke }, event: { listen: vi.fn(async (name, handler) => { listeners.set(name, handler); }) } };
 });
 
 afterEach(() => {
@@ -160,6 +161,43 @@ describe("Recorder restart and upload lifecycle", () => {
     expect(transfer).not.toHaveBeenCalled();
     expect(calls("remove_path")).toHaveLength(0);
     expect(files.has("recordings/class-one/meta.json")).toBe(true);
+    $("refresh-button").click(); await vi.advanceTimersByTimeAsync(5);
+    expect(transfer).toHaveBeenCalledOnce();
+  });
+
+  it("shows preparation progress and elapsed time on the overlay during restart recovery", async () => {
+    addRecording();
+    let finish;
+    concat.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+    await boot();
+    expect($("state-text").textContent).toBe("Preparing recording for upload");
+    expect(calls("set_overlay").at(-1)[1].state.title).toBe("Preparing recording for upload");
+    await vi.advanceTimersByTimeAsync(65000);
+    listeners.get("preparation-progress")({ payload: { outputPath: "recordings/class-one/recording.mp4", sizeBytes: 5242880, idleSeconds: 20 } });
+    await vi.advanceTimersByTimeAsync(1);
+    expect($("presence-text").textContent).toContain("5.0 MB prepared · 1:05 elapsed");
+    expect(calls("set_overlay").at(-1)[1].state.detail).toContain("Waiting for the video processor");
+    listeners.get("preparation-progress")({ payload: { outputPath: "recordings/other-class/recording.mp4", sizeBytes: 0 } });
+    expect($("presence-text").textContent).toContain("5.0 MB prepared");
+    expect(transfer).not.toHaveBeenCalled();
+    finish(12345); await vi.advanceTimersByTimeAsync(5);
+    expect(transfer).toHaveBeenCalledOnce();
+  });
+
+  it("releases a stalled preparation attempt, keeps its files, and shows the retry on the overlay", async () => {
+    active = { classId: "live-class", courseTitle: "Science", classTitle: "Class 7", phase: "live", startsAtMs: Date.now() - 3600000, endsAtMs: Date.now() + 1000, tutorInLiveChannel: true };
+    await boot();
+    let rejectPreparation;
+    concat.mockImplementationOnce(() => new Promise((_, reject) => { rejectPreparation = reject; }));
+    $("done-yes").click(); await vi.advanceTimersByTimeAsync(5);
+    expect(calls("set_overlay").at(-1)[1].state.title).toBe("Preparing recording for upload");
+    await vi.advanceTimersByTimeAsync(120000);
+    rejectPreparation(new Error("Recording preparation stalled with no progress for 120 seconds. Original recording segments have been kept."));
+    await vi.advanceTimersByTimeAsync(600);
+    expect(calls("remove_path")).toHaveLength(0);
+    expect(transfer).not.toHaveBeenCalled();
+    expect($("log").textContent).toContain("stalled with no progress");
+    expect(calls("set_overlay").at(-1)[1].state.title).toBe("Recording saved — retrying preparation");
     $("refresh-button").click(); await vi.advanceTimersByTimeAsync(5);
     expect(transfer).toHaveBeenCalledOnce();
   });

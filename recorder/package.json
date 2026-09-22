@@ -1,6 +1,6 @@
 {
   "name": "yanlearn-recorder",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "private": true,
   "description": "YanLearn Recorder — records tutors' classes and uploads them to YanLearn.",
   "scripts": {

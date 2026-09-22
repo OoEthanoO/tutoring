@@ -20,7 +20,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 
 use crate::{sysaudio, AppState};
 
@@ -893,14 +893,23 @@ pub fn capture_status(app: AppHandle) -> Result<CaptureStatus, String> {
 }
 
 #[tauri::command]
-pub async fn concat_segments(segments: Vec<String>, output: String) -> Result<u64, String> {
-    tauri::async_runtime::spawn_blocking(move || concat_blocking(segments, output))
+pub async fn concat_segments(app: AppHandle, segments: Vec<String>, output: String) -> Result<u64, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let progress_output = output.clone();
+        concat_blocking(segments, output, |progress| {
+            let _ = app.emit("preparation-progress", serde_json::json!({
+                "outputPath": progress_output, "elapsedSeconds": progress.elapsed_seconds,
+                "idleSeconds": progress.idle_seconds, "processedSeconds": progress.processed_seconds,
+                "sizeBytes": progress.size_bytes,
+            }));
+        })
+    })
         .await
         .map_err(|e| e.to_string())?
 }
 
 /// Stitch fragmented-MP4 segments into one normal MP4 (stream copy, faststart).
-fn concat_blocking(segments: Vec<String>, output: String) -> Result<u64, String> {
+fn concat_blocking(segments: Vec<String>, output: String, report: impl FnMut(crate::preparation::Progress)) -> Result<u64, String> {
     if segments.is_empty() {
         return Err("There are no segments to combine.".into());
     }
@@ -913,30 +922,76 @@ fn concat_blocking(segments: Vec<String>, output: String) -> Result<u64, String>
     }
     std::fs::write(&list_path, list).map_err(|e| e.to_string())?;
     let list_arg = list_path.to_string_lossy().to_string();
-    let output_result = command(&ffmpeg)
+    // Keep an existing prepared video intact until its replacement succeeds.
+    let preparing_path = PathBuf::from(&output).with_extension("preparing.mp4");
+    let preparing_arg = preparing_path.to_string_lossy().to_string();
+    let child = command(&ffmpeg)
         .args([
-            "-y", "-hide_banner", "-loglevel", "error",
+            "-y", "-nostdin", "-hide_banner", "-loglevel", "error", "-xerror",
+            "-nostats", "-stats_period", "1", "-progress", "pipe:1",
             "-f", "concat", "-safe", "0",
             "-i", &list_arg,
             "-c", "copy",
             "-movflags", "+faststart",
-            &output,
+            &preparing_arg,
         ])
         .stdin(Stdio::null())
-        .stdout(Stdio::null())
+        .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .output();
-    let _ = std::fs::remove_file(&list_path);
-    let output_result = output_result.map_err(|e| format!("Failed to run ffmpeg: {e}"))?;
-    if !output_result.status.success() {
-        return Err(format!(
-            "ffmpeg could not combine the segments: {}",
-            String::from_utf8_lossy(&output_result.stderr).trim()
+        .spawn();
+    let result = child.map_err(|e| format!("Failed to run ffmpeg: {e}"))
+        .and_then(|mut child| crate::preparation::wait(
+            &mut child, &preparing_path, Duration::from_secs(120), report,
         ));
+    let _ = std::fs::remove_file(&list_path);
+    result?;
+    let size = std::fs::metadata(&preparing_path).map_err(|e| e.to_string())?.len();
+    if size == 0 { return Err("Preparing the recording produced an empty file. Original segments have been kept.".into()); }
+    std::fs::rename(&preparing_path, &output).map_err(|e| format!("Could not save the prepared recording: {e}"))?;
+    Ok(size)
+}
+
+#[cfg(test)]
+mod preparation_tests {
+    use super::*;
+
+    #[test]
+    fn combines_all_frames_and_preserves_originals_when_a_later_segment_is_invalid() {
+        let ffmpeg = sidecar_path("ffmpeg").unwrap();
+        let dir = std::env::temp_dir().join(format!("recorder-concat-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let first = dir.join("first.mp4");
+        let second = dir.join("second.mp4");
+        let output = dir.join("recording.mp4");
+        let generated = command(&ffmpeg).args([
+            "-y", "-nostdin", "-hide_banner", "-loglevel", "error",
+            "-f", "lavfi", "-i", "color=c=black:s=64x64:r=10", "-t", "0.5",
+            "-an", "-c:v", "libx264", "-g", "1",
+            "-movflags", "+frag_keyframe+empty_moov+default_base_moof",
+        ]).arg(&first).output().unwrap();
+        assert!(generated.status.success(), "{}", String::from_utf8_lossy(&generated.stderr));
+        std::fs::copy(&first, &second).unwrap();
+        let segments = vec![first.to_string_lossy().to_string(), second.to_string_lossy().to_string()];
+        concat_blocking(segments.clone(), output.to_string_lossy().to_string(), |_| {}).unwrap();
+        let decoded = command(&ffmpeg).args(["-v", "error", "-i"]).arg(&output)
+            .args(["-map", "0:v:0", "-c", "copy", "-f", "framecrc", "-"]).output().unwrap();
+        assert!(decoded.status.success());
+        let frame_count = String::from_utf8_lossy(&decoded.stdout).lines()
+            .filter(|line| !line.is_empty() && !line.starts_with('#')).count();
+        assert_eq!(frame_count, 10, "both five-frame segments must be included");
+        let prepared = std::fs::read(&output).unwrap();
+        let original = std::fs::read(&first).unwrap();
+        std::fs::write(&second, b"invalid segment").unwrap();
+        let result = concat_blocking(segments, output.to_string_lossy().to_string(), |_| {});
+        assert!(result.is_err(), "a broken later segment must not silently publish only the first one");
+        assert_eq!(std::fs::read(&first).unwrap(), original);
+        assert_eq!(std::fs::read(&second).unwrap(), b"invalid segment");
+        assert_eq!(std::fs::read(&output).unwrap(), prepared);
+        for file in std::fs::read_dir(&dir).unwrap() {
+            std::fs::remove_file(file.unwrap().path()).unwrap();
+        }
+        std::fs::remove_dir(dir).unwrap();
     }
-    std::fs::metadata(&output)
-        .map(|meta| meta.len())
-        .map_err(|e| e.to_string())
 }
 
 /// Pull the last frame of a finished segment out as a JPEG, for the frozen

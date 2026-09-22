@@ -107,6 +107,43 @@ publishing website code alone cannot fix an installed 0.5.1 app.
 Release CI runs the native regression tests on both Windows and macOS before
 building the installers.
 
+## Preparation stall protection (v0.5.3)
+
+The local preparation step combines encoded segments using stream copy, then
+relocates the MP4 metadata for playback. It does not upload or re-encode the
+whole lesson. There is no universal completion time: file size, segment count,
+disk speed and file errors matter. Time since the scheduled class end also
+includes any wait for the tutor to confirm the lesson is done or the live voice
+channel to be removed.
+
+Version 0.5.3 replaces the generic "Finishing" overlay with the
+actual stopping/preparing stage. Preparation shows elapsed time and bytes
+written in both the main window and overlay. It stops its ffmpeg process after
+120 seconds without media progress or output-file changes, keeping slow but
+active work running. Original segments stay on disk, and a failed attempt can
+retry only after the old process has exited. An existing prepared video is
+replaced only after the new one succeeds; a corrupt later segment fails the
+whole attempt rather than silently uploading just its beginning.
+
+Windows troubleshooting for an older app stuck finishing:
+
+1. Copy the Recorder log and back up
+   `%APPDATA%\com.yanlearn.recorder\recordings` before restarting.
+2. Normal Close hides the app; the Quit lock applies during finishing/uploads.
+   If it is stuck, Task Manager → YanLearn Recorder → Go to details → End
+   process tree stops the app and its capture helper. If Windows reports access
+   denied, reopen Task Manager as administrator. A computer restart also ends
+   the processes.
+3. Install the latest published Recorder from `/recorder` without uninstalling
+   or deleting its data, then sign in with the same tutor account. Check the log
+   for recovery and the final upload confirmation. Version 0.5.2 has the earlier
+   recovery fixes; the preparation timeout described above requires v0.5.3.
+
+These changes passed 71 Recorder frontend tests and nine native tests on
+Windows, including real ffmpeg concatenation, a corrupt later segment,
+progressing/stalled subprocesses, and output-file writes during finalization.
+macOS native validation remains part of the next release build.
+
 ## Quality profile (decision)
 
 Chosen for legible text at the lowest CPU cost on low‑end laptops that are also

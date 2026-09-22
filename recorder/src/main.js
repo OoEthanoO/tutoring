@@ -724,6 +724,20 @@
 
   // --- Finalize + upload ---------------------------------------------------------
 
+  const preparationStatus = () => {
+    const preparation = state.preparingRecording;
+    const progress = preparation?.progress;
+    const elapsed = preparation ? formatElapsed(preparation.startedAtMs) : "0:00";
+    const size = ((progress?.sizeBytes || 0) / (1024 * 1024)).toFixed(1);
+    return {
+      title: "Preparing recording for upload",
+      detail: `${size} MB prepared · ${elapsed} elapsed. ` +
+        (progress?.idleSeconds >= 15
+          ? "Waiting for the video processor; a stalled attempt will stop and keep your files."
+          : "Upload has not started yet. Your original recording files are kept."),
+    };
+  };
+
   const finalizeSegments = async ({ classId, dir, segments, courseTitle }, reason) => {
     const usable = segments.filter((segment) => segment.sizeBytes > 0);
     if (usable.length === 0) {
@@ -733,14 +747,17 @@
       return;
     }
     const outputPath = `${dir}/recording.mp4`;
-    state.preparingRecording = courseTitle || classId;
+    state.preparingRecording = { outputPath, startedAtMs: Date.now(), progress: null };
+    log(`Combining ${usable.length} recording segment${usable.length === 1 ? "" : "s"}. Upload starts after preparation finishes.`);
     render();
+    await updateOverlay();
     let sizeBytes;
     try {
       sizeBytes = await invoke("concat_segments", { segments: usable.map((segment) => segment.path), output: outputPath });
     } finally {
       state.preparingRecording = null;
       render();
+      await updateOverlay();
     }
     if (!sizeBytes) throw new Error("Preparing the recording produced an empty file. All segments have been kept.");
     const durationSeconds = Math.round(
@@ -1376,6 +1393,9 @@
     // Where the tutor last dragged the pill to.
     const corner = state.settings.overlayCorner || "bottom-right";
     const uploading = state.uploads.find((upload) => upload.uploading);
+    if (state.preparingRecording && (!session || session.finalizing)) {
+      return { mode: "uploading", ...preparationStatus(), blocking: false, displayIndex, corner };
+    }
     if (!session && uploading) {
       const progress = state.uploadProgress;
       const percent = progress && progress.total > 0 ? Math.round((progress.sent / progress.total) * 100) : 0;
@@ -1391,7 +1411,10 @@
         : { mode: "hidden" };
     }
     if (session.finalizing) {
-      return { mode: "uploading", title: "Finishing the recording…", detail: "", blocking: false, displayIndex, corner };
+      return { mode: "uploading", title: "Stopping capture and saving recording", detail: "Your recording files stay on this computer until upload is confirmed.", blocking: false, displayIndex, corner };
+    }
+    if (session.finalizeReason) {
+      return { mode: "attention", title: "Recording saved — retrying preparation", detail: "Open Recorder for the error details. Your original recording files are kept.", blocking: false, displayIndex, corner };
     }
     if (session.phase === "pre_arm" || session.phase === "armed") {
       if (state.deviceChoiceNeeded) {
@@ -1704,18 +1727,20 @@
       $("class-detail").textContent = next
         ? `${new Date(next.startsAtMs).toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}. Keep the recorder open; it arms itself 5 minutes before.`
         : "The recorder arms itself 15 minutes before each of your classes. Keep it open.";
-      dot.className = `dot${uploading ? " uploading" : ""}`;
-      $("state-text").textContent = uploading
+      dot.className = `dot${uploading || state.preparingRecording ? " uploading" : ""}`;
+      $("state-text").textContent = state.preparingRecording
+        ? preparationStatus().title
+        : uploading
         ? (uploading.stage === "confirming" ? "Verifying uploaded recording" : uploading.stage === "requesting" ? "Connecting for upload" : "Uploading recording")
-        : state.preparingRecording
-          ? "Preparing recording for upload"
         : state.recoveryErrors.length || state.uploads.some((upload) => upload.blockedError)
           ? "Recording saved — upload needs attention"
         : state.uploads.length > 0
           ? "Recording waiting to upload"
           : "Idle";
       timer.textContent = "";
-      $("presence-text").textContent = state.recoveryErrors.length || state.uploads.some((upload) => upload.blockedError)
+      $("presence-text").textContent = state.preparingRecording
+        ? preparationStatus().detail
+        : state.recoveryErrors.length || state.uploads.some((upload) => upload.blockedError)
         ? "Your recording files are kept on this computer. Check the log for details; click Refresh to retry."
         : uploading && state.uploadProgress?.total > 0
           ? `${Math.round(state.uploadProgress.sent / state.uploadProgress.total * 100)}% sent. Keep Recorder open until the server confirms the upload.`
@@ -1730,7 +1755,7 @@
     let text = "";
     let cls = "";
     if (session.finalizing) {
-      text = state.preparingRecording ? "Preparing recording for upload" : "Stopping capture and saving recording";
+      text = state.preparingRecording ? preparationStatus().title : "Stopping capture and saving recording";
       cls = "uploading";
       timer.textContent = "";
     } else if (session.finalizeReason) {
@@ -1777,7 +1802,9 @@
     $("state-text").textContent = text;
     dot.className = `dot ${cls}`;
     $("presence-text").textContent =
-      session.phase === "live" || session.phase === "after_end"
+      state.preparingRecording ? preparationStatus().detail
+      : session.finalizing || session.finalizeReason ? "Your recording files stay on this computer until upload is confirmed."
+      : session.phase === "live" || session.phase === "after_end"
         ? session.inCall
           ? "You are in the class voice channel."
           : session.presenceReason || "You are not in the class voice channel."
@@ -2091,6 +2118,13 @@
     });
     listen("upload-progress", (event) => {
       state.uploadProgress = event.payload;
+      render();
+      updateOverlay();
+    });
+    listen("preparation-progress", (event) => {
+      const preparation = state.preparingRecording;
+      if (!preparation || event.payload?.outputPath !== preparation.outputPath) return;
+      preparation.progress = event.payload;
       render();
       updateOverlay();
     });

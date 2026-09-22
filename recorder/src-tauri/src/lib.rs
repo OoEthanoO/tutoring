@@ -8,6 +8,7 @@
 mod atomic_file;
 mod capture;
 mod overlay;
+mod preparation;
 mod sysaudio;
 mod update;
 mod upload;
