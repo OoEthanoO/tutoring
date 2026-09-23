@@ -93,7 +93,9 @@ const sendDiscordMessage = async (channelId: string, content: string) => {
           Authorization: `Bot ${discordBotToken}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ content, flags: 4096 }),
+        // Commit messages are free text: they should never ping anyone,
+        // least of all @everyone.
+        body: JSON.stringify({ content, flags: 4096, allowed_mentions: { parse: [] } }),
       }
     );
     if (!response.ok) {

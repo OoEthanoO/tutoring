@@ -24,3 +24,21 @@ describe("Discord leadership protection", () => {
     expect(shadowDiscordPermissions("3072")).toBe("3072");
   });
 });
+
+describe("Discord leadership protection and @everyone", () => {
+  const mentionEveryone = BigInt(1) << BigInt(17);
+
+  it("does not let a shadow ping everyone even when its leader can", () => {
+    const leader = (BigInt(3072) | mentionEveryone).toString();
+    expect(BigInt(shadowDiscordPermissions(leader)) & mentionEveryone).toBe(BigInt(0));
+    expect(BigInt(shadowDiscordPermissions("8")) & mentionEveryone).toBe(BigInt(0));
+  });
+
+  it("does not copy the permission through a channel overwrite either", () => {
+    const result = mirrorLeadershipAccess(
+      [{ id: "ceo", type: 0, allow: (BigInt(3072) | mentionEveryone).toString(), deny: "0" }],
+      [{ leaderId: "ceo", shadowId: "ceo-shadow" }]
+    );
+    expect(result).toContainEqual({ id: "ceo-shadow", type: 0, allow: "3072", deny: "0" });
+  });
+});

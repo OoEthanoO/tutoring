@@ -43,7 +43,10 @@ bearer (see the `cron:reminders:*` npm scripts).
   Anything it does not manage is deleted, so removing a role or channel from
   this file is how you retire it. The supplementary Social Media / Science
   Tutor / Math Tutor / Nonprofit Team / Development Team roles and channels
-  were retired that way in September 2026 — do not re-add them.
+  were retired that way in September 2026 — do not re-add them. Only the
+  Founder, CEO and COO may ping @everyone/@here: each run strips "Mention
+  @everyone, @here, and All Roles" from every other role (shadows included),
+  and YanBot's own posts never parse @everyone (`src/lib/discordMentions.ts`).
 - `src/app/api/cron/class-reminders/route.ts` — cron tick (auth:
   `CRON_SECRET` bearer). Runs the Discord sync, sends email/Discord reminders,
   and creates/updates temporary live class voice channels under the "Live"

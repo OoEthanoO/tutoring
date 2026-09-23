@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { founderEmails, resolveUserRole } from "@/lib/roles";
 import { executiveStanding, teachesCourseIds } from "@/lib/executiveStanding";
 import { buildCourseConcludedDiscordMessage } from "@/lib/discordCourseMessages";
+import { planMentionEveryone, withoutEveryoneMentions } from "@/lib/discordMentions";
 import { preserveLiveVoiceChannel } from "@/lib/discordLiveChannels";
 import { fetchFundraisingRaisedAmount } from "@/lib/fundraising";
 import { classEndMs } from "@/lib/classTiming";
@@ -1150,7 +1151,7 @@ class DiscordApiClient {
     return this.request<void>({
       method: "POST",
       path: `/channels/${channelId}/messages`,
-      body: { content },
+      body: { content, allowed_mentions: withoutEveryoneMentions },
     });
   }
 
@@ -1712,6 +1713,49 @@ export const runDiscordSync = async ({
   // Junior Executive role had.
   const pendingRole = await ensureRole("Pending", false);
   const strikeRole = await ensureRole("Strike", false);
+
+  // Only the Founder, CEO and COO may ping @everyone and @here. Runs once the
+  // base roles exist; roles created later in this run take @everyone's
+  // permissions, which by then no longer include it.
+  {
+    const botMember = guildMembers.find((member) => member.user?.id === botUser.id);
+    const plan = planMentionEveryone({
+      roles: mutableRoles,
+      guildId: discordGuildId,
+      leaderRoleIds: new Set([founderRole.id, ceoRole.id, cooRole.id]),
+      botRoleIds: new Set(botMember?.roles ?? []),
+    });
+    for (const update of plan.updates) {
+      try {
+        await apiClient.updateGuildRole(discordGuildId, update.roleId, {
+          permissions: update.permissions,
+        });
+        const role = mutableRoles.find((item) => item.id === update.roleId);
+        if (role) {
+          role.permissions = update.permissions;
+        }
+      } catch (error) {
+        result.errors.push(
+          `Failed to update who can ping @everyone on "${update.name}": ${toErrorMessage(
+            error,
+            "Unknown update role error."
+          )}`
+        );
+      }
+    }
+    if (plan.everyoneRoleKept) {
+      result.errors.push(
+        "Everyone can still ping @everyone: YanBot's own role lacks \"Mention @everyone, @here, and All Roles\", " +
+          "and taking it off @everyone would stop YanBot pinging course roles, Executive and Pending. " +
+          "Give YanBot's role that permission in Server Settings -> Roles."
+      );
+    }
+    for (const name of plan.administratorRoleNames) {
+      result.errors.push(
+        `"${name}" has Administrator, so its members can ping @everyone regardless. Remove Administrator from it in Discord.`
+      );
+    }
+  }
 
   // Social Media, Science Tutor, Math Tutor, Nonprofit Team and Development
   // Team, and their text and voice channels, were removed in September 2026 --

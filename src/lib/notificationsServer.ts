@@ -4,6 +4,7 @@ import {
   type DiscordCourseChannel,
   type DiscordCourseRole,
 } from "./discordCourseMessages";
+import { withoutEveryoneMentions } from "./discordMentions";
 
 const resendApiKey = process.env.RESEND_API_KEY ?? "";
 const resendFrom = process.env.RESEND_FROM ?? "";
@@ -249,15 +250,18 @@ export const sendDiscordMessageByChannelName = async (
         },
         body: JSON.stringify({
           content: body,
-          ...(allowedRoleMentionIds?.length || allowedUserMentionIds?.length
-            ? {
-                allowed_mentions: {
+          // With no allowlist this used to fall back to Discord's default
+          // parsing, which pings @everyone if the text contains it — and some
+          // of that text is typed by tutors. Only the founder trio may ping
+          // everyone, and never through the bot (see discordMentions.ts).
+          allowed_mentions:
+            allowedRoleMentionIds?.length || allowedUserMentionIds?.length
+              ? {
                   parse: [],
                   roles: allowedRoleMentionIds ?? [],
                   users: allowedUserMentionIds ?? [],
-                },
-              }
-            : {}),
+                }
+              : withoutEveryoneMentions,
         }),
       }
     );

@@ -1,3 +1,5 @@
+import { mentionEveryonePermission } from "./discordMentions";
+
 type Overwrite = { id: string; type: 0 | 1; allow: string; deny: string };
 type Role = { id: string; name: string; position?: number; managed?: boolean };
 
@@ -8,11 +10,15 @@ const unsafeShadowPermissions = [3, 4, 5, 22, 23, 24, 28, 29]
   .reduce((mask, bit) => mask | (BigInt(1) << BigInt(bit)), BigInt(0));
 const knownPermissions = [...Array.from({ length: 47 }, (_, i) => i), 48, 49, 50, 51, 52]
   .reduce((mask, bit) => mask | (BigInt(1) << BigInt(bit)), BigInt(0));
+// Shadows sit at the Executive level, and only the Founder, CEO and COO may
+// ping @everyone (see discordMentions.ts) — so a shadow never copies that from
+// its leader either.
+const strippedFromShadows = unsafeShadowPermissions | mentionEveryonePermission;
 
 export const shadowDiscordPermissions = (permissions: string): string => {
   const source = BigInt(permissions);
   const expanded = source & BigInt(8) ? knownPermissions : source;
-  return (expanded & ~unsafeShadowPermissions).toString();
+  return (expanded & ~strippedFromShadows).toString();
 };
 
 export function mirrorLeadershipAccess(
@@ -22,7 +28,7 @@ export function mirrorLeadershipAccess(
   for (const { leaderId, shadowId } of pairs) {
     const source = overwrites.find((o) => o.type === 0 && o.id === leaderId);
     if (!source) continue;
-    const copy = { ...source, id: shadowId, allow: (BigInt(source.allow) & ~unsafeShadowPermissions).toString() };
+    const copy = { ...source, id: shadowId, allow: (BigInt(source.allow) & ~strippedFromShadows).toString() };
     const existing = result.findIndex((o) => o.type === 0 && o.id === shadowId);
     if (existing < 0) result.push(copy);
     else result[existing] = copy;
