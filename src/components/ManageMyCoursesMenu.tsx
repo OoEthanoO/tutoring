@@ -169,7 +169,9 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
   const [pendingTutorCourseId, setPendingTutorCourseId] = useState<string | null>(null);
   const [isManualEnrollOpen, setIsManualEnrollOpen] = useState(false);
   const [enrollCourseId, setEnrollCourseId] = useState<string | null>(null);
-  const [allStudents, setAllStudents] = useState<{ id: string; fullName: string; email: string }[]>([]);
+  const [allStudents, setAllStudents] = useState<
+    { id: string; fullName: string; email: string; emailVerified: boolean }[]
+  >([]);
   const [enrollUserId, setEnrollUserId] = useState("");
   const [isEnrolling, setIsEnrolling] = useState(false);
   const [enrollSearch, setEnrollSearch] = useState("");
@@ -297,22 +299,37 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
     }
 
     const loadTutors = async () => {
-      const response = await fetch("/api/admin/users");
+      // ?all=true: the default is verified accounts only, which silently hid a
+      // student who had signed up but not yet clicked the verification link —
+      // Manage accounts showed them, manual enrollment could not find them.
+      const response = await fetch("/api/admin/users?all=true");
       if (!response.ok) {
         return;
       }
 
       const data = (await response.json()) as {
-        users: { id: string; fullName: string; email: string; role: UserRole }[];
+        users: {
+          id: string;
+          fullName: string;
+          email: string;
+          role: UserRole;
+          emailVerified?: boolean;
+        }[];
       };
+      // Tutors stay verified-only, as before.
       const tutors = (data.users ?? [])
-        .filter((u) => isExecutive(u.role))
+        .filter((u) => isExecutive(u.role) && u.emailVerified !== false)
         .map((u) => ({ id: u.id, fullName: u.fullName, email: u.email }));
       setAvailableTutors(tutors);
 
       const students = (data.users ?? [])
         .filter((u) => u.role === "student")
-        .map((u) => ({ id: u.id, fullName: u.fullName, email: u.email }));
+        .map((u) => ({
+          id: u.id,
+          fullName: u.fullName,
+          email: u.email,
+          emailVerified: u.emailVerified !== false,
+        }));
       setAllStudents(students);
     };
 
@@ -1124,6 +1141,13 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
     return null;
   }
 
+  const enrollQuery = enrollSearch.trim().toLowerCase();
+  const matchingEnrollStudents = allStudents.filter(
+    (student) =>
+      student.fullName.toLowerCase().includes(enrollQuery) ||
+      student.email.toLowerCase().includes(enrollQuery)
+  );
+
   return (
     <section className="space-y-6 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6">
       <header className="space-y-1">
@@ -1871,12 +1895,7 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
               />
 
               <div className="max-h-48 overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--surface-muted)]">
-                {allStudents
-                  .filter(s => 
-                    s.fullName.toLowerCase().includes(enrollSearch.toLowerCase()) || 
-                    s.email.toLowerCase().includes(enrollSearch.toLowerCase())
-                  )
-                  .map(student => (
+                {matchingEnrollStudents.map(student => (
                     <button
                       key={student.id}
                       type="button"
@@ -1886,12 +1905,27 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
                       }`}
                     >
                       {student.fullName || "Unknown"} ({student.email})
+                      {student.emailVerified ? null : (
+                        <span className="ml-1 text-amber-600 dark:text-amber-400">
+                          · email not verified
+                        </span>
+                      )}
                     </button>
                   ))}
-                {allStudents.length === 0 && (
-                  <p className="p-4 text-center text-xs text-[var(--muted)]">No students found.</p>
+                {matchingEnrollStudents.length === 0 && (
+                  <p className="p-4 text-center text-xs text-[var(--muted)]">
+                    {allStudents.length === 0
+                      ? "No students found."
+                      : `No student matches "${enrollSearch.trim()}".`}
+                  </p>
                 )}
               </div>
+              {matchingEnrollStudents.find((student) => student.id === enrollUserId)?.emailVerified === false ? (
+                <p className="text-xs text-[var(--muted)]">
+                  This student has not verified their email yet. They are enrolled right away, but
+                  they get no Discord access to the course until they verify.
+                </p>
+              ) : null}
             </div>
 
             <div className="flex justify-end gap-2">

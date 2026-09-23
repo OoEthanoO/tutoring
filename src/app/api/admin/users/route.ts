@@ -248,7 +248,7 @@ export async function GET(request: NextRequest) {
   let query = adminClient
     .from("app_users")
     .select(
-      "id, email, full_name, legal_name, role, created_at, tutor_promoted_at, discord_user_id, discord_username, discord_connected_at, is_junior, pending_role_exempt, grade, school, strike_count, custom_role, custom_roles(role_level), executive_generation"
+      "id, email, full_name, legal_name, role, created_at, email_verified_at, tutor_promoted_at, discord_user_id, discord_username, discord_connected_at, is_junior, pending_role_exempt, grade, school, strike_count, custom_role, custom_roles(role_level), executive_generation"
     )
     .ilike("email", search ? `%${search}%` : "%")
     .order("created_at", { ascending: false });
@@ -273,6 +273,8 @@ export async function GET(request: NextRequest) {
     id: item.id,
     email: item.email,
     createdAt: item.created_at,
+    // Unverified accounts are only returned with ?all=true or ?unverified=true.
+    emailVerified: Boolean(item.email_verified_at),
     lastSignInAt: null,
     fullName: item.full_name ?? "",
     role: resolveAccountRole(item),
