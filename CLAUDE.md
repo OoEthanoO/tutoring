@@ -37,6 +37,9 @@ bearer (see the `cron:reminders:*` npm scripts).
   kicks human members not linked to a website account (unless listed in
   `approved_discord_accounts`), manages roles (base + per-course), channels,
   and nicknames. Aborts if the approved-accounts table is missing (by design).
+  Every member's nickname is their YanLearn name at every rank (a second
+  account takes its owner's); the server owner is skipped, since Discord never
+  lets a bot rename them.
   Anything it does not manage is deleted, so removing a role or channel from
   this file is how you retire it. The supplementary Social Media / Science
   Tutor / Math Tutor / Nonprofit Team / Development Team roles and channels

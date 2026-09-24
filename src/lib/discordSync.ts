@@ -1132,6 +1132,13 @@ class DiscordApiClient {
     });
   }
 
+  getGuild(guildId: string) {
+    return this.request<{ id: string; owner_id?: string }>({
+      method: "GET",
+      path: `/guilds/${guildId}`,
+    });
+  }
+
   updateGuildMember(guildId: string, memberId: string, payload: { nick: string | null }) {
     return this.request<DiscordGuildMember>({
       method: "PATCH",
@@ -1396,6 +1403,22 @@ const getRoleIdsFromOverwrites = (
  * drifted from what the guild reports, so the sync can write the new value
  * back. Exported for tests.
  */
+/**
+ * The server nickname a member should have: their YanLearn name, for every
+ * rank from Student to Founder. Trimmed and single-spaced so the value read
+ * back from Discord compares equal (otherwise the sync would rewrite it every
+ * run), and clamped to Discord's 32-character limit by code point so an emoji
+ * is never cut in half. Null — no nickname — when the account has no name.
+ * Exported for tests.
+ */
+export const expectedDiscordNickname = (fullName: string | null | undefined): string | null => {
+  const name = String(fullName ?? "").trim().replace(/\s+/g, " ");
+  if (!name) {
+    return null;
+  }
+  return Array.from(name).slice(0, 32).join("").trim() || null;
+};
+
 export const pickDiscordUsernameUpdates = (
   entries: {
     userId: string | null | undefined;
@@ -1591,6 +1614,8 @@ export const runDiscordSync = async ({
 
   const approvedAccountRows = (approvedAccounts ?? []) as ApprovedDiscordAccountRow[];
   const approvedDiscordUserIds = new Set<string>();
+  // A second account goes by its owner's YanLearn name.
+  const approvedOwnerUserIdByDiscordUserId = new Map<string, string>();
   const approvedAccountIdsByOwnerUserId = new Map<string, string[]>();
   for (const account of approvedAccountRows) {
     const accountDiscordUserId = String(account.discord_user_id ?? "").trim();
@@ -1598,6 +1623,10 @@ export const runDiscordSync = async ({
       continue;
     }
     approvedDiscordUserIds.add(accountDiscordUserId);
+    approvedOwnerUserIdByDiscordUserId.set(
+      accountDiscordUserId,
+      String(account.owner_user_id ?? "").trim()
+    );
 
     const ownerUserId = String(account.owner_user_id ?? "").trim();
     if (ownerUserId) {
@@ -1624,12 +1653,44 @@ export const runDiscordSync = async ({
     websiteUserByDiscordUserId.set(discordUserId, user);
   }
 
-  const [botUser, guildMembers, guildRoles, guildChannels] = await Promise.all([
+  const [botUser, guildMembers, guildRoles, guildChannels, guildInfo] = await Promise.all([
     apiClient.getCurrentBotUser(),
     apiClient.listGuildMembers(discordGuildId),
     apiClient.listGuildRoles(discordGuildId),
     apiClient.listGuildChannels(discordGuildId),
+    // Only for the owner's id; a failure just means the owner is not skipped.
+    apiClient.getGuild(discordGuildId).catch(() => null),
   ]);
+  // Discord never lets a bot change the server owner's nickname, whatever its
+  // role. Trying would fail on every run — and any error marks the sync as
+  // failing — so the owner sets their own.
+  const guildOwnerId = String(guildInfo?.owner_id ?? "").trim();
+
+  const syncMemberNickname = async (
+    member: DiscordGuildMember,
+    fullName: string | null | undefined
+  ) => {
+    const memberId = String(member.user?.id ?? "");
+    if (!memberId || memberId === guildOwnerId) {
+      return;
+    }
+    const expectedNick = expectedDiscordNickname(fullName);
+    if (expectedNick === (member.nick ?? null)) {
+      return;
+    }
+    try {
+      await apiClient.updateGuildMember(discordGuildId, memberId, { nick: expectedNick });
+      member.nick = expectedNick;
+      result.updatedMemberNickCount += 1;
+    } catch (error) {
+      result.errors.push(
+        `Failed to update nickname for member ${memberId}: ${toErrorMessage(
+          error,
+          "Unknown update member error."
+        )}`
+      );
+    }
+  };
 
   const mutableRoles = [...guildRoles];
   const mutableChannels = [...guildChannels];
@@ -1826,9 +1887,14 @@ export const runDiscordSync = async ({
     if (!websiteUser) {
       if (approvedDiscordUserIds.has(memberUserId)) {
         // Approved extra account (e.g. a tutor's second account for lesson
-        // calls): allowed to stay without a linked website user. Base role and
-        // nickname management do not apply; course roles are mirrored from the
-        // owner in the course role loop below.
+        // calls): allowed to stay without a linked website user. Base role
+        // management does not apply; course roles are mirrored from the owner
+        // in the course role loop below, and it carries the owner's name.
+        const ownerUserId = approvedOwnerUserIdByDiscordUserId.get(memberUserId) ?? "";
+        const owner = websiteUsers.find((user) => String(user.id) === ownerUserId);
+        if (owner) {
+          await syncMemberNickname(member, owner.full_name);
+        }
         continue;
       }
       try {
@@ -2037,24 +2103,9 @@ export const runDiscordSync = async ({
     ];
 
     const isExecTier = [ceoShadowRole.id, cooShadowRole.id, ceoRole.id, cooRole.id, chiefExecutiveRole.id, executiveRole.id, pendingRole.id].some(id => requiredBaseRoleIds.has(id));
-    // Discord caps server nicknames at 32 characters; compare the clamped
-    // value so over-long names don't fail (and retry) on every run.
-    const rawExpectedNick = primaryHierarchyRoleId !== studentRole.id ? null : (websiteUser.full_name || null);
-    const expectedNick = rawExpectedNick ? rawExpectedNick.slice(0, 32) : null;
-
-    if (expectedNick !== (member.nick ?? null)) {
-      try {
-        await apiClient.updateGuildMember(discordGuildId, memberId, { nick: expectedNick });
-        result.updatedMemberNickCount += 1;
-      } catch (error) {
-        result.errors.push(
-          `Failed to update nickname for member ${memberId}: ${toErrorMessage(
-            error,
-            "Unknown update member error."
-          )}`
-        );
-      }
-    }
+    // Everyone goes by their YanLearn name, the Founder, CEO and COO
+    // included. Only students used to; everyone else had theirs cleared.
+    await syncMemberNickname(member, websiteUser.full_name);
 
     for (const roleId of requiredBaseRoleIds) {
       if (!roleSet.has(roleId)) {

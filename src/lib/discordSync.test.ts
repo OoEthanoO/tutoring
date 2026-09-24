@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   areOverwritesEqual,
   buildUniqueCourseRoleName,
+  expectedDiscordNickname,
   formatMemberLabel,
   getCourseEndedAtMs,
   getCourseTopicMarker,
@@ -313,5 +314,32 @@ describe("pickDiscordUsernameUpdates", () => {
         { userId: "user-1", storedUsername: "old", currentUsername: "second" },
       ])
     ).toEqual([{ userId: "user-1", username: "second" }]);
+  });
+});
+
+describe("expectedDiscordNickname", () => {
+  it("is the YanLearn name, whatever the member's rank", () => {
+    expect(expectedDiscordNickname("Jane Qu")).toBe("Jane Qu");
+  });
+
+  it("trims and single-spaces, so what Discord stores compares equal next run", () => {
+    expect(expectedDiscordNickname("  Jane   Qu ")).toBe("Jane Qu");
+  });
+
+  it("clamps to Discord's 32-character limit", () => {
+    const long = "Alexandria Catherine Montgomery-Smith";
+    const nick = expectedDiscordNickname(long);
+    expect(Array.from(nick ?? "")).toHaveLength(32);
+    expect(long.startsWith(nick ?? "")).toBe(true);
+  });
+
+  it("never cuts an emoji in half at the limit", () => {
+    const nick = expectedDiscordNickname(`${"a".repeat(31)}😀😀`);
+    expect(nick).toBe(`${"a".repeat(31)}😀`);
+  });
+
+  it("clears the nickname when the account has no name", () => {
+    expect(expectedDiscordNickname(null)).toBeNull();
+    expect(expectedDiscordNickname("   ")).toBeNull();
   });
 });
