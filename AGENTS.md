@@ -137,6 +137,10 @@ bearer (see the `cron:reminders:*` npm scripts).
   `enable row level security` + a deny-all policy (access is service-role
   only). Apply migrations to Supabase BEFORE deploying code that references
   the new schema.
+- Reading a whole table: Supabase silently truncates every response at the
+  project's max rows (1000 by default), and a long `.in()` id list is rejected
+  for URL length. Use `fetchAllRows` and `chunks` from
+  `src/lib/supabasePaging.ts` (see `api/admin/users`).
 - Feature/ops docs are root-level `*.md` files (e.g. `ZOOM_INTEGRATION.md`,
   `DISCORD_APPROVED_ACCOUNTS.md`).
 - Root-level `*.js`/`*.mjs` scripts are ad-hoc DB utilities that read

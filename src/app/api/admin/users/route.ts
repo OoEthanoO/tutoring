@@ -5,6 +5,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { isExecutive, isFounder, resolveUserRole, resolveAccountRole, canAssignRole, leadershipProtectionMessage, type UserRole } from "@/lib/roles";
 import { teachesCourseIds } from "@/lib/executiveStanding";
+import { chunks, fetchAllRows, idChunkSize } from "@/lib/supabasePaging";
 import { getRequestUser } from "@/lib/authServer";
 import { fetchDiscordGuildMemberIds } from "@/lib/discordSync";
 import { classEndMs } from "@/lib/classTiming";
@@ -215,15 +216,20 @@ export async function GET(request: NextRequest) {
 
   // Return distinct school names for autocomplete
   if (request.nextUrl.searchParams.get("schools") === "true") {
-    const { data: schoolRows, error: schoolError } = await adminClient
-      .from("app_users")
-      .select("school")
-      .not("school", "is", null)
-      .neq("school", "");
-
-    if (schoolError) {
+    let schoolRows: { school: string | null }[];
+    try {
+      schoolRows = await fetchAllRows((from, to) =>
+        adminClient
+          .from("app_users")
+          .select("school")
+          .not("school", "is", null)
+          .neq("school", "")
+          .order("id")
+          .range(from, to)
+      );
+    } catch (schoolError) {
       return NextResponse.json(
-        { error: schoolError.message ?? "Failed to fetch schools." },
+        { error: schoolError instanceof Error ? schoolError.message : "Failed to fetch schools." },
         { status: 500 }
       );
     }
@@ -236,35 +242,34 @@ export async function GET(request: NextRequest) {
   }
 
   const search = request.nextUrl.searchParams.get("email")?.toLowerCase() ?? "";
-  const page = Number(request.nextUrl.searchParams.get("page") ?? "1");
-  const perPage = Math.min(
-    200,
-    Number(request.nextUrl.searchParams.get("perPage") ?? "200")
-  );
-
   const wantUnverified = request.nextUrl.searchParams.get("unverified") === "true";
   const wantAll = request.nextUrl.searchParams.get("all") === "true";
 
-  let query = adminClient
-    .from("app_users")
-    .select(
-      "id, email, full_name, legal_name, role, created_at, email_verified_at, tutor_promoted_at, discord_user_id, discord_username, discord_connected_at, is_junior, pending_role_exempt, grade, school, strike_count, custom_role, custom_roles(role_level), executive_generation"
-    )
-    .ilike("email", search ? `%${search}%` : "%")
-    .order("created_at", { ascending: false });
-
-  if (wantUnverified) {
-    query = query.is("email_verified_at", null);
-  } else if (!wantAll) {
-    // default: only verified users
-    query = query.not("email_verified_at", "is", null);
-  }
-
-  const { data, error: listError } = await query.range((page - 1) * perPage, page * perPage - 1);
-
-  if (listError || !data) {
+  // Every matching account. This used to stop at the newest 200, so older
+  // accounts silently vanished from Manage accounts and manual enrollment once
+  // the site passed 200 users; Supabase's own row cap would have done the same
+  // at 1000. Both lists search on the client, so they need all of them.
+  let data;
+  try {
+    data = await fetchAllRows((from, to) => {
+      let query = adminClient
+        .from("app_users")
+        .select(
+          "id, email, full_name, legal_name, role, created_at, email_verified_at, tutor_promoted_at, discord_user_id, discord_username, discord_connected_at, is_junior, pending_role_exempt, grade, school, strike_count, custom_role, custom_roles(role_level), executive_generation"
+        )
+        .ilike("email", search ? `%${search}%` : "%");
+      if (wantUnverified) {
+        query = query.is("email_verified_at", null);
+      } else if (!wantAll) {
+        // default: only verified users
+        query = query.not("email_verified_at", "is", null);
+      }
+      // Newest first, with the id as a tie-break so pages never overlap.
+      return query.order("created_at", { ascending: false }).order("id").range(from, to);
+    });
+  } catch (listError) {
     return NextResponse.json(
-      { error: listError?.message ?? "Failed to fetch users." },
+      { error: listError instanceof Error ? listError.message : "Failed to fetch users." },
       { status: 500 }
     );
   }
@@ -354,10 +359,26 @@ export async function GET(request: NextRequest) {
 
   const userIds = users.map((user) => user.id);
   if (userIds.length > 0) {
-    const { data: donationData } = await adminClient
-      .from("tutor_profiles")
-      .select("user_id, donation_link")
-      .in("user_id", userIds);
+    // One request per chunk of ids (a URL holding every id would be rejected),
+    // each read to the end.
+    const forEachChunk = async <T>(
+      read: (ids: string[], from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>
+    ): Promise<T[]> => {
+      const rows: T[] = [];
+      for (const ids of chunks(userIds, idChunkSize)) {
+        rows.push(...(await fetchAllRows((from, to) => read(ids, from, to))));
+      }
+      return rows;
+    };
+
+    const donationData = await forEachChunk((ids, from, to) =>
+      adminClient
+        .from("tutor_profiles")
+        .select("user_id, donation_link")
+        .in("user_id", ids)
+        .order("user_id")
+        .range(from, to)
+    ).catch(() => []);
 
     const donationMap = new Map(
       (donationData ?? []).map((row) => [row.user_id, row.donation_link ?? ""])
@@ -373,25 +394,38 @@ export async function GET(request: NextRequest) {
     const nowMs = Date.now();
     const upcomingUserIds = new Set<string>();
 
-    const [{ data: enrollmentRows }, { data: tutorCourseRows }, { data: coTutorCourseRows }] =
-      await Promise.all([
+    // A failed lookup leaves these flags false rather than failing the whole
+    // list, as before.
+    const [enrollmentRows, tutorCourseRows, coTutorCourseRows] = await Promise.all([
+      forEachChunk((ids, from, to) =>
         adminClient
           .from("course_enrollments")
-          .select("student_id, course:courses(deleted_at, course_classes(starts_at, duration_hours))")
-          .in("student_id", userIds),
+          .select("id, student_id, course:courses(deleted_at, course_classes(starts_at, duration_hours))")
+          .in("student_id", ids)
+          .order("id")
+          .range(from, to)
+      ).catch(() => []),
+      forEachChunk((ids, from, to) =>
         adminClient
           .from("courses")
-          .select("created_by, course_classes(starts_at, duration_hours)")
+          .select("id, created_by, course_classes(starts_at, duration_hours)")
           .is("deleted_at", null)
-          .in("created_by", userIds),
-        // Co-taught courses count too, and they are not covered by the query
-        // above, which matches on the course's creator.
+          .in("created_by", ids)
+          .order("id")
+          .range(from, to)
+      ).catch(() => []),
+      // Co-taught courses count too, and they are not covered by the query
+      // above, which matches on the course's creator.
+      forEachChunk((ids, from, to) =>
         adminClient
           .from("courses")
-          .select("co_tutor_id")
+          .select("id, co_tutor_id")
           .is("deleted_at", null)
-          .in("co_tutor_id", userIds),
-      ]);
+          .in("co_tutor_id", ids)
+          .order("id")
+          .range(from, to)
+      ).catch(() => []),
+    ]);
 
     for (const row of enrollmentRows ?? []) {
       // Supabase types a to-one embed as an array; it is a single object at runtime.
