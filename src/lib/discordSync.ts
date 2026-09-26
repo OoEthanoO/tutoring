@@ -7,6 +7,7 @@ import { planMentionEveryone, withoutEveryoneMentions } from "@/lib/discordMenti
 import { preserveLiveVoiceChannel } from "@/lib/discordLiveChannels";
 import { fetchFundraisingRaisedAmount } from "@/lib/fundraising";
 import { classEndMs } from "@/lib/classTiming";
+import { fetchAllRows } from "@/lib/supabasePaging";
 
 const discordApiBase = "https://discord.com/api/v10";
 const courseTopicPrefix = "yanlearn-course-id:";
@@ -1562,47 +1563,69 @@ export const runDiscordSync = async ({
     result.errors.push(`Failed to decay strikes: ${toErrorMessage(error, "Unknown auto-decay error.")}`);
   }
 
-  const [{ data: users, error: usersError }, { data: courses, error: coursesError }, { data: enrollments, error: enrollmentsError }, { data: approvedAccounts, error: approvedAccountsError }] =
-    await Promise.all([
-      adminClient
-        .from("app_users")
-        .select("id, email, full_name, role, discord_user_id, discord_username, pending_role_exempt, strike_count, custom_roles(name, role_level)")
-        .not("email_verified_at", "is", null),
-      adminClient
-        .from("courses")
-        .select("id, title, is_completed, created_by, co_tutor_id, created_by_name, created_by_email, created_at, course_classes(starts_at, duration_hours)")
-        .is("deleted_at", null),
-      adminClient
-        .from("course_enrollments")
-        .select("course_id, student_id"),
-      adminClient
-        .from("approved_discord_accounts")
-        .select("discord_user_id, owner_user_id"),
-    ]);
+  // Every row, read a page at a time. Supabase cuts each response off at the
+  // project's max rows (1000 by default) without an error, and a partial list
+  // here is not a partial sync: members past the cut would be kicked as
+  // unlinked, students would lose their course roles, and courses would have
+  // their roles and channels deleted. Any read that fails aborts the run
+  // rather than syncing from what arrived. (See supabasePaging.ts.)
+  const readAll = async <T>(
+    read: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
+    failure: string
+  ): Promise<T[]> => {
+    try {
+      return await fetchAllRows(read);
+    } catch (error) {
+      throw new Error(toErrorMessage(error, failure));
+    }
+  };
 
-  if (usersError) {
-    throw new Error(usersError.message ?? "Failed to load users for Discord sync.");
-  }
-  if (coursesError) {
-    throw new Error(coursesError.message ?? "Failed to load courses for Discord sync.");
-  }
-  if (enrollmentsError) {
-    throw new Error(
-      enrollmentsError.message ?? "Failed to load enrollments for Discord sync."
-    );
-  }
-  if (approvedAccountsError) {
-    // Abort rather than fall back to an empty list: running without the
-    // approved list would kick every approved account from the guild.
-    throw new Error(
-      approvedAccountsError.message ??
+  const [users, courses, enrollments, approvedAccounts] = await Promise.all([
+    readAll(
+      (from, to) =>
+        adminClient
+          .from("app_users")
+          .select("id, email, full_name, role, discord_user_id, discord_username, pending_role_exempt, strike_count, custom_roles(name, role_level)")
+          .not("email_verified_at", "is", null)
+          .order("id")
+          .range(from, to),
+      "Failed to load users for Discord sync."
+    ),
+    readAll(
+      (from, to) =>
+        adminClient
+          .from("courses")
+          .select("id, title, is_completed, created_by, co_tutor_id, created_by_name, created_by_email, created_at, course_classes(starts_at, duration_hours)")
+          .is("deleted_at", null)
+          .order("id")
+          .range(from, to),
+      "Failed to load courses for Discord sync."
+    ),
+    readAll(
+      (from, to) =>
+        adminClient
+          .from("course_enrollments")
+          .select("course_id, student_id")
+          .order("id")
+          .range(from, to),
+      "Failed to load enrollments for Discord sync."
+    ),
+    // Aborting matters most here: running without the approved list would
+    // kick every approved account from the guild.
+    readAll(
+      (from, to) =>
+        adminClient
+          .from("approved_discord_accounts")
+          .select("discord_user_id, owner_user_id")
+          .order("discord_user_id")
+          .range(from, to),
       "Failed to load approved Discord accounts for Discord sync."
-    );
-  }
+    ),
+  ]);
 
-  const websiteUsers = (users ?? []) as WebsiteUserRow[];
-  const websiteCourses = (courses ?? []) as CourseRow[];
-  const websiteEnrollments = (enrollments ?? []) as CourseEnrollmentRow[];
+  const websiteUsers = users as WebsiteUserRow[];
+  const websiteCourses = courses as CourseRow[];
+  const websiteEnrollments = enrollments as CourseEnrollmentRow[];
   // Everyone who owns or co-teaches a course. An executive outside this set
   // holds Pending rather than Executive unless the trio exempted them.
   const tutorUserIds = teachesCourseIds(websiteCourses);
@@ -1612,7 +1635,7 @@ export const runDiscordSync = async ({
     endedAtMsByCourseId.set(course.id, getCourseEndedAtMs(course));
   }
 
-  const approvedAccountRows = (approvedAccounts ?? []) as ApprovedDiscordAccountRow[];
+  const approvedAccountRows = approvedAccounts as ApprovedDiscordAccountRow[];
   const approvedDiscordUserIds = new Set<string>();
   // A second account goes by its owner's YanLearn name.
   const approvedOwnerUserIdByDiscordUserId = new Map<string, string>();
@@ -3507,11 +3530,14 @@ export const runDiscordSync = async ({
     (channel) => channel.type === discordCategoryChannelType && channel.name.trim().toLowerCase() === liveCategoryName.toLowerCase()
   ).map((channel) => channel.id));
   try {
-    const { data: liveClassRows, error } = await adminClient
-      .from("discord_live_class_channels")
-      .select("discord_channel_id");
-    if (error) throw new Error(error.message);
-    if (!Array.isArray(liveClassRows)) throw new Error("Live channel registry did not return a list.");
+    // One row per class ever held, so this is the first table past 1000 rows.
+    const liveClassRows = await fetchAllRows((from, to) =>
+      adminClient
+        .from("discord_live_class_channels")
+        .select("discord_channel_id")
+        .order("id")
+        .range(from, to)
+    );
     liveRegistryLoaded = true;
     for (const row of liveClassRows ?? []) {
       const liveChannelId = String(row.discord_channel_id ?? "").trim();
