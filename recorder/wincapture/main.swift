@@ -35,12 +35,31 @@ func argument(_ name: String) -> String? {
     return args[index + 1]
 }
 
-guard let windowText = argument("--window"), let windowID = UInt32(windowText),
-      let canvasWidth = Int(argument("--width") ?? ""), canvasWidth > 1,
-      let canvasHeight = Int(argument("--height") ?? ""), canvasHeight > 1 else {
-    fail("usage: wincapture --window <id> --width <w> --height <h> [--fps <n>]", code: 2)
+/// The command line, parsed into real globals. Values bound by a top-level
+/// `guard let` are local to the script body, and the FrameSink class below
+/// cannot capture them.
+struct Options {
+    let windowID: UInt32
+    let canvasWidth: Int
+    let canvasHeight: Int
+    let fps: Int
 }
-let fps = max(1, min(60, Int(argument("--fps") ?? "10") ?? 10))
+
+func parseOptions() -> Options {
+    guard let windowText = argument("--window"), let windowID = UInt32(windowText),
+          let width = Int(argument("--width") ?? ""), width > 1,
+          let height = Int(argument("--height") ?? ""), height > 1 else {
+        fail("usage: wincapture --window <id> --width <w> --height <h> [--fps <n>]", code: 2)
+    }
+    let fps = max(1, min(60, Int(argument("--fps") ?? "10") ?? 10))
+    return Options(windowID: windowID, canvasWidth: width, canvasHeight: height, fps: fps)
+}
+
+let options = parseOptions()
+let windowID = options.windowID
+let canvasWidth = options.canvasWidth
+let canvasHeight = options.canvasHeight
+let fps = options.fps
 
 /// The largest even-sized rectangle with the window's shape that fits the canvas.
 func fitted(_ size: CGSize) -> (Int, Int) {
