@@ -323,6 +323,13 @@ pub fn run() {
             update::install_update,
         ])
         .setup(|app| {
+            // Info.plist marks the bundle LSUIElement so the helpers inside it
+            // (ffmpeg screen capture, sysaudio) never appear as bouncing
+            // duplicates in the Dock; this process opts back in to a normal
+            // Dock icon and menu bar. (Tauri's default is Regular too — this
+            // makes the dependency explicit.)
+            #[cfg(target_os = "macos")]
+            app.set_activation_policy(tauri::ActivationPolicy::Regular);
             let show = MenuItem::with_id(app, "show", "Open YanLearn Recorder", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show, &quit])?;

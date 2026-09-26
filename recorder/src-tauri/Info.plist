@@ -8,7 +8,12 @@
   <string>YanLearn Recorder records your screen and the class audio during classes so students can review them.</string>
   <key>NSAudioCaptureUsageDescription</key>
   <string>YanLearn Recorder records the class audio so students can review the lesson.</string>
+  <!-- True so the helper programs inside this bundle (ffmpeg doing screen
+       capture, the sysaudio helper) never show up as extra, bouncing copies of
+       the app in the Dock: macOS attributes them to this bundle. The app
+       itself still gets a normal Dock icon: Tauri, and lib.rs explicitly, set
+       its own activation policy to Regular at startup. -->
   <key>LSUIElement</key>
-  <false/>
+  <true/>
 </dict>
 </plist>

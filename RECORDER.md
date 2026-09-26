@@ -187,6 +187,21 @@ existing app, then reopen it and sign into the same YanLearn account to retry.
 Do not uninstall or delete the app-data folder. Recovery of a particular
 recording remains unverified until its actual files are prepared and uploaded.
 
+## Helpers showing up as extra copies in the Dock (macOS)
+
+During a macOS class with window mode on, three extra "YanLearn Recorder" icons
+appeared in the Dock and bounced. The likely cause: the helpers — `ffmpeg`
+(which does the screen capture) and `sysaudio` — sit inside the app bundle in
+`Contents/MacOS`, and once they talk to the window server macOS attributes them
+to the bundle and shows them with its icon. They never finish "launching" as an
+app, so they bounce; window mode restarting ffmpeg many times a minute made it
+look like copies kept opening.
+
+`Info.plist` now sets `LSUIElement` to true, so anything macOS attributes to the
+bundle has no Dock icon, and the app itself switches to a normal Dock app at
+startup (`set_activation_policy(Regular)` in `lib.rs`, also Tauri's default).
+Unverified on a Mac until a release carrying it is used for a class.
+
 ## Quality profile (decision)
 
 Chosen for legible text at the lowest CPU cost on low‑end laptops that are also
