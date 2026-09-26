@@ -101,7 +101,7 @@ a public issue or commit. The repo ignores private `.pem`, `.p12`, `.p8`, and
    updater key, version, and release destination. Missing Apple setup fails
    before either expensive platform build. Published releases cannot be replaced.
 2. The macOS build enables the hardened runtime and the audio-input entitlement.
-   Tauri signs the app, `ffmpeg`, and `sysaudio`, notarizes the app, and staples
+   Tauri signs the app, `ffmpeg`, `sysaudio`, and `wincapture`, notarizes the app, and staples
    Apple's ticket. The helpers need the audio entitlement too.
 3. Installers and updater artifacts are uploaded to a **draft** release. Verification
    checks both the local app and the app extracted from the updater archive:

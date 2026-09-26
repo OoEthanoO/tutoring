@@ -117,7 +117,10 @@ bearer (see the `cron:reminders:*` npm scripts).
   stable platform links resolve the recommended installer from the latest release.
   Tutors can record the whole display or only windows they tick, in which case
   only the focused shared window is recorded and anything else freezes the
-  picture (`windowlist.rs` + `crop`/`stillPath` in `capture.rs`).
+  picture. A shared window is captured on its own — Windows.Graphics.Capture /
+  ScreenCaptureKit, never a crop of the screen — so notifications and windows
+  drawn over it stay out of the recording (`windowfeed.rs`,
+  `recorder/wincapture/main.swift`); never add a crop fallback.
 - Recorder macOS releases require the Apple signing/notarization secrets in
   `MACOS_NOTARIZATION.md`. The workflow uploads to a draft, checks the app,
   recording helpers, updater archive and notarized DMG, then publishes only

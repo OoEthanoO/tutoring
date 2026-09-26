@@ -1,11 +1,7 @@
 import { describe, expect, it } from "vitest";
 import windowMath from "./windowmath.js";
 
-const { matchesSharedWindow, cropWindowToDisplay, targetsMatch } = windowMath;
-
-const display = { x: 0, y: 0, width: 1920, height: 1080, scaleFactor: 1 };
-// A Retina display: 2880x1800 pixels of a 1440x900-point desktop.
-const retina = { x: 0, y: 0, width: 2880, height: 1800, scaleFactor: 2 };
+const { matchesSharedWindow, targetsMatch } = windowMath;
 
 describe("matchesSharedWindow", () => {
   const shared = [{ id: 111, app: "Chrome", title: "Lesson slides" }];
@@ -36,75 +32,39 @@ describe("matchesSharedWindow", () => {
   });
 });
 
-describe("cropWindowToDisplay", () => {
-  it("takes the window's rectangle relative to the display", () => {
-    const crop = cropWindowToDisplay({ x: 100, y: 50, width: 800, height: 600 }, display, 120);
-    expect(crop).toEqual({ x: 100, y: 50, width: 800, height: 600 });
-  });
-
-  it("offsets by a secondary display's origin", () => {
-    const second = { x: 1920, y: 0, width: 1920, height: 1080, scaleFactor: 1 };
-    const crop = cropWindowToDisplay({ x: 2020, y: 10, width: 400, height: 300 }, second, 120);
-    expect(crop).toEqual({ x: 100, y: 10, width: 400, height: 300 });
-  });
-
-  it("converts macOS points to capture pixels", () => {
-    const crop = cropWindowToDisplay(
-      { x: 100, y: 50, width: 640, height: 480, scaled: true },
-      retina,
-      120
-    );
-    expect(crop).toEqual({ x: 200, y: 100, width: 1280, height: 960 });
-  });
-
-  it("clamps a window hanging off the edge", () => {
-    const crop = cropWindowToDisplay({ x: -200, y: 900, width: 800, height: 600 }, display, 120);
-    expect(crop).toEqual({ x: 0, y: 900, width: 600, height: 180 });
-  });
-
-  it("gives up on a window that is mostly on another display", () => {
-    expect(cropWindowToDisplay({ x: 1900, y: 10, width: 800, height: 600 }, display, 120)).toBeNull();
-  });
-
-  it("always returns even dimensions, which h.264 requires", () => {
-    const crop = cropWindowToDisplay({ x: 0, y: 0, width: 801, height: 603 }, display, 120);
-    expect(crop.width % 2).toBe(0);
-    expect(crop.height % 2).toBe(0);
-  });
-
-  it("has nothing to crop without a display", () => {
-    expect(cropWindowToDisplay({ x: 0, y: 0, width: 800, height: 600 }, null, 120)).toBeNull();
-  });
-});
-
 describe("targetsMatch", () => {
-  const at = (x) => ({ kind: "window", id: "7", crop: { x, y: 0, width: 800, height: 600 } });
+  const sized = (width, height = 600) => ({ kind: "window", id: "7", size: { width, height } });
   const settle = { driftTolerance: 3, settleMs: 1200, lastChangeMs: 1000 };
 
-  it("keeps recording the same window in the same place", () => {
-    expect(targetsMatch(at(100), at(100), { ...settle, now: 9000 })).toBe(true);
+  it("keeps recording the same window at the same size", () => {
+    expect(targetsMatch(sized(800), sized(800), { ...settle, now: 9000 })).toBe(true);
   });
 
-  it("ignores a pixel or two of drift", () => {
-    expect(targetsMatch(at(102), at(100), { ...settle, now: 9000 })).toBe(true);
+  it("ignores a pixel or two of size drift", () => {
+    expect(targetsMatch(sized(802), sized(800), { ...settle, now: 9000 })).toBe(true);
   });
 
-  it("restarts once a moved window has settled", () => {
-    expect(targetsMatch(at(400), at(100), { ...settle, now: 9000 })).toBe(false);
+  it("does not restart when a window only moves — the capture follows it", () => {
+    const moved = { ...sized(800), x: 900, y: 400 };
+    expect(targetsMatch(moved, { ...sized(800), x: 0, y: 0 }, { ...settle, now: 9000 })).toBe(true);
   });
 
-  it("leaves a window alone while it is being dragged", () => {
-    expect(targetsMatch(at(400), at(100), { ...settle, now: 1500 })).toBe(true);
+  it("restarts once a resized window has settled, to fit the new shape", () => {
+    expect(targetsMatch(sized(400, 900), sized(800), { ...settle, now: 9000 })).toBe(false);
+  });
+
+  it("leaves a window alone while it is being resized", () => {
+    expect(targetsMatch(sized(400, 900), sized(800), { ...settle, now: 1500 })).toBe(true);
   });
 
   it("switches as soon as a different window takes focus", () => {
-    const other = { kind: "window", id: "8", crop: { x: 100, y: 0, width: 800, height: 600 } };
-    expect(targetsMatch(other, at(100), { ...settle, now: 1001 })).toBe(false);
+    const other = { kind: "window", id: "8", size: { width: 800, height: 600 } };
+    expect(targetsMatch(other, sized(800), { ...settle, now: 1001 })).toBe(false);
   });
 
   it("switches between window and frozen regardless of timing", () => {
-    expect(targetsMatch({ kind: "frozen" }, at(100), { ...settle, now: 1001 })).toBe(false);
-    expect(targetsMatch(at(100), { kind: "frozen" }, { ...settle, now: 1001 })).toBe(false);
+    expect(targetsMatch({ kind: "frozen" }, sized(800), { ...settle, now: 1001 })).toBe(false);
+    expect(targetsMatch(sized(800), { kind: "frozen" }, { ...settle, now: 1001 })).toBe(false);
   });
 
   it("treats display and frozen segments as always current", () => {
@@ -114,8 +74,8 @@ describe("targetsMatch", () => {
 
   it("stops when there is nothing to record, and starts when there is", () => {
     expect(targetsMatch(null, null, settle)).toBe(true);
-    expect(targetsMatch(null, at(100), settle)).toBe(false);
-    expect(targetsMatch(at(100), null, settle)).toBe(false);
+    expect(targetsMatch(null, sized(800), settle)).toBe(false);
+    expect(targetsMatch(sized(800), null, settle)).toBe(false);
   });
 });
 
@@ -124,7 +84,7 @@ describe("targetsMatch and muting", () => {
     kind: "window",
     id: "7",
     muted,
-    crop: { x: 0, y: 0, width: 800, height: 600 },
+    size: { width: 800, height: 600 },
   });
 
   it("restarts the segment when the tutor mutes", () => {

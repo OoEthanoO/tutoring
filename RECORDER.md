@@ -220,7 +220,10 @@ dominates, which is another reason not to go higher.
 
 Capture backends: Windows uses Desktop Duplication (`ddagrab`) when there is a
 single display and GDI region capture (`gdigrab`) when the tutor picked one of
-several; macOS uses AVFoundation ("Capture screen N"). System audio: Windows
+several; macOS uses AVFoundation ("Capture screen N"). Window mode captures the
+shared window itself instead — Windows.Graphics.Capture (`gfxcapture`) and a
+ScreenCaptureKit helper (`recorder/wincapture/main.swift`); see "Recording
+windows instead of the whole display". System audio: Windows
 WASAPI loopback of the chosen speaker (in Rust, streamed to ffmpeg over a
 loopback TCP socket, silence‑padded against the wall clock); macOS a bundled
 ScreenCaptureKit helper (`recorder/sysaudio/main.swift`, macOS 13+), which
@@ -231,16 +234,18 @@ captures the mix regardless of output device — so macOS has no speaker choice.
 ```
 recorder/                      Tauri 2 app ("YanLearn Recorder")
   src/main.js                  state machine + UI (vanilla JS, no bundler)
-  src/windowmath.js            window matching + crop maths (pure, unit tested)
+  src/windowmath.js            window matching + when to restart a segment (pure, unit tested)
   src/overlay.html             the always-on-top status overlay / display identify flash
   src-tauri/src/lib.rs         tray, quit lock, hotkey, settings/files, command wiring
   src-tauri/src/capture.rs     ffmpeg sidecar: device probe, args, start/stop, concat
   src-tauri/src/sysaudio.rs    system audio feeder (WASAPI loopback / SCK helper) → TCP → ffmpeg
+  src-tauri/src/windowfeed.rs  window mode: one window's own pixels (WGC / SCK helper), paced → TCP → ffmpeg
   src-tauri/src/overlay.rs     overlay + identify windows, display list
   src-tauri/src/upload.rs      streaming PUT to the signed storage URL
   src-tauri/src/update.rs      self-update: check, verify, install, restart
   src-tauri/src/windowlist.rs  open windows + which one has focus (Win32 / CoreGraphics)
   sysaudio/main.swift          macOS ScreenCaptureKit system-audio helper
+  wincapture/main.swift        macOS ScreenCaptureKit single-window capture helper
   scripts/fetch-ffmpeg.mjs     downloads the static ffmpeg sidecar per target
 .github/workflows/recorder-release.yml   builds mac arm64 / win x64 on `recorder-v*` tags
 
@@ -425,13 +430,32 @@ the class audio keep recording, and a banner on the recorded display says
 
 How it works, and why it was built this way:
 
-* **Cropping, not per-window capture.** The recorder captures the display as it
-  always did and crops to the focused window's rectangle (`crop` in
-  `CaptureConfig`). Because only the *focused* window is ever recorded, and a
-  focused window is the top-most one, the crop shows that window rather than
-  what is behind it. True per-window capture (Windows.Graphics.Capture,
-  ScreenCaptureKit) would be a whole second capture stack for the same result
-  in the normal case — see the limitations below for where the difference bites.
+* **The window itself is captured, never the screen around it.** Recording
+  the display and cropping to the window's rectangle — how this first shipped —
+  also records anything drawn over that rectangle: notification toasts, a chat
+  popping up, another always-on-top window. That defeats the point of sharing a
+  window instead of the screen, so each shared window is captured on its own:
+  **Windows.Graphics.Capture** on Windows (ffmpeg's `gfxcapture` source on the
+  window's HWND) and **ScreenCaptureKit**'s single-window filter on macOS (the
+  bundled `wincapture` helper, `recorder/wincapture/main.swift`). Both capture
+  the window's own content, wherever it is on screen and whatever covers it.
+  Tested on Windows with a topmost window deliberately placed over the shared
+  one: it is not in the recording, while a display crop of the same area
+  records it.
+* **A pacer keeps the frame rate steady** (`windowfeed.rs`). Both APIs only
+  deliver a frame when the window changes, and a window showing a slide can go
+  minutes without one; fed straight to the encoder that stalls it, and the live
+  microphone with it (measured: a 10-second recording of a still window took 35
+  seconds and lost the audio's timing). So the latest frame is kept and written
+  to the encoder at a steady rate over a local socket, repeated while the window
+  is still — a still window still makes a full-length, in-sync recording.
+* **Moving a window changes nothing; resizing starts a fresh segment**, at most
+  once every 1.2 s (`GEOMETRY_SETTLE_MS`), so the picture is re-fitted to the
+  new shape. The capture already follows the window when it moves.
+* **A window the system refuses to capture freezes the picture** instead —
+  never falls back to cropping the screen, which would bring back exactly what
+  window mode exists to keep out. The refusal is remembered for the rest of
+  the class.
 * **One canvas for every segment.** A class is a series of segments stitched
   together without re-encoding, which only works if they all share a size. Every
   segment — display, window, or frozen — is now scaled and letterboxed onto a
@@ -457,22 +481,21 @@ How it works, and why it was built this way:
 ### Limitations of window mode
 
 * **A focus change is not instant.** Between the tutor switching windows and
-  ffmpeg stopping (~250 ms of polling plus shutdown), a few frames of the newly
-  focused window can land in the recording if it overlaps the rectangle being
-  recorded. Cropping cannot close that gap; only real per-window capture can.
-  Tutors with something genuinely sensitive should keep it on another display.
-* Anything drawn **on top of** the shared window is recorded with it —
-  notification toasts, other always-on-top windows. The recorder's own overlay
-  is content-protected on Windows and so stays out of the recording.
-* Moving or resizing a shared window restarts the segment, at most once every
-  1.2 s (`GEOMETRY_SETTLE_MS`); while it is being dragged the crop is stale, so
-  the edges of whatever is behind it can show.
+  the segment switching (~250 ms of polling plus shutdown), the recording keeps
+  showing the window that was shared — its own content, so nothing private
+  reaches the recording, but the picture lags by a moment.
+* Some windows cannot be captured on their own and freeze the picture instead:
+  on Windows, apps running as administrator (when the recorder is not) and
+  windows that are minimised; on macOS, windows on another Space or minimised.
+  DRM-protected video (e.g. some streaming sites) records as black.
+* Window mode needs **Windows 10 version 1903 or newer** and **macOS 13 or
+  newer** (the capture helpers are built for macOS 13). On older systems every
+  window freezes the picture; the whole-display mode is unaffected.
+* On Windows 10, the system may draw a yellow border around a window while it
+  is being captured. Windows 11 lets the recorder turn it off.
 * Each switch restarts ffmpeg, which costs a fraction of a second of audio.
 * A window that was reopened with a **different title** is no longer recognised
   and counts as not shared until the tutor ticks it again.
-* Mixed-DPI multi-monitor setups on macOS convert window bounds with the
-  recorded display's scale factor, which is wrong if the window is on a display
-  with a different one.
 
 ## Automatic updates
 
@@ -552,7 +575,7 @@ A local `npm run build` now also signs the updater artifacts, so it needs
 `TAURI_SIGNING_PRIVATE_KEY` (and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`) in the
 environment; `npm run dev` does not bundle and is unaffected.
 
-macOS also needs the helper: `swiftc -O -target arm64-apple-macos13.0 -framework ScreenCaptureKit -framework CoreMedia -framework AVFoundation sysaudio/main.swift -o src-tauri/binaries/sysaudio-aarch64-apple-darwin`.
+macOS also needs the helpers: `swiftc -O -target arm64-apple-macos13.0 -framework ScreenCaptureKit -framework CoreMedia -framework AVFoundation sysaudio/main.swift -o src-tauri/binaries/sysaudio-aarch64-apple-darwin` and `swiftc -O -target arm64-apple-macos13.0 -framework ScreenCaptureKit -framework CoreMedia -framework CoreVideo wincapture/main.swift -o src-tauri/binaries/wincapture-aarch64-apple-darwin`.
 
 The macOS release workflow now requires a Developer ID Application certificate
 and notarization credentials, and publishes only after its Apple checks and both
