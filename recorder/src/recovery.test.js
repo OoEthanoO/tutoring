@@ -91,7 +91,12 @@ describe("Recorder restart and upload lifecycle", () => {
   it("recovers the in-flight segment after a forced shutdown before pending.json existed", async () => {
     const data = addRecording();
     await boot();
-    expect(concat).toHaveBeenCalledWith({ segments: [data.currentSegment.path], output: "recordings/class-one/recording.mp4" });
+    expect(concat).toHaveBeenCalledWith({
+      segments: [data.currentSegment.path],
+      output: "recordings/class-one/recording.mp4",
+      // Reject a join that is implausibly long or short.
+      expectedSeconds: 3600,
+    });
     expect(transfer).toHaveBeenCalledOnce();
     expect(calls("remove_path")).toHaveLength(1);
     expect($("log").textContent).toContain("Recovering a recording");
@@ -216,6 +221,86 @@ describe("Recorder restart and upload lifecycle", () => {
     await vi.advanceTimersByTimeAsync(32000);
     expect(concat).toHaveBeenCalledTimes(2);
     expect(transfer).toHaveBeenCalledOnce();
+  });
+
+  it("stops holding the tutor when preparation keeps failing, keeps the files, and keeps retrying", async () => {
+    active = { classId: "live-class", courseTitle: "Science", classTitle: "Class 7", phase: "live", startsAtMs: Date.now() - 3600000, endsAtMs: Date.now() + 1000, tutorInLiveChannel: true };
+    await boot();
+    // The failure a macOS class hit: the same error on every attempt.
+    concat.mockRejectedValue(new Error("Could not combine the recording segments: Non-monotonic DTS"));
+    const lastLock = () => calls("set_quit_lock").at(-1)?.[1].locked;
+    $("done-yes").click(); await vi.advanceTimersByTimeAsync(5);
+    expect(concat).toHaveBeenCalledTimes(1);
+    expect(lastLock()).toBe(true);
+    await vi.advanceTimersByTimeAsync(32000);
+    expect(concat).toHaveBeenCalledTimes(2);
+    expect(lastLock()).toBe(true);
+    await vi.advanceTimersByTimeAsync(32000);
+    expect(concat).toHaveBeenCalledTimes(3);
+    // Third failure in a row: let go of the tutor.
+    expect(lastLock()).toBe(false);
+    expect($("state-text").textContent).toContain("needs attention");
+    expect($("presence-text").textContent).toContain("You can quit");
+    expect($("log").textContent).toContain("no longer locks");
+    expect(calls("remove_path")).toHaveLength(0);
+    // ...and stop hammering: the next attempt waits ten minutes, not thirty seconds.
+    await vi.advanceTimersByTimeAsync(60000);
+    expect(concat).toHaveBeenCalledTimes(3);
+    let finish;
+    concat.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+    await vi.advanceTimersByTimeAsync(10 * 60 * 1000);
+    expect(concat).toHaveBeenCalledTimes(4);
+    expect(lastLock()).toBe(true);
+    finish(12345); await vi.advanceTimersByTimeAsync(5);
+    expect(transfer).toHaveBeenCalledOnce();
+  });
+
+  it("lets an update repair a saved class after repeated preparation failures", async () => {
+    active = { classId: "live-class", courseTitle: "Science", phase: "live", startsAtMs: Date.now() - 3600000, endsAtMs: Date.now() + 1000, tutorInLiveChannel: true };
+    await boot();
+    concat.mockRejectedValue(new Error("Non-monotonic DTS"));
+    $("done-yes").click(); await vi.advanceTimersByTimeAsync(65000);
+    const original = invoke.getMockImplementation();
+    invoke.mockImplementation((command, args) => command === "check_update"
+      ? { version: "0.5.5", currentVersion: "0.5.4" } : original(command, args));
+    $("update-check").click(); await vi.advanceTimersByTimeAsync(6000);
+    expect(calls("download_update")).toHaveLength(1);
+    expect(calls("install_update")).toHaveLength(1);
+    expect(calls("remove_path")).toHaveLength(0);
+    const saved = JSON.parse(files.get("recordings/live-class/meta.json"));
+    expect(saved.finalizeReason).toBe("tutor_confirmed");
+    expect(saved.segments).toHaveLength(1);
+  });
+
+  it("keeps the lock when repeated failures have not saved a recovery checkpoint", async () => {
+    active = { classId: "live-class", courseTitle: "Science", phase: "live", startsAtMs: Date.now() - 3600000, endsAtMs: Date.now() + 1000, tutorInLiveChannel: true };
+    await boot();
+    const original = invoke.getMockImplementation();
+    invoke.mockImplementation((command, args) => {
+      if (command === "write_text_file" && JSON.parse(args.contents).finalizeReason) throw new Error("Disk full");
+      return original(command, args);
+    });
+    $("done-yes").click(); await vi.advanceTimersByTimeAsync(65000);
+    expect(calls("set_quit_lock").at(-1)[1].locked).toBe(true);
+    expect(concat).not.toHaveBeenCalled();
+    expect(calls("remove_path")).toHaveLength(0);
+  });
+
+  it("does not unlock or update over another class's upload", async () => {
+    addPending("previous-class");
+    transfer.mockImplementation(() => new Promise(() => {}));
+    active = { classId: "live-class", courseTitle: "Science", phase: "live", startsAtMs: Date.now() - 3600000, endsAtMs: Date.now() + 1000, tutorInLiveChannel: true };
+    await boot();
+    concat.mockRejectedValue(new Error("Non-monotonic DTS"));
+    $("done-yes").click(); await vi.advanceTimersByTimeAsync(65000);
+    const original = invoke.getMockImplementation();
+    invoke.mockImplementation((command, args) => command === "check_update"
+      ? { version: "0.5.5", currentVersion: "0.5.4" } : original(command, args));
+    $("update-check").click(); await vi.advanceTimersByTimeAsync(6000);
+    expect(calls("set_quit_lock").at(-1)[1].locked).toBe(true);
+    expect(calls("install_update")).toHaveLength(0);
+    expect(calls("remove_path")).toHaveLength(0);
+    expect($("presence-text").textContent).not.toContain("You can quit");
   });
 
   it("times out a stuck completion call, keeps the video, and retries verification without retransferring", async () => {

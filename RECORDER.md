@@ -144,6 +144,49 @@ Windows, including real ffmpeg concatenation, a corrupt later segment,
 progressing/stalled subprocesses, and output-file writes during finalization.
 macOS native validation remains part of the next release build.
 
+## Segment timestamp compatibility and preparation recovery (v0.5.4, unreleased)
+
+A macOS 0.5.3 log showed 172 window-mode segments failing to join every 30
+seconds with Non-monotonic DTS. Upload never began. The failure is reproduced
+by mixing MP4 video time bases of 1/10240 (looped pictures) and 1/1000000
+(live capture). The log alone does not identify the time base of each original
+segment; it does not establish that the Mac's clock jumped by hours.
+
+New captures set a common 90000 Hz video track time scale. Preparation also
+remuxes each existing segment to that time scale before joining, so files from
+older releases can be retried. Video and audio packets are copied, without
+re-encoding or reconstructing timestamps from a presumed frame rate. Dropped
+frames retain their original spacing. This uses temporary disk space for a
+copy of the segments plus the joined output.
+
+Preparation keeps the original segments and any previous final video until
+the whole join and a duration sanity check succeed. Corrupt files still fail
+explicitly. Every remux/join has the existing 120-second progress watchdog;
+the duration check has a 15-second deadline.
+
+After three failed preparation attempts for an ended class, provided capture
+has stopped and recovery metadata has been saved, the quit lock lifts and
+retries back off to ten minutes. Check now retries immediately. The UI
+explains that the recording needs attention and quitting is allowed. Updates
+may install while this saved class is waiting; an active preparation, upload,
+exercise, or another imminent class still prevents an update. Retrying
+preparation temporarily restores the quit lock.
+
+Native tests reproduce the old join failure, cover both time-base switching
+directions and variable frame rates, and compare decoded video frame checksums,
+encoded audio packets, and frame spacing before and after preparation.
+Failed and implausibly short joins
+must preserve originals and the previous final recording. Frontend tests
+cover retry backoff, unlock, update eligibility, and unsaved-checkpoint locks.
+
+**Helping a tutor stuck on 0.5.3:** copy the entire class directory (including
+all segments and meta.json) before recovery. On macOS it is under
+~/Library/Application Support/com.yanlearn.recorder/recordings/. Force Quit
+from Cmd+Option+Esc if necessary. Once 0.5.4 is published, install it over the
+existing app, then reopen it and sign into the same YanLearn account to retry.
+Do not uninstall or delete the app-data folder. Recovery of a particular
+recording remains unverified until its actual files are prepared and uploaded.
+
 ## Quality profile (decision)
 
 Chosen for legible text at the lowest CPU cost on low‑end laptops that are also

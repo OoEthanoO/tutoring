@@ -33,6 +33,12 @@
   const CRASH_FALLBACK_SECONDS = 4;
   const MAX_CAPTURE_FAILURES = 6;
   const RECORDING_FPS = 10;
+  // Preparation that fails this many times in a row stops holding the tutor:
+  // the quit lock lifts and updates may install. The files stay on disk and
+  // preparation keeps being retried — including by the next version, which is
+  // how a fix for whatever broke it reaches them.
+  const PREPARE_FAILURES_BEFORE_RELEASE = 3;
+  const STUCK_PREPARE_RETRY_MS = 10 * 60 * 1000;
   // How often the focused window is checked in window mode. Short, because
   // everything after a focus change is a leak of a window nobody shared.
   const FOCUS_POLL_MS = 250;
@@ -748,12 +754,21 @@
     }
     const outputPath = `${dir}/recording.mp4`;
     state.preparingRecording = { outputPath, startedAtMs: Date.now(), progress: null };
-    log(`Combining ${usable.length} recording segment${usable.length === 1 ? "" : "s"}. Upload starts after preparation finishes.`);
+    log(`Preparing ${usable.length} recording segment${usable.length === 1 ? "" : "s"} with consistent timing, then combining them. Upload starts after preparation finishes.`);
     render();
     await updateOverlay();
+    // A sanity check against silently publishing a stretched/shortened join.
+    const expectedSeconds = usable.reduce(
+      (sum, segment) => sum + Math.max(0, ((segment.endedAtMs || segment.startedAtMs) - segment.startedAtMs) / 1000),
+      0
+    );
     let sizeBytes;
     try {
-      sizeBytes = await invoke("concat_segments", { segments: usable.map((segment) => segment.path), output: outputPath });
+      sizeBytes = await invoke("concat_segments", {
+        segments: usable.map((segment) => segment.path),
+        output: outputPath,
+        expectedSeconds: expectedSeconds > 0 ? expectedSeconds : null,
+      });
     } finally {
       state.preparingRecording = null;
       render();
@@ -796,21 +811,43 @@
     closeDonePrompt();
     render();
     try {
+      await setQuitLock(recorderEnforced() || state.uploads.some((upload) => !upload.blockedError));
       await persistMeta();
       await updateOverlay();
       log("Stopping capture and saving the recording. Your files stay on this computer until upload is confirmed.");
       if (session.capturing) {
         await stopSegment();
       }
+      await persistMeta();
+      session.recoverySaved = true;
       log(`Preparing the class recording (${reason.replace(/_/g, " ")}).`);
       await finalizeSegments(session, reason);
       clearSession();
       processUploads();
     } catch (error) {
       session.finalizing = false;
-      session.nextFinalizeAttemptMs = Date.now() + 30000;
-      log(`Could not prepare the recording (${error}). Files kept at ${session.dir}; retrying in 30 s.`);
+      session.prepareFailures = (session.prepareFailures || 0) + 1;
+      const stuck = session.prepareFailures >= PREPARE_FAILURES_BEFORE_RELEASE &&
+        session.recoverySaved && !session.capturing && !session.currentSegment &&
+        serverNow() >= session.endsAtMs;
+      session.nextFinalizeAttemptMs = Date.now() + (stuck ? STUCK_PREPARE_RETRY_MS : 30000);
+      log(`Could not prepare the recording (${error}). Files kept at ${session.dir}; retrying in ${stuck ? "10 min" : "30 s"}.`);
+      if (stuck && !session.preparationStuck) {
+        // The same failure over and over is not going to fix itself. Holding
+        // the tutor in the app does nothing for the recording and blocks the
+        // update that could — so let go, keep the files, keep trying.
+        session.preparationStuck = true;
+        log(
+          "Preparing this recording keeps failing, so this saved class no longer locks YanLearn Recorder. " +
+          "You can quit once any other upload finishes. " +
+          "Your recording files stay on this computer; preparation is retried every 10 minutes, when the recorder starts, and after it updates. " +
+          "Tell a founder if this does not clear up."
+        );
+      }
     } finally {
+      if (session.preparationStuck && !session.finalizing) {
+        await setQuitLock(state.uploads.some((upload) => !upload.blockedError));
+      }
       render();
       scheduleTick(500);
     }
@@ -1147,7 +1184,10 @@
     // a tool a tutor may use, not one that may hold their computer shut. A
     // recording that already exists still locks whatever the date, because that
     // is about not losing a class rather than about enforcement.
-    const classLock = recorderEnforced() && (session.phase !== "pre_arm" || session.finalizing);
+    const classLock =
+      recorderEnforced() &&
+      (!session.preparationStuck || session.finalizing) &&
+      (session.phase !== "pre_arm" || session.finalizing);
     await setQuitLock(session.test ? uploadsPending : classLock || uploadsPending);
     if (session.finalizing) {
       render();
@@ -1514,7 +1554,17 @@
     if (state.update.installing) {
       return false;
     }
-    if (state.quitLocked || state.session || state.uploads.length > 0 || exercises?.active()) {
+    // A class whose preparation keeps failing is not a reason to wait: its
+    // files are on disk, and a new version may be exactly what fixes it.
+    const stuckOnly =
+      state.session?.preparationStuck && state.session.recoverySaved &&
+      !state.session.capturing && !state.session.currentSegment && !state.session.finalizing &&
+      serverNow() >= state.session.endsAtMs;
+    const active = state.tick?.active;
+    if (active && (!stuckOnly || active.classId !== state.session.classId || serverNow() < active.endsAtMs)) {
+      return false;
+    }
+    if (state.quitLocked || state.preparingRecording || (state.session && !stuckOnly) || state.uploads.length > 0 || exercises?.active()) {
       return false;
     }
     // Signed out there is no class to interrupt — and an update is the only
@@ -1759,7 +1809,7 @@
       cls = "uploading";
       timer.textContent = "";
     } else if (session.finalizeReason) {
-      text = "Recording saved — retrying preparation";
+      text = session.preparationStuck ? "Recording saved — preparation needs attention" : "Recording saved — retrying preparation";
       cls = "uploading";
       timer.textContent = "";
     } else if (session.phase === "pre_arm") {
@@ -1803,6 +1853,7 @@
     dot.className = `dot ${cls}`;
     $("presence-text").textContent =
       state.preparingRecording ? preparationStatus().detail
+      : session.preparationStuck && !state.quitLocked ? "Your files are saved. You can quit and reopen Recorder, or select Check now to retry preparation."
       : session.finalizing || session.finalizeReason ? "Your recording files stay on this computer until upload is confirmed."
       : session.phase === "live" || session.phase === "after_end"
         ? session.inCall

@@ -690,6 +690,9 @@ fn build_args(
     }
     push_all(&mut args, &["-pix_fmt", "yuv420p", "-g", &keyframe_interval]);
     push_all(&mut args, &["-c:a", "aac", "-b:a", "64k", "-ac", "1", "-ar", "48000"]);
+    // Live capture and looped pictures have different native time bases.
+    // The concat demuxer requires the same time base in every segment.
+    push_all(&mut args, &["-video_track_timescale", "90000"]);
     push_all(
         &mut args,
         &[
@@ -893,61 +896,199 @@ pub fn capture_status(app: AppHandle) -> Result<CaptureStatus, String> {
 }
 
 #[tauri::command]
-pub async fn concat_segments(app: AppHandle, segments: Vec<String>, output: String) -> Result<u64, String> {
+pub async fn concat_segments(
+    app: AppHandle,
+    segments: Vec<String>,
+    output: String,
+    expected_seconds: Option<f64>,
+) -> Result<u64, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let progress_output = output.clone();
-        concat_blocking(segments, output, |progress| {
-            let _ = app.emit("preparation-progress", serde_json::json!({
-                "outputPath": progress_output, "elapsedSeconds": progress.elapsed_seconds,
-                "idleSeconds": progress.idle_seconds, "processedSeconds": progress.processed_seconds,
-                "sizeBytes": progress.size_bytes,
-            }));
-        })
+        let progress_app = app.clone();
+        concat_blocking(
+            segments,
+            output,
+            expected_seconds,
+            |progress| {
+                let _ = progress_app.emit("preparation-progress", serde_json::json!({
+                    "outputPath": progress_output, "elapsedSeconds": progress.elapsed_seconds,
+                    "idleSeconds": progress.idle_seconds, "processedSeconds": progress.processed_seconds,
+                    "sizeBytes": progress.size_bytes,
+                }));
+            },
+        )
     })
         .await
         .map_err(|e| e.to_string())?
 }
 
-/// Stitch fragmented-MP4 segments into one normal MP4 (stream copy, faststart).
-fn concat_blocking(segments: Vec<String>, output: String, report: impl FnMut(crate::preparation::Progress)) -> Result<u64, String> {
-    if segments.is_empty() {
-        return Err("There are no segments to combine.".into());
-    }
+/// The "Duration: HH:MM:SS.ss" ffmpeg prints for an input, in seconds.
+pub fn parse_ffmpeg_duration(stderr: &str) -> Option<f64> {
+    let start = stderr.find("Duration: ")? + "Duration: ".len();
+    let text: String = stderr[start..]
+        .chars()
+        .take_while(|c| c.is_ascii_digit() || *c == ':' || *c == '.')
+        .collect();
+    let mut parts = text.split(':');
+    let hours: f64 = parts.next()?.parse().ok()?;
+    let minutes: f64 = parts.next()?.parse().ok()?;
+    let seconds: f64 = parts.next()?.parse().ok()?;
+    Some(hours * 3600.0 + minutes * 60.0 + seconds)
+}
+
+fn probe_duration(ffmpeg: &Path, path: &Path) -> Result<f64, String> {
+    // ffmpeg exits with no output specified after inspecting the input. Bound
+    // this probe too, so checking the result cannot reintroduce a finishing hang.
+    let mut child = command(ffmpeg)
+        .args(["-hide_banner", "-nostdin", "-i"])
+        .arg(path)
+        .stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::piped())
+        .spawn().map_err(|e| e.to_string())?;
+    let stderr = child.stderr.take().ok_or("No duration probe output")?;
+    let reader = std::thread::spawn(move || {
+        let mut duration = None;
+        for line in BufReader::new(stderr).lines().map_while(Result::ok) {
+            if duration.is_none() { duration = parse_ffmpeg_duration(&line); }
+        }
+        duration
+    });
+    let deadline = Instant::now() + Duration::from_secs(15);
+    let result = loop {
+        match child.try_wait() {
+            Ok(Some(_)) => break Ok(()),
+            Err(error) => break Err(error.to_string()),
+            Ok(None) if Instant::now() >= deadline => break Err("Checking the recording duration timed out.".into()),
+            Ok(None) => std::thread::sleep(Duration::from_millis(50)),
+        }
+    };
+    if result.is_err() { let _ = child.kill(); }
+    let _ = child.wait();
+    let duration = reader.join().ok().flatten();
+    result?;
+    duration.ok_or_else(|| "Could not verify the prepared recording's duration. Original segments have been kept.".into())
+}
+
+/// A broad sanity check, not a reason to invent replacement timestamps.
+/// Startup gaps are expected, but hours of extra video or a severely shortened
+/// class must not be published as a successful recording.
+pub fn plausible_duration(actual_seconds: f64, expected_seconds: f64) -> bool {
+    if !(expected_seconds.is_finite() && expected_seconds > 0.0) { return true; }
+    actual_seconds.is_finite() && actual_seconds > 0.0
+        && actual_seconds <= expected_seconds * 1.25 + 300.0
+        && actual_seconds >= expected_seconds * 0.5 - 60.0
+}
+
+/// Copy each segment into a common MP4 video time base before concatenation.
+/// This also repairs old live/still segments. Do not regenerate timestamps
+/// from frame counts: AVFoundation can drop frames, and that would speed up
+/// the picture and desynchronize it from audio.
+fn concat_blocking(
+    segments: Vec<String>,
+    output: String,
+    expected_seconds: Option<f64>,
+    mut report: impl FnMut(crate::preparation::Progress),
+) -> Result<u64, String> {
+    if segments.is_empty() { return Err("There are no segments to combine.".into()); }
     let ffmpeg = sidecar_path("ffmpeg")?;
-    let list_path = PathBuf::from(&output).with_extension("txt");
+    let work_dir = PathBuf::from(&output).with_extension("normalizing");
+    // Only preparation scratch space is removed, never an original segment.
+    if work_dir.exists() {
+        std::fs::remove_dir_all(&work_dir).map_err(|e| e.to_string())?;
+    }
+    std::fs::create_dir_all(&work_dir).map_err(|e| e.to_string())?;
+    let result = concat_normalized(&ffmpeg, &segments, &output, expected_seconds, &work_dir, &mut report);
+    let _ = std::fs::remove_dir_all(&work_dir);
+    result
+}
+
+fn strings(items: &[&str]) -> Vec<String> {
+    items.iter().map(|item| item.to_string()).collect()
+}
+
+fn write_concat_list(list_path: &Path, files: &[String]) -> Result<(), String> {
     let mut list = String::new();
-    for segment in &segments {
-        let escaped = segment.replace('\\', "/").replace('\'', "'\\''");
+    for file in files {
+        let escaped = file.replace('\\', "/").replace('\'', "'\\''");
         list.push_str(&format!("file '{escaped}'\n"));
     }
-    std::fs::write(&list_path, list).map_err(|e| e.to_string())?;
+    std::fs::write(list_path, list).map_err(|e| e.to_string())
+}
+
+/// All destinations here are disposable scratch files. Publishing over a
+/// previous prepared recording happens only after the entire join validates.
+fn run_preparation(
+    ffmpeg: &Path,
+    args: &[String],
+    output: &Path,
+    report: &mut impl FnMut(crate::preparation::Progress),
+) -> Result<u64, String> {
+    let mut child = command(ffmpeg)
+        .args(["-y", "-nostdin", "-hide_banner", "-loglevel", "error", "-xerror",
+            "-nostats", "-stats_period", "1", "-progress", "pipe:1"])
+        .args(args).arg(output)
+        .stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped())
+        .spawn().map_err(|e| format!("Failed to run ffmpeg: {e}"))?;
+    crate::preparation::wait(&mut child, output, Duration::from_secs(120), report)?;
+    let size = std::fs::metadata(output).map_err(|e| e.to_string())?.len();
+    if size == 0 {
+        return Err("Preparing the recording produced an empty file. Original segments have been kept.".into());
+    }
+    Ok(size)
+}
+
+fn concat_normalized(
+    ffmpeg: &Path,
+    segments: &[String],
+    output: &str,
+    expected_seconds: Option<f64>,
+    work_dir: &Path,
+    report: &mut impl FnMut(crate::preparation::Progress),
+) -> Result<u64, String> {
+    let started = Instant::now();
+    let mut done_bytes = 0u64;
+    let mut parts = Vec::with_capacity(segments.len());
+    for (index, segment) in segments.iter().enumerate() {
+        let part = work_dir.join(format!("part-{index:04}.mp4"));
+        let args = strings(&[
+            "-i", segment, "-map", "0:v:0", "-map", "0:a:0?",
+            "-c", "copy", "-video_track_timescale", "90000", "-f", "mp4",
+        ]);
+        let size = run_preparation(ffmpeg, &args, &part, &mut |progress| {
+            report(crate::preparation::Progress {
+                elapsed_seconds: started.elapsed().as_secs(),
+                size_bytes: done_bytes + progress.size_bytes,
+                ..progress
+            });
+        }).map_err(|error| format!("Preparing segment {} of {}: {error}", index + 1, segments.len()))?;
+        done_bytes += size;
+        parts.push(part.to_string_lossy().to_string());
+    }
+    let list_path = work_dir.join("list.txt");
+    write_concat_list(&list_path, &parts)?;
     let list_arg = list_path.to_string_lossy().to_string();
-    // Keep an existing prepared video intact until its replacement succeeds.
-    let preparing_path = PathBuf::from(&output).with_extension("preparing.mp4");
-    let preparing_arg = preparing_path.to_string_lossy().to_string();
-    let child = command(&ffmpeg)
-        .args([
-            "-y", "-nostdin", "-hide_banner", "-loglevel", "error", "-xerror",
-            "-nostats", "-stats_period", "1", "-progress", "pipe:1",
-            "-f", "concat", "-safe", "0",
-            "-i", &list_arg,
-            "-c", "copy",
-            "-movflags", "+faststart",
-            &preparing_arg,
-        ])
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn();
-    let result = child.map_err(|e| format!("Failed to run ffmpeg: {e}"))
-        .and_then(|mut child| crate::preparation::wait(
-            &mut child, &preparing_path, Duration::from_secs(120), report,
-        ));
-    let _ = std::fs::remove_file(&list_path);
-    result?;
-    let size = std::fs::metadata(&preparing_path).map_err(|e| e.to_string())?.len();
-    if size == 0 { return Err("Preparing the recording produced an empty file. Original segments have been kept.".into()); }
-    std::fs::rename(&preparing_path, &output).map_err(|e| format!("Could not save the prepared recording: {e}"))?;
+    let candidate = work_dir.join("recording.mp4");
+    let args = strings(&[
+        "-f", "concat", "-safe", "0", "-i", &list_arg,
+        "-map", "0:v:0", "-map", "0:a:0?", "-c", "copy",
+        "-video_track_timescale", "90000", "-movflags", "+faststart", "-f", "mp4",
+    ]);
+    let size = run_preparation(ffmpeg, &args, &candidate, &mut |progress| {
+        report(crate::preparation::Progress {
+            elapsed_seconds: started.elapsed().as_secs(),
+            size_bytes: done_bytes + progress.size_bytes,
+            ..progress
+        });
+    })?;
+    let duration = probe_duration(ffmpeg, &candidate)?;
+    if let Some(expected) = expected_seconds {
+        if !plausible_duration(duration, expected) {
+            return Err(format!(
+                "The prepared recording's duration ({duration:.1} s) does not match the saved recording time ({expected:.1} s). Original segments have been kept."
+            ));
+        }
+    }
+    std::fs::rename(&candidate, output)
+        .map_err(|e| format!("Could not save the prepared recording: {e}"))?;
     Ok(size)
 }
 
@@ -972,7 +1113,7 @@ mod preparation_tests {
         assert!(generated.status.success(), "{}", String::from_utf8_lossy(&generated.stderr));
         std::fs::copy(&first, &second).unwrap();
         let segments = vec![first.to_string_lossy().to_string(), second.to_string_lossy().to_string()];
-        concat_blocking(segments.clone(), output.to_string_lossy().to_string(), |_| {}).unwrap();
+        concat_blocking(segments.clone(), output.to_string_lossy().to_string(), None, |_| {}).unwrap();
         let decoded = command(&ffmpeg).args(["-v", "error", "-i"]).arg(&output)
             .args(["-map", "0:v:0", "-c", "copy", "-f", "framecrc", "-"]).output().unwrap();
         assert!(decoded.status.success());
@@ -982,7 +1123,7 @@ mod preparation_tests {
         let prepared = std::fs::read(&output).unwrap();
         let original = std::fs::read(&first).unwrap();
         std::fs::write(&second, b"invalid segment").unwrap();
-        let result = concat_blocking(segments, output.to_string_lossy().to_string(), |_| {});
+        let result = concat_blocking(segments, output.to_string_lossy().to_string(), None, |_| {});
         assert!(result.is_err(), "a broken later segment must not silently publish only the first one");
         assert_eq!(std::fs::read(&first).unwrap(), original);
         assert_eq!(std::fs::read(&second).unwrap(), b"invalid segment");
@@ -991,6 +1132,124 @@ mod preparation_tests {
             std::fs::remove_file(file.unwrap().path()).unwrap();
         }
         std::fs::remove_dir(dir).unwrap();
+    }
+
+    fn mixed_segments(dir: &Path, scales: &[&str], variable_rate: bool) -> Vec<String> {
+        let ffmpeg = sidecar_path("ffmpeg").unwrap();
+        let mut paths = Vec::new();
+        for (index, scale) in scales.iter().enumerate() {
+            let path = dir.join(format!("seg-{index}.mp4"));
+            let mut args = strings(&[
+                "-y", "-nostdin", "-hide_banner", "-loglevel", "error",
+                "-f", "lavfi", "-i", "testsrc2=s=64x64:r=10:d=3",
+                "-f", "lavfi", "-i", "sine=f=440:r=48000:d=3",
+                "-map", "0:v", "-map", "1:a",
+                "-c:v", "libx264", "-bf", if variable_rate { "0" } else { "2" }, "-c:a", "aac", "-ac", "1",
+                "-video_track_timescale", scale,
+                "-movflags", "+frag_keyframe+empty_moov+default_base_moof",
+            ]);
+            if variable_rate {
+                args.extend(strings(&["-vf", "select=not(mod(n\\,3))", "-fps_mode", "vfr"]));
+            }
+            let generated = command(&ffmpeg).args(&args).arg(&path).output().unwrap();
+            assert!(generated.status.success(), "{}", String::from_utf8_lossy(&generated.stderr));
+            paths.push(path.to_string_lossy().to_string());
+        }
+        paths
+    }
+
+    fn media_frames(ffmpeg: &Path, path: &str, stream: &str) -> Vec<(i64, String)> {
+        let mut cmd = command(ffmpeg);
+        cmd.args(["-v", "error", "-i", path, "-map", stream]);
+        if stream == "0:v:0" {
+            // Concat adds H.264 parameter sets at segment boundaries. Compare
+            // decoded pixels, not those harmless encoded header differences.
+            cmd.args(["-c:v", "rawvideo", "-fps_mode", "passthrough", "-enc_time_base", "1:90000"]);
+        } else {
+            cmd.args(["-c", "copy"]);
+        }
+        let packets = cmd.args(["-f", "framecrc", "-"]).output().unwrap();
+        assert!(packets.status.success(), "{}", String::from_utf8_lossy(&packets.stderr));
+        String::from_utf8_lossy(&packets.stdout).lines()
+            .filter(|line| !line.is_empty() && !line.starts_with('#'))
+            .map(|line| {
+                let fields: Vec<_> = line.split(',').map(str::trim).collect();
+                (fields[2].parse().unwrap(), fields[5].to_string())
+            }).collect()
+    }
+
+    #[test]
+    fn joins_mixed_live_and_frozen_time_bases_without_changing_media() {
+        let ffmpeg = sidecar_path("ffmpeg").unwrap();
+        let dir = std::env::temp_dir().join(format!("recorder-timescale-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        // Both switching directions, plus variable-rate capture: rebuilding
+        // timestamps as N/fps would compress these dropped-frame segments.
+        for (scales, variable) in [
+            (["10240", "1000000", "10240"], false),
+            (["1000000", "10240", "1000000"], true),
+        ] {
+            let segments = mixed_segments(&dir, &scales, variable);
+            let originals: Vec<_> = segments.iter().map(|p| std::fs::read(p).unwrap()).collect();
+            let output = dir.join("recording.mp4");
+            let output_text = output.to_string_lossy().to_string();
+
+            if !variable {
+                let list = dir.join("old-list.txt");
+                write_concat_list(&list, &segments).unwrap();
+                let failed = command(&ffmpeg).args(["-y", "-v", "error", "-xerror",
+                    "-f", "concat", "-safe", "0", "-i"]).arg(&list)
+                    .args(["-c", "copy"]).arg(dir.join("broken.mp4")).output().unwrap();
+                assert!(!failed.status.success(), "the old path must reproduce the reported failure");
+                assert!(String::from_utf8_lossy(&failed.stderr).contains("Non-monotonic DTS"));
+            }
+
+            concat_blocking(segments.clone(), output_text.clone(), Some(9.0), |_| {}).unwrap();
+            let length = probe_duration(&ffmpeg, &output).unwrap();
+            // Fragmented MP4 includes the encoder's initial reorder/priming
+            // delay; preserve it rather than treating it as corrupted timing.
+            let expected_length: f64 = segments.iter()
+                .map(|path| probe_duration(&ffmpeg, Path::new(path)).unwrap()).sum();
+            assert!((length - expected_length).abs() < 0.1,
+                "{expected_length} s of media, not {length} s");
+            for stream in ["0:v:0", "0:a:0"] {
+                let joined = media_frames(&ffmpeg, &output_text, stream);
+                let mut offset = 0;
+                for segment in &segments {
+                    let original = media_frames(&ffmpeg, segment, stream);
+                    let slice = &joined[offset..offset + original.len()];
+                    for (before, after) in original.iter().zip(slice) {
+                        assert_eq!(before.1, after.1, "video pixels/audio packets must survive in order");
+                        // Allow one time-base rounding tick, not frame-count
+                        // retiming, which loses the variable-rate spacing.
+                        let delta = (before.0 - original[0].0) - (after.0 - slice[0].0);
+                        assert!(delta.abs() <= 1, "frame spacing changed by {delta} ticks");
+                    }
+                    offset += original.len();
+                }
+                assert_eq!(joined.len(), offset, "no dropped or duplicated media");
+            }
+            for (segment, bytes) in segments.iter().zip(&originals) {
+                assert_eq!(&std::fs::read(segment).unwrap(), bytes);
+            }
+            assert!(!output.with_extension("normalizing").exists());
+
+            // A plausible-length check must also preserve any existing final.
+            let prepared = std::fs::read(&output).unwrap();
+            assert!(concat_blocking(segments, output_text, Some(7200.0), |_| {}).is_err());
+            assert_eq!(std::fs::read(&output).unwrap(), prepared);
+        }
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn reads_the_duration_ffmpeg_prints() {
+        assert_eq!(parse_ffmpeg_duration("Duration: 05:00:03.02, start: 0.000000"), Some(18003.02));
+        assert_eq!(parse_ffmpeg_duration("Duration: 00:25:16.40, start"), Some(1516.4));
+        assert_eq!(parse_ffmpeg_duration("Duration: N/A, bitrate"), None);
+        assert!(!plausible_duration(18000.0, 1516.0));
+        assert!(plausible_duration(1350.0, 1516.0));
+        assert!(!plausible_duration(10.0, 3600.0));
     }
 }
 
