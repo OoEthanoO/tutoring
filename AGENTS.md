@@ -58,7 +58,13 @@ bearer (see the `cron:reminders:*` npm scripts).
   Admin → Manage accounts → Admin Tools; sync failures do not send Discord
   notifications). Also records attendance from voice states and warns absent
   tutors/students — see `CLASS_PRESENCE_WARNINGS.md`; the timing rules are
-  pure functions in `src/lib/tutorPresence.ts`.
+  pure functions in `src/lib/tutorPresence.ts`. Tutors can open breakout
+  rooms from My classes: extra voice channels in the Live category that copy
+  the class channel's access (`discord_breakout_rooms`,
+  `src/lib/breakoutRooms*.ts`, `api/classes/[classId]/breakout-rooms`). Being
+  in any of a class's rooms counts as being in the class for attendance, tutor
+  warnings, live-channel cleanup and the Recorder (`isInClassCall`); rooms are
+  deleted with their class channel, and orphans are swept each tick.
   Live voice channels must never be deleted before the current class end.
   Their 5-minute empty and 30-minute tutor-absence clocks start only afterwards
   (`discordLiveChannels.ts` / `liveChannelCleanup.ts`). Guild sync preserves

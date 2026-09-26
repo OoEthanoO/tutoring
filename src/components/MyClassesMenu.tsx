@@ -5,6 +5,8 @@ import { getCurrentUser, onAuthChange } from "@/lib/authClient";
 import { classEndMs } from "@/lib/classTiming";
 import ClassRecordings from "@/components/ClassRecordings";
 import RecorderNotice from "@/components/RecorderNotice";
+import BreakoutRoomsPanel from "@/components/BreakoutRoomsPanel";
+import { breakoutRoomsOpenBeforeStartMs } from "@/lib/breakoutRooms";
 
 type StatusState = {
   type: "idle" | "error";
@@ -193,6 +195,13 @@ export default function MyClassesMenu() {
       <div className="space-y-3">
         {classes.map((cls) => {
           const ongoing = isOngoingClass(cls.starts_at, cls.duration_hours, nowMs);
+          // Tutors (and the trio) get breakout rooms from when students are
+          // let in until the class ends.
+          const startMs = new Date(cls.starts_at).getTime();
+          const showBreakouts =
+            cls.role_in_course !== "student" &&
+            nowMs >= startMs - breakoutRoomsOpenBeforeStartMs &&
+            nowMs <= classEndMs(startMs, cls.duration_hours);
           return (
             <div
               key={`${cls.course_id}-${cls.id}`}
@@ -222,6 +231,7 @@ export default function MyClassesMenu() {
                 </div>
               </div>
               </div>
+              {showBreakouts ? <BreakoutRoomsPanel classId={cls.id} /> : null}
             </div>
           );
         })}

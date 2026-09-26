@@ -62,6 +62,12 @@ import {
   type RecordingAnnouncementRetryResult,
 } from "@/lib/recordingAnnouncements";
 import { recorderNotOpenReminderType, shouldWarnRecorderNotOpen } from "@/lib/recorderPolicy";
+import { classCallChannelIds, isInClassCall } from "@/lib/breakoutRooms";
+import {
+  deleteBreakoutRoomsForClass,
+  loadBreakoutChannelIdsByClassId,
+  sweepOrphanBreakoutRooms,
+} from "@/lib/breakoutRoomsServer";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
@@ -1225,6 +1231,12 @@ export async function POST(request: NextRequest) {
       )
       .is("deleted_at", null);
     if (activeLiveChannelsError) liveChannelCleanupErrors.push(activeLiveChannelsError.message);
+    // A class is its live channel plus any open breakout rooms: a channel whose
+    // students are all in rooms is not empty.
+    const breakoutChannelIdsByClassId = await loadBreakoutChannelIdsByClassId(
+      adminClient,
+      (activeLiveChannels ?? []).map((row) => String(row.class_id))
+    );
 
     // Everyone who could legitimately still be in a live channel. The stored
     // tutor_discord_user_id is only ever the course's primary tutor, so on a
@@ -1373,6 +1385,10 @@ export async function POST(request: NextRequest) {
       }
 
       const channelId = String(liveChannel.discord_channel_id);
+      const callChannelIds = classCallChannelIds(
+        channelId,
+        breakoutChannelIdsByClassId.get(String(liveChannel.class_id)) ?? []
+      );
       const storedTutorId = String(liveChannel.tutor_discord_user_id ?? "").trim();
       // Every account that could be the person teaching — the stored tutor, the
       // course's tutor and co-tutor, and their approved extra accounts — polled
@@ -1393,7 +1409,7 @@ export async function POST(request: NextRequest) {
       for (const candidateId of tutorCandidateIds) {
         try {
           const voiceChannelId = await getDiscordUserVoiceChannelId(discordGuildId, candidateId);
-          if (voiceChannelId === channelId) {
+          if (isInClassCall(voiceChannelId, callChannelIds)) {
             tutorPresent = true;
             break;
           }
@@ -1421,7 +1437,7 @@ export async function POST(request: NextRequest) {
         }
         try {
           const voiceChannelId = await getDiscordUserVoiceChannelId(discordGuildId, candidateId);
-          if (voiceChannelId === channelId) {
+          if (isInClassCall(voiceChannelId, callChannelIds)) {
             someonePresent = true;
             break;
           }
@@ -1455,14 +1471,24 @@ export async function POST(request: NextRequest) {
       if (decideLiveChannelCleanup({ ...presence, ...clocks }) !== "delete") continue;
 
       try {
-        await deleteFinishedLiveChannel({
+        const deleted = await deleteFinishedLiveChannel({
           adminClient, rowId: String(liveChannel.id), channelId, presence,
           deleteChannel: deleteDiscordChannel,
         });
+        // Its breakout rooms go with it.
+        if (deleted) {
+          liveChannelCleanupErrors.push(
+            ...(await deleteBreakoutRoomsForClass(adminClient, String(liveChannel.class_id)))
+          );
+        }
       } catch (error) {
         liveChannelCleanupErrors.push(error instanceof Error ? error.message : "Live channel cleanup failed.");
       }
     }
+
+    // Rooms whose class channel is gone for any other reason. They sit in the
+    // Live category, which the Discord sync never sweeps.
+    liveChannelCleanupErrors.push(...(await sweepOrphanBreakoutRooms(adminClient)));
 
     // An untracked channel has no trustworthy class end time. Never delete it
     // based on channel age or a missing row; it may be a lesson being recovered.
@@ -1889,6 +1915,12 @@ export async function POST(request: NextRequest) {
 
         const nowIso = new Date(attendanceNow).toISOString();
         let pollBudget = 300; // hard cap per tick to avoid long-running requests
+        // A student in a breakout room is in class, and a tutor visiting one is
+        // still teaching — not "left early".
+        const attendanceBreakoutIdsByClassId = await loadBreakoutChannelIdsByClassId(
+          adminClient,
+          sessionClassIds
+        );
 
         for (const session of sessions) {
           if (pollBudget <= 0) {
@@ -1902,6 +1934,10 @@ export async function POST(request: NextRequest) {
           }
           const sessionStartMs = new Date(String(session.starts_at)).getTime();
           const sessionEndMs = new Date(String(session.ends_at)).getTime();
+          const callChannelIds = classCallChannelIds(
+            channelId,
+            attendanceBreakoutIdsByClassId.get(classId) ?? []
+          );
 
           const tutorUserId = createdByByCourse.get(courseId);
           const tutorDiscordId = String(session.tutor_discord_user_id ?? "").trim();
@@ -1931,7 +1967,7 @@ export async function POST(request: NextRequest) {
               tutorPollSucceeded = false;
             }
 
-            if (tutorPollSucceeded && tutorChannelId === channelId) {
+            if (tutorPollSucceeded && isInClassCall(tutorChannelId, callChannelIds)) {
               if (recordedKeys.has(tutorKey)) {
                 await adminClient
                   .from("class_attendance")
@@ -2131,7 +2167,7 @@ export async function POST(request: NextRequest) {
               studentPresenceKnown = false;
               continue;
             }
-            if (currentChannelId !== channelId) {
+            if (!isInClassCall(currentChannelId, callChannelIds)) {
               continue;
             }
             const { error: upsertError } = await adminClient

@@ -44,13 +44,15 @@ export const lookupDiscordVoiceChannelId = async (
 
 /**
  * Whether any of the given accounts (the tutor's main account plus approved
- * extra ones) is in `channelId`. Stops at the first hit to spare Discord calls.
- * `null` means at least one lookup failed before a hit was found.
+ * extra ones) is in one of `channelIds` — a class's live channel and its open
+ * breakout rooms. Stops at the first hit to spare Discord calls. `null` means
+ * at least one lookup failed before a hit was found.
  */
 export const isAnyAccountInVoiceChannel = async (
   discordUserIds: string[],
-  channelId: string
+  channelIds: string | Iterable<string>
 ): Promise<boolean | null> => {
+  const wanted = new Set(typeof channelIds === "string" ? [channelIds] : channelIds);
   let failed = false;
   for (const discordUserId of discordUserIds) {
     const lookup = await lookupDiscordVoiceChannelId(discordUserId);
@@ -58,7 +60,7 @@ export const isAnyAccountInVoiceChannel = async (
       failed = true;
       continue;
     }
-    if (lookup.channelId === channelId) {
+    if (lookup.channelId && wanted.has(lookup.channelId)) {
       return true;
     }
   }

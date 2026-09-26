@@ -2,6 +2,8 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getAdminClient } from "@/lib/authServer";
 import { classEndMs } from "@/lib/classTiming";
 import { discordVoiceLookupEnabled, isAnyAccountInVoiceChannel } from "@/lib/discordVoice";
+import { classCallChannelIds } from "@/lib/breakoutRooms";
+import { loadBreakoutChannelIdsByClassId } from "@/lib/breakoutRoomsServer";
 import { getRecorderUser } from "@/lib/recorderAuth";
 import { classUsesDiscordVoiceSystem } from "@/lib/discordLiveChannels";
 import { isFounder, resolveUserRole } from "@/lib/roles";
@@ -317,7 +319,12 @@ export async function POST(request: NextRequest) {
       if (accountIds.length === 0) {
         presenceReason = "Connect your Discord account on the website so the recorder can see when you are in the call.";
       } else {
-        tutorInLiveChannel = await isAnyAccountInVoiceChannel(accountIds, liveChannelId);
+        // Visiting a breakout room is still teaching: keep recording.
+        const breakoutRoomIds = await loadBreakoutChannelIdsByClassId(adminClient, [classRow.id]);
+        tutorInLiveChannel = await isAnyAccountInVoiceChannel(
+          accountIds,
+          classCallChannelIds(liveChannelId, breakoutRoomIds.get(classRow.id) ?? [])
+        );
         if (tutorInLiveChannel === null) {
           presenceReason = "Discord voice lookup failed; keeping the previous state.";
         }

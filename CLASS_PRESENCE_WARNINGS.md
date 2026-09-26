@@ -20,6 +20,13 @@ While a class's live voice channel is active — rows in
 A failed voice-state read is never treated as absence — the tick simply learns
 nothing and tries again.
 
+"In the class" means the class's live channel **or any of its open breakout
+rooms** (`isInClassCall` in `src/lib/breakoutRooms.ts`). A student in a room is
+present, and a tutor moving between rooms to check on groups is still teaching,
+not "gone". The same rule applies to live-channel cleanup (a channel whose
+students are all in rooms is not empty) and to YanLearn Recorder, which keeps
+recording while the tutor is in a room.
+
 ## The warnings
 
 | When | Condition | Where it goes |
