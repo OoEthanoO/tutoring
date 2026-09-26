@@ -35,7 +35,8 @@ bearer (see the `cron:reminders:*` npm scripts).
   gate; keep both sides trio-aligned (decided July 2026).
 - `src/lib/discordSync.ts` — single owner of Discord guild state. Each run
   kicks human members not linked to a website account (unless listed in
-  `approved_discord_accounts`), manages roles (base + per-course), channels,
+  `approved_discord_accounts` or booked for a trial in `class_trials`), manages
+  roles (base + per-course), channels,
   and nicknames. Aborts if the approved-accounts table is missing (by design).
   Every member's nickname is their YanLearn name at every rank (a second
   account takes its owner's); the server owner is skipped, since Discord never
@@ -71,6 +72,19 @@ bearer (see the `cron:reminders:*` npm scripts).
   every executive sees in Course requests until the trio removes them. Adding is what announces — a
   course already on the list is not announced twice (`src/lib/courseNeeds.ts`,
   `api/course-needs`, `CourseNeedsList.tsx`).
+- Trial guests: Admin → Manage accounts → Trial classes books one scheduled
+  class by name and Discord ID, without a website account. `class_trials`
+  and `classTrials.ts` grant member overwrites only from 5 minutes before to
+  30 minutes after class, never tutor/course roles. Sync revokes expired
+  access and disconnects guests only if they have no other access. Preserve
+  trial rows after revocation/class deletion for permission cleanup. See
+  `TRIAL_CLASSES.md`; apply its migration before deployment.
+- Zen mode: tutors/co-tutors toggle a course's current and remaining classes
+  in My classes (`courses.zen_mode_enabled`, `api/courses/[courseId]/zen-mode`).
+  `zenModeServer.ts` applies voice restrictions and tracks only Zen-owned mutes;
+  cron/guild sync retry and restore them. New/recovered/breakout channels must
+  use `prepareZenVoice`. Preserve the mute ledger and restore only permission
+  bits, never old channel access. See `ZEN_MODE.md` and its migration.
 - Founder-taught courses ran on Schoolhouse rather than Discord; from
   2026-09-08 (Toronto) their classes use the same live voice channels,
   reminders and attendance as everyone else. The rule is per class, not per

@@ -63,6 +63,9 @@ import {
 } from "@/lib/recordingAnnouncements";
 import { recorderNotOpenReminderType, shouldWarnRecorderNotOpen } from "@/lib/recorderPolicy";
 import { classCallChannelIds, isInClassCall } from "@/lib/breakoutRooms";
+import { trialGuestsForClass, trialStatus, type ClassTrial } from "@/lib/classTrials";
+import { loadClassTrials } from "@/lib/classTrialsServer";
+import { prepareZenVoice, syncZenMode, ZenBusyError } from "@/lib/zenModeServer";
 import {
   deleteBreakoutRoomsForClass,
   loadBreakoutChannelIdsByClassId,
@@ -644,6 +647,13 @@ export async function POST(request: NextRequest) {
     auth: { persistSession: false },
   });
 
+  // Do not rebuild access from a partial guest list during a database outage.
+  let trialGuests: ClassTrial[];
+  try {
+    trialGuests = await loadClassTrials(adminClient);
+  } catch {
+    return NextResponse.json({ error: "Could not load trial-class access. No Discord access changes were made." }, { status: 503 });
+  }
   const autoCloseResult = await runAutoCloseMeetings(adminClient);
 
   let discordSync: DiscordSyncResult;
@@ -1157,6 +1167,7 @@ export async function POST(request: NextRequest) {
         }
       }
       for (const row of approvedRows ?? []) {
+        if (trialGuests.some(t => t.discord_user_id === row.discord_user_id && ["scheduled", "open"].includes(trialStatus(t, Date.now())))) continue;
         const ownerDiscordId =
           ownerDiscordIdById.get(String(row.owner_user_id ?? "").trim()) ?? "";
         const extraDiscordId = String(row.discord_user_id ?? "").trim();
@@ -1685,16 +1696,19 @@ export async function POST(request: NextRequest) {
               cooRoleId,
               shadowRoleIds,
               tutorDiscordUserId: tutorDiscordId,
+              trialDiscordUserIds: trialGuestsForClass(trialGuests, String(row.class_id), nowMs),
               extraMemberDiscordUserIds:
                 approvedExtraIdsByOwnerDiscordId.get(tutorDiscordId) ?? [],
               courseRoleId,
             });
+            const zen = await prepareZenVoice(adminClient, courseId, permissionOverwrites);
             const recreatedChannel = await createDiscordGuildChannel(discordGuildId, {
               name: normalizeVoiceChannelName(titleByCourseId.get(courseId) || "Class", String(row.class_id)),
               type: discordVoiceChannelType,
               parent_id: liveCategoryId,
-              permission_overwrites: permissionOverwrites,
+              permission_overwrites: zen.overwrites,
             });
+            await zen.remember(recreatedChannel.id);
             guildChannels.push(recreatedChannel);
             if (row.id) {
               const { error } = await adminClient
@@ -2678,16 +2692,19 @@ ${tutorWasPresent ? "" : "<p><strong>Note:</strong> you were not detected in the
                     cooRoleId,
                     shadowRoleIds,
                     tutorDiscordUserId: tutorDiscordIdForChannel,
+                    trialDiscordUserIds: trialGuestsForClass(trialGuests, classRow.id, Date.now()),
                     extraMemberDiscordUserIds:
                       approvedExtraIdsByOwnerDiscordId.get(tutorDiscordIdForChannel) ?? [],
                     courseRoleId: null,
                   });
+                  const zen = await prepareZenVoice(adminClient, classRow.course_id, permissionOverwrites);
                   const createdVoiceChannel = await createDiscordGuildChannel(discordGuildId, {
                     name: normalizeVoiceChannelName(courseTitleRaw, classRow.id),
                     type: discordVoiceChannelType,
                     parent_id: liveCategoryId,
-                    permission_overwrites: permissionOverwrites,
+                    permission_overwrites: zen.overwrites,
                   });
+                  await zen.remember(createdVoiceChannel.id);
                   guildChannels.push(createdVoiceChannel);
                   liveChannelId = createdVoiceChannel.id;
 
@@ -2857,17 +2874,20 @@ ${tutorWasPresent ? "" : "<p><strong>Note:</strong> you were not detected in the
                       cooRoleId,
                       shadowRoleIds,
                       tutorDiscordUserId: tutorDiscordIdForFallback,
+                      trialDiscordUserIds: trialGuestsForClass(trialGuests, classRow.id, Date.now()),
                       extraMemberDiscordUserIds:
                         approvedExtraIdsByOwnerDiscordId.get(tutorDiscordIdForFallback) ?? [],
                       courseRoleId:
                         discordCourseTargetByCourseId.get(classRow.course_id)?.roleId ?? null,
                     });
+                    const zen = await prepareZenVoice(adminClient, classRow.course_id, permissionOverwrites);
                     const createdVoiceChannel = await createDiscordGuildChannel(discordGuildId, {
                       name: normalizeVoiceChannelName(courseTitleRaw, classRow.id),
                       type: discordVoiceChannelType,
                       parent_id: liveCategoryId,
-                      permission_overwrites: permissionOverwrites,
+                      permission_overwrites: zen.overwrites,
                     });
+                    await zen.remember(createdVoiceChannel.id);
                     guildChannels.push(createdVoiceChannel);
                     liveChannelId = createdVoiceChannel.id;
                     const startsAtMs = new Date(classRow.starts_at).getTime();
@@ -2909,13 +2929,16 @@ ${tutorWasPresent ? "" : "<p><strong>Note:</strong> you were not detected in the
                     cooRoleId,
                     shadowRoleIds,
                     tutorDiscordUserId: tutorDiscordIdForUpdate,
+                    trialDiscordUserIds: trialGuestsForClass(trialGuests, classRow.id, Date.now()),
                     extraMemberDiscordUserIds:
                       approvedExtraIdsByOwnerDiscordId.get(tutorDiscordIdForUpdate) ?? [],
                     courseRoleId:
                       discordCourseTargetByCourseId.get(classRow.course_id)?.roleId ?? null,
                   });
+                  const zen = await prepareZenVoice(adminClient, classRow.course_id, fullPermissionOverwrites);
+                  await zen.remember(liveChannelId);
                   await updateDiscordChannel(liveChannelId, {
-                    permission_overwrites: fullPermissionOverwrites,
+                    permission_overwrites: zen.overwrites,
                   });
                 }
               }
@@ -3564,6 +3587,14 @@ ${tutorWasPresent ? "" : "<p><strong>Note:</strong> you were not detected in the
     );
   }
 
+  // Includes channels created/recovered this tick and restores Zen-owned mutes
+  // after class cleanup. The lease prevents concurrent toggles racing restores.
+  try {
+    const zen = await syncZenMode(adminClient);
+    for (const reason of zen.problems) failedClasses.push({ classId: "zen-mode", reason });
+  } catch (error) {
+    if (!(error instanceof ZenBusyError)) failedClasses.push({ classId: "zen-mode", reason: error instanceof Error ? error.message : "Zen mode sync failed." });
+  }
   return NextResponse.json({
     recordingExpiry,
     recordingAnnouncements,

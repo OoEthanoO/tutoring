@@ -1,6 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getAdminClient, type SessionUser } from "@/lib/authServer";
 import { isFounder, resolveAccountRole } from "@/lib/roles";
+import { loadClassTrials } from "@/lib/classTrialsServer";
+import { trialStatus } from "@/lib/classTrials";
+import { prepareZenVoice } from "@/lib/zenModeServer";
+import { restoreZenPermissions, type ZenPermissionSnapshot } from "@/lib/zenMode";
 import {
   breakoutRoomName,
   canOpenBreakoutRooms,
@@ -28,7 +32,7 @@ export class BreakoutError extends Error {
   }
 }
 
-type DiscordOverwrite = { id: string; type: number; allow: string; deny: string };
+type DiscordOverwrite = { id: string; type: 0 | 1; allow: string; deny: string };
 type DiscordChannel = {
   id: string;
   parent_id?: string | null;
@@ -295,6 +299,16 @@ const classStudents = async (access: BreakoutAccess): Promise<Participant[]> => 
       discordIds: [discordId],
     });
   }
+  const seen = new Set(students.flatMap(s => s.discordIds));
+  const trials = await loadClassTrials(access.db, access.lesson.id);
+  const tutorDiscordIds = trials.length ? new Set((await classTutors(access)).flatMap(t => t.discordIds)) : new Set<string>();
+  for (const trial of trials) {
+    if (trialStatus(trial, Date.now()) !== "open" || seen.has(trial.discord_user_id)) continue;
+    // Never move a tutor as a trial student, including their extra accounts.
+    if (tutorDiscordIds.has(trial.discord_user_id)) continue;
+    seen.add(trial.discord_user_id);
+    students.push({ userId: `trial:${trial.id}`, name: `${trial.student_name} (trial)`, discordIds: [trial.discord_user_id] });
+  }
   return students;
 };
 
@@ -396,7 +410,7 @@ export const readBreakoutState = async (access: BreakoutAccess): Promise<Breakou
     inMainRoom: [],
     notInCall: [],
     unknown: [],
-    withoutDiscord: Math.max(0, (enrolledCount ?? 0) - students.length),
+    withoutDiscord: Math.max(0, (enrolledCount ?? 0) - students.filter(s => !s.userId.startsWith("trial:")).length),
   };
   // Only worth asking Discord while the class is running.
   if (!access.liveChannelId) {
@@ -496,14 +510,22 @@ export const runBreakoutAction = async (
     }
     // Rooms copy the class channel's current access and sit right after it.
     const live = await discord<DiscordChannel>("GET", `/channels/${access.liveChannelId}`);
+    const { data: zenSnapshot, error: zenError } = await access.db.from("discord_zen_channels")
+      .select("original_permissions").eq("discord_channel_id", access.liveChannelId).maybeSingle();
+    if (zenError) throw new Error("Could not verify Zen mode for breakout rooms.");
+    const normalPermissions = zenSnapshot
+      ? restoreZenPermissions(live.permission_overwrites ?? [], zenSnapshot.original_permissions as ZenPermissionSnapshot)
+      : live.permission_overwrites ?? [];
     const created: BreakoutRoomRow[] = [];
     for (const number of nextBreakoutRoomNumbers(existing.map((room) => room.number), count)) {
+      const zen = await prepareZenVoice(access.db, access.lesson.course.id, normalPermissions);
       const channel = await discord<DiscordChannel>("POST", `/guilds/${discordGuildId}/channels`, {
         name: breakoutRoomName(number, access.lesson.course.title ?? ""),
         type: discordVoiceChannelType,
         parent_id: live.parent_id ?? null,
-        permission_overwrites: live.permission_overwrites ?? [],
+        permission_overwrites: zen.overwrites,
       });
+      await zen.remember(channel.id);
       const { data: row, error } = await access.db
         .from("discord_breakout_rooms")
         .insert({

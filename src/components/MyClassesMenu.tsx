@@ -6,6 +6,7 @@ import { classEndMs } from "@/lib/classTiming";
 import ClassRecordings from "@/components/ClassRecordings";
 import RecorderNotice from "@/components/RecorderNotice";
 import BreakoutRoomsPanel from "@/components/BreakoutRoomsPanel";
+import ZenModeControl from "@/components/ZenModeControl";
 import { breakoutRoomsOpenBeforeStartMs } from "@/lib/breakoutRooms";
 
 type StatusState = {
@@ -191,6 +192,9 @@ export default function MyClassesMenu() {
       ) : null}
 
       {teachesARecordedClass ? <RecorderNotice /> : null}
+
+      {[...new Map(classes.filter(c => c.role_in_course !== "student").map(c => [c.course_id, c])).values()]
+        .map(c => <ZenModeControl key={c.course_id} courseId={c.course_id} courseTitle={c.course_title} />)}
 
       <div className="space-y-3">
         {classes.map((cls) => {

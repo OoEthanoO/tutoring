@@ -150,6 +150,7 @@ export async function POST(request: NextRequest) {
 
   if (error) {
     // 23505 is unique violation
+    if (error.code === "23514") return NextResponse.json({ error: error.message }, { status: 409 });
     if (error.code === "23505") {
       return NextResponse.json(
         { error: "This Discord account is already approved." },

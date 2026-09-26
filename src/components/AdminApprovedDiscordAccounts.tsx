@@ -155,8 +155,8 @@ export default function AdminApprovedDiscordAccounts() {
             Extra Discord accounts for tutors who need a second account in lesson calls.
             Each approved account is tied to a tutor and gets the same course channels and
             live lesson voice channels as that tutor&apos;s main account, and it can stay in
-            the server without a linked website account (any other unlinked account is
-            kicked by the Discord sync).
+            the server without a linked website account. For students trying one class,
+            use the Trial classes tab instead; it keeps their own name and limits their access.
           </p>
           <p className="text-sm text-[var(--muted)]">
             After approving, have the tutor join the second account via the server invite:{" "}

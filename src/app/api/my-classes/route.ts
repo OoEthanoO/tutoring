@@ -107,19 +107,19 @@ export async function GET(request: NextRequest) {
   let query = adminClient
     .from("courses")
     .select(
-      "id, title, created_by, created_by_name, created_by_email, deleted_at, recordings_enabled, course_classes(id, title, starts_at, duration_hours), course_enrollments(student_name, student_email)"
+      "id, title, created_by, co_tutor_id, created_by_name, created_by_email, deleted_at, recordings_enabled, course_classes(id, title, starts_at, duration_hours), course_enrollments(student_name, student_email)"
     )
     .is("deleted_at", null);
 
   if (!isFounderUser) {
-    query = query.eq("created_by", user.id);
+    query = query.or(`created_by.eq.${user.id},co_tutor_id.eq.${user.id}`);
   }
 
   const { data: taughtData, error: taughtError } = await query;
 
   if (!taughtError && taughtData) {
     for (const course of taughtData) {
-      const isUsuallyTutor = course.created_by === user.id;
+      const isUsuallyTutor = course.created_by === user.id || course.co_tutor_id === user.id;
       const classes = course.course_classes || [];
       const enrollments = course.course_enrollments || [];
       const students = enrollments.map((e: EnrollmentStudentRow) => ({
@@ -132,7 +132,10 @@ export async function GET(request: NextRequest) {
         const durationHours = Number.parseFloat(String(cls.duration_hours || "1"));
         const endMs = classEndMs(startMs, durationHours);
         
-        if (endMs > nowMs && !seenClassIds.has(cls.id)) {
+        if (endMs > nowMs) {
+          // A tutor who is also enrolled must still receive their class controls.
+          const previous = upcomingClasses.findIndex(c => c.id === cls.id);
+          if (previous !== -1) upcomingClasses.splice(previous, 1);
           upcomingClasses.push({
             id: cls.id,
             course_id: course.id,

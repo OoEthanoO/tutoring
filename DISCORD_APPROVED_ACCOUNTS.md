@@ -17,6 +17,11 @@ account; approval is the explicit allowlist for these extra accounts.
 
 ## What an approved account gets
 
+Trial students should use **Admin → Manage accounts → Trial classes** instead.
+That feature grants one class under the student's own name, without mirroring
+the tutor's courses. Its replacement checkbox converts an existing approval
+atomically. See [TRIAL_CLASSES.md](TRIAL_CLASSES.md).
+
 - **Stays in the server** — the sync's kick pass skips it.
 - **The owner's course roles** — mirrored on every sync for courses the owner
   teaches (or is enrolled in), so it sees the same course text channels. Roles

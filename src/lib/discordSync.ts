@@ -8,6 +8,10 @@ import { preserveLiveVoiceChannel } from "@/lib/discordLiveChannels";
 import { fetchFundraisingRaisedAmount } from "@/lib/fundraising";
 import { classEndMs } from "@/lib/classTiming";
 import { fetchAllRows } from "@/lib/supabasePaging";
+import { trialStatus, trialGuestsForClass, withTrialOverwrites, canStillJoinVoice } from "@/lib/classTrials";
+import { loadClassTrials } from "@/lib/classTrialsServer";
+import { loadZenPolicies, syncZenMode, ZenBusyError } from "@/lib/zenModeServer";
+import { applyZenPermissions, snapshotZenPermissions } from "@/lib/zenMode";
 
 const discordApiBase = "https://discord.com/api/v10";
 const courseTopicPrefix = "yanlearn-course-id:";
@@ -990,10 +994,12 @@ class DiscordApiClient {
     method,
     path,
     body,
+    allowNotFound = false,
   }: {
     method: string;
     path: string;
     body?: unknown;
+    allowNotFound?: boolean;
   }): Promise<T> {
     const url = `${discordApiBase}${path}`;
     const maxAttempts = 6;
@@ -1030,6 +1036,7 @@ class DiscordApiClient {
         continue;
       }
 
+      if (response.status === 404 && allowNotFound) return undefined as T;
       if (!response.ok) {
         const errorMessage =
           (jsonPayload?.message as string | undefined)?.trim() ||
@@ -1140,12 +1147,19 @@ class DiscordApiClient {
     });
   }
 
-  updateGuildMember(guildId: string, memberId: string, payload: { nick: string | null }) {
+  updateGuildMember(guildId: string, memberId: string, payload: { nick?: string | null; channel_id?: string | null }) {
     return this.request<DiscordGuildMember>({
       method: "PATCH",
       path: `/guilds/${guildId}/members/${memberId}`,
       body: payload,
     });
+  }
+
+  async voiceChannelOf(guildId: string, memberId: string) {
+    const state = await this.request<{ channel_id?: string } | undefined>({
+      method: "GET", path: `/guilds/${guildId}/voice-states/${memberId}`, allowNotFound: true,
+    });
+    return state?.channel_id ?? null;
   }
 
   listGuildChannels(guildId: string) {
@@ -1580,7 +1594,7 @@ export const runDiscordSync = async ({
     }
   };
 
-  const [users, courses, enrollments, approvedAccounts] = await Promise.all([
+  const [users, courses, enrollments, approvedAccounts, trials] = await Promise.all([
     readAll(
       (from, to) =>
         adminClient
@@ -1621,6 +1635,7 @@ export const runDiscordSync = async ({
           .range(from, to),
       "Failed to load approved Discord accounts for Discord sync."
     ),
+    loadClassTrials(adminClient),
   ]);
 
   const websiteUsers = users as WebsiteUserRow[];
@@ -1630,12 +1645,19 @@ export const runDiscordSync = async ({
   // holds Pending rather than Executive unless the trio exempted them.
   const tutorUserIds = teachesCourseIds(websiteCourses);
   const nowMs = Date.now();
+  const knownTrialIds = new Set(trials.map(t => t.discord_user_id));
+  const trialGuestNames = new Map(trials.filter(t => ["scheduled", "open"].includes(trialStatus(t, nowMs)))
+    .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)))
+    .map(t => [t.discord_user_id, t.student_name]));
   const endedAtMsByCourseId = new Map<string, number>();
   for (const course of websiteCourses) {
     endedAtMsByCourseId.set(course.id, getCourseEndedAtMs(course));
   }
 
-  const approvedAccountRows = approvedAccounts as ApprovedDiscordAccountRow[];
+  // A conversion may happen between these separate DB reads. Trial access
+  // takes precedence over a stale tutor-alias snapshot, never the reverse.
+  const approvedAccountRows = (approvedAccounts as ApprovedDiscordAccountRow[])
+    .filter(account => !trialGuestNames.has(account.discord_user_id));
   const approvedDiscordUserIds = new Set<string>();
   // A second account goes by its owner's YanLearn name.
   const approvedOwnerUserIdByDiscordUserId = new Map<string, string>();
@@ -1908,6 +1930,10 @@ export const runDiscordSync = async ({
     const websiteUser = websiteUserByDiscordUserId.get(memberUserId);
 
     if (!websiteUser) {
+      if (trialGuestNames.has(memberUserId) && !approvedDiscordUserIds.has(memberUserId)) {
+        await syncMemberNickname(member, trialGuestNames.get(memberUserId));
+        continue;
+      }
       if (approvedDiscordUserIds.has(memberUserId)) {
         // Approved extra account (e.g. a tutor's second account for lesson
         // calls): allowed to stay without a linked website user. Base role
@@ -2006,6 +2032,18 @@ export const runDiscordSync = async ({
 
   const customRoleIds = new Set<string>();
 
+  // Independent trial guests are students, never aliases or staff accounts.
+  // Website-linked people keep the roles/nickname of their own account.
+  for (const member of humanMembers) {
+    const id = member.user?.id ?? "";
+    const roles = memberRoleSetByDiscordUserId.get(id);
+    if (!roles || !trialGuestNames.has(id) || websiteMemberIds.has(id) || approvedDiscordUserIds.has(id)) continue;
+    if (!roles.has(studentRole.id)) await addRoleToMember(id, studentRole.id, roles, "baseRoleAddedCount");
+    for (const roleId of baseRoleIds) {
+      if (roleId !== studentRole.id && roles.has(roleId)) await addRoleToMember(id, roleId, roles, "baseRoleRemovedCount", true);
+    }
+  }
+
   const isCustomOrgRoleName = (name: string) => {
     const lowerName = name.trim().toLowerCase();
     const isOrgRole = ["ceo", "coo", "executive", "founder", "student", "tutor", "team", "media", "strike"].some(
@@ -2047,6 +2085,14 @@ export const runDiscordSync = async ({
       if (existing) {
         customRoleIds.add(existing.id);
       }
+    }
+  }
+
+  for (const [id] of trialGuestNames) {
+    const roles = memberRoleSetByDiscordUserId.get(id);
+    if (!roles || websiteMemberIds.has(id) || approvedDiscordUserIds.has(id)) continue;
+    for (const roleId of customRoleIds) {
+      if (roles.has(roleId)) await addRoleToMember(id, roleId, roles, "baseRoleRemovedCount", true);
     }
   }
 
@@ -2746,6 +2792,13 @@ export const runDiscordSync = async ({
       cooRole.id,
       chiefExecutiveRole.id
     ));
+
+    // Trial access is a member overwrite, not the course role (which would
+    // open every class in this course). The normal rebuild removes expired
+    // and revoked entries as well as obsolete tutor-alias access.
+    expectedOverwrites.push(...withTrialOverwrites([], knownTrialIds,
+      trials.filter(t => t.lesson?.course_id === course.id && trialStatus(t, nowMs) === "open")
+        .map(t => t.discord_user_id), "text"));
 
 
     if (!existingChannel) {
@@ -3534,7 +3587,7 @@ export const runDiscordSync = async ({
     const liveClassRows = await fetchAllRows((from, to) =>
       adminClient
         .from("discord_live_class_channels")
-        .select("discord_channel_id")
+        .select("class_id, course_id, discord_channel_id, tutor_discord_user_id")
         .order("id")
         .range(from, to)
     );
@@ -3543,6 +3596,72 @@ export const runDiscordSync = async ({
       const liveChannelId = String(row.discord_channel_id ?? "").trim();
       if (liveChannelId) {
         trackedLiveChannelIds.add(liveChannelId);
+      }
+    }
+    if (trials.length > 0) {
+      const breakouts = await fetchAllRows((from, to) => adminClient.from("discord_breakout_rooms")
+        .select("class_id, discord_channel_id").is("deleted_at", null).order("id").range(from, to));
+      const classById = new Map(liveClassRows.map(r => [r.class_id, r]));
+      const rooms = [...liveClassRows, ...breakouts.flatMap(room => {
+        const parent = classById.get(room.class_id);
+        return parent ? [{ ...parent, discord_channel_id: room.discord_channel_id }] : [];
+      })];
+      const registeredIds = new Set(rooms.map(room => room.discord_channel_id));
+      // Class deletion may remove its registry row. Retain the orphan channel
+      // itself, but withdraw its obsolete trial grants.
+      for (const channel of mutableChannels) {
+        if (channel.type === discordVoiceChannelType && liveCategoryIds.has(channel.parent_id ?? "") && !registeredIds.has(channel.id)) {
+          rooms.push({ class_id: "", course_id: "", discord_channel_id: channel.id, tutor_discord_user_id: "" });
+        }
+      }
+      const voiceByMember = new Map<string, string | null>();
+      const zenPolicies = await loadZenPolicies(adminClient);
+      for (const room of rooms) {
+        const channel = mutableChannels.find(c => c.id === room.discord_channel_id && c.type === discordVoiceChannelType);
+        if (!channel) continue;
+        const course = websiteCourseById.get(room.course_id);
+        const protectedIds = new Set([botUser.id, room.tutor_discord_user_id, ...approvedDiscordUserIds]);
+        if (!room.class_id) {
+          for (const tutorId of tutorUserIds) {
+            const id = discordUserIdByWebsiteUserId.get(tutorId);
+            if (id) protectedIds.add(id);
+          }
+        }
+        for (const tutorId of [course?.created_by, course?.co_tutor_id]) {
+          const id = tutorId ? discordUserIdByWebsiteUserId.get(tutorId) : null;
+          if (id) protectedIds.add(id);
+        }
+        const allowedIds = trialGuestsForClass(trials, room.class_id, nowMs);
+        let overwrites = withTrialOverwrites(channel.permission_overwrites ?? [], knownTrialIds, allowedIds, "voice", protectedIds);
+        const zen = zenPolicies.get(room.course_id);
+        if (zen?.enabled) {
+          const { error } = await adminClient.from("discord_zen_channels").upsert({
+            discord_channel_id: channel.id, original_permissions: snapshotZenPermissions(overwrites),
+          }, { onConflict: "discord_channel_id", ignoreDuplicates: true });
+          if (error) throw new Error(error.message);
+          overwrites = applyZenPermissions(overwrites, new Set([...zen.speakers, botUser.id]), new Set());
+        }
+        try {
+          if (!areOverwritesEqual(channel.permission_overwrites, overwrites)) {
+            await apiClient.updateGuildChannel(channel.id, { permission_overwrites: overwrites });
+            channel.permission_overwrites = overwrites;
+            result.updatedChannelCount += 1;
+          }
+          // Removing Connect does not eject a member already in voice. Check
+          // their other access first, so regular students/staff are untouched.
+          for (const id of knownTrialIds) {
+            const roles = memberRoleSetByDiscordUserId.get(id);
+            if (!roles || id === guildOwnerId || kickedMemberIds.has(id) || protectedIds.has(id) || allowedIds.includes(id) ||
+              canStillJoinVoice(id, roles, mutableRoles, discordGuildId, overwrites)) continue;
+            if (!voiceByMember.has(id)) voiceByMember.set(id, await apiClient.voiceChannelOf(discordGuildId, id));
+            if (voiceByMember.get(id) === channel.id) {
+              await apiClient.updateGuildMember(discordGuildId, id, { channel_id: null });
+              voiceByMember.set(id, null);
+            }
+          }
+        } catch (error) {
+          result.errors.push(`Failed to update trial access for ${channel.name}: ${toErrorMessage(error, "Unknown error.")}`);
+        }
       }
     }
   } catch (error) {
@@ -3689,5 +3808,11 @@ export const runDiscordSync = async ({
     );
   }
 
+  try {
+    const zen = await syncZenMode(adminClient);
+    result.errors.push(...zen.problems.map(problem => `Zen mode: ${problem}`));
+  } catch (error) {
+    if (!(error instanceof ZenBusyError)) result.errors.push(`Zen mode: ${toErrorMessage(error, "Sync failed.")}`);
+  }
   return result;
 };

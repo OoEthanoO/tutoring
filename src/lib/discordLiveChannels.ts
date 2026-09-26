@@ -262,6 +262,7 @@ export const buildLiveVoicePermissionOverwrites = ({
   shadowRoleIds = [],
   tutorDiscordUserId,
   extraMemberDiscordUserIds,
+  trialDiscordUserIds = [],
   courseRoleId,
 }: {
   guildId: string;
@@ -273,6 +274,8 @@ export const buildLiveVoicePermissionOverwrites = ({
   // Approved extra accounts owned by the tutor (e.g. a second Discord account
   // used in lesson calls); they get the same access window as the tutor.
   extraMemberDiscordUserIds?: string[];
+  // The caller supplies only trials inside their student access window.
+  trialDiscordUserIds?: string[];
   courseRoleId: string | null;
 }): DiscordPermissionOverwrite[] => {
   const allowJoin = String(
@@ -320,6 +323,12 @@ export const buildLiveVoicePermissionOverwrites = ({
   }
   if (cooRoleId) {
     overwrites.push({ id: cooRoleId, type: 0, allow: allowJoin, deny: "0" });
+  }
+
+  for (const id of new Set(trialDiscordUserIds)) {
+    if (id && !overwrites.some(o => o.type === 1 && o.id === id)) {
+      overwrites.push({ id, type: 1, allow: allowJoin, deny: "0" });
+    }
   }
   for (const id of shadowRoleIds) {
     overwrites.push({ id, type: 0, allow: allowJoin, deny: "0" });

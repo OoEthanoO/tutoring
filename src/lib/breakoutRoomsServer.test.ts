@@ -25,6 +25,7 @@ const fakeDb = () => ({
     let mode: "select" | "insert" | "update" = "select";
     let payload: Row = {};
     let head = false;
+    let bounds: [number, number] | null = null;
     const rows = () => (tables[table] ?? []).filter((row) => filters.every((test) => test(row)));
     const run = () => {
       if (mode === "insert") {
@@ -37,7 +38,7 @@ const fakeDb = () => ({
         rows().forEach((row) => Object.assign(row, payload));
         return { data: [], error: null };
       }
-      const found = rows();
+      const found = bounds ? rows().slice(bounds[0], bounds[1] + 1) : rows();
       return { data: head ? null : found, count: found.length, error: null };
     };
     const query = {
@@ -48,6 +49,7 @@ const fakeDb = () => ({
       in: (column: string, values: unknown[]) => { filters.push((row) => values.includes(row[column])); return query; },
       is: (column: string, value: unknown) => { filters.push((row) => (row[column] ?? null) === value); return query; },
       order: () => query,
+      range: (from: number, to: number) => { bounds = [from, to]; return query; },
       maybeSingle: async () => { const result = run(); return { ...result, data: result.data?.[0] ?? null }; },
       single: async () => { const result = run(); return { ...result, data: result.data?.[0] ?? null }; },
       then: (resolve: (value: ReturnType<typeof run>) => unknown) => Promise.resolve(run()).then(resolve),
@@ -119,6 +121,21 @@ afterEach(() => { vi.unstubAllGlobals(); });
 const access = () => getBreakoutAccess(tutor, classId);
 
 describe("breakout rooms against Discord", () => {
+  it("includes current trial students in splitting, using their own name, and excludes expired trials", async () => {
+    const course = { id: "course", title: "Grade 6 French", deleted_at: null, is_completed: false };
+    const lesson = { id: classId, course_id: "course", starts_at: new Date(Date.now() - 10 * 60_000).toISOString(), duration_hours: 1, course };
+    tables.class_trials = [
+      { id: "trial", class_id: classId, student_name: "Trial Student", discord_user_id: "discord-trial", revoked_at: null, lesson },
+      { id: "expired", class_id: classId, student_name: "Expired", discord_user_id: "discord-expired", revoked_at: null, lesson: { ...lesson, starts_at: new Date(Date.now() - 3 * 3600_000).toISOString() } },
+    ];
+    voice["discord-trial"] = "live"; voice["discord-expired"] = "live";
+    const state = await readBreakoutState(await access());
+    expect(state.inMainRoom).toContain("Trial Student (trial)");
+    expect(state.inMainRoom).not.toContain("Expired (trial)");
+    await runBreakoutAction(await access(), { action: "open", count: 2, split: true });
+    expect(voice["discord-trial"]).toMatch(/^room-/);
+    expect(voice["discord-expired"]).toBe("live");
+  });
   it("only lets the course's tutors and the trio run the rooms", async () => {
     await expect(getBreakoutAccess(stranger, classId)).rejects.toMatchObject({ status: 403 });
   });
