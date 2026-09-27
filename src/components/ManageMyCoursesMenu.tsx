@@ -856,6 +856,14 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
     setPendingCourseEditId(courseId);
     setStatus({ type: "idle", message: "" });
 
+    // Only send the recording setting when the founder actually changed the
+    // box. Sending whatever the form holds let an edit to anything else (a
+    // title, a grade) switch recording off when the list had not loaded the
+    // setting and the box was showing unticked.
+    const editedCourse = courses.find((item) => item.id === courseId);
+    const recordingsChanged =
+      editCourseRecordingsEnabled !== (editedCourse?.recordings_enabled === true);
+
     const response = await fetch("/api/courses", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -867,7 +875,7 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
         maxStudents: isFounder(role) ? (editCourseMaxStudents ? Number(editCourseMaxStudents) : null) : undefined,
         donationFee: isHighRankingChiefExecutive(role) ? (editCourseDonationFee ? Number(editCourseDonationFee) : null) : undefined,
         gradeLevel: isFounder(role) ? (editCourseGradeLevel ? Number(editCourseGradeLevel) : null) : undefined,
-        recordingsEnabled: isFounder(role) ? editCourseRecordingsEnabled : undefined,
+        recordingsEnabled: isFounder(role) && recordingsChanged ? editCourseRecordingsEnabled : undefined,
         completedStartDate: isFounder(role) ? (editCompletedStartDate || null) : undefined,
         completedEndDate: isFounder(role) ? (editCompletedEndDate || null) : undefined,
         completedClassCount: isFounder(role) ? (editCompletedClassCount ? Number(editCompletedClassCount) : null) : undefined,
