@@ -120,7 +120,10 @@ bearer (see the `cron:reminders:*` npm scripts).
   courses). A course with it off is invisible to the recorder — the tick never
   claims its classes, the cron never warns its tutor, and the dashboard notice
   is hidden. Courses that existed before September 2026 were migrated to off. The class-reminders cron runs the expiry sweep and the "recorder not
-  open" warning. Recordings live in a private S3-compatible bucket (Cloudflare R2 /
+  open" warning. Admin → Manage accounts → Recorders shows each tutor's
+  recorder: connected or not (heartbeat within 90 s), what it is doing, and its
+  version against the latest release (`api/admin/recorder-status`,
+  `src/lib/recorderPresence.ts`). Recordings live in a private S3-compatible bucket (Cloudflare R2 /
   Backblaze B2 free tier — `src/lib/recordingStorage.ts`, env `RECORDINGS_S3_*`;
   Supabase Storage is deliberately not used) and are only reached through the
   stream endpoint (per-viewer token → 2-minute presigned URL). Release builds come from

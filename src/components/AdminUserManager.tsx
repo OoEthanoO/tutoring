@@ -10,6 +10,7 @@ import {
 import { isExecutive, isFounder, isTopLeadership, resolveUserRole, resolveAccountRole, canManageAccountAccess, canAssignRole, type UserRole } from "@/lib/roles";
 import AdminBannedEmails from "@/components/AdminBannedEmails";
 import AdminApprovedDiscordAccounts from "@/components/AdminApprovedDiscordAccounts";
+import AdminRecorderStatus from "@/components/AdminRecorderStatus";
 import AdminClassTrials from "@/components/AdminClassTrials";
 import CourseAttendance from "@/components/CourseAttendance";
 import CourseNeedsList, { type CourseNeed } from "@/components/CourseNeedsList";
@@ -152,7 +153,7 @@ export default function AdminUserManager() {
     useState(false);
   const [isSendingJoinReminder, setIsSendingJoinReminder] = useState(false);
   const [activeTab, setActiveTab] = useState<
-    "accounts" | "tools" | "feedback" | "discord" | "trials" | "banned"
+    "accounts" | "tools" | "feedback" | "discord" | "trials" | "recorders" | "banned"
   >("accounts");
   // Rendering every account card at once makes the tab sluggish with hundreds
   // of users, so the list renders in pages with a "Show all" escape hatch.
@@ -1711,6 +1712,7 @@ export default function AdminUserManager() {
             },
             { key: "discord", label: "Approved Discord" },
             { key: "trials", label: "Trial classes" },
+            { key: "recorders", label: "Recorders" },
             { key: "banned", label: "Banned Emails" },
           ] as const
         ).map((tab) => (
@@ -2658,6 +2660,7 @@ export default function AdminUserManager() {
 
       {activeTab === "discord" ? <AdminApprovedDiscordAccounts /> : null}
       {activeTab === "trials" ? <AdminClassTrials /> : null}
+      {activeTab === "recorders" ? <AdminRecorderStatus /> : null}
       {activeTab === "banned" ? <AdminBannedEmails /> : null}
     </section >
 
