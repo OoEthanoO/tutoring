@@ -17,6 +17,7 @@ import ManageMyCoursesMenu from "@/components/ManageMyCoursesMenu";
 import RolesManagerMenu from "@/components/RolesManagerMenu";
 import MyClassesMenu from "@/components/MyClassesMenu";
 import HelpMenu from "@/components/HelpMenu";
+import TutorRecruitmentGuide from "@/components/TutorRecruitmentGuide";
 import SponsorsMenu from "@/components/SponsorsMenu";
 import EventsMenu from "@/components/EventsMenu";
 import FormsMenu from "@/components/FormsMenu";
@@ -40,6 +41,7 @@ export type MenuKey =
   | "manage_courses"
   | "manage_enrollments"
   | "founder_tools"
+  | "tutor_recruitment"
   | "emails"
   | "withdrawals"
   | "help"
@@ -68,6 +70,7 @@ const ALL_MENU_KEYS: readonly MenuKey[] = [
   "manage_courses",
   "manage_enrollments",
   "founder_tools",
+  "tutor_recruitment",
   "emails",
   "withdrawals",
   "help",
@@ -419,6 +422,7 @@ export default function DashboardMenus() {
 
     const admin: MenuItem[] = [];
     if (isFounder(role)) {
+      admin.push({ key: "tutor_recruitment", label: "Tutor recruitment" });
       admin.push({ key: "founder_tools", label: "Manage accounts" });
       admin.push({ key: "manage_enrollments", label: "Manage enrollments" });
     }
@@ -560,6 +564,7 @@ export default function DashboardMenus() {
       {activeMenu === "manage_courses" ? <ManageMyCoursesMenu /> : null}
       {activeMenu === "manage_enrollments" ? <ManageEnrollmentsMenu /> : null}
       {activeMenu === "founder_tools" ? <AdminUserManager /> : null}
+      {activeMenu === "tutor_recruitment" ? <TutorRecruitmentGuide /> : null}
       {activeMenu === "emails" ? <EmailHistoryMenu /> : null}
       {activeMenu === "withdrawals" ? <WithdrawHoursMenu /> : null}
       {activeMenu === "help" ? <HelpMenu /> : null}
