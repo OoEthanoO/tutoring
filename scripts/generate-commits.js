@@ -1,4 +1,4 @@
-const { execSync } = require("child_process");
+const { execSync, execFileSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 
@@ -44,6 +44,7 @@ async function fetchCommitsGraphQL(token, owner, repo, branch) {
                     committedDate
                     additions
                     deletions
+                    author { name }
                   }
                   pageInfo {
                     hasNextPage
@@ -92,7 +93,8 @@ async function fetchCommitsGraphQL(token, owner, repo, branch) {
         date: node.committedDate,
         message: node.message,
         added: node.additions,
-        removed: node.deletions
+        removed: node.deletions,
+        author: node.author?.name || "Unknown"
       });
     }
 
@@ -100,12 +102,18 @@ async function fetchCommitsGraphQL(token, owner, repo, branch) {
     cursor = history.pageInfo.endCursor;
   }
 
-  return { total: totalCount, commits };
+  return { total: totalCount, commits, repository: `${owner}/${repo}` };
 }
 
 function getLocalCommits() {
   const rawCount = execSync("git rev-list --count HEAD").toString().trim();
   const totalCount = parseInt(rawCount, 10) || 0;
+  // Do not export author emails. NUL separates names from commit identities
+  // without treating punctuation in a person's name as a field delimiter.
+  const authors = new Map(
+    execFileSync("git", ["log", "--format=%H%x00%aN"], { encoding: "utf8" })
+      .trim().split(/\r?\n/).map((line) => line.split("\0"))
+  );
 
   const rawLog = execSync(
     `git log --numstat --format="COMMIT|%H|%cI|%B"`
@@ -127,11 +135,12 @@ function getLocalCommits() {
       const date = parts[2] || "";
       const message = parts.slice(3).join("|") || "";
 
-      currentCommit = { hash, date, message, added: 0, removed: 0 };
+      currentCommit = { hash, date, message, author: authors.get(hash) || "Unknown", added: 0, removed: 0, files: 0 };
     } else if (line.trim().length > 0 && currentCommit) {
       const statParts = line.split("\t");
       // Numstat lines look like "10\t5\tfilename.js" or "-\t-\tfilename.js"
-      if (statParts.length >= 2 && (statParts[0] === "-" || !isNaN(parseInt(statParts[0], 10)))) {
+      if (statParts.length >= 3 && /^(\d+|-)$/.test(statParts[0]) && /^(\d+|-)$/.test(statParts[1])) {
+        currentCommit.files += 1;
         const addedStr = statParts[0].trim();
         const removedStr = statParts[1].trim();
         if (addedStr !== "-") currentCommit.added += parseInt(addedStr, 10) || 0;
@@ -149,7 +158,8 @@ function getLocalCommits() {
     commits.push(currentCommit);
   }
   
-  return { total: totalCount, commits };
+  const info = getGitInfoLocal();
+  return { total: totalCount, commits, repository: info ? `${info.owner}/${info.repo}` : null };
 }
 
 async function main() {

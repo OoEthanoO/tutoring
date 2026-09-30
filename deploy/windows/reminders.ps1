@@ -28,6 +28,10 @@ try {
         sentDiscordReminderCount=[int]$result.sentDiscordReminderCount
         discordSyncErrorCount=@($result.discordSync.errors | Where-Object { $_ }).Count
         liveChannelCleanupErrorCount=@($result.liveChannelCleanupErrors | Where-Object { $_ }).Count
+        githubProcessed=[int]$result.githubSync.processed
+        githubSuccess=[bool]$result.githubSync.success
+        githubSkippedReason=$result.githubSync.skippedReason
+        githubErrorCount=@($result.githubSync.errors | Where-Object { $_ }).Count
     }
     Write-Json $statusPath $status
     $log = Join-Path $Root 'logs\reminders.log'

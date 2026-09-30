@@ -40,7 +40,7 @@ http.createServer((req, res) => {
       res.writeHead(401); res.end('{}'); return;
     }
     calls++;
-    res.end(JSON.stringify({sentClassCount:2, sentEmailCount:3, discordSync:{errors:['fixture']}})); return;
+    res.end(JSON.stringify({sentClassCount:2, sentEmailCount:3, discordSync:{errors:['fixture']}, githubSync:{success:true, processed:1, skippedReason:null, errors:[]}})); return;
   }
   if (req.url === '/calls') { res.end(JSON.stringify({calls})); return; }
   res.end(JSON.stringify({status:'ok',commit:process.env.YANLEARN_COMMIT_SHA,hosting:process.env.YANLEARN_HOST}));
@@ -56,6 +56,9 @@ http.createServer((req, res) => {
     $reminderStatus = Read-Json (Join-Path $scratch 'reminders-status.json')
     if ($reminderStatus.status -ne 'completed' -or $reminderStatus.sentClassCount -ne 2 -or $reminderStatus.discordSyncErrorCount -ne 1) {
         throw 'Local reminders request failed authorization or did not preserve result counters.'
+    }
+    if (-not $reminderStatus.githubSuccess -or $reminderStatus.githubProcessed -ne 1 -or $reminderStatus.githubErrorCount -ne 0) {
+        throw 'Local reminders status did not preserve commit sync results.'
     }
     $heldLock = [IO.File]::Open((Join-Path $scratch 'reminders.lock'), 'OpenOrCreate', 'ReadWrite', 'None')
     try { & (Join-Path $PSScriptRoot 'reminders.ps1') -Root $scratch }

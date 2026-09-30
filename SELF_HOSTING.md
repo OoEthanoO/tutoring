@@ -3,8 +3,12 @@
 Migration status (September 30, 2026): YanLearn is running on finprint-host.
 Database access, Recorder CORS, protected routes and public HTTPS at the home
 address have passed checks. Caddy obtained a valid Let's Encrypt certificate
-for `learn.ethanyanxu.com`. A repository-only GitHub token for commit
-notifications is still pending; it is not required to serve the website.
+for `learn.ethanyanxu.com`. Commit notifications use the Git history bundled
+in each deployed build when `GITHUB_TOKEN` is absent; no personal GitHub token
+is required. Missed commits are announced oldest first, up to 15 per tick,
+and already announced commits are skipped. Token-based GitHub polling remains
+available when configured. The local scheduler status includes GitHub sync
+success, processed count, skip reason and error count.
 The local reminders task is enabled after the owner disabled cron-job.org,
 and real runs complete with no Discord sync or Live-category cleanup errors.
 

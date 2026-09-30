@@ -9,6 +9,22 @@ const repoFullName =
   String(process.env.GITHUB_REPOSITORY_FULL_NAME ?? "").trim() ||
   "OoEthanoO/tutoring";
 
+// Every deployed build contains its own Git history. This keeps notifications
+// working without a personal GitHub token or public API rate-limit dependency.
+type BundledCommit = {
+  hash: string;
+  date: string;
+  message: string;
+  author?: string;
+  added: number;
+  removed: number;
+  files?: number;
+};
+const bundle: { repository?: string | null; commits: BundledCommit[] } = commitsData;
+const bundledCommits = bundle.repository?.toLowerCase() === repoFullName.toLowerCase()
+  ? bundle.commits
+  : [];
+
 interface GithubCommitNode {
   sha: string;
   commit: {
@@ -111,7 +127,14 @@ const sendDiscordMessage = async (channelId: string, content: string) => {
 
 const fetchRecentCommits = async (repo: string) => {
   if (!githubToken) {
-    return [];
+    return bundledCommits.map((commit): GithubCommitNode => ({
+      sha: commit.hash,
+      commit: {
+        message: commit.message,
+        author: { name: commit.author || "Unknown", date: commit.date },
+      },
+      author: null,
+    }));
   }
   try {
     const response = await fetch(
@@ -173,7 +196,8 @@ const fetchGithubDisplayName = async (login?: string | null) => {
 
 const fetchCommitStats = async (repo: string, sha: string) => {
   if (!githubToken) {
-    return null;
+    const commit = bundledCommits.find((entry) => entry.hash === sha);
+    return commit ? { additions: commit.added, deletions: commit.removed, files: commit.files } : null;
   }
   try {
     const response = await fetch(
@@ -220,8 +244,8 @@ export const runGithubSync = async (): Promise<GithubSyncResult> => {
     return result;
   }
 
-  if (!githubToken) {
-    result.skippedReason = "GitHub token missing";
+  if (!githubToken && bundledCommits.length === 0) {
+    result.skippedReason = "No bundled commits for this repository and no GitHub token";
     return result;
   }
 
@@ -264,16 +288,17 @@ export const runGithubSync = async (): Promise<GithubSyncResult> => {
   const githubCommits = await fetchRecentCommits(repoFullName);
   
   if (githubCommits.length === 0) {
-    result.skippedReason = "No commits fetched from GitHub";
+    result.skippedReason = "No commits available";
     result.success = true;
     return result;
   }
 
   // We loop backward so we push older commits before newer commits
   const unseenCommits = [];
+  let foundSyncedCommit = false;
   for (const gc of githubCommits) {
-    const shortSha = gc.sha.substring(0, 7).toLowerCase();
-    if (syncedShas.has(shortSha)) {
+    if ([...syncedShas].some((sha) => gc.sha.toLowerCase().startsWith(sha))) {
+      foundSyncedCommit = true;
       break; 
     }
     unseenCommits.push(gc);
@@ -282,9 +307,11 @@ export const runGithubSync = async (): Promise<GithubSyncResult> => {
   // Reverse so the oldest unseen commit pushes first!
   unseenCommits.reverse();
 
-  // If we couldn't find ANY match in the discord channel, limit to max 1 latest commit
-  let commitsToProcess = unseenCommits;
-  if (syncedShas.size === 0 && unseenCommits.length > 0) {
+  // Bound each tick, processing the oldest pending commits first. The next
+  // tick continues from the newest successfully announced commit. A new or
+  // unrelated channel starts at the latest commit, never the whole history.
+  let commitsToProcess = unseenCommits.slice(0, 15);
+  if (!foundSyncedCommit && unseenCommits.length > 0) {
     commitsToProcess = [unseenCommits[unseenCommits.length - 1]];
   }
 
@@ -326,17 +353,18 @@ export const runGithubSync = async (): Promise<GithubSyncResult> => {
     if (stats) {
       const added = stats.additions ?? 0;
       const removed = stats.deletions ?? 0;
-      const filesChanged = stats.files ?? 0;
+      const filesChanged = stats.files;
         
         const filesText = filesChanged === 1 ? "file" : "files";
         const insertionsText = added === 1 ? "insertion" : "insertions";
         const deletionsText = removed === 1 ? "deletion" : "deletions";
         
-        text += `\n**${filesChanged}** ${filesText} changed, **${added}** ${insertionsText}(+), **${removed}** ${deletionsText}(-)`;
+        const fileSummary = filesChanged === undefined ? "" : `**${filesChanged}** ${filesText} changed, `;
+        text += `\n${fileSummary}**${added}** ${insertionsText}(+), **${removed}** ${deletionsText}(-)`;
       }
 
       try {
-        await sendDiscordMessage(commitsChannel.id, text);
+        await sendDiscordMessage(commitsChannel.id, text.length > 2000 ? text.slice(0, 1999) + "…" : text);
         successfulPushes += 1;
       // Sleep slightly longer inside background sync
       await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -344,10 +372,13 @@ export const runGithubSync = async (): Promise<GithubSyncResult> => {
       result.errors.push(
         `Failed to stream commit ${shortId}: ${err instanceof Error ? err.message : "Unknown error."}`
       );
+      // Do not advance past a failed announcement: doing so would hide the
+      // failed commit behind the next tick's already-sent watermark.
+      break;
     }
   }
 
   result.processed = successfulPushes;
-  result.success = true;
+  result.success = result.errors.length === 0;
   return result;
 };
