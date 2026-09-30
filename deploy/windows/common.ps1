@@ -95,14 +95,23 @@ function Register-WebTask([string]$Root, $State) {
 function Stop-WebTask([string]$Root, $State) {
     if (-not $State -or $State.taskName -notlike 'yanlearn-web-*') { return }
     $release = Assert-UnderRoot $State.release (Join-Path $Root 'releases')
-    Disable-ScheduledTask -TaskName $State.taskName -ErrorAction SilentlyContinue | Out-Null
-    Stop-ScheduledTask -TaskName $State.taskName -ErrorAction SilentlyContinue
-    # Remove only an orphaned node process from this exact release, never every
-    # node process on the shared host. Normally Task Scheduler already killed it.
-    $server = Join-Path $release 'app\server.js'
-    Get-CimInstance Win32_Process -Filter "Name='node.exe'" | Where-Object {
-        $_.CommandLine -and $_.CommandLine.Contains($server)
-    } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+    # A local cron request may outlast the ordinary deployment drain. Holding
+    # its lock until process retirement also prevents a new request racing us.
+    $remindersLock = $null
+    try {
+        while (-not $remindersLock) {
+            try { $remindersLock = [IO.File]::Open((Join-Path $Root 'reminders.lock'), 'OpenOrCreate', 'ReadWrite', 'None') }
+            catch [IO.IOException] { Start-Sleep -Seconds 2 }
+        }
+        Disable-ScheduledTask -TaskName $State.taskName -ErrorAction SilentlyContinue | Out-Null
+        Stop-ScheduledTask -TaskName $State.taskName -ErrorAction SilentlyContinue
+        # Remove only an orphaned node process from this exact release, never every
+        # node process on the shared host. Normally Task Scheduler already killed it.
+        $server = Join-Path $release 'app\server.js'
+        Get-CimInstance Win32_Process -Filter "Name='node.exe'" | Where-Object {
+            $_.CommandLine -and $_.CommandLine.Contains($server)
+        } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+    } finally { if ($remindersLock) { $remindersLock.Dispose() } }
 }
 
 function Switch-Caddy([string]$Root, $Config, [int]$Port) {

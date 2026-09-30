@@ -6,6 +6,8 @@ $prepared = Read-Json (Join-Path $Root 'prepared.json')
 $previous = Read-Json (Join-Path $Root 'previous.json')
 [pscustomobject]@{active=$active;prepared=$prepared;previous=$previous} | ConvertTo-Json -Depth 5
 Get-ScheduledTask -TaskName 'yanlearn-*' -ErrorAction SilentlyContinue | Select-Object TaskName,State | Format-Table
+$reminders = Read-Json (Join-Path $Root 'reminders-status.json')
+if ($reminders) { $reminders | ConvertTo-Json }
 if ($active) {
     Write-Output ('Local health: ' + (Test-Release $active 5))
     try {

@@ -64,12 +64,24 @@ record). Verify authoritative DNS, a valid public HTTPS certificate, and
 `/api/health` returning the exact commit with `hosting: finprint-host`. Keep
 the previous Vercel deployment available until the cutover is confirmed.
 
-The existing external scheduler must continue posting to
-`https://learn.ethanyanxu.com/api/cron/class-reminders` with its existing
-`CRON_SECRET` bearer. Do not introduce a duplicate scheduler. Confirm incoming
-cron requests and their completion on the new server after cutover. If the
-scheduler uses a Vercel deployment URL instead of the public domain, update
-that target before retiring Vercel.
+## Local class-reminders scheduler
+
+The previous scheduler is cron-job.org. Disable that job before enabling the
+local replacement; do not run both. Once a healthy release is active, rerun
+`install.ps1` with `-EnableReminders -ExternalRemindersDisabled` (and the same
+Caddy paths). This registers `yanlearn-reminders` as SYSTEM, at startup and
+every minute. It posts to the active release's loopback address with the
+existing `CRON_SECRET`, so neither public DNS nor an interactive login is needed.
+
+Task Scheduler and a file lock prevent overlapping local runs. The request
+waits for server completion rather than timing out and launching another run
+while the first one still works. Deployment waits for this lock before
+retiring an old process. Check `reminders-status.json` and
+`logs\reminders.log` for completion, duration and error counts; details remain
+in the website's sync health view. If a run remains `running` unusually long,
+inspect the web logs before stopping anything: stopping the scheduler alone
+does not cancel server-side work. These protections cover the local scheduler;
+keep all previous external jobs disabled.
 
 ## Subsequent deployments
 
