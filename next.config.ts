@@ -2,6 +2,8 @@ import type { NextConfig } from "next";
 import path from "path";
 
 const nextConfig: NextConfig = {
+  output: "standalone",
+  deploymentId: process.env.YANLEARN_COMMIT_SHA,
   turbopack: {
     root: path.resolve("."),
   },

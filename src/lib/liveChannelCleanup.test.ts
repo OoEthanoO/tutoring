@@ -15,7 +15,7 @@ describe("empty Live category cleanup", () => {
   const live = { id: "live", name: "Live", type: 4 };
   const options = (channels = [live]) => ({
     listChannels: vi.fn<Parameters<typeof deleteEmptyLiveCategories>[0]["listChannels"]>(async () => channels),
-    deleteChannel: vi.fn(async (_id: string) => {}),
+    deleteChannel: vi.fn<Parameters<typeof deleteEmptyLiveCategories>[0]["deleteChannel"]>(async () => {}),
     hasClassesInLiveWindow: false,
   });
 
