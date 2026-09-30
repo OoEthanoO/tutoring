@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { decideLiveChannelCleanup, liveClassEndMs, observeLiveChannelPresence, preserveLiveVoiceChannel } from "./discordLiveChannels";
-import { deleteFinishedLiveChannel } from "./liveChannelCleanup";
+import { deleteEmptyLiveCategories, deleteFinishedLiveChannel } from "./liveChannelCleanup";
 
 const minute = 60000;
 const start = Date.parse("2026-09-12T19:00:00-04:00");
@@ -10,6 +10,67 @@ const base = {
   nowMs: end + minute, endsAtMs: end, someonePresent: false, lookupFailed: false,
   tutorPresent: false, tutorLookupFailed: false, emptySinceMs: null, tutorAbsentSinceMs: null,
 };
+
+describe("empty Live category cleanup", () => {
+  const live = { id: "live", name: "Live", type: 4 };
+  const options = (channels = [live]) => ({
+    listChannels: vi.fn<Parameters<typeof deleteEmptyLiveCategories>[0]["listChannels"]>(async () => channels),
+    deleteChannel: vi.fn(async (_id: string) => {}),
+    hasClassesInLiveWindow: false,
+  });
+
+  it("removes the category when the last class channel is gone", async () => {
+    const input = options([live, { id: "text", name: "Text", type: 4 }]);
+    expect(await deleteEmptyLiveCategories(input)).toEqual(["live"]);
+    expect(input.deleteChannel.mock.calls).toEqual([["live"]]);
+  });
+
+  it.each([2, 13, 0])("keeps a category containing a channel of type %s, including untracked rooms", async (type) => {
+    const input = options();
+    input.listChannels.mockResolvedValue([live, { id: "room", name: "Room", type, parent_id: "live" }]);
+    expect(await deleteEmptyLiveCategories(input)).toEqual([]);
+    expect(input.deleteChannel).not.toHaveBeenCalled();
+  });
+
+  it("keeps an empty category while a scheduled class could be creating or recovering a room", async () => {
+    const input = { ...options(), hasClassesInLiveWindow: true };
+    expect(await deleteEmptyLiveCategories(input)).toEqual([]);
+    expect(input.listChannels).not.toHaveBeenCalled();
+    expect(input.deleteChannel).not.toHaveBeenCalled();
+  });
+
+  it("checks for channels added since the first snapshot", async () => {
+    const input = options();
+    input.listChannels.mockResolvedValueOnce([live]).mockResolvedValueOnce([
+      live, { id: "new-room", name: "Room", type: 2, parent_id: "live" },
+    ]);
+    expect(await deleteEmptyLiveCategories(input)).toEqual([]);
+    expect(input.deleteChannel).not.toHaveBeenCalled();
+  });
+
+  it("ignores an already removed or renamed category", async () => {
+    for (const current of [[], [{ ...live, name: "Study" }]]) {
+      const input = options();
+      input.listChannels.mockResolvedValueOnce([live]).mockResolvedValueOnce(current);
+      expect(await deleteEmptyLiveCategories(input)).toEqual([]);
+      expect(input.deleteChannel).not.toHaveBeenCalled();
+    }
+  });
+
+  it.each([1, 2])("does not delete anything if channel snapshot %s fails", async (snapshot) => {
+    const input = options();
+    if (snapshot === 2) input.listChannels.mockResolvedValueOnce([live]);
+    input.listChannels.mockRejectedValueOnce(new Error("Gateway Timeout"));
+    await expect(deleteEmptyLiveCategories(input)).rejects.toThrow("Gateway Timeout");
+    expect(input.deleteChannel).not.toHaveBeenCalled();
+  });
+
+  it("reports deletion failures for the next tick to retry", async () => {
+    const input = options();
+    input.deleteChannel.mockRejectedValueOnce(new Error("Missing Permissions"));
+    await expect(deleteEmptyLiveCategories(input)).rejects.toThrow("Missing Permissions");
+  });
+});
 
 describe("live channel countdowns", () => {
   it.each([start - 15 * minute, start, end - minute, end])("has no active countdown at %s", (nowMs) => {

@@ -14,7 +14,7 @@ import {
   observeLiveChannelPresence,
   normalizeVoiceChannelName,
 } from "@/lib/discordLiveChannels";
-import { deleteFinishedLiveChannel } from "@/lib/liveChannelCleanup";
+import { deleteEmptyLiveCategories, deleteFinishedLiveChannel } from "@/lib/liveChannelCleanup";
 import { formatDiscordTimestampWithRelative } from "@/lib/discordTimestamp";
 import {
   buildScheduleSnapshot,
@@ -3595,6 +3595,21 @@ ${tutorWasPresent ? "" : "<p><strong>Note:</strong> you were not detected in the
   } catch (error) {
     if (!(error instanceof ZenBusyError)) failedClasses.push({ classId: "zen-mode", reason: error instanceof Error ? error.message : "Zen mode sync failed." });
   }
+  // All channel creation/recovery and breakout cleanup must finish before this
+  // pass. Never use guildChannels here: it still contains channels we deleted.
+  let deletedLiveCategoryIds: string[] = [];
+  if (discordRemindersEnabled && !discordReminderSkippedReason && discordGuildId) {
+    try {
+      deletedLiveCategoryIds = await deleteEmptyLiveCategories({
+        listChannels: () => listDiscordGuildChannels(discordGuildId),
+        deleteChannel: deleteDiscordChannel,
+        hasClassesInLiveWindow: classesInLiveWindow.length > 0,
+        categoryName: defaultLiveCategoryName,
+      });
+    } catch (error) {
+      liveChannelCleanupErrors.push(`Live category cleanup failed: ${error instanceof Error ? error.message : "Unknown error"}`);
+    }
+  }
   return NextResponse.json({
     recordingExpiry,
     recordingAnnouncements,
@@ -3608,6 +3623,7 @@ ${tutorWasPresent ? "" : "<p><strong>Note:</strong> you were not detected in the
     autoCloseErrors: autoCloseResult.errors,
     failedClasses,
     liveChannelRecovery,
+    deletedLiveCategoryIds,
     liveChannelCleanupErrors,
     attendanceRecorded,
     tutorLeftEarlyWarnings,

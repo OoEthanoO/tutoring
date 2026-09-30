@@ -88,8 +88,12 @@ recovered channel cannot be deleted using stale data.
 The general Discord sync preserves Live-category voice channels, including
 new channels whose database insert is still in flight. If the registry lookup
 fails, it skips voice-channel deletion. Channels with no known class schedule
-are retained instead of being deleted by age, and the Live category stays in
-place. Recovery clears deletion/countdown markers and allows two minutes to
+are retained instead of being deleted by age. At the end of each reminder tick,
+empty Live categories are removed using fresh Discord channel snapshots. Any
+remaining child channel (including untracked channels and breakout rooms) keeps
+its category, as does a class in the early-access/live window that may still be
+creating or recovering its room. Failed lookups leave categories untouched.
+Recovery clears deletion/countdown markers and allows two minutes to
 rejoin before tutor absence warnings resume.
 
 Apply `supabase/migrations/20260913010000_live_channel_cleanup_safety.sql` before
