@@ -40,6 +40,15 @@ function Import-ProductionEnvironment([string]$Root) {
         'RECORDINGS_S3_ENDPOINT','RECORDINGS_S3_ACCESS_KEY_ID','RECORDINGS_S3_SECRET_ACCESS_KEY')
     $missing = @($required | Where-Object { -not $values.$_ })
     if ($missing.Count) { throw ('Missing production settings: ' + ($missing -join ', ')) }
+    foreach ($name in @('NEXT_PUBLIC_SUPABASE_URL','NEXT_PUBLIC_SITE_URL','DISCORD_OAUTH_REDIRECT_URI','RECORDINGS_S3_ENDPOINT')) {
+        $uri = $null
+        if (-not [Uri]::TryCreate([string]$values.$name, [UriKind]::Absolute, [ref]$uri) -or $uri.Scheme -ne 'https') {
+            throw "Invalid HTTPS setting: $name. Import the decrypted value, not a provider's encrypted envelope."
+        }
+    }
+    foreach ($name in @('DISCORD_CLIENT_ID','DISCORD_GUILD_ID')) {
+        if ([string]$values.$name -notmatch '^\d{17,20}$') { throw "Invalid Discord identifier: $name" }
+    }
     foreach ($p in $values.PSObject.Properties) { [Environment]::SetEnvironmentVariable($p.Name, [string]$p.Value, 'Process') }
     $env:NODE_ENV = 'production'
     $env:NEXT_TELEMETRY_DISABLED = '1'

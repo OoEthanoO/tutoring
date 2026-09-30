@@ -24,6 +24,11 @@ try {
         'RECORDINGS_S3_ENDPOINT','RECORDINGS_S3_ACCESS_KEY_ID','RECORDINGS_S3_SECRET_ACCESS_KEY')) {
         $fake[$name]='smoke-test-fixture'
     }
+    foreach ($name in @('NEXT_PUBLIC_SUPABASE_URL','NEXT_PUBLIC_SITE_URL','DISCORD_OAUTH_REDIRECT_URI','RECORDINGS_S3_ENDPOINT')) {
+        $fake[$name]='https://example.invalid'
+    }
+    $fake.DISCORD_CLIENT_ID='123456789012345678'
+    $fake.DISCORD_GUILD_ID='123456789012345679'
     Write-Json (Join-Path $scratch 'secrets\production.json') $fake
     $server = @'
 const http = require('node:http');
