@@ -1,12 +1,14 @@
 # YanLearn (tutoring)
 
 Free online tutoring platform (learn.ethanyanxu.com). Next.js App Router +
-Supabase (Postgres/RLS) + Discord bot integration. Hosted on Vercel: **pushing
-to `master` deploys to production** (August 2026 — there is no `vercel.json`
-any more, so the project's Git settings govern). A commit is a deploy: apply
-Supabase migrations BEFORE pushing code that reads the new schema. Vercel runs
-no crons — the class-reminders tick is invoked externally with a `CRON_SECRET`
-bearer (see the `cron:reminders:*` npm scripts).
+Supabase (Postgres/RLS) + Discord bot integration. Hosted on native Windows
+`finprint-host` behind Caddy: **pushing to `master` deploys to production**
+through the local `yanlearn-deploy` task (September 2026). Apply Supabase
+migrations BEFORE pushing code that reads the new schema. `vercel.json`
+disables Vercel Git deployments. The local `yanlearn-reminders` task invokes
+the class-reminders tick with a `CRON_SECRET` bearer; cron-job.org is disabled.
+DNS is on Cloudflare, with a local updater for the home address. See
+`SELF_HOSTING.md` for deployment, rollback, scheduler and DNS procedures.
 
 ## Commands
 

@@ -1,17 +1,20 @@
 # YanLearn on finprint-host
 
-Migration status (September 30, 2026): release `413f2dd` is running privately
-on finprint-host, with database access, Recorder CORS and protected routes
-verified. Replacement production credentials are installed; a repository-only
-GitHub token for commit notifications is still pending. The local reminders
-task is enabled after the owner disabled cron-job.org, and its first run
-completed successfully with no Discord sync or Live-category cleanup errors.
+Migration status (September 30, 2026): YanLearn is running on finprint-host.
+Database access, Recorder CORS, protected routes and public HTTPS at the home
+address have passed checks. Caddy obtained a valid Let's Encrypt certificate
+for `learn.ethanyanxu.com`. A repository-only GitHub token for commit
+notifications is still pending; it is not required to serve the website.
+The local reminders task is enabled after the owner disabled cron-job.org,
+and real runs complete with no Discord sync or Live-category cleanup errors.
 
-Public DNS still points to Vercel. Vercel rejected both deployments and the
-new `learn` DNS record because of its account restriction (`resource_creation_blocked`).
-The home-server Caddy route is installed, but public HTTPS cutover and automatic
-deployment remain pending until DNS can be changed. Do not claim the website
-has migrated solely because its loopback health check passes.
+The domain registry now delegates `ethanyanxu.com` to Cloudflare. Both
+authoritative nameservers and Google's/Quad9's resolvers return the home
+address for `learn`; some cached resolvers still return Vercel during the
+transition. A successful direct-origin HTTPS check alone does not prove that
+every visitor's DNS has refreshed. Vercel's existing deployment is paused by
+its account restriction. See the DNS section below for the preserved records
+and the replacement home-address updater.
 
 Native Windows hosting uses Node 24, the Next.js standalone build, Task
 Scheduler, and the server's existing Caddy HTTPS proxy. Supabase, email,
@@ -91,11 +94,45 @@ inspect the web logs before stopping anything: stopping the scheduler alone
 does not cancel server-side work. These protections cover the local scheduler;
 keep all previous external jobs disabled.
 
+## Cloudflare DNS and dynamic home address
+
+The registrar remains Vercel, but authoritative DNS is now Cloudflare:
+`christian.ns.cloudflare.com` and `pat.ns.cloudflare.com`. All 24 previous
+records were copied and `learn CNAME finprint.ethanyanxu.com` was added.
+All 25 records are DNS-only, with their original 60-second TTLs. Existing
+website routes, wildcard/apex destinations, email MX/SPF/DKIM, verification
+TXT records and CAA records were preserved. The apex ALIAS is represented by
+Cloudflare's flattened CNAME. This does not move other Vercel-hosted websites.
+
+The SYSTEM task `ethanyanxu-cloudflare-ddns` runs at boot and every five
+minutes. `ops\update-cloudflare-dns.ps1` updates only the pinned `ai` and
+`finprint` A records, after two independent services confirm the same public
+IPv4. It validates record identity and DNS-only status before writing and
+verifies updates afterward. `learn` and `history` follow those A records via
+CNAMEs. The token has DNS-write permission only for this zone, is encrypted
+with Windows DPAPI, and is readable only within the protected runtime folder.
+
+- Configuration: `secrets\cloudflare-ddns.json` (zone and record IDs).
+- Encrypted token: `secrets\cloudflare-dns-token.dpapi`.
+- Latest result: `secrets\cloudflare-ddns-status.json` and Task Scheduler's
+  `LastTaskResult` (zero means success).
+- Token expires September 15, 2027; replace it before that date.
+- Reinstall the task using `ops\install-cloudflare-dns.ps1` after restoring
+  its protected configuration and token on this same Windows host. DPAPI
+  ciphertext is not portable to a different Windows installation.
+
+The legacy `yanvpn-vercel-ddns` and `yanai-ddns` tasks temporarily continue
+updating the old Vercel zone so visitors using cached old nameservers still
+reach the current home address. Retire these only after the nameserver
+transition has completed; leave the Cloudflare updater enabled. A backup of
+the original DNS is in `secrets\dns-vercel-before.json`. Restoring the old
+nameservers would also restore the old Vercel destination for `learn`.
+
 ## Subsequent deployments
 
 After the first verified cutover, rerun `install.ps1` with `-EnableAutoDeploy`.
 This creates `yanlearn-deploy`, a SYSTEM task that polls `master` each minute.
-Disable Vercel Git deployments only after home-server deployment is verified.
+`vercel.json` disables Vercel Git deployments now that the home server is serving.
 Apply any Supabase migration before pushing code that reads the new schema.
 
 The deployer serializes builds with a file lock, builds without stopping the

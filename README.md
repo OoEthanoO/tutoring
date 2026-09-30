@@ -7,8 +7,9 @@ enrollments, scheduling, reminders, and admin tooling.
 
 ## Stack
 
-- **Next.js (App Router)** on Vercel — note `vercel.json` disables git
-  auto-deploy; deploys are triggered manually.
+- **Next.js (App Router)** on the native Windows home server `finprint-host`,
+  behind Caddy HTTPS. Pushing `master` triggers the local deployer;
+  `vercel.json` disables Vercel Git deployments. See `SELF_HOSTING.md`.
 - **Supabase (Postgres)** — all tables are RLS-locked with deny-all policies;
   access is service-role only through the API routes.
 - **Discord bot integration** — `src/lib/discordSync.ts` continuously
@@ -29,8 +30,9 @@ npm test                    # vitest unit tests for pure logic in src/lib/
 The build runs `scripts/generate-commits.js` first (creates
 `src/generated/commits.json`, which the typecheck also needs).
 
-The class-reminders tick is invoked externally with a `CRON_SECRET` bearer —
-see the `cron:reminders:*` npm scripts.
+The class-reminders tick runs every minute through the home server's
+`yanlearn-reminders` task using a `CRON_SECRET` bearer. Keep the former
+cron-job.org job disabled to avoid duplicate reminders.
 
 ## Documentation
 
