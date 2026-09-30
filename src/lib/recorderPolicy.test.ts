@@ -90,34 +90,48 @@ describe("recorderCompliance", () => {
 
 describe("shouldWarnRecorderNotOpen", () => {
   const base = { startsAtMs: start, alreadyWarned: false, tickIntervalMs: minute };
+  const warningAt = start - 5 * minute;
 
-  it("warns in the tick containing the start when the recorder was late or missing", () => {
-    expect(shouldWarnRecorderNotOpen({ ...base, nowMs: start, firstSeenMs: null })).toBe(true);
+  it("warns at the five-minute deadline when the recorder is missing", () => {
+    expect(shouldWarnRecorderNotOpen({ ...base, nowMs: warningAt, firstSeenMs: null })).toBe(true);
+  });
+
+  it("still warns on the next tick if the tutor connected after the deadline", () => {
     expect(
-      shouldWarnRecorderNotOpen({ ...base, nowMs: start + 30 * 1000, firstSeenMs: start - minute })
+      shouldWarnRecorderNotOpen({ ...base, nowMs: warningAt + 30 * 1000, firstSeenMs: warningAt + 10 * 1000 })
     ).toBe(true);
   });
 
-  it("does not warn when the recorder was open in time", () => {
+  it.each([warningAt - minute, warningAt])("does not warn when the recorder connected on time (%s)", (firstSeenMs) => {
     expect(
-      shouldWarnRecorderNotOpen({ ...base, nowMs: start, firstSeenMs: start - 6 * minute })
+      shouldWarnRecorderNotOpen({ ...base, nowMs: warningAt + 30 * 1000, firstSeenMs })
     ).toBe(false);
   });
 
-  it("does not warn outside the start tick or twice", () => {
-    expect(shouldWarnRecorderNotOpen({ ...base, nowMs: start - 1, firstSeenMs: null })).toBe(false);
+  it("does not warn before the deadline or twice", () => {
+    expect(shouldWarnRecorderNotOpen({ ...base, nowMs: warningAt - 1, firstSeenMs: null })).toBe(false);
     expect(
-      shouldWarnRecorderNotOpen({ ...base, nowMs: start + 2 * minute, firstSeenMs: null })
+      shouldWarnRecorderNotOpen({ ...base, nowMs: warningAt, firstSeenMs: null, alreadyWarned: true })
     ).toBe(false);
+  });
+
+  it("accepts a delayed tick only within the lookback window", () => {
+    expect(shouldWarnRecorderNotOpen({ ...base, nowMs: warningAt + minute, firstSeenMs: null })).toBe(true);
     expect(
-      shouldWarnRecorderNotOpen({ ...base, nowMs: start, firstSeenMs: null, alreadyWarned: true })
+      shouldWarnRecorderNotOpen({ ...base, nowMs: warningAt + minute + 1, firstSeenMs: null })
+    ).toBe(false);
+  });
+
+  it("does not send the old class-start warning even if no earlier warning was logged", () => {
+    expect(
+      shouldWarnRecorderNotOpen({ ...base, tickIntervalMs: 2 * minute, nowMs: start, firstSeenMs: null })
     ).toBe(false);
   });
 
   it("does not warn before the tool is mandatory", () => {
     const early = recorderMandatoryFromMs - 24 * 60 * minute;
     expect(
-      shouldWarnRecorderNotOpen({ ...base, startsAtMs: early, nowMs: early, firstSeenMs: null })
+      shouldWarnRecorderNotOpen({ ...base, startsAtMs: early, nowMs: early - 5 * minute, firstSeenMs: null })
     ).toBe(false);
     expect(isRecorderMandatory(early)).toBe(false);
     expect(isRecorderMandatory(recorderMandatoryFromMs)).toBe(true);

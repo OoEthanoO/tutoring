@@ -126,7 +126,7 @@ export const recorderCompliance = ({
 
 /**
  * Whether to warn the executives that a tutor's recorder was not open in time.
- * Fires once per class, at the class start, only once the tool is mandatory.
+ * Fires once per class, five minutes before the start, once the tool is mandatory.
  */
 export const shouldWarnRecorderNotOpen = ({
   nowMs,
@@ -139,7 +139,7 @@ export const shouldWarnRecorderNotOpen = ({
   startsAtMs: number;
   firstSeenMs: number | null;
   alreadyWarned: boolean;
-  /** How far back this tick looks, so a class start is never skipped between ticks. */
+  /** How far back this tick looks for a five-minute Recorder deadline. */
   tickIntervalMs: number;
 }): boolean => {
   if (alreadyWarned || !isRecorderMandatory(startsAtMs)) {
@@ -148,8 +148,10 @@ export const shouldWarnRecorderNotOpen = ({
   if (!Number.isFinite(nowMs) || !Number.isFinite(startsAtMs)) {
     return false;
   }
-  // Only in the tick that contains the start time.
-  if (nowMs < startsAtMs || nowMs - startsAtMs > tickIntervalMs) {
+  // Warn when the Recorder is due to be open, while the tutor can still
+  // prepare before class. Do not also issue a warning at the class start.
+  const warningAtMs = startsAtMs - recorderRequiredOpenBeforeStartMs;
+  if (nowMs < warningAtMs || nowMs - warningAtMs > tickIntervalMs) {
     return false;
   }
   return recorderCompliance({ startsAtMs, firstSeenMs }) !== "ok";

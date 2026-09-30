@@ -61,7 +61,7 @@ import {
   retryPendingRecordingAnnouncements,
   type RecordingAnnouncementRetryResult,
 } from "@/lib/recordingAnnouncements";
-import { recorderNotOpenReminderType, shouldWarnRecorderNotOpen } from "@/lib/recorderPolicy";
+import { recorderNotOpenReminderType, recorderRequiredOpenBeforeStartMs, shouldWarnRecorderNotOpen } from "@/lib/recorderPolicy";
 import { classCallChannelIds, isInClassCall } from "@/lib/breakoutRooms";
 import { trialGuestsForClass, trialStatus, type ClassTrial } from "@/lib/classTrials";
 import { loadClassTrials } from "@/lib/classTrialsServer";
@@ -3447,9 +3447,8 @@ ${tutorWasPresent ? "" : "<p><strong>Note:</strong> you were not detected in the
 
   // --- YanLearn Recorder ---------------------------------------------------------
   // Recordings live for 7 days after upload; delete the ones past that. Then,
-  // for every class that started during this tick, check that the tutor's
-  // recorder was open at least 5 minutes before the start (mandatory from
-  // 2026-09-09) and warn the executives once when it was not.
+  // at each class's five-minute deadline, check that the tutor's recorder is
+  // open (mandatory from 2026-09-09) and warn the executives once if not.
   let recordingExpiry: RecordingExpiryResult = { expiredCount: 0, failedUploadCount: 0, errors: [] };
   try {
     recordingExpiry = await expireClassRecordings(adminClient, Date.now());
@@ -3477,14 +3476,14 @@ ${tutorWasPresent ? "" : "<p><strong>Note:</strong> you were not detected in the
   };
   try {
     const recorderNowMs = Date.now();
-    // Wider than the one-minute cadence so a delayed tick cannot skip a start;
+    // Wider than the one-minute cadence so a delayed tick cannot skip a deadline;
     // the reminder log keeps a class from being warned about twice.
     const recorderTickWindowMs = 2 * 60 * 1000;
     const { data: startingClasses } = await adminClient
       .from("course_classes")
       .select("id, title, starts_at, course:courses(id, title, created_by, deleted_at, recordings_enabled)")
-      .gte("starts_at", new Date(recorderNowMs - recorderTickWindowMs).toISOString())
-      .lte("starts_at", new Date(recorderNowMs).toISOString());
+      .gte("starts_at", new Date(recorderNowMs + recorderRequiredOpenBeforeStartMs - recorderTickWindowMs).toISOString())
+      .lte("starts_at", new Date(recorderNowMs + recorderRequiredOpenBeforeStartMs).toISOString());
 
     for (const classRow of startingClasses ?? []) {
       const course = readCourse(classRow.course as ClassRow["course"]) as
@@ -3564,9 +3563,9 @@ ${tutorWasPresent ? "" : "<p><strong>Note:</strong> you were not detected in the
           : `**${escapeDiscordText(String(tutorRow?.full_name || tutorRow?.email || "A tutor"))}**`;
         const detail =
           firstSeenMs === null
-            ? "YanLearn Recorder was **not open** when the class started."
-            : "YanLearn Recorder was opened **less than 5 minutes** before the start.";
-        const warningContent = `${tutorLabel} ${detail} **${escapeDiscordText(String(course.title ?? ""))}** — ${escapeDiscordText(String(classRow.title ?? ""))} has started. Every class must be recorded with YanLearn Recorder, open at least 5 minutes before the start.`;
+            ? "YanLearn Recorder is **not open**. Open it and sign in now."
+            : "YanLearn Recorder was opened **after the five-minute deadline**. Keep it open and ready to record.";
+        const warningContent = `${tutorLabel} ${detail} **${escapeDiscordText(String(course.title ?? ""))}** — ${escapeDiscordText(String(classRow.title ?? ""))} starts ${formatDiscordTimestampWithRelative(startsAtMs)}. This class requires recording; YanLearn Recorder must be open at least **5 minutes before the start** and kept running throughout the class.`;
         try {
           if (tutorDiscordId) {
             await sendDiscordUserMentionMessage(executivesChannelId, tutorDiscordId, warningContent);

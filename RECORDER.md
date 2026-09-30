@@ -306,10 +306,13 @@ the class. The recorder only ever claims classes held in a Discord voice channel
 Schoolhouse or legacy Zoom class has no live channel, so there is nothing it
 could record — and it does not hold the app open before
 `recorderMandatoryFromMs`.
-The class‑reminders cron, in the tick containing each class start
+The class‑reminders cron, in the first tick at or after five minutes before class
 (only for classes with a live‑channel row, only from 2026‑09‑09), posts to the
-executives channel when the recorder was missing or opened <5 min early — once
-per class (`class_reminder_logs` type `recorder_not_open`). The same cron runs
+executives channel when the recorder is missing or missed that deadline — once
+per class (`class_reminder_logs` type `recorder_not_open`). The message tells the
+tutor to open/sign in now and includes the scheduled start as a Discord timestamp.
+The two-minute tick lookback is relative to the five-minute deadline; no second
+Recorder warning is sent at the class start. The same cron runs
 `expireClassRecordings` (deletes objects past `expires_at`, marks abandoned
 uploads failed).
 
