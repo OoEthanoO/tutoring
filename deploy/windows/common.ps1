@@ -31,6 +31,19 @@ function Assert-UnderRoot([string]$Path, [string]$Root) {
     return $resolved
 }
 
+function Copy-DirectoryContents([string]$Source, [string]$Destination) {
+    if (-not (Test-Path -LiteralPath $Source -PathType Container)) { throw "Missing asset directory: $Source" }
+    New-Item -ItemType Directory -Path $Destination -Force | Out-Null
+    # Next.js can already trace part of public/ or assets/ into standalone.
+    # Copying a directory onto an existing directory nests its name again.
+    # Merge each level explicitly, including hidden files and literal names.
+    foreach ($item in Get-ChildItem -LiteralPath $Source -Force) {
+        $target = Join-Path $Destination $item.Name
+        if ($item.PSIsContainer) { Copy-DirectoryContents $item.FullName $target }
+        else { Copy-Item -LiteralPath $item.FullName -Destination $target -Force }
+    }
+}
+
 function Import-ProductionEnvironment([string]$Root) {
     $values = Read-Json (Join-Path $Root 'secrets\production.json')
     if (-not $values) { throw 'Missing secrets\production.json. Import the production configuration before deploying.' }

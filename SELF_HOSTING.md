@@ -59,6 +59,11 @@ other consumers. The deploy script checks required settings before building.
 Use the unchanged `https://learn.ethanyanxu.com` site URL and Discord OAuth
 redirect so existing logins, Recorder clients, and emailed links keep working.
 
+`RESEND_API_KEY` needs Resend's **Full access** permission for Admin's email
+history list and message viewer. A domain-scoped Sending access key can deliver
+emails, but Resend rejects history reads with `restricted_api_key`. The API key
+stays server-side; the email history endpoints retain their leadership role gate.
+
 Prepare a release without changing public traffic:
 
 ```powershell
@@ -141,7 +146,10 @@ Apply any Supabase migration before pushing code that reads the new schema.
 
 The deployer serializes builds with a file lock, builds without stopping the
 current server, starts the new release on the spare loopback port, checks its
-commit and a database-backed endpoint, and switches Caddy only after success.
+commit, a database-backed endpoint, and the public Letter of Support PDF, and
+switches Caddy only after success. Asset directories are merged into the
+standalone tree, since Next.js may already have traced some files there. The
+letter and service-hours template are also checked against their source hashes.
 The old process is retired after a five-minute drain for in-flight cron work
 and recording streams. Failed builds leave the
 current release serving traffic. No releases or shared assets are deleted
@@ -152,6 +160,8 @@ after failures. Deployment does not depend on a user remaining signed in.
 `ops\smoke.ps1` verifies startup, loopback binding, process cleanup, rollback
 restart and atomic state updates with an isolated fixture on port 3199. It
 requires administrator access and cleans up its temporary task and files.
+`deploy/windows/assets.test.ps1` checks asset merging and retained files without
+administrator access, a running server, or credentials.
 
 ```powershell
 # Show local/public health, task state and exact revision.

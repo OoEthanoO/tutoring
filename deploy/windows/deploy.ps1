@@ -34,18 +34,27 @@ try {
     $app = Join-Path $release 'app'
     New-Item -ItemType Directory -Path $app,(Join-Path $release 'ops') -Force | Out-Null
     Copy-Item -Path (Join-Path $repo '.next\standalone\*') -Destination $app -Recurse -Force
-    Copy-Item -LiteralPath (Join-Path $repo 'public') -Destination (Join-Path $app 'public') -Recurse -Force
-    Copy-Item -LiteralPath (Join-Path $repo '.next\static') -Destination (Join-Path $app '.next\static') -Recurse -Force
-    Copy-Item -LiteralPath (Join-Path $repo 'assets') -Destination (Join-Path $app 'assets') -Recurse -Force
+    Copy-DirectoryContents (Join-Path $repo 'public') (Join-Path $app 'public')
+    Copy-DirectoryContents (Join-Path $repo '.next\static') (Join-Path $app '.next\static')
+    Copy-DirectoryContents (Join-Path $repo 'assets') (Join-Path $app 'assets')
     Copy-Item -Path (Join-Path $repo 'deploy\windows\*.ps1') -Destination (Join-Path $release 'ops') -Force
     # Retain old immutable chunks for browsers still open across a deployment.
-    Copy-Item -Path (Join-Path $repo '.next\static\*') -Destination (Join-Path $Root 'static') -Recurse -Force
+    Copy-DirectoryContents (Join-Path $repo '.next\static') (Join-Path $Root 'static')
+    foreach ($asset in @('public\Letter of Support from SickKids Foundation.pdf', 'assets\service-hours-form-template.pdf')) {
+        $sourceHash = (Get-FileHash -LiteralPath (Join-Path $repo $asset) -Algorithm SHA256).Hash
+        $releaseHash = (Get-FileHash -LiteralPath (Join-Path $app $asset) -Algorithm SHA256).Hash
+        if ($sourceHash -ne $releaseHash) { throw "Release asset does not match its source: $asset" }
+    }
     $next = [pscustomobject]@{ commit=$commit; release=$release; port=$port; taskName=('yanlearn-web-' + $releaseId); createdAt=(Get-Date).ToUniversalTime().ToString('o') }
     Write-Json (Join-Path $release 'release.json') $next
     Register-WebTask $Root $next
     if (-not (Test-Release $next)) { throw 'The new release failed its readiness probe. Existing traffic is unchanged.' }
     # Exercise database-backed reads before allowing the new process to take traffic.
     $null = Invoke-RestMethod -Uri ("http://127.0.0.1:$port/api/team/count") -TimeoutSec 20
+    $letter = Invoke-WebRequest -UseBasicParsing -Method Head -Uri ("http://127.0.0.1:$port/Letter%20of%20Support%20from%20SickKids%20Foundation.pdf") -TimeoutSec 20
+    if ($letter.StatusCode -ne 200 -or $letter.Headers['Content-Type'] -notlike 'application/pdf*') {
+        throw 'The Letter of Support is not served as a PDF. Existing traffic is unchanged.'
+    }
     if ($PrepareOnly) {
         Write-Json (Join-Path $Root 'prepared.json') $next
         $activated = $true
