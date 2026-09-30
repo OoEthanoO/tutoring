@@ -1,9 +1,17 @@
 # YanLearn on finprint-host
 
-Migration status (September 30, 2026): the runtime layout is installed, but
-production credentials are being recovered from the service providers after
-Vercel rejected the transfer deployment with "Account is blocked." Public DNS still points to Vercel.
-The initial cutover and automatic deployment are not enabled yet.
+Migration status (September 30, 2026): release `413f2dd` is running privately
+on finprint-host, with database access, Recorder CORS and protected routes
+verified. Replacement production credentials are installed; a repository-only
+GitHub token for commit notifications is still pending. The local reminders
+task is enabled after the owner disabled cron-job.org, and its first run
+completed successfully with no Discord sync or Live-category cleanup errors.
+
+Public DNS still points to Vercel. Vercel rejected both deployments and the
+new `learn` DNS record because of its account restriction (`resource_creation_blocked`).
+The home-server Caddy route is installed, but public HTTPS cutover and automatic
+deployment remain pending until DNS can be changed. Do not claim the website
+has migrated solely because its loopback health check passes.
 
 Native Windows hosting uses Node 24, the Next.js standalone build, Task
 Scheduler, and the server's existing Caddy HTTPS proxy. Supabase, email,
