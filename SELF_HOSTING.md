@@ -44,6 +44,13 @@ The website listens on loopback only, alternating ports 3100 and 3101. Caddy
 serves `learn.ethanyanxu.com` and proxies requests to the healthy release. It
 retains the existing configuration for the other hosted sites and the VPN.
 
+Browser mutation origin checks use `NEXT_PUBLIC_SITE_URL` through
+`src/lib/requestOrigin.ts`. Do not compare a browser's HTTPS Origin directly
+with `request.url`: the standalone server can see its loopback HTTP address.
+Breakout rooms, exercise submissions and Zen mode share this check; untrusted
+Host/forwarded headers must not expand the allowed origins. Requests still
+require their existing session and course permissions.
+
 ## Initial installation
 
 Run from an Administrator PowerShell on finprint-host, using the actual

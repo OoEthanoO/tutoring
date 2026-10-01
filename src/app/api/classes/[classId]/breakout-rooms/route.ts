@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getRequestUser } from "@/lib/authServer";
+import { isAllowedRequestOrigin } from "@/lib/requestOrigin";
 import {
   BreakoutError,
   getBreakoutAccess,
@@ -42,8 +43,7 @@ export async function GET(request: NextRequest, context: Context) {
 
 export async function POST(request: NextRequest, context: Context) {
   try {
-    const origin = request.headers.get("origin");
-    if (origin && origin !== new URL(request.url).origin) {
+    if (!isAllowedRequestOrigin(request)) {
       throw new BreakoutError("Invalid request origin.", 403);
     }
     const access = await getBreakoutAccess(await getRequestUser(request), (await context.params).classId);

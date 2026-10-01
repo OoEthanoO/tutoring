@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getAdminClient, getRequestUser } from "@/lib/authServer";
+import { isAllowedRequestOrigin } from "@/lib/requestOrigin";
 import { isFounder, resolveAccountRole } from "@/lib/roles";
 import { uuidPattern } from "@/lib/classTrials";
 import { syncZenMode, ZenBusyError } from "@/lib/zenModeServer";
@@ -27,8 +28,7 @@ export async function GET(request: NextRequest, context: Context) {
   return NextResponse.json({ enabled: result.course.zen_mode_enabled });
 }
 export async function POST(request: NextRequest, context: Context) {
-  const origin = request.headers.get("origin");
-  if (origin && origin !== new URL(request.url).origin) return NextResponse.json({ error: "Invalid request origin." }, { status: 403 });
+  if (!isAllowedRequestOrigin(request)) return NextResponse.json({ error: "Invalid request origin." }, { status: 403 });
   const result = await access(request, context);
   if (result.error) return result.error;
   const body = await request.json().catch(() => null);
