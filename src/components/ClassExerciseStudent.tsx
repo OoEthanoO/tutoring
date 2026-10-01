@@ -7,12 +7,12 @@ import { exerciseCanSubmit, exerciseOpen, exerciseSecondsLeft, type ExerciseStat
 const card = "rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5 sm:p-7";
 const code = "whitespace-pre-wrap break-words font-mono text-sm leading-relaxed [tab-size:4]";
 const button = "rounded-full border border-[var(--border)] px-5 py-2 text-sm font-semibold disabled:opacity-40";
+type LoadFailure = { kind: "signin" | "enrollment" | "missing" | "connection"; message: string };
 
 export default function ClassExerciseStudent({ classId }: { classId: string }) {
   const [data, setData] = useState<ExerciseState | null>(null);
   const [error, setError] = useState("");
-  const [offline, setOffline] = useState(false);
-  const [unauthorized, setUnauthorized] = useState(false);
+  const [loadFailure, setLoadFailure] = useState<LoadFailure | null>(null);
   const [busy, setBusy] = useState(false);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [now, setNow] = useState(0);
@@ -27,8 +27,7 @@ export default function ClassExerciseStudent({ classId }: { classId: string }) {
     clock.current = { server: value.serverNow, received: performance.now() };
     setNow(value.serverNow);
     setData(value);
-    setOffline(false);
-    setUnauthorized(false);
+    setLoadFailure(null);
   }, []);
   const refresh = useCallback(async () => {
     if (inFlight.current) return;
@@ -36,18 +35,24 @@ export default function ClassExerciseStudent({ classId }: { classId: string }) {
     const version = generation.current;
     try {
       const response = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(10000) });
-      const value = await response.json();
+      const value = await response.json().catch(() => null);
       if (version !== generation.current) return;
       if (!response.ok) {
-        if ([401, 403, 404].includes(response.status)) { setData(null); setDrafts({}); }
-        setUnauthorized(response.status === 401);
-        throw new Error(value.error || "Unable to load the question.");
+        if ([401, 403, 404].includes(response.status)) {
+          setData(null); setDrafts({}); requestId.current = null;
+          setLoadFailure({
+            kind: response.status === 401 ? "signin" : response.status === 403 ? "enrollment" : "missing",
+            message: value?.error || "This class exercise is unavailable.",
+          });
+          return;
+        }
+        throw new Error(value?.error || "Unable to load the question.");
       }
+      if (!value) throw new Error("Unable to load the question.");
       accept(value);
     } catch (err) {
       if (version === generation.current) {
-        setOffline(true);
-        setError(err instanceof Error ? err.message : "Connection lost. Reconnecting…");
+        setLoadFailure({ kind: "connection", message: err instanceof Error ? err.message : "Connection lost. Reconnecting…" });
       }
     } finally { inFlight.current = false; }
   }, [url, accept]);
@@ -69,7 +74,7 @@ export default function ClassExerciseStudent({ classId }: { classId: string }) {
   const latest = attempts[0];
   const open = exerciseOpen(question, data?.currentQuestionId ?? null, now);
   const remaining = exerciseSecondsLeft(question, data?.currentQuestionId ?? null, now);
-  const canSubmit = !!data?.canSubmit && !offline && exerciseCanSubmit(open, latest);
+  const canSubmit = !!data?.canSubmit && !loadFailure && exerciseCanSubmit(open, latest);
   const answer = question ? drafts[question.id] ?? (latest?.status === "incorrect" ? latest.answer : "") : "";
   const setAnswer = (value: string) => { if (question) setDrafts(previous => ({ ...previous, [question.id]: value })); };
 
@@ -105,8 +110,24 @@ export default function ClassExerciseStudent({ classId }: { classId: string }) {
       {data && <p className="text-[var(--muted)]">{data.classTitle} · {new Date(data.startsAt).toLocaleDateString()}</p>}
       <p className="text-sm text-[var(--muted)]">Keep this page open for every question. Your answers are private to you and your tutors.</p>
     </header>
-    {offline && <div role="status" className={card}>{unauthorized ? <><p>Sign in to answer this class&apos;s exercises.</p><Link className={`${button} mt-4 inline-block`} href={`/login?next=${encodeURIComponent(`/class-exercises/${classId}`)}`}>Sign in to YanLearn</Link></> : <><p>{error}</p><p className="mt-2 text-sm text-[var(--muted)]">Submissions are disabled until the connection is restored. Your unsent answer stays here.</p></>}</div>}
-    {!data && !offline && <p role="status">Loading class…</p>}
+    {loadFailure && <div role="status" className={card}>
+      {loadFailure.kind === "signin" ? <>
+        <p>Sign in to answer this class&apos;s exercises.</p>
+        <Link className={`${button} mt-4 inline-block`} href={`/login?next=${encodeURIComponent(`/class-exercises/${classId}`)}`}>Sign in to YanLearn</Link>
+      </> : loadFailure.kind === "enrollment" ? <>
+        <p>This YanLearn account does not have an approved enrollment in this course.</p>
+        <p className="mt-2 text-sm text-[var(--muted)]">Check My enrollments. If you enrolled using another account, return to YanLearn, sign out, and sign in with that account&apos;s email. Then reopen this class link. Being in the Discord channel does not give another website account access.</p>
+        <p className="mt-2 text-sm text-[var(--muted)]">If your enrollment is approved on this account, ask your tutor or YanLearn staff for help.</p>
+        <Link className={`${button} mt-4 inline-block`} href="/?menu=enrolled_courses">My enrollments</Link>
+      </> : loadFailure.kind === "missing" ? <>
+        <p>This class exercise link is unavailable.</p>
+        <p className="mt-2 text-sm text-[var(--muted)]">Ask your tutor for the link to the current class.</p>
+      </> : <>
+        <p>{loadFailure.message}</p>
+        <p className="mt-2 text-sm text-[var(--muted)]">Submissions are disabled until the connection is restored. Your unsent answer stays here.</p>
+      </>}
+    </div>}
+    {!data && !loadFailure && <p role="status">Loading class…</p>}
     {data && !question && <section className={card}><h2 className="text-lg font-semibold">Waiting for your tutor</h2><p className="mt-2 text-[var(--muted)]">The first question will appear here when your tutor shares it.</p></section>}
     {question && <section className={`${card} space-y-5`}>
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -139,7 +160,7 @@ export default function ClassExerciseStudent({ classId }: { classId: string }) {
           }} />
         <p className="text-xs text-[var(--muted)]">Line breaks and indentation are preserved. Tab inserts four spaces; Shift+Tab moves to the previous control.</p>
         <button className={button} disabled={!canSubmit || busy || !answer.trim()}>{busy ? "Submitting…" : latest ? "Resubmit answer" : "Submit answer"}</button>
-        {error && !offline && <p role="alert" className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+        {error && !loadFailure && <p role="alert" className="text-sm text-red-600 dark:text-red-400">{error}</p>}
       </form>}
     </section>}
     {!!data?.submissions.length && <section className="space-y-3"><h2 className="text-lg font-semibold">Your answers & feedback</h2>

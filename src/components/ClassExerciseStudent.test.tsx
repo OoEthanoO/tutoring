@@ -90,4 +90,47 @@ describe("student exercise page", () => {
     expect(container.textContent).not.toContain("secret answer");
     expect(container.querySelector('a[href^="/login?next="]')).not.toBeNull();
   });
+  it("explains enrollment denial without calling it a connection failure and clears private state", async () => {
+    const original = fetchMock.getMockImplementation()!;
+    await fill("Private answer"); await send();
+    fixture.submissions[0].status = "incorrect";
+    await act(async () => { await vi.advanceTimersByTimeAsync(2100); });
+    await fill("Private revision");
+    fetchMock.mockResolvedValue(Response.json({ error: "You must be enrolled" }, { status: 403 }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(2100); });
+    expect(container.textContent).toContain("enrolled using another account");
+    expect(container.querySelector('a[href="/?menu=enrolled_courses"]')).not.toBeNull();
+    expect(container.textContent).not.toContain("connection is restored");
+    expect(container.textContent).not.toContain("Private answer");
+    expect(answerInput()).toBeNull();
+    fixture.submissions = [];
+    fetchMock.mockImplementation(original);
+    await act(async () => { await vi.advanceTimersByTimeAsync(2100); });
+    expect(answerInput().value).toBe("");
+    expect(answerInput().disabled).toBe(false);
+    expect(container.textContent).not.toContain("enrolled using another account");
+  });
+  it("asks for a current class link when the class does not exist", async () => {
+    // Even an empty error response must clear previously visible private data.
+    await fill("Private answer"); await send();
+    fetchMock.mockResolvedValue(new Response(null, { status: 404 }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(2100); });
+    expect(container.textContent).toContain("Ask your tutor for the link");
+    expect(container.textContent).not.toContain("connection is restored");
+    expect(container.textContent).not.toContain("Private answer");
+    expect(answerInput()).toBeNull();
+  });
+  it("preserves drafts during a network outage and clears the warning on recovery", async () => {
+    const original = fetchMock.getMockImplementation()!;
+    await fill("def answer():\n    return 42");
+    fetchMock.mockRejectedValue(new TypeError("Failed to fetch"));
+    await act(async () => { await vi.advanceTimersByTimeAsync(2100); });
+    expect(answerInput().disabled).toBe(true);
+    expect(container.textContent).toContain("connection is restored");
+    fetchMock.mockImplementation(original);
+    await act(async () => { await vi.advanceTimersByTimeAsync(2100); });
+    expect(answerInput().disabled).toBe(false);
+    expect(answerInput().value).toBe("def answer():\n    return 42");
+    expect(container.textContent).not.toContain("Failed to fetch");
+  });
 });
