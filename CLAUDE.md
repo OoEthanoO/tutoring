@@ -65,6 +65,12 @@ DNS is on Cloudflare, with a local updater for the home address. See
   in any of a class's rooms counts as being in the class for attendance, tutor
   warnings, live-channel cleanup and the Recorder (`isInClassCall`); rooms are
   deleted with their class channel, and orphans are swept each tick.
+- Teaching → Readme (`src/components/ReadmeMenu.tsx`, executives only) is
+  the tutor handbook; it replaced the Discord #readme channel in October 2026
+  (discordSync no longer manages that channel, so it is deleted — do not re-add it).
+  It describes what the site, YanBot and Recorder actually do (reminder times,
+  presence warnings, live channels, breakout rooms, Zen mode, exercises,
+  recordings, trials, service hours), so update it with any tutor-facing change.
 - `src/components/DashboardMenus.tsx` — home page tab router; admin panels
   live in `AdminUserManager.tsx` (Admin → Manage accounts). Admin Tools
   there includes "Course needs": the trio types courses nobody teaches yet,

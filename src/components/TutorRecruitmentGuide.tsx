@@ -45,14 +45,14 @@ const steps: Step[] = [
     note: <p><strong>Connected</strong> alone does not confirm server membership. A new tutor with no uploaded course normally has <strong>Pending in Discord</strong> while remaining <strong>Executive on the website</strong>. Allow the next Discord sync to update roles, then check again. Do not use an approved extra Discord account as a substitute for connecting their own account.</p>,
   },
   {
-    id: "readme", label: "Readme", title: "Have them read #readme",
+    id: "readme", label: "Readme", title: "Have them read the Readme",
     tutor: <ol className={listStyle}>
-      <li>Open the YanLearn Discord server and find <strong>#readme</strong>.</li>
-      <li>Read the full channel guidance, including any linked instructions, and ask you about anything unclear.</li>
+      <li>On YanLearn, open <Link href="/?menu=readme" className={linkStyle}>Teaching → Readme</Link>.</li>
+      <li>Read the whole page and ask you about anything unclear.</li>
       <li>Confirm that they have read it and know where to find it again.</li>
     </ol>,
-    check: <p>Ask them to confirm they can open <strong>#readme</strong> and have finished reading it. Resolve their questions before calling onboarding complete. Sending a link alone is not a completion check.</p>,
-    note: <p>Use the current channel guidance when explaining expectations; an old screenshot or a remembered rule may be out of date. If they cannot see the channel, check their Discord connection, membership, and role first.</p>,
+    check: <p>Ask them to confirm they can open <strong>Teaching → Readme</strong> and have finished reading it. Resolve their questions before calling onboarding complete. Sending a link alone is not a completion check.</p>,
+    note: <p>Use the current Readme when explaining expectations; an old screenshot, the old Discord #readme channel, or a remembered rule may be out of date. If they cannot find it, check that their website role is Executive and have them refresh or sign in again.</p>,
   },
   {
     id: "course-request", label: "Course request", title: "Show them how to propose a course",
@@ -104,8 +104,8 @@ const problems = [
     answer: "Confirm the website promotion, linked Discord username, and server membership, then wait for the next sync and recheck. A tutor who already owns or co-teaches a course, or has an approved Executive without a course exception, may correctly have Executive instead. A brand-new tutor without either should have Pending, never both. If incorrect roles persist, management can inspect Admin → Manage accounts → Admin Tools → Discord sync status. Avoid manually assigning roles as a fix; the sync manages them.",
   },
   {
-    title: "They cannot see #readme or other expected channels.",
-    answer: "Make sure they opened the YanLearn server with the connected Discord account and check its member profile for Pending. Look through collapsed channel categories as well. If access is still missing after a sync, ask management to check channel access. Do not add them as someone else's approved Discord account to get around the problem.",
+    title: "They cannot see the Readme or the expected Discord channels.",
+    answer: "The Readme is under Teaching on the website and needs the Executive website role, so confirm the promotion and have them refresh or sign in again. For Discord channels, make sure they opened the YanLearn server with the connected Discord account and check its member profile for Pending. Look through collapsed channel categories as well. If access is still missing after a sync, ask management to check channel access. Do not add them as someone else's approved Discord account to get around the problem.",
   },
   {
     title: "They cannot find Course requests, or think their request already created a course.",
@@ -186,12 +186,12 @@ export default function TutorRecruitmentGuide() {
           <li>One verified YanLearn account, with a personal email the tutor can access.</li>
           <li>Website role is Executive; tutor onboarding shows Onboarded &amp; Verified.</li>
           <li>Their own Discord account is connected and joined; you have seen their Pending role or confirmed that they have a course or an approved exception.</li>
-          <li>They have read #readme and had a chance to ask questions.</li>
+          <li>They have read the Readme and had a chance to ask questions.</li>
           <li>They know where Course requests is and that they can submit any time they are ready.</li>
         </ul>
         <div className="border-t border-[var(--border)] pt-4">
           <h3 className="mb-2 text-sm font-semibold">Suggested closing message</h3>
-          <blockquote className="border-l-2 border-[var(--border)] pl-4 text-sm leading-6 text-[var(--muted)]">You&apos;re set up! Whenever you&apos;re ready to teach, go to Teaching → Course requests on YanLearn and click Submit course request. You can check Courses we need for ideas. Your Discord Pending role is normal until a course you teach is created. Keep #readme handy, and reach out if you need help with your first request.</blockquote>
+          <blockquote className="border-l-2 border-[var(--border)] pl-4 text-sm leading-6 text-[var(--muted)]">You&apos;re set up! Whenever you&apos;re ready to teach, go to Teaching → Course requests on YanLearn and click Submit course request. You can check Courses we need for ideas. Your Discord Pending role is normal until a course you teach is created. Keep Teaching → Readme handy, and reach out if you need help with your first request.</blockquote>
         </div>
       </section>
     </section>

@@ -18,6 +18,7 @@ import RolesManagerMenu from "@/components/RolesManagerMenu";
 import MyClassesMenu from "@/components/MyClassesMenu";
 import HelpMenu from "@/components/HelpMenu";
 import TutorRecruitmentGuide from "@/components/TutorRecruitmentGuide";
+import ReadmeMenu from "@/components/ReadmeMenu";
 import SponsorsMenu from "@/components/SponsorsMenu";
 import EventsMenu from "@/components/EventsMenu";
 import FormsMenu from "@/components/FormsMenu";
@@ -45,6 +46,7 @@ export type MenuKey =
   | "emails"
   | "withdrawals"
   | "help"
+  | "readme"
   | "events"
   | "forms"
   | "trash"
@@ -74,6 +76,7 @@ const ALL_MENU_KEYS: readonly MenuKey[] = [
   "emails",
   "withdrawals",
   "help",
+  "readme",
   "events",
   "forms",
   "trash",
@@ -414,6 +417,8 @@ export default function DashboardMenus() {
       teaching.push({ key: "manage_course_requests", label: "Course requests" });
     }
     if (isExecutive(role)) {
+      // The tutor handbook; it replaced the Discord #readme channel.
+      teaching.push({ key: "readme", label: "Readme" });
       teaching.push({ key: "events", label: "Events" });
     }
     if (isFounder(role) || (isExecutive(role) && (hasForms || active === "forms"))) {
@@ -568,6 +573,7 @@ export default function DashboardMenus() {
       {activeMenu === "emails" ? <EmailHistoryMenu /> : null}
       {activeMenu === "withdrawals" ? <WithdrawHoursMenu /> : null}
       {activeMenu === "help" ? <HelpMenu /> : null}
+      {activeMenu === "readme" ? <ReadmeMenu /> : null}
       {activeMenu === "events" ? <EventsMenu /> : null}
       {activeMenu === "forms" ? <FormsMenu /> : null}
       {activeMenu === "trash" ? <ManageMyCoursesMenu isTrashMode={true} /> : null}

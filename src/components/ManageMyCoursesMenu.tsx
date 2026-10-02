@@ -1203,14 +1203,6 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
                 Your donation link
               </a>
             ) : null}
-            <a
-              href="https://forms.gle/WXrRhDtAv2CH5Chx6"
-              target="_blank"
-              rel="noreferrer"
-              className="text-xs font-semibold text-[var(--foreground)] underline"
-            >
-              Tutor Log Form
-            </a>
             {isFounder(role) && (
               <div className="mt-4 flex flex-col gap-4 rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] p-4">
                 <div className="flex flex-col gap-2">

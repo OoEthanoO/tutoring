@@ -74,6 +74,12 @@ DNS is on Cloudflare, with a local updater for the home address. See
   Live-category channels even if their registry query fails or creation is in
   flight; unknown orphan channels are retained. Recorder ticks must not finalize
   a class over a premature channel deletion or failed database lookup.
+- Teaching → Readme (`src/components/ReadmeMenu.tsx`, executives only) is
+  the tutor handbook; it replaced the Discord #readme channel in October 2026
+  (discordSync no longer manages that channel, so it is deleted — do not re-add it).
+  It describes what the site, YanBot and Recorder actually do (reminder times,
+  presence warnings, live channels, breakout rooms, Zen mode, exercises,
+  recordings, trials, service hours), so update it with any tutor-facing change.
 - `src/components/DashboardMenus.tsx` — home page tab router; admin panels
   live in `AdminUserManager.tsx` (Admin → Manage accounts). Admin Tools
   there includes "Course needs": the trio types courses nobody teaches yet,
