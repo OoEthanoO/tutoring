@@ -30,6 +30,7 @@
         "minHeight": 560,
         "resizable": true,
         "contentProtected": true,
+        "backgroundThrottling": "disabled",
         "visible": true
       }
     ],

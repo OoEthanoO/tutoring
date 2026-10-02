@@ -202,6 +202,28 @@ bundle has no Dock icon, and the app itself switches to a normal Dock app at
 startup (`set_activation_policy(Regular)` in `lib.rs`, also Tauri's default).
 Unverified on a Mac until a release carrying it is used for a class.
 
+## Recorder suspended while its window is hidden (macOS)
+
+The recorder's control loop — the heartbeat, class phases, voice presence,
+window-mode focus — runs in the main window's page. Closing that window only
+hides it (the app lives on in the tray), and WebKit suspends a hidden or fully
+covered page's timers after roughly five minutes. A Mac tutor's recorder
+therefore stopped checking in during class: the Recorders admin tab showed
+"last seen" growing all lesson and catching up once the window came back
+afterwards. While suspended the app cannot notice the tutor joining the call,
+the class ending, or a window switch; a segment already recording keeps going,
+because ffmpeg is a separate process.
+
+The main window now sets `backgroundThrottling: "disabled"` in
+`tauri.conf.json` (Tauri's switch for this, tauri-apps/tauri#5250). It takes
+effect on macOS 14 and newer; macOS 13 has no such switch, so tutors there
+should keep the window open. Windows (WebView2) has no such switch in Tauri
+and is not known to suspend the page the same way — unverified; the log line
+below will show it if it does.
+
+Suspension is no longer silent: a check-in that runs a minute or more late
+logs "paused by the system for about N min", on any platform.
+
 ## Quality profile (decision)
 
 Chosen for legible text at the lowest CPU cost on low‑end laptops that are also

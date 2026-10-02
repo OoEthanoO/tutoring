@@ -30,6 +30,11 @@
   const DEFAULT_MUTE_HOTKEY = "CmdOrCtrl+Alt+M";
   const IDLE_POLL_MS = 30000;
   const ACTIVE_POLL_MS = 2000;
+  // A tick this late was not slow, it was suspended: the system stopped this
+  // window's timers (macOS does this to a hidden or fully covered window unless
+  // told not to — see backgroundThrottling in tauri.conf.json). Nothing is
+  // checked while that lasts, so say it happened.
+  const SUSPENDED_TICK_MS = 60000;
   const CRASH_FALLBACK_SECONDS = 4;
   const MAX_CAPTURE_FAILURES = 6;
   const RECORDING_FPS = 10;
@@ -1011,11 +1016,19 @@
     if (state.timer) {
       clearTimeout(state.timer);
     }
+    state.tickDueAtMs = Date.now() + delayMs;
     state.timer = setTimeout(loop, delayMs);
   };
 
   const loop = async () => {
     state.timer = null;
+    const lateMs = state.tickDueAtMs ? Date.now() - state.tickDueAtMs : 0;
+    if (lateMs >= SUSPENDED_TICK_MS) {
+      log(
+        `YanLearn Recorder was paused by the system for about ${Math.max(1, Math.round(lateMs / 60000))} min ` +
+        "and could not follow the class during that time. Keeping its window open avoids this on older systems."
+      );
+    }
     let interval = state.session || state.uploads.length > 0 ? ACTIVE_POLL_MS : IDLE_POLL_MS;
     if (state.settings.token && !state.tickBusy) {
       state.tickBusy = true;

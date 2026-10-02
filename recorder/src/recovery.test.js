@@ -303,6 +303,22 @@ describe("Recorder restart and upload lifecycle", () => {
     expect($("presence-text").textContent).not.toContain("You can quit");
   });
 
+  it("says so when the system suspended it, instead of silently missing the class", async () => {
+    await boot();
+    expect($("log").textContent).not.toContain("paused by the system");
+    // What a suspended window looks like from inside: the clock moves on, the
+    // next tick only runs once the window is allowed to run again.
+    vi.setSystemTime(new Date(Date.now() + 12 * 60 * 1000));
+    await vi.advanceTimersByTimeAsync(31000);
+    expect($("log").textContent).toContain("paused by the system for about 12 min");
+  });
+
+  it("does not cry wolf about ticks that are merely on time", async () => {
+    await boot();
+    await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
+    expect($("log").textContent).not.toContain("paused by the system");
+  });
+
   it("times out a stuck completion call, keeps the video, and retries verification without retransferring", async () => {
     addPending();
     const original = fetch.getMockImplementation();
