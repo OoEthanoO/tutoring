@@ -34,7 +34,7 @@ export async function POST(request: NextRequest, context: Context) {
   const body = await request.json().catch(() => null);
   if (typeof body?.enabled !== "boolean") return NextResponse.json({ error: "Choose whether Zen mode is on or off." }, { status: 400 });
   try {
-    const outcome = await syncZenMode(result.db, { courseId: result.course.id, enabled: body.enabled });
+    const outcome = await syncZenMode(result.db, { courseId: result.course.id, enabled: body.enabled }, { waitForLeaseMs: 10000 });
     return NextResponse.json({ enabled: body.enabled, ...outcome });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Could not update Zen mode." }, { status: error instanceof ZenBusyError ? 409 : 503 });

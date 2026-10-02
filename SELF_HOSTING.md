@@ -110,6 +110,34 @@ inspect the web logs before stopping anything: stopping the scheduler alone
 does not cancel server-side work. These protections cover the local scheduler;
 keep all previous external jobs disabled.
 
+### Immediate Zen mutes
+
+The `yanlearn-zen-gateway` task runs a persistent Discord voice-event listener.
+Starting the web release installs it automatically; no Discord messages or
+Recorder update are involved. `postbuild` bundles its dependencies into
+`app/zen-gateway.cjs`, so the task does not depend on the mutable checkout.
+The supervisor holds `zen-gateway.lock` and reads `active.json`. The worker
+exits on a release change and the supervisor starts the active version. A
+rollback to an older release without the worker bundle leaves cron's existing
+Zen handling active. Its stable launcher lives at `ops/zen-gateway.ps1`; it
+does not depend on retaining an old release's launcher.
+
+The website reads the worker's connected-member snapshot on loopback port
+3102 (`YANLEARN_ZEN_GATEWAY_PORT`, supplied by `run.ps1`). Both directions use
+`CRON_SECRET`; do not expose port 3102 in Caddy or the firewall. The worker's
+voice event requests target the active website on 3100 or 3101, not public DNS.
+
+Check `zen-gateway-status.json` for `ready: true`, the active commit, an
+`updatedAt` within 15 seconds, and no accumulating queue/errors. A stale status
+file is not proof the worker is running. Logs are in `logs/zen-gateway.log`;
+`status.ps1` shows both. With the production environment imported, running the
+active release's `app/zen-gateway.cjs --probe` checks Gateway login read-only:
+it does not mute members, open a listener, or write runtime status.
+
+The Gateway library handles heartbeat/reconnect/resume. On reconnect the
+worker reconciles everyone currently in voice, including mutes retained while
+a student was disconnected. Periodic cron remains the outage fallback.
+
 ## Cloudflare DNS and dynamic home address
 
 The registrar remains Vercel, but authoritative DNS is now Cloudflare:

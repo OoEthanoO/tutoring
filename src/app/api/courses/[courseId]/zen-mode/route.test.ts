@@ -22,7 +22,7 @@ describe("course Zen mode API", () => {
   it.each(["tutor", "co"])("allows %s to change the course's current and future classes", async userId => {
     mocks.user.mockResolvedValue({ id: userId, email: "tutor@example.test", role: "executive" });
     expect((await POST(request(), context)).status).toBe(200);
-    expect(mocks.sync).toHaveBeenCalledWith(mocks.db(), { courseId: id, enabled: true });
+    expect(mocks.sync).toHaveBeenCalledWith(mocks.db(), { courseId: id, enabled: true }, { waitForLeaseMs: 10000 });
   });
   it.each(["CEO", "COO", "CEO Shadow", "COO Shadow"])("allows %s management access", async role => {
     mocks.user.mockResolvedValue({ id: "manager", email: "manager@example.test", role: "student", custom_roles: { role_level: role } });

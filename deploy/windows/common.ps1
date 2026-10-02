@@ -105,6 +105,25 @@ function Register-WebTask([string]$Root, $State) {
     Start-ScheduledTask -TaskName $State.taskName
 }
 
+function Register-ZenGatewayTask([string]$Root, [string]$Launcher) {
+    $stableLauncher = Join-Path $Root 'ops\zen-gateway.ps1'
+    # Bootstrap only the new launcher before activation. Ordinary deployments
+    # update ops after switching traffic, so staging never replaces active code.
+    if (-not (Test-Path -LiteralPath $stableLauncher)) { Copy-Item -LiteralPath $Launcher -Destination $stableLauncher }
+    if (Get-ScheduledTask -TaskName 'yanlearn-zen-gateway' -ErrorAction SilentlyContinue) { return }
+    $arguments = '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}" -Root "{1}"' -f $stableLauncher,$Root
+    $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $arguments
+    $triggers = @(
+        (New-ScheduledTaskTrigger -AtStartup),
+        (New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes 1))
+    )
+    $settings = New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -ExecutionTimeLimit ([TimeSpan]::Zero) `
+        -RestartCount 10 -RestartInterval (New-TimeSpan -Minutes 1) -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
+    Register-ScheduledTask -TaskName 'yanlearn-zen-gateway' -Action $action -Trigger $triggers -Settings $settings `
+        -User 'SYSTEM' -RunLevel Highest -Force | Out-Null
+    Start-ScheduledTask -TaskName 'yanlearn-zen-gateway'
+}
+
 function Stop-WebTask([string]$Root, $State) {
     if (-not $State -or $State.taskName -notlike 'yanlearn-web-*') { return }
     $release = Assert-UnderRoot $State.release (Join-Path $Root 'releases')

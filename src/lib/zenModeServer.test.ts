@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { prepareZenVoice, reconcileZenMode, syncZenMode, ZenBusyError } from "./zenModeServer";
 import { buildLiveVoicePermissionOverwrites } from "./discordLiveChannels";
@@ -43,6 +43,7 @@ const call = vi.fn(async <T>(method: string, path: string, body?: unknown): Prom
     if (path.endsWith("/channels")) return structuredClone(channels) as T;
     if (path.endsWith("/roles")) return [{ id: "guild", permissions: "0" }, { id: "course-role", permissions: "0" }] as T;
     if (path.includes("/members?")) return ["student", "moderated", "trial", "teacher", "teacher-extra", "co-teacher", "manager"].map(id => ({ user: { id }, roles: id === "trial" ? [] : ["course-role"] })).concat([{ user: { id: "bot", bot: true }, roles: [] }] as never) as T;
+    if (path.includes("/members/")) return { user: { id: path.split("/").at(-1)! }, roles: ["course-role"] } as T;
     if (path.includes("/voice-states/")) return structuredClone(voice[path.split("/").at(-1)!] ?? null) as T;
   }
   if (method === "PATCH") {
@@ -71,7 +72,82 @@ beforeEach(() => {
   voice = Object.fromEntries(["student", "moderated", "teacher", "teacher-extra", "co-teacher", "manager"].map(id => [id, { channel_id: "live", mute: id === "moderated" }]));
   voice.trial = { channel_id: "breakout", mute: false };
 });
+afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 describe("Zen Discord reconciliation", () => {
+  it("immediately handles a joining student without scanning or changing the guild", async () => {
+    expect(await reconcileZenMode(db, call, "guild", { memberIds: ["student"], voicesOnly: true })).toEqual([]);
+    expect(voice.student.mute).toBe(true);
+    expect(writes).toEqual([{ path: "/guilds/guild/members/student", body: { mute: true } }]);
+    expect(call).not.toHaveBeenCalledWith("GET", "/guilds/guild/members?limit=1000");
+    expect(call).not.toHaveBeenCalledWith("GET", "/guilds/guild/channels");
+    expect(voice.trial.mute).toBe(false);
+  });
+  it("uses the member's current room for delayed events, and preserves moderation mutes", async () => {
+    await reconcileZenMode(db, call, "guild", { memberIds: ["student"], voicesOnly: true });
+    voice.student.channel_id = "other";
+    voice.moderated.channel_id = "other";
+    await reconcileZenMode(db, call, "guild", { memberIds: ["student", "moderated"], voicesOnly: true });
+    expect(voice.student.mute).toBe(false);
+    expect(voice.moderated.mute).toBe(true);
+    expect(tables.discord_zen_mutes).toEqual([]);
+  });
+  it("keeps students muted between Zen rooms and restores them on joining a non-Zen class", async () => {
+    await reconcileZenMode(db, call, "guild", { memberIds: ["student"], voicesOnly: true });
+    voice.student.channel_id = "breakout";
+    await reconcileZenMode(db, call, "guild", { memberIds: ["student"], voicesOnly: true });
+    expect(voice.student.mute).toBe(true);
+    tables.courses.push({ id: "normal-course", zen_mode_enabled: false });
+    tables.discord_live_class_channels.push({ class_id: "other-lesson", course_id: "normal-course", discord_channel_id: "other" });
+    voice.student.channel_id = "other";
+    await reconcileZenMode(db, call, "guild", { memberIds: ["student"], voicesOnly: true });
+    expect(voice.student.mute).toBe(false);
+  });
+  it("retains disconnected members' mute ownership through empty Gateway snapshots and restart", async () => {
+    await reconcileZenMode(db, call, "guild");
+    delete voice.student;
+    tables.courses[0].zen_mode_enabled = false;
+    await reconcileZenMode(db, call, "guild", { memberIds: [], voicesOnly: false });
+    expect(tables.discord_zen_mutes.map(r => r.discord_user_id)).toContain("student");
+    voice.student = { channel_id: "other", mute: true };
+    await reconcileZenMode(db, call, "guild", { memberIds: ["student"], voicesOnly: true });
+    expect(voice.student.mute).toBe(false);
+    expect(tables.discord_zen_mutes.map(r => r.discord_user_id)).not.toContain("student");
+    expect(tables.discord_zen_mutes.map(r => r.discord_user_id)).toContain("trial");
+  });
+  it("unmutes current students during the toggle's reconciliation without waiting for a voice event", async () => {
+    await reconcileZenMode(db, call, "guild");
+    tables.courses[0].zen_mode_enabled = false;
+    await reconcileZenMode(db, call, "guild", { memberIds: ["student", "trial", "moderated"] });
+    expect(voice.student.mute).toBe(false);
+    expect(voice.trial.mute).toBe(false);
+    expect(voice.moderated.mute).toBe(true);
+    expect(channels[0].permission_overwrites).toEqual(normal());
+  });
+  it("handles a class-wide event burst with one roster request and no offline voice scans", async () => {
+    await reconcileZenMode(db, call, "guild", { memberIds: ["student", "trial", "teacher", "manager"], voicesOnly: true });
+    expect(voice.student.mute).toBe(true);
+    expect(voice.trial.mute).toBe(true);
+    expect(voice.teacher.mute).toBe(false);
+    expect(call).toHaveBeenCalledWith("GET", "/guilds/guild/members?limit=1000");
+    expect(call).not.toHaveBeenCalledWith("GET", "/guilds/guild/voice-states/moderated");
+  });
+  it("does not remove channel snapshots during a voice-only update", async () => {
+    await reconcileZenMode(db, call, "guild");
+    const saved = structuredClone(tables.discord_zen_channels);
+    await reconcileZenMode(db, call, "guild", { memberIds: ["student"], voicesOnly: true });
+    expect(tables.discord_zen_channels).toEqual(saved);
+  });
+  it("retains ownership after an unmute fails so the worker can retry", async () => {
+    await reconcileZenMode(db, call, "guild", { memberIds: ["student"], voicesOnly: true });
+    voice.student.channel_id = "other";
+    failDiscord = true;
+    expect(await reconcileZenMode(db, call, "guild", { memberIds: ["student"], voicesOnly: true })).toEqual(["Missing Permissions"]);
+    expect(tables.discord_zen_mutes).toHaveLength(1);
+    failDiscord = false;
+    await reconcileZenMode(db, call, "guild", { memberIds: ["student"], voicesOnly: true });
+    expect(voice.student.mute).toBe(false);
+    expect(tables.discord_zen_mutes).toEqual([]);
+  });
   it("mutes current students and trial guests, protects tutors/management, and leaves other courses alone", async () => {
     expect(await reconcileZenMode(db, call, "guild")).toEqual([]);
     expect(tables.discord_zen_mutes.map(r => r.discord_user_id).sort()).toEqual(["student", "trial"]);
@@ -129,6 +205,19 @@ describe("Zen Discord reconciliation", () => {
     rpc.mockResolvedValue({ data: false, error: null });
     await expect(syncZenMode(db, { courseId: "course", enabled: false })).rejects.toBeInstanceOf(ZenBusyError);
     expect(tables.courses[0].zen_mode_enabled).toBe(true);
+  });
+  it("waits for an in-flight event before saving a toggle, and releases the lease on failure", async () => {
+    vi.useFakeTimers();
+    rpc.mockResolvedValueOnce({ data: false, error: null }).mockResolvedValue({ data: true, error: null });
+    // Stop at policy loading so this tests lease ordering without live Discord.
+    failTable = "discord_live_class_channels";
+    const result = syncZenMode(db, { courseId: "course", enabled: false }, { memberIds: [], waitForLeaseMs: 1000 });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(tables.courses[0].zen_mode_enabled).toBe(true);
+    await vi.advanceTimersByTimeAsync(200);
+    expect((await result).problems).toEqual(["Database unavailable"]);
+    expect(tables.courses[0].zen_mode_enabled).toBe(false);
+    expect(rpc.mock.calls.at(-1)?.[0]).toBe("release_zen_mode_sync");
   });
   it("does not give converted trial students the former tutor account's speaking exemption", async () => {
     tables.approved_discord_accounts.push({ discord_user_id: "trial", owner_user_id: "owner" });

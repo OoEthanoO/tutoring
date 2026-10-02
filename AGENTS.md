@@ -96,6 +96,11 @@ DNS is on Cloudflare, with a local updater for the home address. See
   cron/guild sync retry and restore them. New/recovered/breakout channels must
   use `prepareZenVoice`. Preserve the mute ledger and restore only permission
   bits, never old channel access. See `ZEN_MODE.md` and its migration.
+  The home server's `yanlearn-zen-gateway` task receives live voice events and
+  calls the CRON_SECRET-protected `api/internal/zen-voice` route for targeted
+  reconciliation. Its private connected-member snapshot speeds up toggles and
+  cron. Keep the shared Zen lease, re-read current voice state, preserve the
+  mute ledger across disconnects, and retain events arriving during a request.
 - Founder-taught courses ran on Schoolhouse rather than Discord; from
   2026-09-08 (Toronto) their classes use the same live voice channels,
   reminders and attendance as everyone else. The rule is per class, not per

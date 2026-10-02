@@ -8,6 +8,8 @@ $previous = Read-Json (Join-Path $Root 'previous.json')
 Get-ScheduledTask -TaskName 'yanlearn-*' -ErrorAction SilentlyContinue | Select-Object TaskName,State | Format-Table
 $reminders = Read-Json (Join-Path $Root 'reminders-status.json')
 if ($reminders) { $reminders | ConvertTo-Json }
+$zen = Read-Json (Join-Path $Root 'zen-gateway-status.json')
+if ($zen) { $zen | ConvertTo-Json }
 if ($active) {
     Write-Output ('Local health: ' + (Test-Release $active 5))
     try {
