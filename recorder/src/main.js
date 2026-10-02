@@ -49,7 +49,9 @@
   const FOCUS_POLL_MS = 250;
   // A window being resized is left alone for this long.
   const GEOMETRY_SETTLE_MS = 1200;
-  const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
+  // How soon a new release reaches a running recorder. Each check fetches one
+  // small file (latest.json) from GitHub, so checking often costs nothing.
+  const UPDATE_CHECK_INTERVAL_MS = 5 * 60 * 1000;
   // Never restart for an update this close to the next class.
   const UPDATE_QUIET_WINDOW_MS = 20 * 60 * 1000;
 
@@ -1651,7 +1653,9 @@
     invoke("download_update")
       .then(() => {
         state.update.ready = true;
-        log(`Update v${version} is downloaded and installs at the next safe moment.`);
+        log(`Update v${version} is downloaded.`);
+        // Install now if nothing would be interrupted, not at the next tick.
+        void advanceUpdate();
       })
       .catch((error) => {
         state.update.info = null;
@@ -1698,16 +1702,11 @@
     }
   };
 
-  // Called once per tick: check every few hours, then download and install at
-  // the first safe moment. An update found during a class waits it out.
-  const maybeUpdate = async () => {
-    if (state.update.installing) {
-      return;
-    }
-    if (!state.update.info && Date.now() - state.update.lastCheckAt >= UPDATE_CHECK_INTERVAL_MS) {
-      await checkForUpdate();
-    }
-    if (!state.update.info || !updateSafeNow()) {
+  // Take a found update as far as is safe right now: download it, and install
+  // it the moment it has downloaded. Nobody has to click anything; an update
+  // found during a class or close to one waits until the tutor is between classes.
+  const advanceUpdate = async () => {
+    if (!state.update.info || state.update.installing || !updateSafeNow()) {
       return;
     }
     if (state.update.ready) {
@@ -1715,6 +1714,17 @@
     } else {
       downloadUpdate();
     }
+  };
+
+  // Called once per tick: check every few minutes, then advance whatever was found.
+  const maybeUpdate = async () => {
+    if (state.update.installing) {
+      return;
+    }
+    if (!state.update.info && Date.now() - state.update.lastCheckAt >= UPDATE_CHECK_INTERVAL_MS) {
+      await checkForUpdate();
+    }
+    await advanceUpdate();
   };
 
   const renderUpdate = () => {
@@ -1734,7 +1744,6 @@
     $("update-text").textContent = updateSafeNow()
       ? `Update v${info.version} — ${ready ? "installing now…" : `downloading${percent}…`}`
       : `Update v${info.version} installs by itself once you are between classes.`;
-    $("update-install").hidden = !(ready && updateSafeNow());
   };
 
   // --- Rendering ---------------------------------------------------------------------------
@@ -2174,8 +2183,10 @@
         startTestMode();
       }
     });
-    $("update-check").addEventListener("click", () => checkForUpdate({ manual: true }));
-    $("update-install").addEventListener("click", () => installUpdate());
+    $("update-check").addEventListener("click", async () => {
+      await checkForUpdate({ manual: true });
+      await advanceUpdate();
+    });
     $("done-yes").addEventListener("click", () => finalize("tutor_confirmed"));
     $("done-no").addEventListener("click", () => {
       if (state.session) {

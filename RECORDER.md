@@ -539,16 +539,18 @@ installer again.
 * **When it updates** is decided by `updateSafeNow()` in `src/main.js`: only
   while the app is connected to the server (so "no class" is a fresh fact),
   with no class session, nothing waiting to upload, no quit lock, and the next
-  class more than 20 minutes away. It checks at startup and every 6 hours. An
-  update found during a class simply waits — the tutor sees "installs by itself
-  once you are between classes" — so a restart can never interrupt a recording
-  or an upload.
+  class more than 20 minutes away. It checks at startup and every 5 minutes
+  (one small `latest.json` fetch), so a release reaches running recorders
+  within minutes. An update found during a class simply waits — the tutor sees
+  "installs by itself once you are between classes" — so a restart can never
+  interrupt a recording or an upload.
 * Downloading and installing are deliberately separate (`download_update` /
   `install_update`). The download runs in the background without blocking the
-  tick loop, however slow the network is; only when it has finished does the
-  app ask again whether this is still a safe moment and then install, which
-  takes a moment. So a stalled download can neither stop the recorder from
-  arming for the next class nor restart it in the middle of one.
+  tick loop, however slow the network is; the moment it has finished, the app
+  asks again whether this is still a safe moment and, if so, installs straight
+  away (`advanceUpdate`) rather than at the next tick. Nobody clicks anything:
+  there is no "Install now" button. So a stalled download can neither stop the
+  recorder from arming for the next class nor restart it in the middle of one.
 * Installing shows a short modal. Windows then runs the NSIS installer in
   passive mode (per-user, no UAC prompt) and it relaunches the app; macOS
   replaces the `.app` bundle and the app restarts itself. `pendingUpdate` in

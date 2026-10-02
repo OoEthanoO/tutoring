@@ -7,7 +7,7 @@ const scripts = [...html.matchAll(/<script src="([^"]+)"/g)]
   .map(([, path]) => readFileSync(`recorder/src/${path}`, "utf8"));
 const $ = id => document.getElementById(id);
 const rootDir = "recordings";
-let invoke, files, directories, sizes, active, transfer, concat, serverCreate, listeners;
+let invoke, files, directories, sizes, active, nextClass, transfer, concat, serverCreate, listeners;
 const calls = name => invoke.mock.calls.filter(([command]) => command === name);
 const tickCalls = () => fetch.mock.calls.filter(([url]) => url.endsWith("/tick"));
 const jsonResponse = (data, status = 200) => ({ ok: status >= 200 && status < 300, status, json: async () => data });
@@ -40,12 +40,12 @@ beforeEach(() => {
   vi.setSystemTime(new Date("2026-09-21T18:00:00Z"));
   document.body.innerHTML = html.match(/<body>([\s\S]*)<\/body>/)[1];
   vi.spyOn(console, "log").mockImplementation(() => {});
-  files = new Map(); sizes = new Map(); directories = []; active = null;
+  files = new Map(); sizes = new Map(); directories = []; active = null; nextClass = null;
   transfer = vi.fn(async () => ({ status: 200 }));
   concat = vi.fn(async () => 12345);
   serverCreate = vi.fn(async () => jsonResponse({ recordingId: "upload-one", uploadUrl: "https://storage.example.test/recording" }));
   vi.stubGlobal("fetch", vi.fn(async (url) => {
-    if (url.endsWith("/tick")) return jsonResponse({ serverTimeMs: Date.now(), active, nextClass: null, pollIntervalMs: 2000 });
+    if (url.endsWith("/tick")) return jsonResponse({ serverTimeMs: Date.now(), active, nextClass, pollIntervalMs: 2000 });
     if (url.endsWith("/complete")) return jsonResponse({ ok: true });
     if (url.endsWith("/recordings")) return serverCreate();
     throw new Error(`Unexpected network call: ${url}`);
@@ -337,5 +337,41 @@ describe("Recorder restart and upload lifecycle", () => {
     await vi.advanceTimersByTimeAsync(12000);
     expect(transfer).toHaveBeenCalledOnce();
     expect(calls("remove_path")).toHaveLength(1);
+  });
+});
+
+describe("Automatic updates", () => {
+  // A release published while the recorder runs: the next check finds it.
+  const publishRelease = () => {
+    let finishDownload;
+    const original = invoke.getMockImplementation();
+    invoke.mockImplementation((command, args) => {
+      if (command === "check_update") return { version: "0.5.7", currentVersion: "0.5.6" };
+      if (command === "download_update") return new Promise(resolve => { finishDownload = resolve; });
+      return original(command, args);
+    });
+    return () => finishDownload();
+  };
+
+  it("installs a new release within minutes, and the moment it has downloaded, with no click", async () => {
+    await boot();
+    const finishDownload = publishRelease();
+    await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
+    expect(calls("download_update")).toHaveLength(1);
+    expect(calls("install_update")).toHaveLength(0);
+    finishDownload(); await vi.advanceTimersByTimeAsync(5);
+    // Well before the next tick: installing does not wait for one.
+    expect(calls("install_update")).toHaveLength(1);
+    expect($("update-install")).toBeNull();
+  });
+
+  it("does not restart the recorder close to a class", async () => {
+    nextClass = { classId: "soon", courseTitle: "Science", startsAtMs: Date.now() + 10 * 60 * 1000 };
+    await boot();
+    publishRelease();
+    await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
+    expect(calls("download_update")).toHaveLength(0);
+    expect(calls("install_update")).toHaveLength(0);
+    expect($("update-text").textContent).toContain("once you are between classes");
   });
 });
