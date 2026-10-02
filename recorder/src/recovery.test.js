@@ -365,8 +365,39 @@ describe("Automatic updates", () => {
     expect($("update-install")).toBeNull();
   });
 
-  it("does not restart the recorder close to a class", async () => {
-    nextClass = { classId: "soon", courseTitle: "Science", startsAtMs: Date.now() + 10 * 60 * 1000 };
+  // Tutors often open the recorder only when they can join the voice channel,
+  // 15 minutes before; nothing is recorded or locked until 5 minutes before.
+  const gettingReady = (minutesToStart) => ({
+    classId: "soon", courseTitle: "Science", classTitle: "Class 3", phase: "pre_arm",
+    startsAtMs: Date.now() + minutesToStart * 60 * 1000, endsAtMs: Date.now() + (minutesToStart + 60) * 60 * 1000,
+    tutorInLiveChannel: false,
+  });
+
+  it("updates a recorder opened while the class is only getting ready", async () => {
+    active = gettingReady(12);
+    const finishDownload = publishRelease();
+    await boot();
+    expect(calls("download_update")).toHaveLength(1);
+    finishDownload(); await vi.advanceTimersByTimeAsync(5);
+    expect(calls("install_update")).toHaveLength(1);
+    expect(calls("start_capture")).toHaveLength(0);
+  });
+
+  it("does not restart in the last five minutes before a class, even for a download that finishes then", async () => {
+    active = gettingReady(6);
+    const finishDownload = publishRelease();
+    await boot();
+    expect(calls("download_update")).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(90 * 1000);
+    active = { ...active, phase: "armed" };
+    await vi.advanceTimersByTimeAsync(2500);
+    finishDownload(); await vi.advanceTimersByTimeAsync(5);
+    expect(calls("install_update")).toHaveLength(0);
+    expect($("update-text").textContent).toContain("once you are between classes");
+  });
+
+  it("does not restart for an update when the next class is five minutes away", async () => {
+    nextClass = { classId: "soon", courseTitle: "Science", startsAtMs: Date.now() + 9 * 60 * 1000 };
     await boot();
     publishRelease();
     await vi.advanceTimersByTimeAsync(5 * 60 * 1000);

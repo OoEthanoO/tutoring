@@ -52,8 +52,9 @@
   // How soon a new release reaches a running recorder. Each check fetches one
   // small file (latest.json) from GitHub, so checking often costs nothing.
   const UPDATE_CHECK_INTERVAL_MS = 5 * 60 * 1000;
-  // Never restart for an update this close to the next class.
-  const UPDATE_QUIET_WINDOW_MS = 20 * 60 * 1000;
+  // Never restart for an update this close to the next class: from 5 minutes
+  // before, the recorder is armed and locked for it.
+  const UPDATE_QUIET_WINDOW_MS = 5 * 60 * 1000;
 
   const state = {
     info: null,
@@ -1580,23 +1581,33 @@
 
   // Updating restarts the app, so it may only happen when losing the process
   // costs nothing: connected to the server (so "no class" is a fresh fact),
-  // nothing recording, nothing waiting to upload, and no class close enough
-  // that the restart could eat into its pre-arm window.
+  // nothing recording, nothing waiting to upload, and at least 5 minutes before
+  // the next class.
   const updateSafeNow = () => {
     if (state.update.installing) {
       return false;
     }
+    const session = state.session;
     // A class whose preparation keeps failing is not a reason to wait: its
     // files are on disk, and a new version may be exactly what fixes it.
     const stuckOnly =
-      state.session?.preparationStuck && state.session.recoverySaved &&
-      !state.session.capturing && !state.session.currentSegment && !state.session.finalizing &&
-      serverNow() >= state.session.endsAtMs;
+      session?.preparationStuck && session.recoverySaved &&
+      !session.capturing && !session.currentSegment && !session.finalizing &&
+      serverNow() >= session.endsAtMs;
     const active = state.tick?.active;
-    if (active && (!stuckOnly || active.classId !== state.session.classId || serverNow() < active.endsAtMs)) {
+    // Nor is a class that is only getting ready (15 to 5 minutes before it
+    // starts): nothing is recorded or locked yet, and tutors often open the
+    // recorder only then, when they can join the voice channel (October 2026).
+    const preArmOnly =
+      active?.phase === "pre_arm" &&
+      active.startsAtMs - serverNow() >= UPDATE_QUIET_WINDOW_MS &&
+      (!session || (session.classId === active.classId && !session.test && session.phase === "pre_arm" &&
+        !session.capturing && !session.currentSegment && session.segments.length === 0 &&
+        !session.finalizing && !session.finalizeReason));
+    if (active && !preArmOnly && (!stuckOnly || active.classId !== session.classId || serverNow() < active.endsAtMs)) {
       return false;
     }
-    if (state.quitLocked || state.preparingRecording || (state.session && !stuckOnly) || state.uploads.length > 0 || exercises?.active()) {
+    if (state.quitLocked || state.preparingRecording || (session && !stuckOnly && !preArmOnly) || state.uploads.length > 0 || exercises?.active()) {
       return false;
     }
     // Signed out there is no class to interrupt — and an update is the only

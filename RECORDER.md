@@ -538,8 +538,12 @@ installer again.
   installers still lack Authenticode signing.
 * **When it updates** is decided by `updateSafeNow()` in `src/main.js`: only
   while the app is connected to the server (so "no class" is a fresh fact),
-  with no class session, nothing waiting to upload, no quit lock, and the next
-  class more than 20 minutes away. It checks at startup and every 5 minutes
+  with nothing recording, nothing waiting to upload, no quit lock, and the next
+  class at least 5 minutes away. A class that is only getting ready (pre-arm,
+  15 to 5 minutes before) does not hold an update back: nothing is recorded or
+  locked yet, and tutors often open the recorder only then, when they can join
+  the voice channel. From 5 minutes before (armed) nothing restarts it, even
+  if a download finishes then. It checks at startup and every 5 minutes
   (one small `latest.json` fetch), so a release reaches running recorders
   within minutes. An update found during a class simply waits — the tutor sees
   "installs by itself once you are between classes" — so a restart can never
