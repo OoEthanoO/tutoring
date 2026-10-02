@@ -128,13 +128,18 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node scripts/fetch-ffmpeg.mjs ${{ matrix.target }}
 
-      - name: Build macOS system-audio helper
+      - name: Build macOS capture helpers
         if: runner.os == 'macOS'
         run: |
           mkdir -p src-tauri/binaries
           swiftc -O -target ${{ matrix.swift_target }} \
             -framework ScreenCaptureKit -framework CoreMedia -framework AVFoundation \
             sysaudio/main.swift -o src-tauri/binaries/sysaudio-${{ matrix.target }}
+          # Window mode: records one window's own pixels, never the screen
+          # around it (see src-tauri/src/windowfeed.rs).
+          swiftc -O -target ${{ matrix.swift_target }} \
+            -framework ScreenCaptureKit -framework CoreMedia -framework CoreVideo \
+            wincapture/main.swift -o src-tauri/binaries/wincapture-${{ matrix.target }}
 
       - name: Generate app icons
         run: npm run icons

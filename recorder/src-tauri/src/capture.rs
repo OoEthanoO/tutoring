@@ -22,7 +22,7 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager};
 
-use crate::{sysaudio, AppState};
+use crate::{sysaudio, windowfeed, AppState};
 
 pub struct CaptureSession {
     child: Child,
@@ -352,16 +352,6 @@ fn list_avfoundation(ffmpeg: &Path) -> (Vec<ScreenDevice>, Vec<AudioDevice>) {
     (screens, audio)
 }
 
-#[derive(Deserialize, Debug, Clone, Copy)]
-#[serde(rename_all = "camelCase")]
-pub struct CropRect {
-    /// Offset from the top-left of the recorded display, in capture pixels.
-    pub x: i32,
-    pub y: i32,
-    pub width: u32,
-    pub height: u32,
-}
-
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct CaptureConfig {
@@ -386,8 +376,11 @@ pub struct CaptureConfig {
     /// One of the encoders reported by `probe_capture`.
     pub encoder: Option<String>,
     pub fps: Option<u32>,
-    /// Window mode: the part of the display to keep. None records all of it.
-    pub crop: Option<CropRect>,
+    /// Window mode: the window to record (HWND on Windows, CGWindowID on
+    /// macOS). Captured on its own through windowfeed.rs — never by cropping
+    /// the screen, which would record anything drawn over the window. None
+    /// records the whole display.
+    pub window_id: Option<String>,
     /// Freeze mode: loop this still image instead of capturing the screen,
     /// while the microphone and system audio keep recording.
     pub still_path: Option<String>,
@@ -447,6 +440,32 @@ fn push_all(args: &mut Vec<String>, items: &[&str]) {
     args.extend(items.iter().map(|item| item.to_string()));
 }
 
+/// A microphone as its own input, for segments whose picture does not come
+/// from a screen grabber (a frozen still, or a window from the window feeder).
+fn push_microphone_input(args: &mut Vec<String>, mic: &str) {
+    if cfg!(windows) {
+        push_all(
+            args,
+            &[
+                "-f", "dshow",
+                "-thread_queue_size", "1024",
+                "-rtbufsize", "64M",
+                "-i", &format!("audio={mic}"),
+            ],
+        );
+    } else {
+        // No video device on this input: the picture comes from elsewhere.
+        push_all(
+            args,
+            &[
+                "-f", "avfoundation",
+                "-thread_queue_size", "512",
+                "-i", &format!(":{mic}"),
+            ],
+        );
+    }
+}
+
 fn build_args(
     config: &CaptureConfig,
     backend: &str,
@@ -454,6 +473,7 @@ fn build_args(
     fps: u32,
     target_height: Option<u32>,
     system_audio_port: Option<u16>,
+    window_port: Option<u16>,
 ) -> Result<Vec<String>, String> {
     let mut args: Vec<String> = Vec::new();
     push_all(&mut args, &["-y", "-hide_banner", "-loglevel", "warning", "-nostats"]);
@@ -468,14 +488,7 @@ fn build_args(
     let fit = format!(
         "scale={canvas_width}:{canvas_height}:force_original_aspect_ratio=decrease,pad={canvas_width}:{canvas_height}:(ow-iw)/2:(oh-ih)/2:black,setsar=1,format=yuv420p"
     );
-    let crop_filter = config
-        .crop
-        .as_ref()
-        .map(|crop| format!("crop={}:{}:{}:{},", crop.width, crop.height, crop.x, crop.y))
-        .unwrap_or_default();
-    // A cropped window rarely matches the display's shape, so it is letterboxed
-    // rather than stretched.
-    let screen_filter = if config.crop.is_some() { fit.clone() } else { fill.clone() };
+    let screen_filter = fill.clone();
 
     let mut filter_parts: Vec<String> = Vec::new();
     let mut next_input = 0usize;
@@ -522,27 +535,31 @@ fn build_args(
         video_filter = Some(fit.clone());
 
         if let Some(mic) = microphone {
-            if cfg!(windows) {
-                push_all(
-                    &mut args,
-                    &[
-                        "-f", "dshow",
-                        "-thread_queue_size", "1024",
-                        "-rtbufsize", "64M",
-                        "-i", &format!("audio={mic}"),
-                    ],
-                );
-            } else {
-                // No video device on this input: the picture comes from the still.
-                push_all(
-                    &mut args,
-                    &[
-                        "-f", "avfoundation",
-                        "-thread_queue_size", "512",
-                        "-i", &format!(":{mic}"),
-                    ],
-                );
-            }
+            push_microphone_input(&mut args, mic);
+            audio_inputs.push(next_input);
+            next_input += 1;
+        }
+    } else if let Some(port) = window_port {
+        // Window mode: the window's own pixels from the window feeder, already
+        // fitted to the canvas and paced to a steady frame rate. Nothing drawn
+        // over the window can reach this input.
+        push_all(
+            &mut args,
+            &[
+                "-f", "rawvideo",
+                "-pix_fmt", windowfeed::pixel_format(),
+                "-video_size", &format!("{canvas_width}x{canvas_height}"),
+                "-framerate", &fps_text,
+                "-thread_queue_size", "512",
+                "-i", &format!("tcp://127.0.0.1:{port}"),
+            ],
+        );
+        video_map = format!("{next_input}:v");
+        next_input += 1;
+        video_filter = Some("setsar=1,format=yuv420p".to_string());
+
+        if let Some(mic) = microphone {
+            push_microphone_input(&mut args, mic);
             audio_inputs.push(next_input);
             next_input += 1;
         }
@@ -552,26 +569,16 @@ fn build_args(
             // which is far cheaper than GDI for the same frame rate.
             push_all(&mut args, &["-init_hw_device", "d3d11va"]);
             filter_parts.push(format!(
-                "ddagrab=framerate={fps_text}:draw_mouse=1,hwdownload,format=bgra,{crop_filter}{screen_filter}[v]"
+                "ddagrab=framerate={fps_text}:draw_mouse=1,hwdownload,format=bgra,{screen_filter}[v]"
             ));
             video_map = "[v]".to_string();
         } else {
-            // gdigrab can grab the window's rectangle straight from the desktop,
-            // which is cheaper than grabbing the whole display and cropping it.
-            let (grab_x, grab_y, grab_width, grab_height) = match config.crop.as_ref() {
-                Some(crop) => (
-                    config.display_x + crop.x,
-                    config.display_y + crop.y,
-                    crop.width,
-                    crop.height,
-                ),
-                None => (
-                    config.display_x,
-                    config.display_y,
-                    config.display_width,
-                    config.display_height,
-                ),
-            };
+            let (grab_x, grab_y, grab_width, grab_height) = (
+                config.display_x,
+                config.display_y,
+                config.display_width,
+                config.display_height,
+            );
             push_all(
                 &mut args,
                 &[
@@ -622,7 +629,7 @@ fn build_args(
             audio_inputs.push(next_input);
         }
         next_input += 1;
-        video_filter = Some(format!("{crop_filter}{screen_filter}"));
+        video_filter = Some(screen_filter.clone());
     }
 
     if let Some(port) = system_audio_port {
@@ -705,7 +712,15 @@ fn build_args(
 }
 
 #[tauri::command]
-pub fn start_capture(app: AppHandle, config: CaptureConfig) -> Result<CaptureStarted, String> {
+pub async fn start_capture(app: AppHandle, config: CaptureConfig) -> Result<CaptureStarted, String> {
+    // Off the main thread: window mode waits for the window's first frame,
+    // and that must never freeze the recorder's own windows.
+    tauri::async_runtime::spawn_blocking(move || start_capture_blocking(app, config))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+fn start_capture_blocking(app: AppHandle, config: CaptureConfig) -> Result<CaptureStarted, String> {
     let state = app.state::<AppState>();
     if state
         .capture
@@ -717,6 +732,30 @@ pub fn start_capture(app: AppHandle, config: CaptureConfig) -> Result<CaptureSta
     }
     let ffmpeg = sidecar_path("ffmpeg")?;
     let mut warnings = Vec::new();
+
+    let fps = config.fps.unwrap_or(10).clamp(5, 30);
+    let target_height = target_height_for(config.display_height);
+
+    // Window mode: capture the window on its own before anything else starts,
+    // so a window the system will not capture fails the whole start cleanly
+    // (the recorder then freezes the picture — it never falls back to cropping
+    // the screen).
+    let window_feed = match config
+        .window_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|id| !id.is_empty())
+    {
+        Some(window_id) if config.still_path.is_none() => {
+            let (canvas_width, canvas_height) = canvas_for(&config, target_height);
+            Some(
+                windowfeed::WindowFeed::start(window_id, canvas_width, canvas_height, fps)
+                    .map_err(|err| format!("This window cannot be captured on its own: {err}"))?,
+            )
+        }
+        _ => None,
+    };
+    let window_port = window_feed.as_ref().map(|feed| feed.port());
 
     // The system-audio feeder listens first so ffmpeg can connect to it.
     let mut system_audio_port: Option<u16> = None;
@@ -733,19 +772,28 @@ pub fn start_capture(app: AppHandle, config: CaptureConfig) -> Result<CaptureSta
         }
     }
 
-    let fps = config.fps.unwrap_or(10).clamp(5, 30);
-    let target_height = target_height_for(config.display_height);
-    let backend = config
-        .backend
-        .clone()
-        .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| default_backend(&config));
+    let backend = match window_feed.as_ref() {
+        Some(feed) => feed.backend().to_string(),
+        None => config
+            .backend
+            .clone()
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| default_backend(&config)),
+    };
     let encoder = config
         .encoder
         .clone()
         .filter(|value| !value.is_empty())
         .unwrap_or_else(|| "libx264".to_string());
-    let args = build_args(&config, &backend, &encoder, fps, target_height, system_audio_port)?;
+    let args = build_args(
+        &config,
+        &backend,
+        &encoder,
+        fps,
+        target_height,
+        system_audio_port,
+        window_port,
+    )?;
 
     if let Some(parent) = Path::new(&config.output_path).parent() {
         let _ = std::fs::create_dir_all(parent);
@@ -773,6 +821,10 @@ pub fn start_capture(app: AppHandle, config: CaptureConfig) -> Result<CaptureSta
         });
     }
 
+    *state
+        .window_feed
+        .lock()
+        .map_err(|_| "window capture state is poisoned")? = window_feed;
     *state
         .capture
         .lock()
@@ -819,6 +871,8 @@ fn stop_capture_blocking(app: AppHandle) -> Result<CaptureStopped, String> {
         .take();
     let feeder = state.system_audio.lock()
         .map_err(|_| "system audio state is poisoned")?.take();
+    let window_feed = state.window_feed.lock()
+        .map_err(|_| "window capture state is poisoned")?.take();
     let mut result = CaptureStopped {
         seconds: 0.0,
         size_bytes: 0,
@@ -833,9 +887,13 @@ fn stop_capture_blocking(app: AppHandle) -> Result<CaptureStopped, String> {
             .map(|meta| meta.len())
             .unwrap_or(0);
     }
-    // ffmpeg is gone; now the feeder may stop too.
+    // ffmpeg is gone; now the feeders may stop too. (In that order: ffmpeg
+    // closing its end is what ends the window feeder's writes.)
     if let Some(mut feeder) = feeder {
         feeder.stop();
+    }
+    if let Some(mut window_feed) = window_feed {
+        window_feed.stop();
     }
     stop_result?;
     Ok(result)

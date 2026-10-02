@@ -1,6 +1,6 @@
 {
   "bundle": {
-    "externalBin": ["binaries/ffmpeg", "binaries/sysaudio"],
+    "externalBin": ["binaries/ffmpeg", "binaries/sysaudio", "binaries/wincapture"],
     "macOS": {
       "hardenedRuntime": true,
       "entitlements": "Entitlements.plist"

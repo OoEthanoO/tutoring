@@ -16,7 +16,7 @@ function verifyApp(app, teamId) {
   run("spctl", ["--assess", "--type", "execute", "--verbose=2", app]);
   const plist = JSON.parse(run("plutil", ["-convert", "json", "-o", "-", path.join(app, "Contents", "Info.plist")]).stdout);
   if (plist.CFBundleIdentifier !== "com.yanlearn.recorder") throw new Error("Unexpected app identifier in release.");
-  for (const binary of [plist.CFBundleExecutable, "ffmpeg", "sysaudio"]) {
+  for (const binary of [plist.CFBundleExecutable, "ffmpeg", "sysaudio", "wincapture"]) {
     if (!binary || path.basename(binary) !== binary) throw new Error("Invalid recording executable name.");
     const target = path.join(app, "Contents", "MacOS", binary);
     if (!existsSync(target)) throw new Error(`Missing recording executable: ${binary}`);

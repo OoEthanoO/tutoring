@@ -80,7 +80,9 @@ impl Drop for SystemAudioFeeder {
     }
 }
 
-fn accept_with_timeout(
+/// Accept the ffmpeg connection, giving up on `stop` or after `timeout`. Also
+/// used by the window feeder (windowfeed.rs).
+pub(crate) fn accept_with_timeout(
     listener: &TcpListener,
     stop: &AtomicBool,
     timeout: Duration,

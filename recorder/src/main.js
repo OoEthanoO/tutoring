@@ -42,10 +42,8 @@
   // How often the focused window is checked in window mode. Short, because
   // everything after a focus change is a leak of a window nobody shared.
   const FOCUS_POLL_MS = 250;
-  // A window being dragged or resized is left alone for this long.
+  // A window being resized is left alone for this long.
   const GEOMETRY_SETTLE_MS = 1200;
-  // Smaller than this and there is nothing worth recording.
-  const MIN_WINDOW_SIDE = 120;
   const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
   // Never restart for an update this close to the next class.
   const UPDATE_QUIET_WINDOW_MS = 20 * 60 * 1000;
@@ -360,10 +358,11 @@
 
   const isSharedWindow = (win) => windowMath.matchesSharedWindow(win, sharedWindows());
 
-  /** The window's rectangle in the recorded display's capture pixels, or null
-   *  when it is not usefully on that display. */
-  const cropForWindow = (win) =>
-    windowMath.cropWindowToDisplay(win, chosenDisplay(), MIN_WINDOW_SIDE);
+  /** Windows the operating system refused to capture on their own this class
+   *  (e.g. an app running as administrator). They freeze the picture like an
+   *  unshared window — never fall back to recording the screen around them. */
+  const unrecordableWindow = (win) =>
+    Boolean(win) && (state.session?.unrecordableWindowIds || []).includes(String(win.id));
 
   /** Keep stored handles fresh while the app runs, so a window that was
    *  reopened is still recognised without the tutor re-picking it. */
@@ -405,11 +404,18 @@
       return null;
     }
     const focus = session.focus;
-    if (focus && isSharedWindow(focus)) {
-      const crop = cropForWindow(focus);
-      if (crop) {
-        return { kind: "window", id: String(focus.id), crop, muted, title: focus.title, app: focus.app };
-      }
+    // The window itself is captured, wherever it is and whatever is drawn over
+    // it, so its position does not matter — only which window it is and its
+    // size (a resize re-fits the picture; see windowmath.js).
+    if (focus && isSharedWindow(focus) && !unrecordableWindow(focus)) {
+      return {
+        kind: "window",
+        id: String(focus.id),
+        size: { width: focus.width, height: focus.height },
+        muted,
+        title: focus.title,
+        app: focus.app,
+      };
     }
     return { kind: "frozen", muted };
   };
@@ -617,7 +623,9 @@
       backend: state.settings.captureBackend || null,
       encoder: chosenEncoder(),
       fps: RECORDING_FPS,
-      crop: target.kind === "window" ? target.crop : null,
+      // Window mode captures this window's own pixels (Windows.Graphics.Capture
+      // / ScreenCaptureKit), never the screen under it.
+      windowId: target.kind === "window" ? target.id : null,
       stillPath: target.kind === "frozen" ? stillPath() : null,
     };
     try {
@@ -644,6 +652,15 @@
       }
       await persistMeta();
     } catch (error) {
+      if (target.kind === "window") {
+        // The system would not capture this window on its own. Freeze instead:
+        // falling back to recording the screen would bring back exactly what
+        // window sharing is for — notifications and other windows on top.
+        session.unrecordableWindowIds = [...(session.unrecordableWindowIds || []), String(target.id)];
+        log(`${describeTarget(target)} cannot be recorded on its own (${error}). The picture is frozen instead; audio keeps recording.`);
+        await startSegment({ kind: "frozen", muted: target.muted });
+        return;
+      }
       session.captureFailures += 1;
       session.nextCaptureAttemptMs = Date.now() + 3000;
       log(`Could not start recording: ${error}`);

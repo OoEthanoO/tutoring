@@ -12,6 +12,7 @@ mod preparation;
 mod sysaudio;
 mod update;
 mod upload;
+mod windowfeed;
 mod windowlist;
 
 use std::path::{Path, PathBuf};
@@ -29,6 +30,8 @@ pub struct AppState {
     pub quit_locked: AtomicBool,
     pub capture: Mutex<Option<capture::CaptureSession>>,
     pub system_audio: Mutex<Option<sysaudio::SystemAudioFeeder>>,
+    /// Window mode's capture of the shared window itself (windowfeed.rs).
+    pub window_feed: Mutex<Option<windowfeed::WindowFeed>>,
     /// Last overlay state, replayed to the overlay window when it (re)loads.
     pub overlay: Mutex<serde_json::Value>,
 }
@@ -258,11 +261,15 @@ pub(crate) fn stop_everything(app: &AppHandle) {
     // caller. It also keeps the lock temporaries from outliving `state`.
     let session = state.capture.lock().ok().and_then(|mut guard| guard.take());
     let feeder = state.system_audio.lock().ok().and_then(|mut guard| guard.take());
+    let window_feed = state.window_feed.lock().ok().and_then(|mut guard| guard.take());
     if let Some(mut session) = session {
         let _ = session.stop();
     }
     if let Some(mut feeder) = feeder {
         feeder.stop();
+    }
+    if let Some(mut window_feed) = window_feed {
+        window_feed.stop();
     }
 }
 
@@ -281,6 +288,7 @@ pub fn run() {
             quit_locked: AtomicBool::new(false),
             capture: Mutex::new(None),
             system_audio: Mutex::new(None),
+            window_feed: Mutex::new(None),
             overlay: Mutex::new(serde_json::Value::Null),
         })
         .invoke_handler(tauri::generate_handler![

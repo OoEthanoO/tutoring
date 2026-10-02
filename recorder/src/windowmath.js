@@ -1,7 +1,7 @@
 // Pure rules behind "record only the windows I choose".
 //
 // Kept out of main.js and free of any app state so they can be unit tested:
-// getting the crop maths wrong is invisible until a class is recorded, and the
+// getting these rules wrong is invisible until a class is recorded, and the
 // recorder has no other way to check itself.
 //
 // Loaded as a plain script before main.js (it defines a global) and imported
@@ -34,39 +34,15 @@
   };
 
   /**
-   * The window's rectangle in the recorded display's capture pixels, or null
-   * when there is not enough of it on that display to be worth recording.
-   *
-   * macOS reports window bounds in points while the capture is in pixels, which
-   * `win.scaled` marks; Windows already reports physical pixels. Display
-   * position and size are physical pixels on both.
-   */
-  const cropWindowToDisplay = (win, display, minSide) => {
-    if (!win || !display) {
-      return null;
-    }
-    const scale = win.scaled ? display.scaleFactor || 1 : 1;
-    const left = Math.round(win.x * scale) - display.x;
-    const top = Math.round(win.y * scale) - display.y;
-    const x0 = Math.max(0, left);
-    const y0 = Math.max(0, top);
-    const x1 = Math.min(display.width, left + Math.round(win.width * scale));
-    const y1 = Math.min(display.height, top + Math.round(win.height * scale));
-    const width = x1 - x0;
-    const height = y1 - y0;
-    if (width < minSide || height < minSide) {
-      return null;
-    }
-    // h.264 wants even dimensions.
-    return { x: x0, y: y0, width: width - (width % 2), height: height - (height % 2) };
-  };
-
-  /**
    * Is the segment already running still the right one?
    *
-   * Small geometry drift is ignored, and a window that has just been moved is
-   * left alone for `settleMs`, so dragging one does not restart ffmpeg several
-   * times a second.
+   * A window is captured on its own — its pixels, not a rectangle of the
+   * screen — so the capture follows it when it moves and nothing drawn over it
+   * (a notification, another window) is ever recorded. Moving a window
+   * therefore needs no new segment. Resizing does: the picture was fitted to
+   * the window's shape when the segment started. Small size drift is ignored,
+   * and a window being resized is left alone for `settleMs`, so dragging its
+   * edge does not restart ffmpeg several times a second.
    */
   const targetsMatch = (desired, active, options) => {
     const settings = options || {};
@@ -92,14 +68,12 @@
     if (String(desired.id) !== String(active.id)) {
       return false;
     }
-    if (!desired.crop || !active.crop) {
+    if (!desired.size || !active.size) {
       return false;
     }
     const drift = Math.max(
-      Math.abs(desired.crop.x - active.crop.x),
-      Math.abs(desired.crop.y - active.crop.y),
-      Math.abs(desired.crop.width - active.crop.width),
-      Math.abs(desired.crop.height - active.crop.height)
+      Math.abs(desired.size.width - active.size.width),
+      Math.abs(desired.size.height - active.size.height)
     );
     if (drift <= driftTolerance) {
       return true;
@@ -107,7 +81,7 @@
     return now - lastChangeMs < settleMs;
   };
 
-  const api = { matchesSharedWindow, cropWindowToDisplay, targetsMatch };
+  const api = { matchesSharedWindow, targetsMatch };
   root.RecorderWindowMath = api;
   if (typeof module === "object" && module && module.exports) {
     module.exports = api;

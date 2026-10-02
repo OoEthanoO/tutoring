@@ -20,7 +20,7 @@ DNS is on Cloudflare, with a local updater for the home address. See
 - Lint: `./node_modules/.bin/eslint src`
 - Tests: `npm test` (vitest; unit tests for pure logic — `src/lib/`
   (discordSync helpers, live-channel overwrites, roles, recorder CORS) and
-  `recorder/src/windowmath.js` (window matching / crop maths). No
+  `recorder/src/windowmath.js` (window matching). No
   integration/UI tests).
 - Local dev needs `.env.local` (Supabase URL/keys, Discord bot token); without
   it the app cannot run against data.
@@ -126,7 +126,10 @@ DNS is on Cloudflare, with a local updater for the home address. See
   stable platform links resolve the recommended installer from the latest release.
   Tutors can record the whole display or only windows they tick, in which case
   only the focused shared window is recorded and anything else freezes the
-  picture (`windowlist.rs` + `crop`/`stillPath` in `capture.rs`).
+  picture. A shared window is captured on its own — Windows.Graphics.Capture /
+  ScreenCaptureKit, never a crop of the screen — so notifications and windows
+  drawn over it stay out of the recording (`windowfeed.rs`,
+  `recorder/wincapture/main.swift`); never add a crop fallback.
 
 ## Conventions
 
