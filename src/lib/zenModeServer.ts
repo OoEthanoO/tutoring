@@ -94,13 +94,12 @@ export async function reconcileZenMode(db: SupabaseClient, call: Call, guildId: 
   const [policies, live, breakouts, saved, mutes] = await Promise.all([
     loadZenPolicies(db),
     fetchAllRows((from, to) => db.from("discord_live_class_channels").select("class_id, course_id, discord_channel_id").is("deleted_at", null).order("id").range(from, to)),
-    fetchAllRows((from, to) => db.from("discord_breakout_rooms").select("class_id, discord_channel_id").is("deleted_at", null).order("id").range(from, to)),
+    fetchAllRows((from, to) => db.from("discord_breakout_rooms").select("live_channel_id, discord_channel_id").is("deleted_at", null).order("id").range(from, to)),
     fetchAllRows((from, to) => db.from("discord_zen_channels").select("discord_channel_id, original_permissions").order("discord_channel_id").range(from, to)),
     fetchAllRows((from, to) => db.from("discord_zen_mutes").select("discord_user_id").order("discord_user_id").range(from, to)),
   ]);
-  const byClass = new Map(live.map(r => [r.class_id, r.course_id]));
   const courseByChannel = new Map(live.map(r => [r.discord_channel_id, r.course_id]));
-  for (const r of breakouts) if (byClass.has(r.class_id)) courseByChannel.set(r.discord_channel_id, byClass.get(r.class_id)!);
+  for (const r of breakouts) if (courseByChannel.has(r.live_channel_id)) courseByChannel.set(r.discord_channel_id, courseByChannel.get(r.live_channel_id)!);
   const active = new Map([...courseByChannel].filter(([, courseId]) => policies.get(courseId)?.enabled));
   if (!active.size && !saved.length && !mutes.length) return [];
   const [channels, roles] = await Promise.all([

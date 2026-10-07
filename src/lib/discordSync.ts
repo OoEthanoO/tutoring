@@ -3496,10 +3496,10 @@ export const runDiscordSync = async ({
     }
     if (trials.length > 0) {
       const breakouts = await fetchAllRows((from, to) => adminClient.from("discord_breakout_rooms")
-        .select("class_id, discord_channel_id").is("deleted_at", null).order("id").range(from, to));
-      const classById = new Map(liveClassRows.map(r => [r.class_id, r]));
+        .select("live_channel_id, discord_channel_id").is("deleted_at", null).order("id").range(from, to));
+      const liveByChannelId = new Map(liveClassRows.map(r => [r.discord_channel_id, r]));
       const rooms = [...liveClassRows, ...breakouts.flatMap(room => {
-        const parent = classById.get(room.class_id);
+        const parent = liveByChannelId.get(room.live_channel_id);
         return parent ? [{ ...parent, discord_channel_id: room.discord_channel_id }] : [];
       })];
       const registeredIds = new Set(rooms.map(room => room.discord_channel_id));

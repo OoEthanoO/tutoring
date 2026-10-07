@@ -123,6 +123,7 @@ export const readmeParts: Part[] = [
           <ul className={listStyle}>
             <li>Attendance is taken automatically when students join. If no student has joined within 5 minutes of the start, YanBot nudges your course role in the course channel.</li>
             <li>The channel is never deleted before the scheduled end. Afterwards it is deleted once nobody has been in it for 5 minutes, or once you have been out of it for 30 minutes, even if students are still chatting.</li>
+            <li>If management removes a cancelled class from the schedule, its voice channel and breakout rooms still close automatically after that class’s original end time and the same absence countdown.</li>
           </ul>
         </>,
       },

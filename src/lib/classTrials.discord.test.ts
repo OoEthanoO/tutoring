@@ -59,7 +59,7 @@ beforeEach(() => {
     class_trials: [{ id: "trial", class_id: "class-a", discord_user_id: guest, student_name: "Guest's Own Name", revoked_at: null,
       lesson: { id: "class-a", course_id: "a", title: "Class 1", starts_at: start.toISOString(), duration_hours: 1, course: courses[0] } }],
     discord_live_class_channels: ["a", "b"].map(id => ({ id, class_id: `class-${id}`, course_id: id, discord_channel_id: `live-${id}`, tutor_discord_user_id: "discord-tutor" })),
-    discord_breakout_rooms: [{ id: "room", class_id: "class-a", discord_channel_id: "breakout-a", deleted_at: null }],
+    discord_breakout_rooms: [{ id: "room", class_id: "class-a", live_channel_id: "live-a", discord_channel_id: "breakout-a", deleted_at: null }],
   };
   roles = [{ id: "guild", name: "@everyone", permissions: "0" }, ...["a", "b"].map(id => ({ id: `role-${id}`, name: `Course ${id}`, permissions: "0" }))];
   members = [{ user: { id: "discord-tutor", username: "teacher" }, roles: ["role-a", "role-b"] },
@@ -159,6 +159,15 @@ describe("trial guests through the real guild sync", () => {
     await sync();
     expect(access("live-a")).toBe(false); expect(access("breakout-a")).toBe(false);
     expect(channels.some(c => c.id === "live-a")).toBe(true);
+  });
+  it("withdraws expired trial grants while retaining a cancelled class's tracked voice channels", async () => {
+    tables.class_trials[0] = { ...tables.class_trials[0], class_id: null, lesson: null };
+    tables.discord_live_class_channels[0].class_id = null;
+    tables.discord_breakout_rooms[0].class_id = null;
+    await sync();
+    expect(access("live-a")).toBe(false); expect(access("breakout-a")).toBe(false);
+    expect(channels.some(c => c.id === "live-a")).toBe(true);
+    expect(channels.some(c => c.id === "breakout-a")).toBe(true);
   });
   it("prefers narrow trial access over an approval read just before conversion", async () => {
     tables.approved_discord_accounts = [{ discord_user_id: guest, owner_user_id: "tutor" }];

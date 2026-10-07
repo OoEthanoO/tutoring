@@ -65,7 +65,7 @@ beforeEach(() => {
       { id: "manager", role: "student", custom_roles: [{ role_level: "CEO Shadow" }], email: "manager@example.test", discord_user_id: "manager" }],
     approved_discord_accounts: [{ discord_user_id: "teacher-extra", owner_user_id: "owner" }],
     discord_live_class_channels: [{ id: "live", class_id: "lesson", course_id: "course", discord_channel_id: "live" }],
-    discord_breakout_rooms: [{ id: "room", class_id: "lesson", discord_channel_id: "breakout" }],
+    discord_breakout_rooms: [{ id: "room", class_id: "lesson", live_channel_id: "live", discord_channel_id: "breakout" }],
     discord_zen_channels: [], discord_zen_mutes: [],
   };
   channels = ["live", "breakout", "other"].map(id => ({ id, type: 2, permission_overwrites: normal() }));
@@ -74,6 +74,14 @@ beforeEach(() => {
 });
 afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 describe("Zen Discord reconciliation", () => {
+  it("keeps each deleted class's breakout rooms under their own course policy", async () => {
+    tables.discord_live_class_channels[0].class_id = null;
+    tables.discord_breakout_rooms[0].class_id = null;
+    tables.courses.push({ id: "normal-course", zen_mode_enabled: false });
+    tables.discord_live_class_channels.push({ class_id: null, course_id: "normal-course", discord_channel_id: "other" });
+    expect(await reconcileZenMode(db, call, "guild", { memberIds: ["trial"], voicesOnly: true })).toEqual([]);
+    expect(voice.trial.mute).toBe(true);
+  });
   it("immediately handles a joining student without scanning or changing the guild", async () => {
     expect(await reconcileZenMode(db, call, "guild", { memberIds: ["student"], voicesOnly: true })).toEqual([]);
     expect(voice.student.mute).toBe(true);

@@ -7,8 +7,9 @@ const mocks = vi.hoisted(() => {
 });
 vi.mock("@/lib/authServer", () => ({ getAdminClient: mocks.admin }));
 
-import { getBreakoutAccess, readBreakoutState, runBreakoutAction } from "./breakoutRoomsServer";
+import { getBreakoutAccess, readBreakoutState, runBreakoutAction, loadBreakoutChannelIdsByLiveChannelId, sweepOrphanBreakoutRooms } from "./breakoutRoomsServer";
 import type { SessionUser } from "@/lib/authServer";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 const classId = "11111111-1111-4111-8111-111111111111";
 const tutor = { id: "tutor", email: "tutor@example.test", role: "executive" } as SessionUser;
@@ -17,6 +18,7 @@ const stranger = { id: "someone", email: "x@example.test", role: "executive" } a
 type Row = Record<string, unknown>;
 let tables: Record<string, Row[]>;
 let failInsert = false;
+let failReadTable: string | null = null;
 
 /** Just enough of supabase-js's query builder for the module under test. */
 const fakeDb = () => ({
@@ -28,6 +30,7 @@ const fakeDb = () => ({
     let bounds: [number, number] | null = null;
     const rows = () => (tables[table] ?? []).filter((row) => filters.every((test) => test(row)));
     const run = () => {
+      if (mode === "select" && table === failReadTable) return { data: null, error: { message: "Database unavailable" } };
       if (mode === "insert") {
         if (failInsert) return { data: null, error: { message: "insert failed" } };
         const row = { id: `row-${(tables[table] ?? []).length + 1}`, deleted_at: null, ...payload };
@@ -117,6 +120,39 @@ beforeEach(() => {
   vi.stubGlobal("fetch", vi.fn(discordFetch));
 });
 afterEach(() => { vi.unstubAllGlobals(); });
+
+describe("breakout cleanup after class deletion", () => {
+  afterEach(() => { failReadTable = null; });
+  const db = () => fakeDb() as unknown as SupabaseClient;
+  const rooms = () => {
+    tables.discord_live_class_channels = [{ class_id: null, discord_channel_id: "live", deleted_at: null }];
+    tables.discord_breakout_rooms = [
+      { id: "kept", class_id: null, live_channel_id: "live", discord_channel_id: "kept-room", deleted_at: null },
+      { id: "expired", class_id: null, live_channel_id: "gone", discord_channel_id: "expired-room", deleted_at: null },
+    ];
+  };
+  it("counts rooms by their own parent even when several classes have been deleted", async () => {
+    rooms();
+    expect(await loadBreakoutChannelIdsByLiveChannelId(db(), ["live", "gone"]))
+      .toEqual(new Map([["live", ["kept-room"]], ["gone", ["expired-room"]]]));
+  });
+  it("retains rooms until their parent channel closes, then deletes just that parent's rooms", async () => {
+    rooms();
+    expect(await sweepOrphanBreakoutRooms(db())).toEqual([]);
+    expect(calls.filter(c => c.method === "DELETE").map(c => c.path)).toEqual(["/channels/expired-room"]);
+    expect(tables.discord_breakout_rooms[0].deleted_at).toBeNull();
+    expect(tables.discord_breakout_rooms[1].deleted_at).toBeTruthy();
+  });
+  it.each(["discord_breakout_rooms", "discord_live_class_channels"])("never deletes rooms when %s cannot be read", async table => {
+    rooms(); failReadTable = table;
+    expect(await sweepOrphanBreakoutRooms(db())).toEqual(["Error: Database unavailable"]);
+    expect(calls.filter(c => c.method === "DELETE")).toEqual([]);
+  });
+  it("does not turn a failed room lookup into an empty call", async () => {
+    rooms(); failReadTable = "discord_breakout_rooms";
+    await expect(loadBreakoutChannelIdsByLiveChannelId(db(), ["live"])).rejects.toThrow("Database unavailable");
+  });
+});
 
 const access = () => getBreakoutAccess(tutor, classId);
 

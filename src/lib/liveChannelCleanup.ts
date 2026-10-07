@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { decideLiveChannelCleanup, liveClassEndMs, type LiveChannelPresence } from "@/lib/discordLiveChannels";
+import { decideLiveChannelCleanup, liveChannelEndMs, type LiveChannelPresence } from "@/lib/discordLiveChannels";
 
 type CategoryChannel = { id: string; name: string; type: number; parent_id?: string | null };
 
@@ -48,12 +48,11 @@ export const deleteFinishedLiveChannel = async ({
   now?: () => number;
 }): Promise<boolean> => {
   const { data, error } = await adminClient.from("discord_live_class_channels")
-    .select("discord_channel_id, empty_since, tutor_absent_since, class:course_classes(starts_at, duration_hours)")
+    .select("class_id, starts_at, ends_at, discord_channel_id, empty_since, tutor_absent_since, class:course_classes(starts_at, duration_hours)")
     .eq("id", rowId).is("deleted_at", null).maybeSingle();
   if (error) throw new Error(error.message);
   if (!data || data.discord_channel_id !== channelId) return false;
-  const schedule = Array.isArray(data.class) ? data.class[0] ?? null : data.class;
-  const endsAtMs = liveClassEndMs(schedule);
+  const endsAtMs = liveChannelEndMs(data);
   if (endsAtMs === null) return false;
   const decision = decideLiveChannelCleanup({
     ...presence, nowMs: now(), endsAtMs,

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { decideLiveChannelCleanup, liveClassEndMs, observeLiveChannelPresence, preserveLiveVoiceChannel } from "./discordLiveChannels";
+import { decideLiveChannelCleanup, liveClassEndMs, liveChannelEndMs, observeLiveChannelPresence, preserveLiveVoiceChannel } from "./discordLiveChannels";
 import { deleteEmptyLiveCategories, deleteFinishedLiveChannel } from "./liveChannelCleanup";
 
 const minute = 60000;
@@ -142,6 +142,7 @@ describe("guild sweep protection", () => {
 
 describe("final deletion guard", () => {
   const snapshot = {
+    class_id: "class", starts_at: new Date(start).toISOString(), ends_at: new Date(end).toISOString(),
     discord_channel_id: "voice", empty_since: new Date(end + minute).toISOString(),
     tutor_absent_since: new Date(end + minute).toISOString(),
     class: { starts_at: new Date(start).toISOString(), duration_hours: 1.5 },
@@ -175,6 +176,25 @@ describe("final deletion guard", () => {
   it("preserves a channel whose class row is missing", async () => {
     const { options } = setup({ ...snapshot, class: null });
     expect(await deleteFinishedLiveChannel(options)).toBe(false);
+  });
+  it("cleans up a deleted class using its retained schedule and clocks", async () => {
+    const { options } = setup({ ...snapshot, class_id: null, class: null });
+    expect(await deleteFinishedLiveChannel(options)).toBe(true);
+    expect(options.deleteChannel).toHaveBeenCalledWith("voice");
+  });
+  it.each([start, end - minute, end])("keeps a deleted class channel until its original end (%s)", async (nowMs) => {
+    const { options } = setup({ ...snapshot, class_id: null, class: null });
+    expect(await deleteFinishedLiveChannel({ ...options, now: () => nowMs })).toBe(false);
+    expect(options.deleteChannel).not.toHaveBeenCalled();
+  });
+  it("does not reuse an absence countdown cleared by class deletion", async () => {
+    const { options } = setup({ ...snapshot, class_id: null, class: null, empty_since: null, tutor_absent_since: null });
+    expect(await deleteFinishedLiveChannel(options)).toBe(false);
+  });
+  it("rejects unreadable, infinite, or backwards retained schedules", () => {
+    for (const ends_at of ["infinity", "invalid", new Date(start).toISOString()]) {
+      expect(liveChannelEndMs({ ...snapshot, class_id: null, class: null, ends_at })).toBeNull();
+    }
   });
   it("does not delete an old channel or mark its replacement deleted after recovery", async () => {
     const { options, update } = setup({ ...snapshot, discord_channel_id: "replacement" });

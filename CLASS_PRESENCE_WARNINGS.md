@@ -85,6 +85,20 @@ cleanup. The deletion guard re-reads the current `course_classes` schedule and
 the channel row immediately before calling Discord, so a schedule extension or
 recovered channel cannot be deleted using stale data.
 
+Deleting a class now retains its live-channel and breakout-room registry rows.
+The database captures the last class schedule during deletion and clears the
+absence clocks. Only an explicitly null `class_id` uses that retained schedule;
+a missing joined class or failed lookup with a non-null id still prevents
+cleanup. Cancelled classes keep the same end-time and absence safeguards.
+Breakouts follow `live_channel_id`, so deleting several classes cannot combine
+their rooms or mix their Zen policies. Permanent course deletion also retains
+the records; without a tutor roster, cleanup requires confirming everyone left.
+
+Apply `supabase/migrations/20261007210000_preserve_deleted_class_voice_channels.sql`
+before deploying this change. Existing untracked channels require verification
+against the original schedule and current occupancy before manual cleanup;
+the migration cannot recover records already removed by cascading deletion.
+
 The general Discord sync preserves Live-category voice channels, including
 new channels whose database insert is still in flight. If the registry lookup
 fails, it skips voice-channel deletion. Channels with no known class schedule

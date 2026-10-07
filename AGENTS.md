@@ -74,6 +74,10 @@ DNS is on Cloudflare, with a local updater for the home address. See
   Live-category channels even if their registry query fails or creation is in
   flight; unknown orphan channels are retained. Recorder ticks must not finalize
   a class over a premature channel deletion or failed database lookup.
+  Class deletion retains live/breakout registry rows with a null `class_id` and
+  snapshots the last schedule for safe post-end cleanup. Breakout cleanup and
+  Zen policy mapping use `live_channel_id`, never a null class id. Apply
+  `20261007210000_preserve_deleted_class_voice_channels.sql` before deployment.
 - Teaching → Readme (`src/components/ReadmeMenu.tsx`, executives only) is
   the tutor handbook; it replaced the Discord #readme channel in October 2026
   (discordSync no longer manages that channel, so it is deleted — do not re-add it).

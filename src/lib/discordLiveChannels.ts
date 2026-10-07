@@ -36,6 +36,20 @@ export const liveClassEndMs = (schedule: { starts_at: string; duration_hours: un
     : null;
 };
 
+/** Only an explicitly deleted class may use the schedule retained by its trigger. */
+export const liveChannelEndMs = (row: {
+  class_id: string | null;
+  starts_at: string;
+  ends_at: string;
+  class: { starts_at: string; duration_hours: unknown } | { starts_at: string; duration_hours: unknown }[] | null;
+}): number | null => {
+  if (row.class_id !== null) {
+    return liveClassEndMs(Array.isArray(row.class) ? row.class[0] ?? null : row.class);
+  }
+  const start = Date.parse(row.starts_at), end = Date.parse(row.ends_at);
+  return Number.isFinite(start) && Number.isFinite(end) && end > start ? end : null;
+};
+
 /** Live voice channels belong to the class lifecycle, never the guild sweep. */
 export const preserveLiveVoiceChannel = ({
   channel, liveCategoryIds, trackedChannelIds, registryLoaded,

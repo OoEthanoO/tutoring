@@ -10,7 +10,7 @@ import {
   classUsesDiscordVoiceSystem,
   buildLiveVoicePermissionOverwrites,
   decideLiveChannelCleanup,
-  liveClassEndMs,
+  liveChannelEndMs,
   observeLiveChannelPresence,
   normalizeVoiceChannelName,
 } from "@/lib/discordLiveChannels";
@@ -67,7 +67,8 @@ import { trialGuestsForClass, trialStatus, type ClassTrial } from "@/lib/classTr
 import { loadClassTrials } from "@/lib/classTrialsServer";
 import { prepareZenVoice, syncZenMode, ZenBusyError } from "@/lib/zenModeServer";
 import {
-  deleteBreakoutRoomsForClass,
+  deleteBreakoutRoomsForLiveChannel,
+  loadBreakoutChannelIdsByLiveChannelId,
   loadBreakoutChannelIdsByClassId,
   sweepOrphanBreakoutRooms,
 } from "@/lib/breakoutRoomsServer";
@@ -1244,10 +1245,12 @@ export async function POST(request: NextRequest) {
     if (activeLiveChannelsError) liveChannelCleanupErrors.push(activeLiveChannelsError.message);
     // A class is its live channel plus any open breakout rooms: a channel whose
     // students are all in rooms is not empty.
-    const breakoutChannelIdsByClassId = await loadBreakoutChannelIdsByClassId(
-      adminClient,
-      (activeLiveChannels ?? []).map((row) => String(row.class_id))
-    );
+    let breakoutChannelIdsByLiveChannelId: Map<string, string[]> | null = null;
+    try {
+      breakoutChannelIdsByLiveChannelId = await loadBreakoutChannelIdsByLiveChannelId(
+        adminClient, (activeLiveChannels ?? []).map(row => String(row.discord_channel_id))
+      );
+    } catch (error) { liveChannelCleanupErrors.push(String(error)); }
 
     // Everyone who could legitimately still be in a live channel. The stored
     // tutor_discord_user_id is only ever the course's primary tutor, so on a
@@ -1261,14 +1264,14 @@ export async function POST(request: NextRequest) {
     // simply in progress costs no extra queries and no extra Discord calls —
     // nothing here runs until there is something that could be cleaned up.
     const rowsPastEnd = (activeLiveChannels ?? []).filter((row) => {
-      const endsAtMs = liveClassEndMs(Array.isArray(row.class) ? row.class[0] ?? null : row.class);
+      const endsAtMs = liveChannelEndMs(row);
       return endsAtMs !== null && Date.now() > endsAtMs;
     });
     const courseIdsToResolve = Array.from(
-      new Set(rowsPastEnd.map((row) => String(row.course_id)).filter(Boolean))
+      new Set(rowsPastEnd.map((row) => String(row.course_id ?? "")).filter(Boolean))
     );
 
-    if (courseIdsToResolve.length > 0) {
+    if (rowsPastEnd.length > 0) {
       const { data: liveCourseRows, error: liveCourseError } = await adminClient
         .from("courses")
         .select("id, created_by, co_tutor_id")
@@ -1380,8 +1383,7 @@ export async function POST(request: NextRequest) {
     }
 
     for (const liveChannel of activeLiveChannels ?? []) {
-      const schedule = Array.isArray(liveChannel.class) ? liveChannel.class[0] ?? null : liveChannel.class;
-      const endsAtMs = liveClassEndMs(schedule);
+      const endsAtMs = liveChannelEndMs(liveChannel);
       // Nothing before the scheduled end is ever a candidate. Past it, deletion
       // still requires proving either that the call is empty or that the tutor
       // has been out of it for half an hour (see decideLiveChannelCleanup).
@@ -1398,7 +1400,7 @@ export async function POST(request: NextRequest) {
       const channelId = String(liveChannel.discord_channel_id);
       const callChannelIds = classCallChannelIds(
         channelId,
-        breakoutChannelIdsByClassId.get(String(liveChannel.class_id)) ?? []
+        breakoutChannelIdsByLiveChannelId?.get(channelId) ?? []
       );
       const storedTutorId = String(liveChannel.tutor_discord_user_id ?? "").trim();
       // Every account that could be the person teaching — the stored tutor, the
@@ -1433,6 +1435,9 @@ export async function POST(request: NextRequest) {
       const candidateIds = new Set<string>([
         ...(occupantIdsByCourseId.get(String(liveChannel.course_id)) ?? []),
         ...tutorCandidateIds,
+        // After permanent course deletion, roles/enrollments no longer tell us
+        // who could be inside. Check every member before calling it empty.
+        ...(liveChannel.course_id === null ? (guildMembersForOccupancy ?? []).map(member => member.id) : []),
       ]);
 
       // Any single voice-state read failing means we do not know whether the
@@ -1440,7 +1445,7 @@ export async function POST(request: NextRequest) {
       // applies if the guild member list was unreadable: without it we cannot
       // claim the candidate list is complete.
       let someonePresent = tutorPresent;
-      let lookupFailed = guildMembersForOccupancy === null || tutorPollFailed;
+      let lookupFailed = guildMembersForOccupancy === null || tutorPollFailed || breakoutChannelIdsByLiveChannelId === null;
       for (const candidateId of (lookupFailed || someonePresent) ? [] : candidateIds) {
         // Already polled above; do not spend a second Discord call on it.
         if (tutorCandidateIds.has(candidateId)) {
@@ -1464,7 +1469,7 @@ export async function POST(request: NextRequest) {
         someonePresent,
         lookupFailed,
         tutorPresent,
-        tutorLookupFailed: tutorCandidateIds.size === 0 || tutorPollFailed,
+        tutorLookupFailed: liveChannel.course_id === null || tutorCandidateIds.size === 0 || tutorPollFailed || breakoutChannelIdsByLiveChannelId === null,
         emptySinceMs: liveChannel.empty_since ? Date.parse(liveChannel.empty_since) : null,
         tutorAbsentSinceMs: liveChannel.tutor_absent_since ? Date.parse(liveChannel.tutor_absent_since) : null,
       };
@@ -1489,7 +1494,7 @@ export async function POST(request: NextRequest) {
         // Its breakout rooms go with it.
         if (deleted) {
           liveChannelCleanupErrors.push(
-            ...(await deleteBreakoutRoomsForClass(adminClient, String(liveChannel.class_id)))
+            ...(await deleteBreakoutRoomsForLiveChannel(adminClient, channelId))
           );
         }
       } catch (error) {

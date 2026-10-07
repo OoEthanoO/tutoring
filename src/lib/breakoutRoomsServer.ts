@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { chunks, fetchAllRows, idChunkSize } from "@/lib/supabasePaging";
 import { getAdminClient, type SessionUser } from "@/lib/authServer";
 import { isFounder, resolveAccountRole } from "@/lib/roles";
 import { loadClassTrials } from "@/lib/classTrialsServer";
@@ -151,6 +152,22 @@ export const loadBreakoutChannelIdsByClassId = async (
   return byClass;
 };
 
+/** The parent channel survives class deletion; a null class id is not a group. */
+export const loadBreakoutChannelIdsByLiveChannelId = async (
+  adminClient: SupabaseClient, channelIds: string[]
+): Promise<Map<string, string[]>> => {
+  const byChannel = new Map<string, string[]>();
+  for (const ids of chunks(channelIds, idChunkSize)) {
+    const rows = await fetchAllRows((from, to) => adminClient.from("discord_breakout_rooms")
+      .select("live_channel_id, discord_channel_id").in("live_channel_id", ids)
+      .is("deleted_at", null).order("id").range(from, to));
+    for (const row of rows) {
+      byChannel.set(row.live_channel_id, [...(byChannel.get(row.live_channel_id) ?? []), row.discord_channel_id]);
+    }
+  }
+  return byChannel;
+};
+
 /**
  * Delete every open room of a class, e.g. because its live channel was just
  * deleted. Anyone still in one is disconnected by Discord. Returns error
@@ -159,20 +176,30 @@ export const loadBreakoutChannelIdsByClassId = async (
 export const deleteBreakoutRoomsForClass = async (
   adminClient: SupabaseClient,
   classId: string
+): Promise<string[]> => deleteBreakoutRooms(adminClient, "class_id", classId);
+
+export const deleteBreakoutRoomsForLiveChannel = async (
+  adminClient: SupabaseClient,
+  channelId: string
+): Promise<string[]> => deleteBreakoutRooms(adminClient, "live_channel_id", channelId);
+
+const deleteBreakoutRooms = async (
+  adminClient: SupabaseClient, column: "class_id" | "live_channel_id", id: string
 ): Promise<string[]> => {
   const errors: string[] = [];
-  const { data } = await adminClient
-    .from("discord_breakout_rooms")
-    .select("id, discord_channel_id")
-    .eq("class_id", classId)
-    .is("deleted_at", null);
-  for (const room of data ?? []) {
+  let rooms;
+  try {
+    rooms = await fetchAllRows((from, to) => adminClient.from("discord_breakout_rooms")
+      .select("id, discord_channel_id").eq(column, id).is("deleted_at", null).order("id").range(from, to));
+  } catch (error) { return [String(error)]; }
+  for (const room of rooms) {
     try {
       await deleteChannel(String(room.discord_channel_id));
-      await adminClient
+      const { error } = await adminClient
         .from("discord_breakout_rooms")
         .update({ deleted_at: new Date().toISOString() })
         .eq("id", String(room.id));
+      if (error) throw new Error(error.message);
     } catch (error) {
       errors.push(`Failed to delete a breakout room: ${error instanceof Error ? error.message : "Unknown error."}`);
     }
@@ -185,26 +212,23 @@ export const deleteBreakoutRoomsForClass = async (
  * Discord sync never sweeps, so without this they would stay forever.
  */
 export const sweepOrphanBreakoutRooms = async (adminClient: SupabaseClient): Promise<string[]> => {
-  const { data: rooms } = await adminClient
-    .from("discord_breakout_rooms")
-    .select("class_id")
-    .is("deleted_at", null);
-  const classIds = [...new Set((rooms ?? []).map((room) => String(room.class_id)))];
-  if (classIds.length === 0) {
-    return [];
-  }
-  const { data: liveRows } = await adminClient
-    .from("discord_live_class_channels")
-    .select("class_id")
-    .in("class_id", classIds)
-    .is("deleted_at", null);
-  const stillLive = new Set((liveRows ?? []).map((row) => String(row.class_id)));
   const errors: string[] = [];
-  for (const classId of classIds) {
-    if (!stillLive.has(classId)) {
-      errors.push(...(await deleteBreakoutRoomsForClass(adminClient, classId)));
+  try {
+    const rooms = await fetchAllRows((from, to) => adminClient.from("discord_breakout_rooms")
+      .select("live_channel_id").is("deleted_at", null).order("id").range(from, to));
+    const parentIds = [...new Set(rooms.map(room => String(room.live_channel_id)))];
+    for (const ids of chunks(parentIds, idChunkSize)) {
+      const liveRows = await fetchAllRows((from, to) => adminClient.from("discord_live_class_channels")
+        .select("discord_channel_id").in("discord_channel_id", ids)
+        .is("deleted_at", null).order("id").range(from, to));
+      const stillLive = new Set(liveRows.map(row => row.discord_channel_id));
+      for (const channelId of ids) {
+        if (!stillLive.has(channelId)) {
+          errors.push(...(await deleteBreakoutRoomsForLiveChannel(adminClient, channelId)));
+        }
+      }
     }
-  }
+  } catch (error) { errors.push(String(error)); }
   return errors;
 };
 
