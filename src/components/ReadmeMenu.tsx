@@ -191,6 +191,7 @@ export const readmeParts: Part[] = [
             <li><strong>Hotkeys:</strong> <strong>Ctrl+Alt+M</strong> (⌘+Option+M on a Mac) removes your microphone from the recording, not from Discord, until you press it again. <strong>Ctrl+Alt+P</strong> (⌘+Option+P) pauses and resumes recording.</li>
             <li>From 5 minutes before the class until its recording has uploaded, the Recorder cannot be quit. After the class, leave the call; when it asks <strong>Is the class done?</strong>, press <strong>Yes</strong> to upload straight away.</li>
             <li>Enrolled students can watch the recording in <strong>My classes → Class recordings</strong> for 7 days, after which it is deleted.</li>
+            <li><strong>Troubleshooting:</strong> Recorder shares recent Activity logs and capture status with the Founder, CEO, COO and their Shadows, so they can investigate without asking you for screenshots. Credentials, local file paths and window titles are removed before sending. Reports expire after 7 days. Practice mode sends no diagnostics.</li>
           </ul>
           <p className={noteStyle}>Try it any time with <strong>Try the recorder</strong>: nothing is saved or uploaded.</p>
         </>,

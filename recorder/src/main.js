@@ -96,16 +96,18 @@
       installing: false,
     },
     logLines: [],
+    lastSuccessfulTickAt: null,
   };
 
   const $ = (id) => document.getElementById(id);
   let exercises = null;
+  let diagnostics = null;
 
   // --- Utilities ---------------------------------------------------------------
 
   const serverNow = () => Date.now() + state.clockOffsetMs;
 
-  const log = (message) => {
+  const log = (message, report = true) => {
     const stamp = new Date().toLocaleTimeString();
     state.logLines.push(`[${stamp}] ${message}`);
     while (state.logLines.length > 200) {
@@ -117,6 +119,7 @@
       el.scrollTop = el.scrollHeight;
     }
     console.log(message);
+    if (report) diagnostics?.record(message);
   };
 
   const formatClock = (ms) =>
@@ -995,24 +998,57 @@
 
   // --- Tick loop -----------------------------------------------------------------
 
-  const currentStateLabel = () => {
-    const session = state.session;
-    if (!session && state.uploads.some((upload) => upload.uploading)) {
-      return "uploading";
-    }
-    if (!session) {
-      return "idle";
-    }
-    if (session.finalizing) {
-      return "finalizing";
-    }
-    if (session.capturing) {
-      return "recording";
-    }
-    if (session.phase === "live" || session.phase === "after_end") {
-      return session.pauseMode === "none" ? "paused" : `paused_${session.pauseMode}`;
-    }
-    return session.phase;
+  const currentStateLabel = () => window.RecorderDiagnostics.recorderState({
+    session: state.session,
+    preparing: Boolean(state.preparingRecording),
+    uploading: state.uploads.some((upload) => upload.uploading),
+    uploadFailed: state.uploads.some((upload) => upload.blockedError),
+    ready: devicesReady(),
+    online: state.online,
+  });
+
+  const initDiagnostics = () => {
+    diagnostics = window.RecorderDiagnostics.createReporter({
+      context: () => ({
+        userId: state.settings?.user?.id,
+        signedIn: Boolean(state.settings?.token),
+        deviceId: state.settings?.deviceId,
+        test: Boolean(state.session?.test),
+        privateValues: [
+          state.settings?.token, state.settings?.user?.email, state.recordingsDir,
+          ...state.windows.map((item) => item.title),
+          ...(state.settings?.sharedWindows || []).map((item) => item.title),
+          state.session?.focus?.title,
+        ],
+        report: {
+          state: currentStateLabel(),
+          classId: state.session?.classId,
+          phase: state.session?.phase,
+          lastSuccessfulTickAt: state.lastSuccessfulTickAt,
+          inCall: state.session?.inCall,
+          capturing: state.session?.capturing,
+          muted: state.session?.muted,
+          frozen: state.session?.activeTarget?.kind === "frozen",
+          captureMode: state.settings?.captureMode,
+          captureFailures: state.session?.captureFailures,
+          segmentCount: (state.session?.segments.length || 0) + (state.session?.currentSegment ? 1 : 0),
+          pendingUploads: state.uploads.length,
+        },
+      }),
+      send: async (deviceId, report) => {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 8000);
+        try {
+          await api("/api/recorder/diagnostics", {
+            method: "POST", body: { deviceId, report }, signal: controller.signal,
+          });
+        } finally { clearTimeout(timeout); }
+      },
+    });
+    // Runs independently even while capture shutdown/preparation is awaiting a
+    // native response. Failures are swallowed by the reporter, never retried by
+    // the recording loop. Practice sessions are excluded by the reporter.
+    setInterval(() => void diagnostics.flush(), 30000);
   };
 
   const scheduleTick = (delayMs) => {
@@ -1088,6 +1124,7 @@
       return;
     }
     state.online = true;
+    state.lastSuccessfulTickAt = new Date().toISOString();
     state.pendingFinished = null;
     state.tick = response.data;
     state.clockOffsetMs = response.data.serverTimeMs - Date.now();
@@ -1414,7 +1451,7 @@
     state.lastFocusKey = null;
     closeDonePrompt();
     await setQuitLock(state.uploads.length > 0);
-    log("Test mode ended. Nothing was recorded or uploaded.");
+    log("Test mode ended. Nothing was recorded or uploaded.", false);
     render();
     await updateOverlay();
   };
@@ -2293,6 +2330,9 @@
       }
     }
     state.recordingsDir = await invoke("recordings_dir");
+    initDiagnostics();
+    window.addEventListener("error", (event) => log(`Unhandled error: ${event.message}`));
+    window.addEventListener("unhandledrejection", (event) => log(`Unhandled async error: ${event.reason?.message || String(event.reason)}`));
     exercises = window.createRecorderExercises({ api, showView, context: () => ({
       token: state.settings?.token, serverUrl: state.settings?.serverUrl,
       test: !!state.session?.test, classId: state.session?.classId || state.tick?.active?.classId,

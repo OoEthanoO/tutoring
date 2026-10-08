@@ -57,6 +57,7 @@ import {
 } from "@/lib/tutorPresence";
 import { sendBccEmail } from "@/lib/notificationsServer";
 import { expireClassRecordings, type RecordingExpiryResult } from "@/lib/recordings";
+import { recorderDiagnosticsRetentionMs } from "@/lib/recorderDiagnostics";
 import {
   retryPendingRecordingAnnouncements,
   type RecordingAnnouncementRetryResult,
@@ -3614,7 +3615,17 @@ ${tutorWasPresent ? "" : "<p><strong>Note:</strong> you were not detected in the
       liveChannelCleanupErrors.push(`Live category cleanup failed: ${error instanceof Error ? error.message : "Unknown error"}`);
     }
   }
+  // Diagnostics expire independently of whether a recorder ever reconnects.
+  let recorderDiagnosticsCleanupError: string | null = null;
+  try {
+    const { error } = await adminClient.from("recorder_diagnostics")
+      .delete().lt("received_at", new Date(Date.now() - recorderDiagnosticsRetentionMs).toISOString());
+    if (error) recorderDiagnosticsCleanupError = "Could not expire recorder diagnostics.";
+  } catch {
+    recorderDiagnosticsCleanupError = "Could not expire recorder diagnostics.";
+  }
   return NextResponse.json({
+    recorderDiagnosticsCleanupError,
     recordingExpiry,
     recordingAnnouncements,
     recorderNotOpenWarnings,

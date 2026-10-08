@@ -64,4 +64,16 @@ describe("AdminRecorderStatus", () => {
     await mount();
     expect(container.querySelector('[role="alert"]')?.textContent).toBe("Unauthorized");
   });
+
+  it("dates an old class session instead of implying current Discord attendance", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json({ ...payload, tutors: [{
+      ...payload.tutors[0], devices: [device({ stateLabel: "Not recording — reason not reported",
+        currentClassTitle: "Math — Class 3", currentClassStartsAt: "2026-01-01T00:00:00Z",
+        currentClassEndsAt: "2026-01-01T01:00:00Z" })],
+    }] })));
+    await mount();
+    expect(container.textContent).toContain("Not recording — reason not reported — Math — Class 3");
+    expect(container.textContent).toContain("past scheduled end");
+    expect(container.textContent).not.toContain("In class, not recording");
+  });
 });

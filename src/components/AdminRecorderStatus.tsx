@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import RecorderDiagnosticsPanel from "./RecorderDiagnosticsPanel";
 
 /**
  * Which tutors have YanLearn Recorder open and connected, what it is doing,
@@ -9,6 +10,7 @@ import { useCallback, useEffect, useState } from "react";
  */
 
 type Device = {
+  deviceId: string;
   deviceName: string;
   platform: string;
   appVersion: string | null;
@@ -16,6 +18,8 @@ type Device = {
   connected: boolean;
   lastSeenAt: string;
   currentClassTitle: string | null;
+  currentClassStartsAt?: string | null;
+  currentClassEndsAt?: string | null;
   outdated: boolean;
 };
 
@@ -104,6 +108,7 @@ export default function AdminRecorderStatus() {
           90 seconds; one that is closed, asleep or offline stops checking in, so those look the
           same. Refreshes every 20 seconds.
         </p>
+        <p className="text-sm text-[var(--muted)]">Connected means the app checked in; it does not confirm the tutor is in Discord or that recording is working. The class shown is the session the app reports, which may be an unfinished earlier class.</p>
       </header>
 
       {data ? (
@@ -184,7 +189,7 @@ export default function AdminRecorderStatus() {
             {tutor.devices.length > 0 ? (
               <ul className="space-y-1">
                 {tutor.devices.map((device, index) => (
-                  <li key={`${tutor.tutorId}-${index}`} className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                  <li key={`${tutor.tutorId}-${device.deviceId || index}`} className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
                     <span className={device.connected ? "font-semibold text-[var(--foreground)]" : "text-[var(--muted)]"}>
                       {device.deviceName}
                     </span>
@@ -203,10 +208,13 @@ export default function AdminRecorderStatus() {
                       <span className="text-[var(--foreground)]">
                         {device.stateLabel}
                         {device.currentClassTitle ? ` — ${device.currentClassTitle}` : ""}
+                        {device.currentClassStartsAt ? ` · ${new Date(device.currentClassStartsAt).toLocaleString()}` : ""}
+                        {device.currentClassEndsAt && Date.parse(device.currentClassEndsAt) <= nowMs ? " · past scheduled end" : ""}
                       </span>
                     ) : (
                       <span className="text-[var(--muted)]">last seen {ago(device.lastSeenAt, nowMs)}</span>
                     )}
+                    {device.deviceId ? <RecorderDiagnosticsPanel tutorId={tutor.tutorId} deviceId={device.deviceId} /> : null}
                   </li>
                 ))}
               </ul>

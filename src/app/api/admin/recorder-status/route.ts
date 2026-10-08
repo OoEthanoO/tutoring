@@ -4,6 +4,7 @@ import { isExecutive, isFounder, resolveAccountRole } from "@/lib/roles";
 import { chunks, fetchAllRows, idChunkSize } from "@/lib/supabasePaging";
 import { getLatestRecorderRelease, recorderVersion } from "@/lib/recorderRelease";
 import { summarizeTutorRecorders, type RecorderSessionRow } from "@/lib/recorderPresence";
+import { classEndMs } from "@/lib/classTiming";
 
 /**
  * Which tutors have YanLearn Recorder open and connected, what it is doing,
@@ -83,10 +84,11 @@ export async function GET(request: NextRequest) {
     ),
   ];
   const classTitles = new Map<string, string>();
+  const classSchedules = new Map<string, { startsAt: string; endsAt: string }>();
   for (const ids of chunks(classIds, idChunkSize)) {
     const { data } = await db
       .from("course_classes")
-      .select("id, title, course:courses(title)")
+      .select("id, title, starts_at, duration_hours, course:courses(title)")
       .in("id", ids);
     for (const row of data ?? []) {
       const course = (Array.isArray(row.course) ? row.course[0] : row.course) as { title?: string | null } | null;
@@ -94,6 +96,11 @@ export async function GET(request: NextRequest) {
         String(row.id),
         [course?.title, row.title].filter((part) => String(part ?? "").trim()).join(" — ")
       );
+      const startMs = Date.parse(row.starts_at);
+      if (Number.isFinite(startMs)) classSchedules.set(String(row.id), {
+        startsAt: new Date(startMs).toISOString(),
+        endsAt: new Date(classEndMs(startMs, row.duration_hours)).toISOString(),
+      });
     }
   }
 
@@ -107,6 +114,8 @@ export async function GET(request: NextRequest) {
       devices: row.devices.map((device) => ({
         ...device,
         currentClassTitle: device.currentClassId ? classTitles.get(String(device.currentClassId)) ?? null : null,
+        currentClassStartsAt: device.currentClassId ? classSchedules.get(device.currentClassId)?.startsAt ?? null : null,
+        currentClassEndsAt: device.currentClassId ? classSchedules.get(device.currentClassId)?.endsAt ?? null : null,
       })),
     })),
   });

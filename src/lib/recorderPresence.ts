@@ -27,6 +27,7 @@ export type RecorderSessionRow = {
 export type TutorRow = { id: string; name: string; email: string };
 
 export type RecorderDevice = {
+  deviceId: string;
   deviceName: string;
   platform: string;
   appVersion: string | null;
@@ -85,10 +86,17 @@ export const recorderStateLabel = (state: string | null | undefined): string => 
   if (value === "pre_arm") return "Getting ready for a class";
   if (value === "armed") return "Ready, class about to start";
   if (value === "recording") return "Recording";
-  if (value === "paused") return "In class, not recording";
+  if (value === "paused") return "Not recording — reason not reported";
   if (value.startsWith("paused_")) return "Paused by the tutor";
   if (value === "finalizing") return "Preparing the recording";
   if (value === "uploading") return "Uploading";
+  if (value === "capture_failed") return "Not recording — capture failed";
+  if (value === "preparation_failed") return "Recording preparation failed — retrying";
+  if (value === "upload_failed") return "Upload needs attention";
+  if (value === "waiting_for_devices") return "Not recording — choose recording devices";
+  if (value === "waiting_for_voice") return "Not recording — waiting for the class voice channel";
+  if (value === "reconnecting") return "Not recording — reconnecting to the server";
+  if (value === "starting") return "Starting recording";
   if (value === "test") return "Test mode";
   return value;
 };
@@ -118,6 +126,7 @@ export const summarizeTutorRecorders = ({
         const seenMs = Date.parse(session.last_seen_at);
         const connected = Number.isFinite(seenMs) && nowMs - seenMs <= recorderConnectedWithinMs;
         return {
+          deviceId: session.device_id,
           deviceName: String(session.device_name ?? "").trim() || "Unnamed computer",
           platform: String(session.platform ?? "").trim(),
           appVersion: String(session.app_version ?? "").trim() || null,

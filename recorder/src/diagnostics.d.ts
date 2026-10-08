@@ -1,0 +1,20 @@
+export type DiagnosticReport = {
+  schema: number;
+  state: string;
+  classId: string | null;
+  phase: string | null;
+  lastSuccessfulTickAt: string | null;
+  inCall: boolean | null;
+  capturing: boolean;
+  muted: boolean;
+  frozen: boolean;
+  captureMode: string;
+  captureFailures: number;
+  segmentCount: number;
+  pendingUploads: number;
+  logs: { at: string; message: string }[];
+};
+export const RETENTION_MS: number;
+export const MAX_LOGS: number;
+export function redact(value: unknown, privateValues?: string[]): string;
+export function normalize(input: unknown, nowMs?: number): DiagnosticReport | null;

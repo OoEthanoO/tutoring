@@ -140,7 +140,14 @@ DNS is on Cloudflare, with a local updater for the home address. See
   open" warning. Admin → Manage accounts → Recorders shows each tutor's
   recorder: connected or not (heartbeat within 90 s), what it is doing, and its
   version against the latest release (`api/admin/recorder-status`,
-  `src/lib/recorderPresence.ts`). Recordings live in a private S3-compatible bucket (Cloudflare R2 /
+  `src/lib/recorderPresence.ts`). Its per-computer diagnostics panel reads
+  `recorder_diagnostics` through a leadership-only route. Recorder sends a bounded,
+  redacted snapshot every 30 seconds through a separate `/api/recorder/diagnostics`
+  request; never await this from capture, never include test-mode activity,
+  credentials, window titles or exercise content. The shared redactor/allowlist is
+  `recorder/src/diagnostics.js`. Reports expire after 7 days in cron. Apply
+  `20261008010000_recorder_diagnostics.sql` before deploying this feature.
+  Recordings live in a private S3-compatible bucket (Cloudflare R2 /
   Backblaze B2 free tier — `src/lib/recordingStorage.ts`, env `RECORDINGS_S3_*`;
   Supabase Storage is deliberately not used) and are only reached through the
   stream endpoint (per-viewer token → 2-minute presigned URL). Release builds come from

@@ -44,7 +44,7 @@ describe("recorderStateLabel", () => {
   it("names each state the recorder reports", () => {
     expect(recorderStateLabel("recording")).toBe("Recording");
     expect(recorderStateLabel("paused_manual")).toBe("Paused by the tutor");
-    expect(recorderStateLabel("paused")).toBe("In class, not recording");
+    expect(recorderStateLabel("paused")).toBe("Not recording — reason not reported");
     expect(recorderStateLabel(null)).toBe("Idle");
   });
 });

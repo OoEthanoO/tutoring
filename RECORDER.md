@@ -202,6 +202,46 @@ bundle has no Dock icon, and the app itself switches to a normal Dock app at
 startup (`set_activation_policy(Regular)` in `lib.rs`, also Tauri's default).
 Unverified on a Mac until a release carrying it is used for a class.
 
+## Remote diagnostics
+
+Admin → Manage accounts → Recorders → **View diagnostics** opens the latest
+report for that computer. Only the Founder, CEO, COO and their Shadows can read
+reports. The panel works for disconnected computers too, until the report expires.
+It shows capture state, the Recorder's last voice check, capture failures, segment
+and upload counts, the last successful server check, and up to 100 Activity entries.
+Times on log entries come from the computer; the report receipt time comes from
+the server. These are reports from the app, not independently verified Discord
+attendance or a guarantee that video has been saved successfully.
+
+The status list includes the date of the class reported by the app and identifies
+classes past their scheduled end. The old `paused` state means only **Not recording
+— reason not reported**; it does not prove the tutor is in the class. Updated apps
+report capture failure, missing devices, waiting for voice, reconnection, manual
+pause and preparation failure separately.
+
+The client posts a bounded snapshot to `/api/recorder/diagnostics` every 30 seconds,
+on a timer independent of recording, finalization and uploads. Its request times
+out after 8 seconds and never blocks the control loop. Only a registered device
+belonging to the authenticated tutor can submit a report. Reports use the service-
+only `recorder_diagnostics` table; the cron expires them after 7 days, and the read
+endpoint hides expired reports even if cron is delayed. Each device keeps only
+its latest snapshot. Logs cover the current app run: older snapshots are replaced,
+and old versions cannot retroactively provide their logs. Install a release that
+includes this feature before expecting reports. A suspended app or an app without
+network access cannot send new diagnostics; check the receipt time.
+
+`recorder/src/diagnostics.js` is the shared allowlist/redactor. The app removes
+credentials, email addresses, URLs, local paths and known window titles before
+sending; the server sanitizes again and limits request size. Reports never include
+screen/audio contents, exercise questions/answers, or settings objects. Practice
+mode sends no reports and none of its Activity entries enter the remote buffer.
+Switching accounts discards that buffer. The Activity panel and tutor Readme
+explain this to tutors.
+
+Apply `supabase/migrations/20261008010000_recorder_diagnostics.sql` before deploying
+the website, then publish the Recorder release. The status wording/date fix works
+for existing Recorder versions without a client update.
+
 ## Recorder suspended while its window is hidden (macOS)
 
 The recorder's control loop — the heartbeat, class phases, voice presence,
