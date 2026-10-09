@@ -202,6 +202,30 @@ bundle has no Dock icon, and the app itself switches to a normal Dock app at
 startup (`set_activation_policy(Regular)` in `lib.rs`, also Tauri's default).
 Unverified on a Mac until a release carrying it is used for a class.
 
+## Windows recordings failing in v0.5.9 (fixed in v0.5.10)
+
+v0.5.9 could not record on Windows at all: every start logged `Option
+thread_queue_size ... cannot be applied to input url audio=...` and gave up
+after a few tries. The Windows build bundles a nightly ffmpeg (BtbN "master
+latest"), and builds from October 2026 accept `-thread_queue_size` only as an
+output option. `capture.rs` now asks the bundled ffmpeg once whether the option
+may precede inputs (`input_queue_option_supported`) and leaves it out when it
+may not. The release workflow's `cargo test` runs the bundled ffmpeg with the
+option as placed and records a frozen segment end to end, so an incompatible
+nightly fails the build instead of shipping. Pinning the Windows ffmpeg to a
+tested build is still a follow-up.
+
+A recorder never updates while it holds a class, so tutors in class on v0.5.9
+would have stayed broken until the end of class. `api/recorder/tick` therefore
+hands a build listed in `unrecordableRecorderBuilds` (`recorderPolicy.ts`) over
+to any newer published release, mid-class: it first reports the class the
+recorder holds as having ended a moment ago, then shows no class. The recorder
+lets go of its session, which recorded nothing, so nothing is finalized; it
+installs the update within about five minutes, and the new version picks the
+class back up and records the rest. The tutor does nothing. Add a build to that
+list only if it cannot record at all: a recorder holding a working recording
+would finalize it and record the remainder as a second part.
+
 ## Remote diagnostics
 
 Admin → Manage accounts → Recorders → **View diagnostics** opens the latest

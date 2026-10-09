@@ -189,3 +189,53 @@ export const pickActiveRecorderClass = <
   }
   return best;
 };
+
+// --- Builds that cannot record ------------------------------------------------
+
+/**
+ * Recorder builds that cannot record at all. A recorder on one of them is
+ * handed over to a newer release as soon as one is published, even in the
+ * middle of a class (see recorderUpdateFirstStep and api/recorder/tick).
+ */
+export const unrecordableRecorderBuilds: { platform: string; version: string }[] = [
+  // Its bundled nightly ffmpeg refuses `-thread_queue_size` before an input,
+  // so every Windows capture fails to start (October 2026).
+  { platform: "windows", version: "0.5.9" },
+];
+
+export const isUnrecordableRecorderBuild = (
+  platform: string | null | undefined,
+  appVersion: string | null | undefined
+): boolean => {
+  const os = String(platform ?? "").trim().toLowerCase();
+  const version = String(appVersion ?? "").trim().replace(/^v/i, "");
+  return unrecordableRecorderBuilds.some((build) => build.platform === os && build.version === version);
+};
+
+/** How long a recorder is shown no class after being told its class has ended. */
+export const recorderUpdateHandoverMs = 20 * 1000;
+
+/**
+ * The tick a recorder that cannot record gets while a newer release exists.
+ *
+ * A recorder never updates while it holds a class, and it keeps holding one
+ * that briefly disappears until that class's end time (so a dropped tick never
+ * cuts a recording). So a recorder holding a class is first told that class has
+ * already ended ("end"), then shown no class ("none"): it lets go of the
+ * session, which recorded nothing, installs the update within minutes, and the
+ * new version picks the class back up and records the rest of it.
+ */
+export const recorderUpdateFirstStep = ({
+  heldClassId,
+  endSentAtMs,
+  nowMs,
+}: {
+  /** The class the recorder reports working on, if any. */
+  heldClassId: string | null;
+  /** When this recorder was last sent the "end" tick, if ever. */
+  endSentAtMs: number | null;
+  nowMs: number;
+}): "end" | "none" => {
+  if (!heldClassId) return "none";
+  return endSentAtMs !== null && nowMs - endSentAtMs < recorderUpdateHandoverMs ? "none" : "end";
+};

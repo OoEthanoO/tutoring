@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   isRecorderMandatory,
+  isUnrecordableRecorderBuild,
   pickActiveRecorderClass,
   recorderCompliance,
   recorderMandatoryFromMs,
@@ -8,6 +9,7 @@ import {
   recorderMustFinalize,
   recorderPhase,
   recorderQuitLocked,
+  recorderUpdateFirstStep,
   recordingExpiresAtMs,
   recordingRetentionMs,
   shouldWarnRecorderNotOpen,
@@ -163,5 +165,24 @@ describe("pickActiveRecorderClass", () => {
         { startsAtMs: start, endsAtMs: end, released: false },
       ])
     ).toBeNull();
+  });
+});
+
+describe("builds that cannot record", () => {
+  it("knows the Windows build whose ffmpeg cannot start a recording", () => {
+    expect(isUnrecordableRecorderBuild("windows", "0.5.9")).toBe(true);
+    expect(isUnrecordableRecorderBuild("Windows", "v0.5.9")).toBe(true);
+    expect(isUnrecordableRecorderBuild("macos", "0.5.9")).toBe(false);
+    expect(isUnrecordableRecorderBuild("windows", "0.5.10")).toBe(false);
+    expect(isUnrecordableRecorderBuild(null, null)).toBe(false);
+  });
+
+  it("ends the class a stuck recorder holds, then shows it none so it can update", () => {
+    const nowMs = start + 10 * minute;
+    expect(recorderUpdateFirstStep({ heldClassId: "c1", endSentAtMs: null, nowMs })).toBe("end");
+    expect(recorderUpdateFirstStep({ heldClassId: "c1", endSentAtMs: nowMs - 2000, nowMs })).toBe("none");
+    // Still holding it long after: say it again.
+    expect(recorderUpdateFirstStep({ heldClassId: "c1", endSentAtMs: nowMs - 60000, nowMs })).toBe("end");
+    expect(recorderUpdateFirstStep({ heldClassId: null, endSentAtMs: null, nowMs })).toBe("none");
   });
 });

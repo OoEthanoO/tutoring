@@ -396,6 +396,44 @@ describe("Automatic updates", () => {
     expect($("update-text").textContent).toContain("once you are between classes");
   });
 
+  // api/recorder/tick's handover for a build that cannot record (recorderUpdateFirstStep):
+  // the class it holds "ended" a moment ago, then there is no class at all.
+  it("lets the server walk a recorder that cannot record out of its class so it updates mid-class", async () => {
+    active = { classId: "live-class", courseTitle: "Math", classTitle: "Class 5", phase: "live",
+      startsAtMs: Date.now() - 2 * 60000, endsAtMs: Date.now() + 80 * 60000, tutorInLiveChannel: true };
+    const original = invoke.getMockImplementation();
+    invoke.mockImplementation((command, args) => command === "start_capture"
+      ? Promise.reject(new Error("Error opening input files: Invalid argument")) : original(command, args));
+    await boot();
+    await vi.advanceTimersByTimeAsync(30000);
+    expect(calls("set_quit_lock").at(-1)[1].locked).toBe(true);
+    const finishDownload = publishRelease();
+    active = { ...active, endsAtMs: Date.now() - 1000, tutorInLiveChannel: null,
+      presenceReason: "Updating YanLearn Recorder so it can record this class." };
+    await vi.advanceTimersByTimeAsync(2500);
+    active = null;
+    await vi.advanceTimersByTimeAsync(2500);
+    expect(calls("set_quit_lock").at(-1)[1].locked).toBe(false);
+    await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
+    finishDownload(); await vi.advanceTimersByTimeAsync(5);
+    expect(calls("install_update")).toHaveLength(1);
+    // Nothing was finalized, so the updated recorder picks the class back up and records it.
+    expect(concat).not.toHaveBeenCalled();
+    expect(JSON.parse(files.get("recordings/live-class/meta.json")).finalizeReason ?? null).toBeNull();
+  });
+
+  it("records that class again once it has updated", async () => {
+    // What the handover leaves behind: the class's folder, "ended", nothing recorded.
+    directories.push({ name: "live-class", path: `${rootDir}/live-class`, isDir: true });
+    save(`${rootDir}/live-class/meta.json`, { classId: "live-class", courseTitle: "Math", classTitle: "Class 5",
+      startsAtMs: Date.now() - 600000, endsAtMs: Date.now() - 1000, segments: [], currentSegment: null });
+    active = { classId: "live-class", courseTitle: "Math", classTitle: "Class 5", phase: "live",
+      startsAtMs: Date.now() - 600000, endsAtMs: Date.now() + 3600000, tutorInLiveChannel: true };
+    await boot(); await vi.advanceTimersByTimeAsync(3000);
+    expect(calls("start_capture")).toHaveLength(1);
+    expect(concat).not.toHaveBeenCalled();
+  });
+
   it("does not restart for an update when the next class is five minutes away", async () => {
     nextClass = { classId: "soon", courseTitle: "Science", startsAtMs: Date.now() + 9 * 60 * 1000 };
     await boot();

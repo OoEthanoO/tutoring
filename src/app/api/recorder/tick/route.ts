@@ -7,7 +7,10 @@ import { loadBreakoutChannelIdsByClassId } from "@/lib/breakoutRoomsServer";
 import { getRecorderUser } from "@/lib/recorderAuth";
 import { classUsesDiscordVoiceSystem } from "@/lib/discordLiveChannels";
 import { isFounder, resolveUserRole } from "@/lib/roles";
+import { compareVersions } from "@/lib/recorderPresence";
+import { getLatestRecorderRelease, recorderVersion } from "@/lib/recorderRelease";
 import {
+  isUnrecordableRecorderBuild,
   pickActiveRecorderClass,
   recorderActivePollMs,
   recorderIdlePollMs,
@@ -16,9 +19,24 @@ import {
   recorderMustFinalize,
   recorderPreArmBeforeStartMs,
   recorderQuitLocked,
+  recorderUpdateFirstStep,
 } from "@/lib/recorderPolicy";
 
 export const dynamic = "force-dynamic";
+
+// The newest published release, looked up at most every two minutes: only
+// recorders on a build that cannot record ask, but they tick every 2 s, and
+// GitHub allows this server 60 unauthenticated API calls an hour.
+let latestRelease: { version: string | null; atMs: number } | null = null;
+const latestRecorderVersion = async (nowMs: number) => {
+  if (!latestRelease || nowMs - latestRelease.atMs > 2 * 60 * 1000) {
+    latestRelease = { version: recorderVersion(await getLatestRecorderRelease()), atMs: nowMs };
+  }
+  return latestRelease.version;
+};
+
+/** When each recorder (tutor:device) was last told its class has ended, for the update handover. */
+const updateHandoverEndSentAt = new Map<string, number>();
 
 type TickBody = {
   deviceId?: string;
@@ -102,6 +120,61 @@ export async function POST(request: NextRequest) {
       },
       { onConflict: "class_id,tutor_id" }
     );
+  }
+
+  // --- A build that cannot record updates first --------------------------------
+  // Once a newer release is out, a recorder on a build that cannot record is
+  // walked out of its class so it can install the update mid-class, and the
+  // new version picks the class back up (see recorderUpdateFirstStep).
+  if (isUnrecordableRecorderBuild(body.platform, body.appVersion)) {
+    const latestVersion = await latestRecorderVersion(nowMs);
+    if (latestVersion && compareVersions(latestVersion, String(body.appVersion)) > 0) {
+      const handoverKey = `${user.id}:${deviceId}`;
+      const step = recorderUpdateFirstStep({
+        heldClassId: reportedClassId,
+        endSentAtMs: updateHandoverEndSentAt.get(handoverKey) ?? null,
+        nowMs,
+      });
+      let active: Record<string, unknown> | null = null;
+      if (step === "end" && reportedClassId) {
+        updateHandoverEndSentAt.set(handoverKey, nowMs);
+        const { data: heldClass } = await adminClient
+          .from("course_classes")
+          .select("id, title, starts_at, course:courses(id, title)")
+          .eq("id", reportedClassId)
+          .maybeSingle();
+        const course = (Array.isArray(heldClass?.course) ? heldClass?.course[0] : heldClass?.course) as
+          | { id?: string | null; title?: string | null }
+          | null
+          | undefined;
+        const startsAtMs = heldClass?.starts_at ? Date.parse(heldClass.starts_at) : NaN;
+        // The class "ended" a moment ago: the recorder then lets go of it when
+        // the next tick shows no class, instead of holding on until its real end.
+        const endsAtMs = nowMs - 1000;
+        active = {
+          classId: reportedClassId,
+          courseId: course?.id ?? null,
+          courseTitle: String(course?.title ?? ""),
+          classTitle: String(heldClass?.title ?? ""),
+          startsAtMs: Number.isFinite(startsAtMs) && startsAtMs < endsAtMs ? startsAtMs : endsAtMs - 1000,
+          endsAtMs,
+          phase: "live",
+          quitLocked: false,
+          mustFinalize: false,
+          liveChannel: { id: null, exists: false, deleted: false },
+          tutorInLiveChannel: null,
+          presenceReason: "Updating YanLearn Recorder so it can record this class.",
+        };
+      }
+      return NextResponse.json({
+        serverTimeMs: nowMs,
+        pollIntervalMs: recorderActivePollMs,
+        mandatoryFromMs: recorderMandatoryFromMs,
+        tutor: { id: user.id, name: user.full_name ?? user.email },
+        active,
+        nextClass: null,
+      });
+    }
   }
 
   // --- Which class is the recorder responsible for? ----------------------------
