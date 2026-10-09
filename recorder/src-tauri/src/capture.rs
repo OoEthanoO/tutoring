@@ -16,7 +16,7 @@ use std::collections::VecDeque;
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
@@ -440,29 +440,51 @@ fn push_all(args: &mut Vec<String>, items: &[&str]) {
     args.extend(items.iter().map(|item| item.to_string()));
 }
 
+/// Whether this ffmpeg accepts `-thread_queue_size` in front of an input.
+///
+/// Live inputs (dshow, gdigrab, avfoundation, the TCP feeders) need a deep
+/// input queue on the FFmpeg versions this was written against, or they drop
+/// packets. FFmpeg master from October 2026 takes the option only as an output
+/// (muxer) setting and refuses to start with it before an input, which stopped
+/// every Windows recording in v0.5.9, whose bundled ffmpeg is a nightly build.
+/// So ask the bundled binary once rather than assume either way.
+fn input_queue_option_supported(ffmpeg: &Path) -> bool {
+    static SUPPORTED: OnceLock<bool> = OnceLock::new();
+    *SUPPORTED.get_or_init(|| {
+        command(ffmpeg)
+            .args([
+                "-hide_banner", "-loglevel", "error",
+                "-f", "lavfi", "-thread_queue_size", "8", "-i", "anullsrc=r=48000:cl=mono",
+                "-t", "0.05", "-f", "null", "-",
+            ])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .map(|status| status.success())
+            .unwrap_or(false)
+    })
+}
+
+/// `-thread_queue_size <size>` for the input that follows, where ffmpeg takes it.
+fn push_input_queue(args: &mut Vec<String>, size: &str, input_queue: bool) {
+    if input_queue {
+        push_all(args, &["-thread_queue_size", size]);
+    }
+}
+
 /// A microphone as its own input, for segments whose picture does not come
 /// from a screen grabber (a frozen still, or a window from the window feeder).
-fn push_microphone_input(args: &mut Vec<String>, mic: &str) {
+fn push_microphone_input(args: &mut Vec<String>, mic: &str, input_queue: bool) {
     if cfg!(windows) {
-        push_all(
-            args,
-            &[
-                "-f", "dshow",
-                "-thread_queue_size", "1024",
-                "-rtbufsize", "64M",
-                "-i", &format!("audio={mic}"),
-            ],
-        );
+        push_all(args, &["-f", "dshow"]);
+        push_input_queue(args, "1024", input_queue);
+        push_all(args, &["-rtbufsize", "64M", "-i", &format!("audio={mic}")]);
     } else {
         // No video device on this input: the picture comes from elsewhere.
-        push_all(
-            args,
-            &[
-                "-f", "avfoundation",
-                "-thread_queue_size", "512",
-                "-i", &format!(":{mic}"),
-            ],
-        );
+        push_all(args, &["-f", "avfoundation"]);
+        push_input_queue(args, "512", input_queue);
+        push_all(args, &["-i", &format!(":{mic}")]);
     }
 }
 
@@ -474,6 +496,8 @@ fn build_args(
     target_height: Option<u32>,
     system_audio_port: Option<u16>,
     window_port: Option<u16>,
+    // Whether `-thread_queue_size` may precede inputs (input_queue_option_supported).
+    input_queue: bool,
 ) -> Result<Vec<String>, String> {
     let mut args: Vec<String> = Vec::new();
     push_all(&mut args, &["-y", "-hide_banner", "-loglevel", "warning", "-nostats"]);
@@ -535,7 +559,7 @@ fn build_args(
         video_filter = Some(fit.clone());
 
         if let Some(mic) = microphone {
-            push_microphone_input(&mut args, mic);
+            push_microphone_input(&mut args, mic, input_queue);
             audio_inputs.push(next_input);
             next_input += 1;
         }
@@ -550,16 +574,16 @@ fn build_args(
                 "-pix_fmt", windowfeed::pixel_format(),
                 "-video_size", &format!("{canvas_width}x{canvas_height}"),
                 "-framerate", &fps_text,
-                "-thread_queue_size", "512",
-                "-i", &format!("tcp://127.0.0.1:{port}"),
             ],
         );
+        push_input_queue(&mut args, "512", input_queue);
+        push_all(&mut args, &["-i", &format!("tcp://127.0.0.1:{port}")]);
         video_map = format!("{next_input}:v");
         next_input += 1;
         video_filter = Some("setsar=1,format=yuv420p".to_string());
 
         if let Some(mic) = microphone {
-            push_microphone_input(&mut args, mic);
+            push_microphone_input(&mut args, mic, input_queue);
             audio_inputs.push(next_input);
             next_input += 1;
         }
@@ -588,24 +612,16 @@ fn build_args(
                     "-offset_x", &grab_x.to_string(),
                     "-offset_y", &grab_y.to_string(),
                     "-video_size", &format!("{grab_width}x{grab_height}"),
-                    "-thread_queue_size", "512",
-                    "-i", "desktop",
                 ],
             );
+            push_input_queue(&mut args, "512", input_queue);
+            push_all(&mut args, &["-i", "desktop"]);
             video_map = format!("{next_input}:v");
             next_input += 1;
             video_filter = Some(screen_filter.clone());
         }
         if let Some(mic) = microphone {
-            push_all(
-                &mut args,
-                &[
-                    "-f", "dshow",
-                    "-thread_queue_size", "1024",
-                    "-rtbufsize", "64M",
-                    "-i", &format!("audio={mic}"),
-                ],
-            );
+            push_microphone_input(&mut args, mic, input_queue);
             audio_inputs.push(next_input);
             next_input += 1;
         }
@@ -620,10 +636,10 @@ fn build_args(
                 "-f", "avfoundation",
                 "-capture_cursor", "1",
                 "-framerate", &fps_text,
-                "-thread_queue_size", "512",
-                "-i", &format!("{screen}:{mic}"),
             ],
         );
+        push_input_queue(&mut args, "512", input_queue);
+        push_all(&mut args, &["-i", &format!("{screen}:{mic}")]);
         video_map = format!("{next_input}:v");
         if mic != "none" {
             audio_inputs.push(next_input);
@@ -640,10 +656,10 @@ fn build_args(
                 "-f", "s16le",
                 "-ar", "48000",
                 "-ac", "2",
-                "-thread_queue_size", "1024",
-                "-i", &format!("tcp://127.0.0.1:{port}"),
             ],
         );
+        push_input_queue(&mut args, "1024", input_queue);
+        push_all(&mut args, &["-i", &format!("tcp://127.0.0.1:{port}")]);
         audio_inputs.push(next_input);
         next_input += 1;
     }
@@ -793,6 +809,7 @@ fn start_capture_blocking(app: AppHandle, config: CaptureConfig) -> Result<Captu
         target_height,
         system_audio_port,
         window_port,
+        input_queue_option_supported(&ffmpeg),
     )?;
 
     if let Some(parent) = Path::new(&config.output_path).parent() {
@@ -1148,6 +1165,86 @@ fn concat_normalized(
     std::fs::rename(&candidate, output)
         .map_err(|e| format!("Could not save the prepared recording: {e}"))?;
     Ok(size)
+}
+
+#[cfg(test)]
+mod capture_args_tests {
+    use super::*;
+
+    fn config(output: &Path, still: Option<&Path>) -> CaptureConfig {
+        CaptureConfig {
+            output_path: output.to_string_lossy().to_string(),
+            display_x: 0,
+            display_y: 0,
+            display_width: 1280,
+            display_height: 720,
+            single_display: true,
+            screen_device_index: Some(0),
+            microphone_id: Some("Test microphone".to_string()),
+            output_device_id: None,
+            system_audio: false,
+            backend: None,
+            encoder: None,
+            fps: Some(15),
+            window_id: None,
+            still_path: still.map(|path| path.to_string_lossy().to_string()),
+        }
+    }
+
+    #[test]
+    fn leaves_the_input_queue_option_out_when_ffmpeg_refuses_it() {
+        let output = std::env::temp_dir().join("recorder-args.mp4");
+        let still = config(&output, Some(Path::new("missing-still.png")));
+        for (target, window_port, audio_port) in [(&still, None, None), (&still, None, Some(4000)), (&config(&output, None), Some(5000), Some(4000))] {
+            let without = build_args(target, "gdigrab", "libx264", 15, Some(720), audio_port, window_port, false).unwrap();
+            assert!(!without.iter().any(|arg| arg == "-thread_queue_size"), "{without:?}");
+            let with = build_args(target, "gdigrab", "libx264", 15, Some(720), audio_port, window_port, true).unwrap();
+            // Where it is accepted, it always comes before an input, never after the last one.
+            let last_input = with.iter().rposition(|arg| arg == "-i").unwrap();
+            for (index, _) in with.iter().enumerate().filter(|(_, arg)| *arg == "-thread_queue_size") {
+                assert!(index < last_input, "{with:?}");
+            }
+            assert!(with.iter().any(|arg| arg == "-thread_queue_size"), "{with:?}");
+        }
+    }
+
+    /// The bundled ffmpeg is a nightly build on Windows, and one of them stopped
+    /// taking `-thread_queue_size` before inputs. Whatever build ships must
+    /// accept the queue option exactly where build_args puts it.
+    #[test]
+    fn the_bundled_ffmpeg_accepts_the_input_queue_option_where_it_is_placed() {
+        let ffmpeg = sidecar_path("ffmpeg").unwrap();
+        let mut args: Vec<String> = Vec::new();
+        push_all(&mut args, &["-hide_banner", "-loglevel", "error", "-f", "lavfi"]);
+        push_input_queue(&mut args, "1024", input_queue_option_supported(&ffmpeg));
+        push_all(&mut args, &["-i", "anullsrc=r=48000:cl=mono", "-t", "0.1", "-f", "null", "-"]);
+        let result = command(&ffmpeg).args(&args).output().unwrap();
+        assert!(result.status.success(), "{}", String::from_utf8_lossy(&result.stderr));
+    }
+
+    /// A frozen segment end to end with the bundled ffmpeg: every option
+    /// build_args emits after the inputs must still be valid.
+    #[test]
+    fn the_bundled_ffmpeg_records_a_frozen_segment() {
+        let ffmpeg = sidecar_path("ffmpeg").unwrap();
+        let dir = std::env::temp_dir().join(format!("recorder-frozen-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let still = dir.join("still.png");
+        let output = dir.join("seg-001.mp4");
+        let made = command(&ffmpeg).args(["-y", "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=blue:s=320x180", "-frames:v", "1"])
+            .arg(&still).output().unwrap();
+        assert!(made.status.success(), "{}", String::from_utf8_lossy(&made.stderr));
+        let mut target = config(&output, Some(still.as_path()));
+        target.microphone_id = None;
+        let args = build_args(&target, "gdigrab", "libx264", 15, Some(720), None, None, input_queue_option_supported(&ffmpeg)).unwrap();
+        let mut child = command(&ffmpeg).args(&args).stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::piped()).spawn().unwrap();
+        std::thread::sleep(Duration::from_millis(1500));
+        let _ = child.stdin.as_mut().unwrap().write_all(b"q");
+        let result = child.wait_with_output().unwrap();
+        assert!(result.status.success(), "{}", String::from_utf8_lossy(&result.stderr));
+        assert!(std::fs::metadata(&output).unwrap().len() > 0);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 }
 
 #[cfg(test)]
