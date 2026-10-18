@@ -218,6 +218,44 @@ Otherwise the poller will try to deploy that commit again. Inspect
 and `logs\access.log` when investigating. These logs are private operational
 data; do not publish them without reviewing/redacting their contents.
 
+## SSH access
+
+finprint-host (Windows computer name `windows`) runs Windows' built-in OpenSSH
+9.5 on port 22 at `192.168.18.10`. Log in as `ethan` with a key. Sessions are
+elevated, so the `ops` commands above work over SSH. A client entry:
+
+```
+Host finprint-host
+    HostName 192.168.18.10
+    User ethan
+    IdentityFile ~/.ssh/finprint-host_ed25519
+    IdentitiesOnly yes
+    # The server offers no post-quantum key exchange; OpenSSH 10.1+ warns otherwise.
+    WarnWeakCrypto no-pq-kex
+```
+
+The server's ED25519 host key is
+`SHA256:tPVs8x8p2P9rYyOFu72wzNX+kBdrmILfYIUqYN/KVYQ` (checked at the server
+console, October 2026). Compare it on a new client's first connection.
+
+sshd reads administrators' keys only from
+`C:\ProgramData\ssh\administrators_authorized_keys`, not `~\.ssh`. Authorize a
+new client from an Administrator PowerShell on the server, or over SSH from a
+client that already has access. Append the key as one ASCII line. Never use
+PowerShell 5.1's `>` or `>>`: they write UTF-16, which sshd cannot read. sshd
+also ignores the file unless only Administrators and SYSTEM can access it:
+
+```powershell
+Add-Content -Encoding ascii -Path C:\ProgramData\ssh\administrators_authorized_keys -Value 'ssh-ed25519 AAAA... user@machine'
+icacls.exe C:\ProgramData\ssh\administrators_authorized_keys /inheritance:r /grant '*S-1-5-32-544:F' /grant '*S-1-5-18:F'
+```
+
+The remote shell is Windows PowerShell 5.1, which has no `&&` or `||`. Its
+default execution policy blocks scripts, so run them with
+`powershell.exe -NoProfile -ExecutionPolicy Bypass -File ...`. The same policy
+stops `ethan`'s OneDrive PowerShell profile from loading, so every login prints
+a harmless error about it.
+
 ## Connecting from outside the home
 
 The `finprint-host` SSH alias points at `192.168.18.10`. YanVPN's REALITY
