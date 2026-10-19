@@ -225,11 +225,17 @@ finprint-host (Windows computer name `windows`) runs Windows' built-in OpenSSH
 elevated, so the `ops` commands above work over SSH. A client entry:
 
 ```
+# Windows' built-in OpenSSH 9.5 rejects WarnWeakCrypto even in a Host block it
+# is not using, which breaks ssh for every host. Keep this first, outside any block.
+IgnoreUnknown WarnWeakCrypto
+
 Host finprint-host
     HostName 192.168.18.10
     User ethan
     IdentityFile ~/.ssh/finprint-host_ed25519
     IdentitiesOnly yes
+    # Over YanVPN the TCP connect succeeds even when the route is broken.
+    ConnectTimeout 20
     # The server offers no post-quantum key exchange; OpenSSH 10.1+ warns otherwise.
     WarnWeakCrypto no-pq-kex
 ```
@@ -237,6 +243,9 @@ Host finprint-host
 The server's ED25519 host key is
 `SHA256:tPVs8x8p2P9rYyOFu72wzNX+kBdrmILfYIUqYN/KVYQ` (checked at the server
 console, October 2026). Compare it on a new client's first connection.
+
+sshd also offers password login, but `ethan` is a Microsoft account, so it
+takes the Microsoft account password, not the PIN.
 
 sshd reads administrators' keys only from
 `C:\ProgramData\ssh\administrators_authorized_keys`, not `~\.ssh`. Authorize a
@@ -264,3 +273,14 @@ general private-address `direct` rule. A client profile reinstall can replace
 that setting. The September 2026 migration adds this narrow rule to the
 installed client and keeps the original backup in the protected YanVPN folder.
 Do not expose SSH publicly or disable host-key checking to work around routing.
+
+Without the rule, port 22 still appears to accept the connection (the tunnel
+accepts it locally), but no SSH banner arrives. Reinstalling the Windows client
+(`install.ps1 -RealityOnly`, October 2026) regenerates `reality.json` without
+the rule. Restore it from an Administrator PowerShell:
+
+1. In `C:\ProgramData\yanvpn-client\reality.json`, add the route rule
+   `{"ip_cidr":["192.168.18.0/24"],"outbound":"proxy"}` directly ahead of the
+   `ip_is_private` → `direct` rule.
+2. From that folder, check it with `bin\sing-box.exe check -c reality.json`.
+3. Restart the `yanvpn-reality-client` scheduled task.
