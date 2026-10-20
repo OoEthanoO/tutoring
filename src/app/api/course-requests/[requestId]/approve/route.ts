@@ -12,7 +12,6 @@ import { normalizeGradeLevel } from "@/lib/serviceHours";
 import { classEndDate } from "@/lib/classTiming";
 
 const supabaseUrl = process.env.SUPABASE_URL ?? "";
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 
 type FinalizedClass = {
@@ -27,7 +26,7 @@ export async function POST(
 ) {
   const { requestId } = await params;
   
-  if (!supabaseUrl || !supabaseAnonKey) {
+  if (!supabaseUrl || !serviceRoleKey) {
     return NextResponse.json(
       { error: "Missing Supabase environment configuration." },
       { status: 500 }

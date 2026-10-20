@@ -27,7 +27,6 @@ const submit = (body: unknown = application) => enroll.POST(request(body, "POST"
 
 beforeAll(async () => {
   vi.stubEnv("SUPABASE_URL", "https://example.test");
-  vi.stubEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY", "anon-fixture");
   vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "service-fixture");
   [decide, enroll, list, enrolled] = await Promise.all([
     import("./[requestId]/route"), import("../courses/[courseId]/enroll/route"), import("./route"), import("../enrolled/route"),

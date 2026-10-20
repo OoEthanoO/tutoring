@@ -50,7 +50,7 @@ function Copy-DirectoryContents([string]$Source, [string]$Destination) {
 function Import-ProductionEnvironment([string]$Root) {
     $values = Read-Json (Join-Path $Root 'secrets\production.json')
     if (-not $values) { throw 'Missing secrets\production.json. Import the production configuration before deploying.' }
-    $required = @('SUPABASE_URL','NEXT_PUBLIC_SUPABASE_ANON_KEY','SUPABASE_SERVICE_ROLE_KEY',
+    $required = @('SUPABASE_URL','SUPABASE_SERVICE_ROLE_KEY',
         'NEXT_PUBLIC_SITE_URL','CRON_SECRET','RESEND_API_KEY','RESEND_FROM','DISCORD_BOT_TOKEN',
         'DISCORD_GUILD_ID','DISCORD_CLIENT_ID','DISCORD_CLIENT_SECRET','DISCORD_OAUTH_REDIRECT_URI',
         'RECORDINGS_S3_ENDPOINT','RECORDINGS_S3_ACCESS_KEY_ID','RECORDINGS_S3_SECRET_ACCESS_KEY')

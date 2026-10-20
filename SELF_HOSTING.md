@@ -248,9 +248,9 @@ app still uses `supabase-js`, so the same pieces run locally, all on loopback:
 
 `production.json` has `SUPABASE_URL=http://127.0.0.1:3111` (read at runtime,
 never baked into a build) and that service-role key as
-`SUPABASE_SERVICE_ROLE_KEY`. `NEXT_PUBLIC_SUPABASE_ANON_KEY` must stay
-non-empty; routes only check that it exists. Recording playback tokens are
-signed with `RECORDING_TOKEN_SECRET`.
+`SUPABASE_SERVICE_ROLE_KEY`. Nothing uses an anon key any more (sessions are
+the app's own `app_sessions`). Recording playback tokens are signed with
+`RECORDING_TOKEN_SECRET`.
 
 `install-database.ps1` installs or repairs all of this and never drops the
 `yanlearn` database. `status.ps1` shows the service, PostgREST's readiness and
@@ -330,7 +330,6 @@ ssh -N -L 3111:127.0.0.1:3111 finprint-host
 ```
 SUPABASE_URL=http://127.0.0.1:3111
 SUPABASE_SERVICE_ROLE_KEY=<ServiceRoleKey from secrets\database.json>
-NEXT_PUBLIC_SUPABASE_ANON_KEY=unused
 ```
 
 The tunnel reaches production data, so treat local writes as real.

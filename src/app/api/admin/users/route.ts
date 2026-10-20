@@ -12,7 +12,6 @@ import { classEndMs } from "@/lib/classTiming";
 import { sendDiscordMessageByChannelName } from "@/lib/notificationsServer";
 
 const supabaseUrl = process.env.SUPABASE_URL ?? "";
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 
 const resendApiKey = process.env.RESEND_API_KEY ?? "";
@@ -187,7 +186,7 @@ const hasFutureClass = (
   });
 
 export async function GET(request: NextRequest) {
-  if (!supabaseUrl || !supabaseAnonKey) {
+  if (!supabaseUrl || !serviceRoleKey) {
     return NextResponse.json(
       { error: "Missing Supabase environment configuration." },
       { status: 500 }
@@ -460,7 +459,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
-  if (!supabaseUrl || !supabaseAnonKey) {
+  if (!supabaseUrl || !serviceRoleKey) {
     return NextResponse.json(
       { error: "Missing Supabase environment configuration." },
       { status: 500 }
@@ -819,7 +818,7 @@ export async function PATCH(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  if (!supabaseUrl || !supabaseAnonKey) {
+  if (!supabaseUrl || !serviceRoleKey) {
     return NextResponse.json(
       { error: "Missing Supabase environment configuration." },
       { status: 500 }
@@ -1146,7 +1145,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  if (!supabaseUrl || !supabaseAnonKey) {
+  if (!supabaseUrl || !serviceRoleKey) {
     return NextResponse.json(
       { error: "Missing Supabase environment configuration." },
       { status: 500 }

@@ -10,7 +10,6 @@ import {
 } from "@/lib/courseChangeNotifications";
 
 const supabaseUrl = process.env.SUPABASE_URL ?? "";
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 
 
@@ -19,7 +18,7 @@ export async function POST(
   request: NextRequest,
   { params }: { params: { courseId: string } | Promise<{ courseId: string }> }
 ) {
-  if (!supabaseUrl || !supabaseAnonKey) {
+  if (!supabaseUrl || !serviceRoleKey) {
     return NextResponse.json(
       { error: "Missing Supabase environment configuration." },
       { status: 500 }

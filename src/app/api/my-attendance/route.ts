@@ -4,7 +4,6 @@ import { getRequestUser } from "@/lib/authServer";
 import { classEndMs } from "@/lib/classTiming";
 
 const supabaseUrl = process.env.SUPABASE_URL ?? "";
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 
 /**
@@ -14,7 +13,7 @@ const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
  * flags this so the UI can explain absences rather than show a false "Absent".
  */
 export async function GET(request: NextRequest) {
-  if (!supabaseUrl || !supabaseAnonKey) {
+  if (!supabaseUrl || !serviceRoleKey) {
     return NextResponse.json(
       { error: "Missing Supabase environment configuration." },
       { status: 500 }

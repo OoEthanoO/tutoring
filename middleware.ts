@@ -1,6 +1,5 @@
 import { isFounder as hasManagementAccess, resolveAccountRole, type AccountRole } from "@/lib/roles";
 import { NextRequest, NextResponse } from "next/server";
-import { createServerClient } from "@supabase/ssr";
 import { recorderCorsHeaders } from "@/lib/recorderCors";
 
 const guardedPaths = ["/onboarding"];
@@ -51,10 +50,12 @@ const sha256Hex = async (value: string) => {
     .join("");
 };
 
-const isFounderSession = async (request: NextRequest) => {
+// The account behind the session cookie, checked the way getSessionUser in
+// src/lib/authServer.ts does (unexpired app_sessions row for the token's hash).
+const readSessionUser = async <User>(request: NextRequest, columns: string): Promise<User | null> => {
   const token = request.cookies.get("session")?.value;
   if (!token) {
-    return false;
+    return null;
   }
 
   const tokenHash = await sha256Hex(token);
@@ -70,21 +71,17 @@ const isFounderSession = async (request: NextRequest) => {
   );
   const userId = sessions[0]?.user_id;
   if (!userId) {
-    return false;
+    return null;
   }
 
-  const userParams = new URLSearchParams({
-    select: "email,role,custom_role,custom_roles(role_level)",
-    id: `eq.${userId}`,
-    limit: "1",
-  });
-  const users = await readRows<AccountRole>(`app_users?${userParams.toString()}`);
-  const user = users[0];
-  if (!user) {
-    return false;
-  }
+  const userParams = new URLSearchParams({ select: columns, id: `eq.${userId}`, limit: "1" });
+  const users = await readRows<User>(`app_users?${userParams.toString()}`);
+  return users[0] ?? null;
+};
 
-  return hasManagementAccess(resolveAccountRole(user));
+const isFounderSession = async (request: NextRequest) => {
+  const user = await readSessionUser<AccountRole>(request, "email,role,custom_role,custom_roles(role_level)");
+  return user ? hasManagementAccess(resolveAccountRole(user)) : false;
 };
 
 export async function middleware(request: NextRequest) {
@@ -138,47 +135,17 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const response = NextResponse.next();
-
-  const supabaseUrl = process.env.SUPABASE_URL ?? "";
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
-
-  if (!supabaseUrl || !supabaseAnonKey) {
-    return NextResponse.redirect(new URL("/login", request.url));
-  }
-
-  const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
-    cookies: {
-      get(name) {
-        return request.cookies.get(name)?.value;
-      },
-      set(name, value, options) {
-        response.cookies.set({ name, value, ...options });
-      },
-      remove(name, options) {
-        response.cookies.set({ name, value: "", ...options });
-      },
-    },
-  });
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
+  // Onboarding asks a signed-in account for the name it is missing.
+  const user = await readSessionUser<{ full_name?: string | null }>(request, "full_name");
   if (!user) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 
-  const fullName = user.user_metadata?.full_name;
-  if (!fullName || String(fullName).trim().length === 0) {
-    return response;
-  }
-
-  if (pathname.startsWith("/onboarding")) {
+  if (user.full_name && user.full_name.trim().length > 0) {
     return NextResponse.redirect(new URL("/", request.url));
   }
 
-  return response;
+  return NextResponse.next();
 }
 
 export const config = {
