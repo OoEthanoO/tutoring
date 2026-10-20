@@ -7,7 +7,7 @@ import { notifyCourseTutorsOfNewEnrollment } from "@/lib/courseChangeNotificatio
 import { sendEmail } from "@/lib/notificationsServer";
 import { enrollmentRejectionEmail, escapeEnrollmentEmailHtml, MAX_ENROLLMENT_REJECTION_REASON_LENGTH, parseEnrollmentRejectionReason } from "@/lib/enrollmentRequests";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+const supabaseUrl = process.env.SUPABASE_URL ?? "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 

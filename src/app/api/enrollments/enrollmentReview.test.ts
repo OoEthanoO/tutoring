@@ -26,7 +26,7 @@ const review = (body: unknown) => decide.PATCH(request(body), { params: { reques
 const submit = (body: unknown = application) => enroll.POST(request(body, "POST"), { params: { courseId: "course" } });
 
 beforeAll(async () => {
-  vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://example.test");
+  vi.stubEnv("SUPABASE_URL", "https://example.test");
   vi.stubEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY", "anon-fixture");
   vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "service-fixture");
   [decide, enroll, list, enrolled] = await Promise.all([

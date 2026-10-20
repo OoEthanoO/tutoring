@@ -1,6 +1,9 @@
 # Native Windows PowerShell 5.1. Runtime files stay outside the source checkout.
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
+# Loopback ports of the self-hosted database (see install-database.ps1).
+$script:PostgrestPort = 3110
+$script:DatabaseGatewayPort = 3111
 
 function Assert-Administrator {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -47,17 +50,23 @@ function Copy-DirectoryContents([string]$Source, [string]$Destination) {
 function Import-ProductionEnvironment([string]$Root) {
     $values = Read-Json (Join-Path $Root 'secrets\production.json')
     if (-not $values) { throw 'Missing secrets\production.json. Import the production configuration before deploying.' }
-    $required = @('NEXT_PUBLIC_SUPABASE_URL','NEXT_PUBLIC_SUPABASE_ANON_KEY','SUPABASE_SERVICE_ROLE_KEY',
+    $required = @('SUPABASE_URL','NEXT_PUBLIC_SUPABASE_ANON_KEY','SUPABASE_SERVICE_ROLE_KEY',
         'NEXT_PUBLIC_SITE_URL','CRON_SECRET','RESEND_API_KEY','RESEND_FROM','DISCORD_BOT_TOKEN',
         'DISCORD_GUILD_ID','DISCORD_CLIENT_ID','DISCORD_CLIENT_SECRET','DISCORD_OAUTH_REDIRECT_URI',
         'RECORDINGS_S3_ENDPOINT','RECORDINGS_S3_ACCESS_KEY_ID','RECORDINGS_S3_SECRET_ACCESS_KEY')
     $missing = @($required | Where-Object { -not $values.$_ })
     if ($missing.Count) { throw ('Missing production settings: ' + ($missing -join ', ')) }
-    foreach ($name in @('NEXT_PUBLIC_SUPABASE_URL','NEXT_PUBLIC_SITE_URL','DISCORD_OAUTH_REDIRECT_URI','RECORDINGS_S3_ENDPOINT')) {
+    foreach ($name in @('NEXT_PUBLIC_SITE_URL','DISCORD_OAUTH_REDIRECT_URI','RECORDINGS_S3_ENDPOINT')) {
         $uri = $null
         if (-not [Uri]::TryCreate([string]$values.$name, [UriKind]::Absolute, [ref]$uri) -or $uri.Scheme -ne 'https') {
             throw "Invalid HTTPS setting: $name. Import the decrypted value, not a provider's encrypted envelope."
         }
+    }
+    # The database is either hosted (https) or this server's loopback gateway.
+    $database = $null
+    if (-not [Uri]::TryCreate([string]$values.SUPABASE_URL, [UriKind]::Absolute, [ref]$database) -or
+        -not ($database.Scheme -eq 'https' -or ($database.Scheme -eq 'http' -and $database.Host -eq '127.0.0.1'))) {
+        throw 'Invalid SUPABASE_URL: use https, or http://127.0.0.1 for the self-hosted database.'
     }
     foreach ($name in @('DISCORD_CLIENT_ID','DISCORD_GUILD_ID')) {
         if ([string]$values.$name -notmatch '^\d{17,20}$') { throw "Invalid Discord identifier: $name" }
@@ -92,6 +101,13 @@ function Test-Release($State, [int]$Seconds = 60) {
         Start-Sleep -Seconds 2
     } while ((Get-Date) -lt $deadline)
     return $false
+}
+
+# A database-backed read: a release that cannot reach its database must not
+# take traffic. /api/health deliberately stays independent of the database.
+function Test-ReleaseDatabase($State) {
+    try { $null = Invoke-RestMethod -Uri ('http://127.0.0.1:{0}/api/team/count' -f $State.port) -TimeoutSec 20; return $true }
+    catch { return $false }
 }
 
 function Register-WebTask([string]$Root, $State) {
@@ -169,6 +185,19 @@ learn.ethanyanxu.com {
             roll_size 10MB
             roll_keep 5
         }
+    }
+}
+
+# The self-hosted database: supabase-js calls SUPABASE_URL/rest/v1/..., but
+# PostgREST serves from /. Loopback only, and no log: Caddy redacts the
+# Authorization header but not apikey, which also carries the service key.
+http://127.0.0.1:$script:DatabaseGatewayPort {
+    bind 127.0.0.1
+    handle_path /rest/v1/* {
+        reverse_proxy 127.0.0.1:$script:PostgrestPort
+    }
+    handle {
+        respond 404
     }
 }
 "@

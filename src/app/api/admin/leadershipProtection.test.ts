@@ -17,7 +17,7 @@ let bans: typeof import("./banned-emails/route");
 let approved: typeof import("./approved-discord-accounts/route");
 let impersonation: typeof import("../auth/impersonation/route");
 beforeAll(async () => {
-  vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://example.test");
+  vi.stubEnv("SUPABASE_URL", "https://example.test");
   vi.stubEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY", "test-anon");
   vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test-service");
   [users, roles, bans, approved, impersonation] = await Promise.all([

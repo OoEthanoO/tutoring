@@ -18,15 +18,16 @@ try {
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'common.ps1'),(Join-Path $PSScriptRoot 'run.ps1') -Destination (Join-Path $release 'ops')
     Write-Json (Join-Path $scratch 'server.json') @{node=(Get-Command node.exe).Source}
     $fake = @{}
-    foreach ($name in @('NEXT_PUBLIC_SUPABASE_URL','NEXT_PUBLIC_SUPABASE_ANON_KEY','SUPABASE_SERVICE_ROLE_KEY',
+    foreach ($name in @('SUPABASE_URL','NEXT_PUBLIC_SUPABASE_ANON_KEY','SUPABASE_SERVICE_ROLE_KEY',
         'NEXT_PUBLIC_SITE_URL','CRON_SECRET','RESEND_API_KEY','RESEND_FROM','DISCORD_BOT_TOKEN',
         'DISCORD_GUILD_ID','DISCORD_CLIENT_ID','DISCORD_CLIENT_SECRET','DISCORD_OAUTH_REDIRECT_URI',
         'RECORDINGS_S3_ENDPOINT','RECORDINGS_S3_ACCESS_KEY_ID','RECORDINGS_S3_SECRET_ACCESS_KEY')) {
         $fake[$name]='smoke-test-fixture'
     }
-    foreach ($name in @('NEXT_PUBLIC_SUPABASE_URL','NEXT_PUBLIC_SITE_URL','DISCORD_OAUTH_REDIRECT_URI','RECORDINGS_S3_ENDPOINT')) {
+    foreach ($name in @('NEXT_PUBLIC_SITE_URL','DISCORD_OAUTH_REDIRECT_URI','RECORDINGS_S3_ENDPOINT')) {
         $fake[$name]='https://example.invalid'
     }
+    $fake.SUPABASE_URL='http://127.0.0.1:3111'
     $fake.DISCORD_CLIENT_ID='123456789012345678'
     $fake.DISCORD_GUILD_ID='123456789012345679'
     Write-Json (Join-Path $scratch 'secrets\production.json') $fake

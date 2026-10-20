@@ -2,9 +2,8 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getRequestUser } from "@/lib/authServer";
 import { resolveUserRole, isFounder } from "@/lib/roles";
-import { ensureTutorApplicationsSchema } from "../../tutor-application/status/route";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+const supabaseUrl = process.env.SUPABASE_URL ?? "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 
@@ -35,9 +34,6 @@ export async function GET(request: NextRequest) {
   const adminClient = createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false },
   });
-
-  // Ensure database schema is present
-  await ensureTutorApplicationsSchema(adminClient);
 
   // Fetch all completed tutor applications
   const { data: applications, error } = await adminClient

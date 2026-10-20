@@ -1,9 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getRequestUser } from "@/lib/authServer";
-import { ensureTutorApplicationsSchema } from "./status/route";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+const supabaseUrl = process.env.SUPABASE_URL ?? "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 
@@ -66,9 +65,6 @@ export async function POST(request: NextRequest) {
     const adminClient = createClient(supabaseUrl, serviceRoleKey, {
       auth: { persistSession: false },
     });
-
-    // Ensure the schema is created
-    await ensureTutorApplicationsSchema(adminClient);
 
     // Save/Insert the tutor application
     const { error: insertError } = await adminClient

@@ -49,8 +49,7 @@ try {
     Write-Json (Join-Path $release 'release.json') $next
     Register-WebTask $Root $next
     if (-not (Test-Release $next)) { throw 'The new release failed its readiness probe. Existing traffic is unchanged.' }
-    # Exercise database-backed reads before allowing the new process to take traffic.
-    $null = Invoke-RestMethod -Uri ("http://127.0.0.1:$port/api/team/count") -TimeoutSec 20
+    if (-not (Test-ReleaseDatabase $next)) { throw 'The new release cannot read the database. Existing traffic is unchanged.' }
     $letter = Invoke-WebRequest -UseBasicParsing -Method Head -Uri ("http://127.0.0.1:$port/Letter%20of%20Support%20from%20SickKids%20Foundation.pdf") -TimeoutSec 20
     if ($letter.StatusCode -ne 200 -or $letter.Headers['Content-Type'] -notlike 'application/pdf*') {
         throw 'The Letter of Support is not served as a PDF. Existing traffic is unchanged.'
@@ -62,6 +61,12 @@ try {
         exit 0
     }
     Switch-Caddy $Root $config $port
+    # The database gateway is in the same Caddy configuration, so the new one
+    # must still reach the database before the switch is kept.
+    if ($active -and -not (Test-ReleaseDatabase $next)) {
+        Switch-Caddy $Root $config $active.port
+        throw 'The database was unreachable after the Caddy reload; traffic is back on the previous release.'
+    }
     # Traffic already reaches this process. A later metadata/logging failure
     # must not make the finally block kill the server Caddy is now using.
     $activated = $true

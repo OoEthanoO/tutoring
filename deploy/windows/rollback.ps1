@@ -11,6 +11,7 @@ try {
     $null = Assert-UnderRoot $target.release (Join-Path $Root 'releases')
     if (-not (Test-Release $target 5)) { Register-WebTask $Root $target }
     if (-not (Test-Release $target)) { throw 'Saved release is not healthy; traffic is unchanged.' }
+    if (-not (Test-ReleaseDatabase $target)) { throw 'Saved release cannot read the database; traffic is unchanged.' }
     Switch-Caddy $Root $config $target.port
     if ($old -and $old.commit -ne $target.commit) { Write-Json (Join-Path $Root 'previous.json') $old }
     Write-Json (Join-Path $Root 'active.json') $target

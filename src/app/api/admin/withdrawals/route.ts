@@ -1,8 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { createClient } from "@supabase/supabase-js";
 import { getRequestUser } from "@/lib/authServer";
 import { isHighRankingChiefExecutive, resolveUserRole } from "@/lib/roles";
-import { ensureTutorWithdrawalRequestsSchema } from "@/lib/withdrawalRequests";
 import { sendEmail as sendNotificationEmail } from "@/lib/notificationsServer";
 import {
   certificateFileName,
@@ -23,7 +22,7 @@ const escapeHtmlValue = (value: string) =>
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+const supabaseUrl = process.env.SUPABASE_URL ?? "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 
@@ -67,93 +66,6 @@ type CourseClassRow = {
   tutor_withdrawal_id: string | null;
 };
 
-// Automatically ensure the database schema exists
-async function ensureTutorWithdrawalsSchema(adminClient: SupabaseClient) {
-  try {
-    await adminClient.rpc("execute_sql", {
-      sql: `
-        -- Create tutor_withdrawals table with tutor_legal_name column
-        CREATE TABLE IF NOT EXISTS public.tutor_withdrawals (
-          id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-          tutor_id uuid NOT NULL REFERENCES public.app_users(id) ON DELETE CASCADE,
-          tutor_legal_name text NOT NULL DEFAULT '',
-          hours numeric(6,2) NOT NULL,
-          start_date timestamptz NOT NULL,
-          end_date timestamptz NOT NULL,
-          created_at timestamptz NOT NULL DEFAULT now(),
-          created_by uuid REFERENCES public.app_users(id) ON DELETE SET NULL
-        );
-
-        -- Enable RLS on tutor_withdrawals
-        ALTER TABLE public.tutor_withdrawals ENABLE ROW LEVEL SECURITY;
-
-        -- Admins can view/insert tutor withdrawals (restricted to Founder, CEO, or COO)
-        DROP POLICY IF EXISTS "Admins can view all withdrawals" ON public.tutor_withdrawals;
-        CREATE POLICY "Admins can view all withdrawals" ON public.tutor_withdrawals
-          FOR SELECT
-          USING (
-            EXISTS (
-              SELECT 1 FROM public.app_users
-              WHERE id = auth.uid() AND (role = 'founder' OR custom_role = 'CEO' OR custom_role = 'COO')
-            )
-          );
-
-        DROP POLICY IF EXISTS "Admins can insert withdrawals" ON public.tutor_withdrawals;
-        CREATE POLICY "Admins can insert withdrawals" ON public.tutor_withdrawals
-          FOR INSERT
-          WITH CHECK (
-            EXISTS (
-              SELECT 1 FROM public.app_users
-              WHERE id = auth.uid() AND (role = 'founder' OR custom_role = 'CEO' OR custom_role = 'COO')
-            )
-          );
-
-        -- Create tutors own view policy if not exists
-        DO $$
-        BEGIN
-          IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'tutor_withdrawals' AND policyname = 'Tutors can view their own withdrawals') THEN
-            CREATE POLICY "Tutors can view their own withdrawals" ON public.tutor_withdrawals
-              FOR SELECT
-              USING (auth.uid() = tutor_id);
-          END IF;
-        END $$;
-
-        -- Add tutor_legal_name to tutor_withdrawals if it does not exist
-        DO $$
-        BEGIN
-          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='tutor_withdrawals' AND column_name='tutor_legal_name') THEN
-            ALTER TABLE public.tutor_withdrawals ADD COLUMN tutor_legal_name text NOT NULL DEFAULT '';
-          END IF;
-        END $$;
-
-        -- Add tutor_withdrawal_id to course_classes if it does not exist
-        DO $$
-        BEGIN
-          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='course_classes' AND column_name='tutor_withdrawal_id') THEN
-            ALTER TABLE public.course_classes 
-            ADD COLUMN tutor_withdrawal_id uuid REFERENCES public.tutor_withdrawals(id) ON DELETE SET NULL;
-          END IF;
-        END $$;
-
-        -- Add grade_level to courses if it does not exist. It sets the per-class
-        -- service-hour rate, and reading it is how availability is calculated, so
-        -- a missing column would silently report zero withdrawable hours.
-        DO $$
-        BEGIN
-          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='courses' AND column_name='grade_level') THEN
-            ALTER TABLE public.courses ADD COLUMN grade_level smallint;
-          END IF;
-        END $$;
-
-        -- Notify PostgREST to reload schema
-        NOTIFY pgrst, 'reload schema';
-      `
-    });
-  } catch (error) {
-    console.error("Dynamic migration execution failed:", error);
-  }
-}
-
 export async function GET(request: NextRequest) {
   if (!supabaseUrl || !supabaseAnonKey || !serviceRoleKey) {
     return NextResponse.json(
@@ -183,12 +95,7 @@ export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const tutorId = searchParams.get("tutorId");
 
-  // Ensure table exists on first query invocation
-  await ensureTutorWithdrawalsSchema(adminClient);
-
   if (!tutorId) {
-    await ensureTutorWithdrawalRequestsSchema(adminClient);
-
     // Fetch all past withdrawals globally
     const { data: withdrawals, error: withdrawalsError } = await adminClient
       .from("tutor_withdrawals")
@@ -364,9 +271,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Hours must be a positive number." }, { status: 400 });
   }
 
-  // Ensure database schema exists
-  await ensureTutorWithdrawalsSchema(adminClient);
-
   // Fetch tutor user details and check legal name
   const { data: tutorUser, error: tutorUserError } = await adminClient
     .from("app_users")
@@ -503,7 +407,6 @@ export async function POST(request: NextRequest) {
     // handled their balance, regardless of whether the amounts match exactly.
     // Non-fatal: a failure here must not fail the withdrawal itself.
     try {
-      await ensureTutorWithdrawalRequestsSchema(adminClient);
       await adminClient
         .from("tutor_withdrawal_requests")
         .update({
@@ -620,8 +523,6 @@ export async function PATCH(request: NextRequest) {
   const adminClient = createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false },
   });
-
-  await ensureTutorWithdrawalRequestsSchema(adminClient);
 
   // The status guard makes concurrent resolutions race-safe: only one wins.
   const { data: updated, error: updateError } = await adminClient

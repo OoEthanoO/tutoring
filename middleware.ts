@@ -6,32 +6,40 @@ import { recorderCorsHeaders } from "@/lib/recorderCors";
 const guardedPaths = ["/onboarding"];
 const maintenancePath = "/maintenance";
 
-const readMaintenanceMode = async () => {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+// Runs on every page request. The database runs on this server, so while it
+// restarts a lookup must fail quickly and count as "no" instead of failing
+// the page.
+const readRows = async <Row>(path: string): Promise<Row[]> => {
+  const supabaseUrl = process.env.SUPABASE_URL ?? "";
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 
   if (!supabaseUrl || !serviceRoleKey) {
-    return false;
+    return [];
   }
 
-  const response = await fetch(
-    `${supabaseUrl}/rest/v1/site_settings?id=eq.true&select=maintenance_mode`,
-    {
+  try {
+    const response = await fetch(`${supabaseUrl}/rest/v1/${path}`, {
       headers: {
         apikey: serviceRoleKey,
         Authorization: `Bearer ${serviceRoleKey}`,
       },
       cache: "no-store",
+      signal: AbortSignal.timeout(1500),
+    });
+    if (!response.ok) {
+      return [];
     }
-  );
-
-  if (!response.ok) {
-    return false;
+    const rows: unknown = await response.json();
+    return Array.isArray(rows) ? (rows as Row[]) : [];
+  } catch {
+    return [];
   }
+};
 
-  const rows = (await response.json().catch(() => [])) as Array<{
-    maintenance_mode?: boolean | null;
-  }>;
+const readMaintenanceMode = async () => {
+  const rows = await readRows<{ maintenance_mode?: boolean | null }>(
+    "site_settings?id=eq.true&select=maintenance_mode"
+  );
   return rows[0]?.maintenance_mode === true;
 };
 
@@ -49,12 +57,6 @@ const isFounderSession = async (request: NextRequest) => {
     return false;
   }
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
-  if (!supabaseUrl || !serviceRoleKey) {
-    return false;
-  }
-
   const tokenHash = await sha256Hex(token);
   const nowIso = new Date().toISOString();
   const sessionParams = new URLSearchParams({
@@ -63,24 +65,9 @@ const isFounderSession = async (request: NextRequest) => {
     expires_at: `gt.${nowIso}`,
     limit: "1",
   });
-  const sessionResponse = await fetch(
-    `${supabaseUrl}/rest/v1/app_sessions?${sessionParams.toString()}`,
-    {
-      headers: {
-        apikey: serviceRoleKey,
-        Authorization: `Bearer ${serviceRoleKey}`,
-      },
-      cache: "no-store",
-    }
+  const sessions = await readRows<{ user_id?: string | null }>(
+    `app_sessions?${sessionParams.toString()}`
   );
-
-  if (!sessionResponse.ok) {
-    return false;
-  }
-
-  const sessions = (await sessionResponse.json().catch(() => [])) as Array<{
-    user_id?: string | null;
-  }>;
   const userId = sessions[0]?.user_id;
   if (!userId) {
     return false;
@@ -91,22 +78,7 @@ const isFounderSession = async (request: NextRequest) => {
     id: `eq.${userId}`,
     limit: "1",
   });
-  const userResponse = await fetch(
-    `${supabaseUrl}/rest/v1/app_users?${userParams.toString()}`,
-    {
-      headers: {
-        apikey: serviceRoleKey,
-        Authorization: `Bearer ${serviceRoleKey}`,
-      },
-      cache: "no-store",
-    }
-  );
-
-  if (!userResponse.ok) {
-    return false;
-  }
-
-  const users = (await userResponse.json().catch(() => [])) as AccountRole[];
+  const users = await readRows<AccountRole>(`app_users?${userParams.toString()}`);
   const user = users[0];
   if (!user) {
     return false;
@@ -168,7 +140,7 @@ export async function middleware(request: NextRequest) {
 
   const response = NextResponse.next();
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+  const supabaseUrl = process.env.SUPABASE_URL ?? "";
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 
   if (!supabaseUrl || !supabaseAnonKey) {

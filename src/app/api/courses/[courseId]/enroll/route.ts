@@ -4,7 +4,7 @@ import { getRequestUser } from "@/lib/authServer";
 import { notifyFounders } from "@/lib/notificationsServer";
 import { escapeEnrollmentEmailHtml } from "@/lib/enrollmentRequests";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+const supabaseUrl = process.env.SUPABASE_URL ?? "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 

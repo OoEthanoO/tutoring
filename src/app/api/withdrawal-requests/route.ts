@@ -2,17 +2,14 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getRequestUser } from "@/lib/authServer";
 import { isExecutive, resolveUserRole } from "@/lib/roles";
-import {
-  ensureTutorWithdrawalRequestsSchema,
-  getTutorAvailability,
-} from "@/lib/withdrawalRequests";
+import { getTutorAvailability } from "@/lib/withdrawalRequests";
 import {
   getDiscordRoleIdByName,
   sendDiscordMessageByChannelName,
 } from "@/lib/notificationsServer";
 import { classCountForHours, describeHourSteps } from "@/lib/serviceHours";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+const supabaseUrl = process.env.SUPABASE_URL ?? "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 
@@ -49,8 +46,6 @@ export async function GET(request: NextRequest) {
   const adminClient = createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false },
   });
-
-  await ensureTutorWithdrawalRequestsSchema(adminClient);
 
   const [
     { availableHours, withdrawnHours, hourSteps },
@@ -125,8 +120,6 @@ export async function POST(request: NextRequest) {
   const adminClient = createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false },
   });
-
-  await ensureTutorWithdrawalRequestsSchema(adminClient);
 
   // Legal name is required for community-service-hour records.
   const { data: selfRow } = await adminClient

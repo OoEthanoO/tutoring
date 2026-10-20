@@ -4,7 +4,7 @@ const mocks = vi.hoisted(() => ({ createClient: vi.fn() }));
 vi.mock("@supabase/supabase-js", () => ({ createClient: mocks.createClient }));
 let auth: typeof import("./authServer");
 beforeAll(async () => {
-  vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://example.test");
+  vi.stubEnv("SUPABASE_URL", "https://example.test");
   vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test-service");
   auth = await import("./authServer");
 });

@@ -9,7 +9,7 @@ vi.mock("@/lib/discordSync", () => ({ fetchDiscordGuildMemberIds: async () => ne
 
 let route: typeof import("./route");
 beforeAll(async () => {
-  vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://example.test");
+  vi.stubEnv("SUPABASE_URL", "https://example.test");
   vi.stubEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY", "test-anon");
   vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test-service");
   route = await import("./route");
