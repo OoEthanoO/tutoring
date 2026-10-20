@@ -21,9 +21,10 @@ its account restriction. See the DNS section below for the preserved records
 and the replacement home-address updater.
 
 Native Windows hosting uses Node 24, the Next.js standalone build, Task
-Scheduler, and the server's existing Caddy HTTPS proxy. Supabase, email,
-Discord, and private recording storage remain the same services. This moves
-the website and API runtime; it does not move the database or recording files.
+Scheduler, and the server's existing Caddy HTTPS proxy. Email, Discord, and
+private recording storage remain the same services. Since 2026-10-20 the
+database runs here too (see "Database" below); recording files stay in the
+S3-compatible bucket.
 
 ## Runtime layout
 
@@ -217,6 +218,122 @@ Otherwise the poller will try to deploy that commit again. Inspect
 `logs\deploy.log`, `logs\poller.log`, `logs\web-3100.log`, `logs\web-3101.log`,
 and `logs\access.log` when investigating. These logs are private operational
 data; do not publish them without reviewing/redacting their contents.
+
+## Database
+
+On 2026-10-20 the database moved from hosted Supabase to finprint-host. The
+app still uses `supabase-js`, so the same pieces run locally, all on loopback:
+
+- **PostgreSQL 17.11**: Windows service `yanlearn-postgres` (NetworkService),
+  `127.0.0.1:5432`. Binaries in `postgres\17` (from EDB's signed installer),
+  data in `postgres\data`, logs in `postgres\data\log`. ICU `en-US` collation
+  and UTC like Supabase, SCRAM only, data checksums, `wal_sync_method=fsync`.
+- **PostgREST 14.18** (Supabase ran 14.5): SYSTEM task `yanlearn-postgrest`,
+  supervised like the Zen gateway (`ops\postgrest.ps1`, `postgrest-status.json`,
+  `logs\postgrest.log`), API on `127.0.0.1:3110`, `/live` and `/ready` on
+  `3112`. It caps responses at 1000 rows and refuses requests without a valid
+  service-role JWT.
+- **Gateway**: `supabase-js` calls `SUPABASE_URL/rest/v1/...`, so the managed
+  Caddyfile also serves `127.0.0.1:3111` and strips `/rest/v1`. It has no
+  access log, because Caddy redacts `Authorization` but not `apikey`.
+- **Roles**: every request runs as `service_role` (BYPASSRLS); `anon` and
+  `authenticated` exist only because old policies name them and have no
+  grants. `yanlearn_owner` owns every object, so SECURITY DEFINER functions
+  never run as the superuser, and PUBLIC cannot execute functions.
+  `yanlearn_backup` can only read. `auth.uid()`/`auth.role()` are stubs for
+  legacy policies.
+- **Secrets**: `secrets\database.json` holds the role passwords, the JWT secret
+  and the minted service-role key; `secrets\postgrest.conf` holds PostgREST's
+  copy.
+
+`production.json` has `SUPABASE_URL=http://127.0.0.1:3111` (read at runtime,
+never baked into a build) and that service-role key as
+`SUPABASE_SERVICE_ROLE_KEY`. `NEXT_PUBLIC_SUPABASE_ANON_KEY` must stay
+non-empty; routes only check that it exists. Recording playback tokens are
+signed with `RECORDING_TOKEN_SECRET`.
+
+`install-database.ps1` installs or repairs all of this and never drops the
+`yanlearn` database. `status.ps1` shows the service, PostgREST's readiness and
+the last backup.
+
+### Migrations
+
+Apply a migration before pushing code that reads it. Copy it to the server
+and run `apply-migration.ps1`. It runs the file as `yanlearn_owner`, in one
+transaction unless the file has its own `begin`/`commit`, and records its
+SHA-256 in `yanlearn_meta.migrations`; then PostgREST reloads its schema.
+
+```powershell
+scp supabase/migrations/<file>.sql finprint-host:C:/ProgramData/YanLearn/migrations/
+ssh finprint-host "powershell -NoProfile -ExecutionPolicy Bypass -File C:\ProgramData\YanLearn\ops\apply-migration.ps1 -Path C:\ProgramData\YanLearn\migrations\<file>.sql"
+```
+
+A schema change made by hand needs `notify pgrst, 'reload schema';`
+afterwards, or a PostgREST restart.
+
+### Backups and restore
+
+`backup-db.ps1` runs every 6 hours as the SYSTEM task `yanlearn-db-backup`
+(register it with `-Register`):
+
+1. `pg_dump` into `backups\db`, kept 14 days;
+2. an AES-256-GCM copy, keyed by the passphrase in
+   `secrets\db-backup-passphrase.dpapi` (set with `set-backup-passphrase.ps1`;
+   also kept in the owner's password manager), uploaded to the recordings
+   bucket under `db-backups/` and kept 60 days. `db-backups/archive/` is never
+   pruned.
+
+A failed run, or 26 hours without a successful one, emails
+`NEXT_PUBLIC_FOUNDER_EMAIL` (at most every 12 hours). `-Drill` restores the
+newest off-site copy into a scratch database. To recover elsewhere, decrypt
+a downloaded copy with `node scripts/db-backup.mjs decrypt <in> <out>`
+(passphrase in `DB_BACKUP_PASSPHRASE`). Then
+`pg_restore --no-owner --no-privileges` it into a new database, and rerun
+the privilege statements in `database.ps1` (`$PrivilegesSql`).
+
+### Rotating the service-role key
+
+1. Replace `JwtSecret` in `secrets\database.json`.
+2. Mint a key with `New-ServiceRoleKey` (in `database.ps1`) and store it as
+   `ServiceRoleKey` there and as `SUPABASE_SERVICE_ROLE_KEY` in
+   `production.json`.
+3. Rerun `install-database.ps1`, which rewrites `postgrest.conf` and restarts
+   PostgREST.
+4. Redeploy or restart the web release.
+
+### The move, and rolling it back
+
+- **Copy:** `db-restore.ps1` copies Supabase's `public` schema and proves the
+  copy: object counts, per-table checksums, privileges, and the app's own
+  query shapes through both endpoints (`scripts/compare-databases.mjs`).
+  `-Mode Trial` also runs writes and a copy of the active release on port 3199.
+- **Cutover:** `db-cutover.ps1` freezes writes, waits until Supabase is quiet,
+  makes the final copy, switches `production.json` and restarts the release.
+  Supabase's settings stay in `secrets\production.supabase.json`.
+  `start-db-cutover.ps1` runs it as a SYSTEM task, so a dropped SSH session
+  cannot interrupt it. The 2026-10-20 cutover took 1 minute 36 seconds of
+  maintenance page.
+- **Rollback:** `start-db-cutover.ps1 -Rollback` points the site back at
+  Supabase. It is clean only before the new database takes writes worth
+  keeping; after that, the data must be copied back first.
+- **Safety copy:** `backups\supabase` holds the pre-move archive of Supabase.
+
+### Local development
+
+The database is not reachable from the network. Tunnel to the gateway and
+use the service-role key from `secrets\database.json` in `.env.local`:
+
+```bash
+ssh -N -L 3111:127.0.0.1:3111 finprint-host
+```
+
+```
+SUPABASE_URL=http://127.0.0.1:3111
+SUPABASE_SERVICE_ROLE_KEY=<ServiceRoleKey from secrets\database.json>
+NEXT_PUBLIC_SUPABASE_ANON_KEY=unused
+```
+
+The tunnel reaches production data, so treat local writes as real.
 
 ## SSH access
 

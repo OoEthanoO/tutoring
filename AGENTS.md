@@ -1,10 +1,13 @@
 # YanLearn (tutoring)
 
 Free online tutoring platform (learn.ethanyanxu.com). Next.js App Router +
-Supabase (Postgres/RLS) + Discord bot integration. Hosted on native Windows
+PostgreSQL/RLS + Discord bot integration. Hosted on native Windows
 `finprint-host` behind Caddy: **pushing to `master` deploys to production**
-through the local `yanlearn-deploy` task (September 2026). Apply Supabase
-migrations BEFORE pushing code that reads the new schema. `vercel.json`
+through the local `yanlearn-deploy` task (September 2026). Since 2026-10-20
+the database is self-hosted there too: PostgreSQL 17 behind PostgREST,
+still reached with `supabase-js` (hosted Supabase is no longer used). Apply
+migrations with `ops\apply-migration.ps1` BEFORE pushing code that reads the
+new schema (see "Database" in `SELF_HOSTING.md`). `vercel.json`
 disables Vercel Git deployments. The local `yanlearn-reminders` task invokes
 the class-reminders tick with a `CRON_SECRET` bearer; cron-job.org is disabled.
 DNS is on Cloudflare, with a local updater for the home address. See
@@ -21,8 +24,10 @@ DNS is on Cloudflare, with a local updater for the home address. See
 - Tests: `npm test` (Vitest; pure logic and API authorization tests in `src/lib/`,
   Recorder helpers, and exercise interface tests using jsdom. The exercise
   migration and RPC timing rules also run in PostgreSQL via PGlite).
-- Local dev needs `.env.local` (Supabase URL/keys, Discord bot token); without
-  it the app cannot run against data.
+- Local dev needs `.env.local` (database URL/keys, Discord bot token); without
+  it the app cannot run against data. The database is loopback-only on
+  finprint-host: tunnel to it (`ssh -N -L 3111:127.0.0.1:3111 finprint-host`)
+  and set `SUPABASE_URL=http://127.0.0.1:3111`.
 - Recorder app: `cd recorder && npm install && node scripts/fetch-ffmpeg.mjs &&
   npm run icons && npm run dev` (Node 20 + Rust stable; macOS also needs the
   Swift helper — see `RECORDER.md`).
@@ -179,10 +184,15 @@ DNS is on Cloudflare, with a local updater for the home address. See
 
 - Migrations: `supabase/migrations/<timestamp>_<name>.sql`; every table gets
   `enable row level security` + a deny-all policy (access is service-role
-  only). Apply migrations to Supabase BEFORE deploying code that references
-  the new schema.
-- Reading a whole table: Supabase silently truncates every response at the
-  project's max rows (1000 by default), and a long `.in()` id list is rejected
+  only). Apply them to the self-hosted database with
+  `ops\apply-migration.ps1` over SSH BEFORE deploying code that references
+  the new schema; it runs them as `yanlearn_owner`, so `service_role` gets the
+  new objects automatically. Never apply them to the old Supabase project.
+- The database URL is the runtime setting `SUPABASE_URL`, never
+  `NEXT_PUBLIC_SUPABASE_URL`, which Next.js would bake into each build
+  (`src/lib/databaseUrl.test.ts` enforces this).
+- Reading a whole table: PostgREST truncates every response at `db-max-rows`
+  (1000, as on Supabase), and a long `.in()` id list is rejected
   for URL length. Use `fetchAllRows` and `chunks` from
   `src/lib/supabasePaging.ts` (see `api/admin/users`).
 - Feature/ops docs are root-level `*.md` files (e.g. `ZOOM_INTEGRATION.md`,

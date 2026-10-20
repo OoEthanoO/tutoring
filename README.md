@@ -10,8 +10,10 @@ enrollments, scheduling, reminders, and admin tooling.
 - **Next.js (App Router)** on the native Windows home server `finprint-host`,
   behind Caddy HTTPS. Pushing `master` triggers the local deployer;
   `vercel.json` disables Vercel Git deployments. See `SELF_HOSTING.md`.
-- **Supabase (Postgres)** — all tables are RLS-locked with deny-all policies;
-  access is service-role only through the API routes.
+- **PostgreSQL 17 + PostgREST on `finprint-host`** (moved off hosted Supabase
+  in October 2026, still used through `supabase-js`) — all tables are
+  RLS-locked with deny-all policies; access is service-role only through the
+  API routes. See "Database" in `SELF_HOSTING.md`.
 - **Discord bot integration** — `src/lib/discordSync.ts` continuously
   reconciles the Discord server (membership, roles, channels, nicknames)
   against website data, and the class-reminders cron creates temporary live
@@ -21,7 +23,7 @@ enrollments, scheduling, reminders, and admin tooling.
 
 ```bash
 npm ci --allow-remote=all   # xlsx is a remote tarball
-npm run dev                 # needs .env.local (Supabase + Discord credentials)
+npm run dev                 # needs .env.local (database + Discord credentials)
 npm test                    # vitest unit tests for pure logic in src/lib/
 ./node_modules/.bin/tsc --noEmit
 ./node_modules/.bin/eslint src
@@ -40,8 +42,9 @@ cron-job.org job disabled to avoid duplicate reminders.
 - Feature/ops docs are root-level markdown files, e.g.
   `DISCORD_APPROVED_ACCOUNTS.md`, `ZOOM_INTEGRATION.md`,
   `ZOOM_CRON_SETUP.md`.
-- Migrations live in `supabase/migrations/` and must be applied to Supabase
-  before deploying code that references the new schema.
+- Migrations live in `supabase/migrations/` and must be applied to the
+  self-hosted database (`ops\apply-migration.ps1`) before deploying code that
+  references the new schema.
 
 ## Fundraising
 
