@@ -10,6 +10,14 @@ $reminders = Read-Json (Join-Path $Root 'reminders-status.json')
 if ($reminders) { $reminders | ConvertTo-Json }
 $zen = Read-Json (Join-Path $Root 'zen-gateway-status.json')
 if ($zen) { $zen | ConvertTo-Json }
+$database = Get-Service -Name 'yanlearn-postgres' -ErrorAction SilentlyContinue
+if ($database) {
+    . (Join-Path $PSScriptRoot 'database.ps1')
+    Write-Output ('Database service: ' + $database.Status)
+    $postgrest = Read-Json (Join-Path $Root 'postgrest-status.json')
+    if ($postgrest) { $postgrest | ConvertTo-Json }
+    Write-Output ('PostgREST ready: ' + (Test-PostgrestReady 5))
+}
 if ($active) {
     Write-Output ('Local health: ' + (Test-Release $active 5))
     try {
