@@ -61,6 +61,13 @@ function Protect-MachineSecret([string]$Value) {
     finally { [Array]::Clear($plain, 0, $plain.Length) }
 }
 
+function Read-Hidden([string]$Prompt) {
+    $secure = Read-Host $Prompt -AsSecureString
+    $pointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
+    try { return [Runtime.InteropServices.Marshal]::PtrToStringBSTR($pointer) }
+    finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($pointer) }
+}
+
 function Unprotect-MachineSecret([string]$Path) {
     Add-Type -AssemblyName System.Security
     $sealed = [Convert]::FromBase64String((Get-Content -LiteralPath $Path -Raw).Trim())

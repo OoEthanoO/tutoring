@@ -8,7 +8,7 @@
     "prebuild": "node scripts/generate-commits.js",
     "dev": "next dev",
     "build": "next build",
-    "postbuild": "node scripts/build-zen-gateway.mjs",
+    "postbuild": "node scripts/build-zen-gateway.mjs && node scripts/build-db-backup.mjs",
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",

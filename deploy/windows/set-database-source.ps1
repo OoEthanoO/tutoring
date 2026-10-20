@@ -14,13 +14,6 @@ Assert-Administrator
 $layout = Get-DatabaseLayout $Root
 Install-PostgresBinaries $Root
 
-function Read-Hidden([string]$Prompt) {
-    $secure = Read-Host $Prompt -AsSecureString
-    $pointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
-    try { return [Runtime.InteropServices.Marshal]::PtrToStringBSTR($pointer) }
-    finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($pointer) }
-}
-
 if ($ConnectionString) {
     $text = $ConnectionString.Trim()
 } else {

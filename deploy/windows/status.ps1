@@ -17,6 +17,8 @@ if ($database) {
     $postgrest = Read-Json (Join-Path $Root 'postgrest-status.json')
     if ($postgrest) { $postgrest | ConvertTo-Json }
     Write-Output ('PostgREST ready: ' + (Test-PostgrestReady 5))
+    $backup = Read-Json (Join-Path $Root 'db-backup-status.json')
+    if ($backup) { $backup | ConvertTo-Json }
 }
 if ($active) {
     Write-Output ('Local health: ' + (Test-Release $active 5))
