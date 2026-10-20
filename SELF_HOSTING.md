@@ -313,10 +313,16 @@ the privilege statements in `database.ps1` (`$PrivilegesSql`).
   `start-db-cutover.ps1` runs it as a SYSTEM task, so a dropped SSH session
   cannot interrupt it. The 2026-10-20 cutover took 1 minute 36 seconds of
   maintenance page.
-- **Rollback:** `start-db-cutover.ps1 -Rollback` points the site back at
-  Supabase. It is clean only before the new database takes writes worth
-  keeping; after that, the data must be copied back first.
-- **Safety copy:** `backups\supabase` holds the pre-move archive of Supabase.
+- **No rollback:** the same day, the Supabase project was paused (its
+  hostname no longer resolves) and its credentials were removed:
+  `production.supabase.json`, the pooler password, `NEXT_PUBLIC_SUPABASE_URL`
+  and the old anon key (now the placeholder `unused`) from this server; the
+  Supabase variables from the paused Vercel project; and the GitHub workflow
+  and secret `PROD_DB_URL`. `-Rollback` now refuses to run. These tools only
+  document the move.
+- **Supabase's last state:** the pre-move archive (public, auth and storage)
+  is in `backups\supabase` and, encrypted, in `db-backups/archive/`. The
+  cutover snapshot is `backups\db\yanlearn-20261020-105935Z-cutover.dump`.
 
 ### Local development
 
