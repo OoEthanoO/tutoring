@@ -2,6 +2,7 @@
 
 import { useState, useSyncExternalStore } from "react";
 import { useSearchParams } from "next/navigation";
+import { readStorage, writeStorage } from "@/lib/browserStorage";
 
 const DISMISSED_KEY = "yanlearn_migration_banner_dismissed";
 
@@ -17,14 +18,14 @@ export default function MigrationBanner() {
     // after mount — avoids a layout jump on initial paint.
     const dismissedStored = useSyncExternalStore(
         subscribeToStorage,
-        () => localStorage.getItem(DISMISSED_KEY) === "true",
+        () => readStorage(DISMISSED_KEY) === "true",
         () => true
     );
 
     const redirected = searchParams.get("redirected") === "true";
 
     const handleDismiss = () => {
-        localStorage.setItem(DISMISSED_KEY, "true");
+        writeStorage(DISMISSED_KEY, "true");
         setDismissedNow(true);
     };
 

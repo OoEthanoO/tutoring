@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { getCurrentUser, onAuthChange } from "@/lib/authClient";
 import { setHasUnsavedData, hasAnyUnsavedData } from "@/lib/unsavedData";
+import { readStorage, writeStorage } from "@/lib/browserStorage";
 
 export default function Footer() {
   const [isCreditHovered, setIsCreditHovered] = useState(false);
@@ -25,7 +26,7 @@ export default function Footer() {
 
   useEffect(() => {
     lastDismissedCommitCountRef.current = Number(
-      window.localStorage.getItem("yanlearn_version_prompt_dismissed_commit_count") || ""
+      readStorage("yanlearn_version_prompt_dismissed_commit_count") || ""
     ) || null;
 
     const checkCommits = async () => {
@@ -72,7 +73,7 @@ export default function Footer() {
 
   const handleDismissUpdate = () => {
     if (pendingCommitCount !== null) {
-      window.localStorage.setItem(
+      writeStorage(
         "yanlearn_version_prompt_dismissed_commit_count",
         String(pendingCommitCount)
       );
