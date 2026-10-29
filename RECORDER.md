@@ -728,6 +728,8 @@ A local `npm run build` now also signs the updater artifacts, so it needs
 environment; `npm run dev` does not bundle and is unaffected.
 
 macOS also needs the helpers: `swiftc -O -target arm64-apple-macos13.0 -framework ScreenCaptureKit -framework CoreMedia -framework AVFoundation sysaudio/main.swift -o src-tauri/binaries/sysaudio-aarch64-apple-darwin` and `swiftc -O -target arm64-apple-macos13.0 -framework ScreenCaptureKit -framework CoreMedia -framework CoreVideo wincapture/main.swift -o src-tauri/binaries/wincapture-aarch64-apple-darwin`.
+Each helper keeps the `SCStream` it starts in a global (`activeStream`) for
+as long as it runs; nothing else is guaranteed to hold a running stream.
 
 The macOS release workflow now requires a Developer ID Application certificate
 and notarization credentials, and publishes only after its Apple checks and both

@@ -139,10 +139,15 @@ DispatchQueue.global(qos: .utility).async {
     exit(0)
 }
 
+/// The running SCStream, held for the life of the process: nothing else is
+/// guaranteed to keep it alive once startCapture() returns. (AnyObject, as
+/// SCStream needs an availability check this global cannot carry.)
+var activeStream: AnyObject?
+
 if #available(macOS 13.0, *) {
     Task {
         do {
-            _ = try await startCapture()
+            activeStream = try await startCapture()
         } catch {
             FileHandle.standardError.write("capture failed: \(error.localizedDescription)\n".data(using: .utf8)!)
             exit(1)
