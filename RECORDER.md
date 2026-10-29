@@ -563,7 +563,13 @@ How it works, and why it was built this way:
   identifies the focused window without asking for Accessibility permission.
 * **Windows are matched by handle**, falling back to the application and title
   they had when they were picked, because handles do not survive closing a
-  window or restarting the recorder.
+  window or restarting the recorder. The fallback needs a title: two untitled
+  windows of one app (all macOS shows without Screen Recording permission)
+  are two windows, so ticking, unticking or re-finding one never touches the
+  other. One rule decides all three (`sameWindow` in `windowmath.js`).
+* **Windows that would look identical in the picker are told apart** —
+  numbered left to right and described by size and place, e.g. "Google
+  Chrome" with "Window 2 of 2 · 1280×800, right" under it (`pickerLabels`).
 * If the focused window cannot be identified at all, it counts as **not
   shared**. Every failure in this feature has to fail towards not recording.
 
@@ -584,7 +590,9 @@ How it works, and why it was built this way:
   is being captured. Windows 11 lets the recorder turn it off.
 * Each switch restarts ffmpeg, which costs a fraction of a second of audio.
 * A window that was reopened with a **different title** is no longer recognised
-  and counts as not shared until the tutor ticks it again.
+  and counts as not shared until the tutor ticks it again. An **untitled**
+  window is recognised only by its handle, so once it is closed (or its app
+  restarted) it has to be ticked again too.
 
 ## Automatic updates
 

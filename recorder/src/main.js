@@ -388,7 +388,10 @@
       if (stillOpen) {
         continue;
       }
-      const match = state.windows.find((win) => win.app === entry.app && win.title === entry.title);
+      // Found again by application and title, and only if it has a title:
+      // an untitled entry could be any untitled window of that app, and
+      // moving its handle there would share a window nobody ticked.
+      const match = state.windows.find((win) => windowMath.sameWindow(entry, win));
       if (match) {
         entry.id = match.id;
         changed = true;
@@ -2044,7 +2047,10 @@
       list.appendChild(empty);
       return;
     }
-    for (const win of state.windows) {
+    // Windows that would look identical (two untitled "Google Chrome") are
+    // numbered and described by size and place, so each can be told apart.
+    const labels = windowMath.pickerLabels(state.windows);
+    state.windows.forEach((win, index) => {
       const option = document.createElement("label");
       option.className = "option check-option";
       const box = document.createElement("input");
@@ -2054,22 +2060,22 @@
       const text = document.createElement("div");
       const name = document.createElement("div");
       name.className = "name";
-      name.textContent = win.title || win.app || "Untitled window";
+      name.textContent = labels[index].name;
       const meta = document.createElement("div");
       meta.className = "meta";
-      meta.textContent = win.title ? win.app : "";
+      meta.textContent = labels[index].meta;
       text.appendChild(name);
       text.appendChild(meta);
       option.appendChild(box);
       option.appendChild(text);
       list.appendChild(option);
-    }
+    });
   };
 
   const toggleSharedWindow = (win, shared) => {
-    const kept = sharedWindows().filter(
-      (entry) => !(String(entry.id) === String(win.id) || (entry.app === win.app && entry.title === win.title))
-    );
+    // The same rule as matching: two untitled windows of one app are two
+    // windows, so ticking or unticking one leaves the other as it was.
+    const kept = sharedWindows().filter((entry) => !windowMath.sameWindow(entry, win));
     if (shared) {
       kept.push({ id: win.id, app: win.app, title: win.title });
     }
