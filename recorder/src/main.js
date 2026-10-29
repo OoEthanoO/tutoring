@@ -1323,10 +1323,15 @@
     // a tool a tutor may use, not one that may hold their computer shut. A
     // recording that already exists still locks whatever the date, because that
     // is about not losing a class rather than about enforcement.
+    //
+    // Nor does a class whose screen macOS is blocking, until it is finishing:
+    // a grant only takes effect after a restart, so a tutor who gets it fixed
+    // mid-class has to be able to quit and reopen (the class's segments are
+    // resumed on relaunch). Admin → Recorders still flags the computer, so
+    // this is no quiet way out of recording.
     const classLock =
       recorderEnforced() &&
-      (!session.preparationStuck || session.finalizing) &&
-      (session.phase !== "pre_arm" || session.finalizing);
+      (session.finalizing || (!session.preparationStuck && session.phase !== "pre_arm" && !screenAccessDenied()));
     await setQuitLock(session.test ? uploadsPending : classLock || uploadsPending);
     if (session.finalizing) {
       render();

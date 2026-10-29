@@ -251,10 +251,11 @@ refreshed, and as each class gets ready, arms and starts. While it is denied:
   allowed there, turning it off and on again re-registers it. On a Mac with
   parental controls, whoever manages it has to allow it.
 * macOS applies a grant only when the app starts again, so the notice says to
-  quit and reopen; from 5 minutes before a class the quit lock still holds
-  until the recording has uploaded. The main window therefore comes forward
-  once per class while it is blocked, when the class is 15 minutes away and
-  quitting is still allowed.
+  quit and reopen. While it is blocked a class does not hold the quit lock
+  (finishing and uploads still do), so a tutor who gets it fixed mid-class can
+  quit and reopen; the class's segments resume on relaunch. Admin → Recorders
+  still flags the computer. The main window also comes forward once per class
+  while it is blocked, when the class is 15 minutes away.
 * The overlay says so before class ("macOS is blocking screen recording"),
   the REC pill reads "— screen blocked by macOS", and the frozen-window
   banner gives the reason instead of telling the tutor to go back to a shared
