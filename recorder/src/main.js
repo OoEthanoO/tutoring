@@ -97,6 +97,12 @@
     },
     logLines: [],
     lastSuccessfulTickAt: null,
+    // The macOS Screen Recording permission: "granted", "denied",
+    // "unsupported" (Windows has none), or null while unknown.
+    screenAccess: null,
+    screenAccessRequested: false,
+    screenAccessLoggedFor: null,
+    screenAccessShownForClass: null,
   };
 
   const $ = (id) => document.getElementById(id);
@@ -223,6 +229,8 @@
   // --- Devices -----------------------------------------------------------------
 
   const refreshDevices = async () => {
+    // First, so the window list below can say why windows have no names.
+    await refreshScreenAccess();
     try {
       state.displays = await invoke("list_displays");
     } catch (error) {
@@ -347,12 +355,69 @@
       problems.push("Choose at least one window to share.");
     }
     if (state.info?.platform === "macos" && chosenDisplay() && screenDeviceIndex(chosenDisplay()) === null) {
-      problems.push("Screen capture device not found. Allow Screen Recording for YanLearn Recorder in System Settings, then refresh.");
+      problems.push("Screen capture device not found. Allow Screen Recording for YanLearn Recorder in System Settings, then quit and reopen YanLearn Recorder.");
     }
     return problems;
   };
 
   const devicesReady = () => deviceProblems().length === 0;
+
+  // --- Screen Recording permission (macOS) ---------------------------------------
+
+  // Without it macOS still lets the recorder run, but refuses what it records:
+  // shared windows freeze, system audio is off, window names are hidden, and a
+  // display recording shows none of the tutor's apps. Unlike a device problem
+  // it does not stop a class being recorded — the microphone still is — so it
+  // is a notice, not one of deviceProblems().
+  const SCREEN_ACCESS_PROBLEM =
+    "macOS is blocking YanLearn Recorder from recording the screen, so your classes are recorded without " +
+    "your screen (shared windows freeze) and without the class audio — only your microphone. " +
+    "Turn it on in System Settings → Privacy & Security → Screen & System Audio Recording " +
+    "(Screen Recording on older macOS); if it already looks on, turn it off and on again. " +
+    "Then quit and reopen YanLearn Recorder: macOS only applies the change after a restart. " +
+    "If this Mac has parental controls, ask whoever manages it to allow this.";
+
+  const screenAccessDenied = () => state.screenAccess === "denied";
+
+  /** Asks the system whether the recorder may record the screen. Cheap, so it
+   *  runs at startup, whenever the devices are refreshed, and again as each
+   *  class gets ready, arms and starts. */
+  const refreshScreenAccess = async () => {
+    const previous = state.screenAccess;
+    let access = null;
+    try {
+      access = await invoke("screen_capture_access");
+    } catch {
+      // Unknown: never claim a problem that could not be confirmed.
+    }
+    // macOS shows its prompt at most once per app, ever, and applies a grant
+    // only after a restart, so asking again in the same run achieves nothing.
+    if (access === "denied" && !state.screenAccessRequested) {
+      state.screenAccessRequested = true;
+      try {
+        access = (await invoke("request_screen_capture_access")) || access;
+      } catch {
+        // Keep the answer we have.
+      }
+    }
+    state.screenAccess = ["granted", "denied", "unsupported"].includes(access) ? access : null;
+    // Once per run — and per account, so it reaches that account's remote
+    // diagnostics, which also carry the state itself in every report.
+    const owner = state.settings?.user?.id || "signed out";
+    if (screenAccessDenied() && state.screenAccessLoggedFor !== owner) {
+      state.screenAccessLoggedFor = owner;
+      log(
+        "macOS is blocking YanLearn Recorder from recording the screen (Screen Recording permission: denied): " +
+        "the screen and system audio cannot be recorded and window names are hidden until it is allowed in " +
+        "System Settings → Privacy & Security → Screen & System Audio Recording and the recorder is reopened."
+      );
+    }
+    if (state.screenAccess !== previous && state.settings) {
+      renderWindowChoices();
+      render();
+    }
+    return state.screenAccess;
+  };
 
   // --- Windows to record ---------------------------------------------------------
 
@@ -1033,6 +1098,7 @@
           muted: state.session?.muted,
           frozen: state.session?.activeTarget?.kind === "frozen",
           captureMode: state.settings?.captureMode,
+          screenAccess: state.screenAccess,
           captureFailures: state.session?.captureFailures,
           segmentCount: (state.session?.segments.length || 0) + (state.session?.currentSegment ? 1 : 0),
           pendingUploads: state.uploads.length,
@@ -1270,6 +1336,18 @@
     if (session.finalizeReason) {
       await finalize(session.finalizeReason);
       return;
+    }
+
+    // Checked again as the class gets ready, arms and starts. Shown once per
+    // class while it is blocked, ideally 15 minutes before: until the class
+    // arms the tutor can still fix it, then quit and reopen.
+    if (!session.test && session.screenAccessCheckedPhase !== session.phase) {
+      session.screenAccessCheckedPhase = session.phase;
+      await refreshScreenAccess();
+      if (screenAccessDenied() && state.screenAccessShownForClass !== session.classId) {
+        state.screenAccessShownForClass = session.classId;
+        invoke("show_main_window").catch(() => {});
+      }
     }
 
     const ready = devicesReady();
@@ -1533,13 +1611,18 @@
       if (state.deviceChoiceNeeded) {
         return { mode: "attention", title: "Choose your devices in YanLearn Recorder", detail: `Class starts at ${formatClock(session.startsAtMs)}.`, blocking: session.phase === "armed", displayIndex, corner };
       }
+      if (screenAccessDenied()) {
+        return { mode: "attention", title: "macOS is blocking screen recording", detail: `Only your microphone will be recorded. Open YanLearn Recorder to see how to fix it. Class starts at ${formatClock(session.startsAtMs)}.`, blocking: false, displayIndex, corner };
+      }
       return { mode: "armed", title: "Recorder ready — class starts in {countdown}", detail: "Recording starts automatically once you are in the voice channel.", blocking: false, displayIndex, corner, countdownToMs: session.startsAtMs - state.clockOffsetMs };
     }
     if (session.capturing && session.activeTarget?.kind === "frozen") {
       return {
         mode: "attention",
         title: "THIS WINDOW IS NOT BEING RECORDED",
-        detail: session.muted
+        detail: screenAccessDenied()
+          ? `macOS is blocking screen recording, so no window can be recorded. ${session.muted ? "Your microphone is muted too." : "Your microphone is still recording."} Open YanLearn Recorder to see how to fix it.`
+          : session.muted
           ? `Students see the last shared window, frozen, and your microphone is muted. Go back to a window you shared to carry on.`
           : `Students see the last shared window, frozen. Your microphone is still recording. Go back to a window you shared to carry on.`,
         blocking: true,
@@ -1563,7 +1646,9 @@
       return {
         mode: "recording",
         title: "REC {elapsed}",
-        detail: session.systemAudioActive ? `${session.courseTitle}` : `${session.courseTitle} — system audio off`,
+        detail: screenAccessDenied()
+          ? `${session.courseTitle} — screen blocked by macOS`
+          : session.systemAudioActive ? `${session.courseTitle}` : `${session.courseTitle} — system audio off`,
         blocking: false,
         displayIndex,
         corner,
@@ -1819,6 +1904,11 @@
     $("mute-hotkey-label").textContent = state.muteHotkeyLabel || "Use Mute my mic";
     $("hotkey-notice").hidden = !state.hotkeyWarning;
     $("hotkey-notice").textContent = state.hotkeyWarning;
+    // Above every view, signed in or not, for as long as macOS blocks it.
+    $("screen-access-notice").hidden = !screenAccessDenied();
+    $("screen-access-text").textContent = screenAccessDenied()
+      ? SCREEN_ACCESS_PROBLEM + (state.quitLocked ? " YanLearn Recorder can be quit once this class's recording has uploaded." : "")
+      : "";
 
     if (!settings.token) {
       if ($("view-login").hidden && $("panel-devices").hidden) {
@@ -2035,6 +2125,7 @@
     $("mode-display").checked = !windowMode;
     $("mode-windows").checked = windowMode;
     $("window-section").hidden = !windowMode;
+    $("window-names-hidden").hidden = !screenAccessDenied();
     if (!windowMode) {
       return;
     }
@@ -2132,6 +2223,9 @@
         await saveSettings();
         $("login-password").value = "";
         log(`Signed in as ${response.data.user.email}.`);
+        // So a blocked Screen Recording permission reaches this account's
+        // diagnostics now rather than at the next class.
+        void refreshScreenAccess();
         showView("main");
         render();
         scheduleTick(0);
@@ -2188,6 +2282,9 @@
       });
     }
     $("identify-button").addEventListener("click", () => invoke("identify_displays").catch((error) => log(`${error}`)));
+    $("screen-access-open").addEventListener("click", () =>
+      invoke("open_screen_capture_settings").catch((error) => log(`${error}`))
+    );
     $("devices-save").addEventListener("click", async () => {
       await saveSettings();
       showView("main");

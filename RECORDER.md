@@ -226,13 +226,61 @@ class back up and records the rest. The tutor does nothing. Add a build to that
 list only if it cannot record at all: a recorder holding a working recording
 would finalize it and record the remainder as a second part.
 
+## macOS Screen Recording permission (unreleased)
+
+A Mac tutor on v0.5.10 ticked two Chrome windows: the picker listed both as
+just "Google Chrome", and the picture froze as soon as recording started. Her
+log showed ScreenCaptureKit refusing the window ("The user declined TCCs for
+application, window, display capture"). The Recorder did not have the Screen
+Recording permission — her Mac has parental controls, so she could not grant
+it herself — and nothing in the app checked for it. Without it macOS lets the
+app run but refuses what it records: the window list has no titles, shared
+windows freeze, system audio is off, and a whole-display recording does not
+show the tutor's apps. Only the microphone is recorded properly.
+
+The Recorder now asks macOS (`CGPreflightScreenCaptureAccess`,
+`src-tauri/src/screen_access.rs`) at startup, whenever the devices are
+refreshed, and as each class gets ready, arms and starts. While it is denied:
+
+* It asks for it once per run (`CGRequestScreenCaptureAccess`). macOS shows
+  its prompt only the first time an app ever asks, and not at all where
+  parental controls decide.
+* A notice above every view says what is wrong and how to fix it, with an
+  **Open System Settings** button (Privacy & Security → Screen & System Audio
+  Recording; "Screen Recording" before macOS 15). If the app already looks
+  allowed there, turning it off and on again re-registers it. On a Mac with
+  parental controls, whoever manages it has to allow it.
+* macOS applies a grant only when the app starts again, so the notice says to
+  quit and reopen; from 5 minutes before a class the quit lock still holds
+  until the recording has uploaded. The main window therefore comes forward
+  once per class while it is blocked, when the class is 15 minutes away and
+  quitting is still allowed.
+* The overlay says so before class ("macOS is blocking screen recording"),
+  the REC pill reads "— screen blocked by macOS", and the frozen-window
+  banner gives the reason instead of telling the tutor to go back to a shared
+  window.
+* The window picker says names are hidden, and windows that would look
+  identical are numbered and described by size and place (see "Recording
+  windows instead of the whole display").
+* The Activity log gets one line per run (per signed-in account), and every
+  diagnostics report carries `screenAccess`: "granted", "denied", or null on
+  Windows and from Recorder versions without the check. The diagnostics panel
+  shows it.
+
+None of this stops a class being recorded: the microphone still is, and
+capture is still attempted, so a wrong answer from the check never costs a
+lesson. It needs a Recorder release; the website side works with older
+versions (the panel says "not reported"). The CoreGraphics calls are compiled
+only by the macOS CI job and are unverified on a Mac.
+
 ## Remote diagnostics
 
 Admin → Manage accounts → Recorders → **View diagnostics** opens the latest
 report for that computer. Only the Founder, CEO, COO and their Shadows can read
 reports. The panel works for disconnected computers too, until the report expires.
 It shows capture state, the Recorder's last voice check, capture failures, segment
-and upload counts, the last successful server check, and up to 100 Activity entries.
+and upload counts, the macOS Screen Recording permission, the last successful
+server check, and up to 100 Activity entries.
 Times on log entries come from the computer; the report receipt time comes from
 the server. These are reports from the app, not independently verified Discord
 attendance or a guarantee that video has been saved successfully.
@@ -330,6 +378,7 @@ recorder/                      Tauri 2 app ("YanLearn Recorder")
   src-tauri/src/upload.rs      streaming PUT to the signed storage URL
   src-tauri/src/update.rs      self-update: check, verify, install, restart
   src-tauri/src/windowlist.rs  open windows + which one has focus (Win32 / CoreGraphics)
+  src-tauri/src/screen_access.rs  macOS Screen Recording permission: check, ask once, open System Settings
   sysaudio/main.swift          macOS ScreenCaptureKit system-audio helper
   wincapture/main.swift        macOS ScreenCaptureKit single-window capture helper
   scripts/fetch-ffmpeg.mjs     downloads the static ffmpeg sidecar per target
@@ -707,7 +756,9 @@ Windows SmartScreen still shows "More info → Run anyway".
   move the pill to a non‑recorded display or accept the small pill.
 * macOS system audio needs macOS 13+ and the Screen Recording permission (on
   macOS 15 also "System Audio Recording"). Without it, recording proceeds with
-  microphone only and the overlay says "system audio off".
+  microphone only and the overlay says "system audio off" — or, when the
+  Screen Recording permission is the cause, that the screen is blocked (see
+  "macOS Screen Recording permission").
 * Discord voice lookups from the tick are per‑route rate limited; with many
   simultaneous classes consider caching the last lookup in
   `recorder_class_sessions` for ~1.5 s.

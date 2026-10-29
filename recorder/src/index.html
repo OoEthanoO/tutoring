@@ -15,6 +15,12 @@
       <div class="status-pill" id="connection-pill">Offline</div>
     </header>
 
+    <!-- macOS Screen Recording permission: above every view while macOS blocks it. -->
+    <div class="notice warn global" id="screen-access-notice" role="status" hidden>
+      <p id="screen-access-text"></p>
+      <div class="actions"><button type="button" id="screen-access-open">Open System Settings</button></div>
+    </div>
+
     <!-- Sign in -->
     <section id="view-login" class="view" hidden>
       <h1>Sign in</h1>
@@ -130,6 +136,11 @@
           other window the picture freezes on the last shared window — your microphone and the
           class audio keep recording.
         </p>
+        <div class="notice warn" id="window-names-hidden" hidden>
+          macOS hides window names until Screen Recording is allowed for YanLearn Recorder (see the
+          message at the top), so windows show only their app's name. Windows that look alike are
+          numbered and described by their size and place on screen.
+        </div>
         <div id="window-list" class="option-list"></div>
       </div>
 

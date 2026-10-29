@@ -9,6 +9,7 @@ mod atomic_file;
 mod capture;
 mod overlay;
 mod preparation;
+mod screen_access;
 mod sysaudio;
 mod update;
 mod upload;
@@ -325,6 +326,9 @@ pub fn run() {
             overlay::hide_corner_guides,
             windowlist::list_windows,
             windowlist::focused_window,
+            screen_access::screen_capture_access,
+            screen_access::request_screen_capture_access,
+            screen_access::open_screen_capture_settings,
             upload::upload_file,
             update::check_update,
             update::download_update,

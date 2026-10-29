@@ -409,9 +409,12 @@ mod platform {
                 }
                 let Some(id) = number_value(dict, "kCGWindowNumber") else { continue };
                 let app = string_value(dict, "kCGWindowOwnerName");
-                // The title needs Screen Recording permission, which the app
-                // already holds to record at all; without it this is empty and
-                // the picker falls back to the application name.
+                // macOS includes the title only when the app has the Screen
+                // Recording permission, which it can lack (never granted,
+                // refused, or blocked by parental controls; see
+                // screen_access.rs). Without it every title is empty: the
+                // picker shows the application name, numbers windows that
+                // would otherwise look identical, and says why.
                 let title = string_value(dict, "kCGWindowName");
                 if app.trim().is_empty() && title.trim().is_empty() {
                     continue;

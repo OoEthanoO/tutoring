@@ -43,6 +43,9 @@
       muted: input.muted === true,
       frozen: input.frozen === true,
       captureMode: input.captureMode === "windows" ? "windows" : "display",
+      // The macOS Screen Recording permission. Null on Windows (there is no
+      // such permission) and from Recorder versions that do not check it.
+      screenAccess: input.screenAccess === "granted" || input.screenAccess === "denied" ? input.screenAccess : null,
       captureFailures: count(input.captureFailures),
       segmentCount: count(input.segmentCount),
       pendingUploads: count(input.pendingUploads),

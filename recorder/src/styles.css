@@ -273,6 +273,22 @@ button:disabled {
   color: var(--amber);
 }
 
+/* Outside the views (above all of them), so it needs the views' gutter. */
+.notice.global {
+  margin: 14px 18px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.notice p {
+  margin: 0;
+}
+
+#window-names-hidden {
+  margin: 8px 0;
+}
+
 .notice.update {
   display: flex;
   align-items: center;

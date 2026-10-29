@@ -49,6 +49,9 @@ export default function RecorderDiagnosticsPanel({ tutorId, deviceId }: { tutorI
           {" "}Capture: {report.capturing ? "running" : "stopped"}{report.frozen ? " (picture frozen)" : ""}.
           {" "}Microphone: {report.muted ? "muted in recording" : "not muted in recording"}.
           {" "}Capture failures: {report.captureFailures}. Segments: {report.segmentCount}. Pending uploads: {report.pendingUploads}.</p>
+        {report.screenAccess === "denied"
+          ? <p className="font-semibold text-red-600 dark:text-red-400">macOS Screen Recording permission: denied. The Recorder cannot record the screen, shared windows or system audio, and window names are hidden; only the microphone is recorded. The tutor has to allow YanLearn Recorder in System Settings → Privacy &amp; Security → Screen &amp; System Audio Recording (or whoever manages a Mac with parental controls), then quit and reopen it.</p>
+          : <p>macOS Screen Recording permission: {report.screenAccess === "granted" ? "allowed" : "not reported (Windows, or a Recorder version that does not check it)"}.</p>}
         <p className="text-[var(--muted)]">Latest reported state, not a live view of their computer. Up to 100 recent Activity entries; refreshed every 30 seconds while open. Reports expire after 7 days.</p>
         <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words rounded border border-[var(--border)] p-3 font-mono">{report.logs.length ? report.logs.map((entry) => `[${new Date(entry.at).toLocaleString()}] ${entry.message}`).join("\n") : "No Activity entries in this report."}</pre>
       </> : null}

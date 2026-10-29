@@ -9,6 +9,8 @@ export type DiagnosticReport = {
   muted: boolean;
   frozen: boolean;
   captureMode: string;
+  /** macOS Screen Recording permission; null on Windows and from older Recorders. */
+  screenAccess: "granted" | "denied" | null;
   captureFailures: number;
   segmentCount: number;
   pendingUploads: number;

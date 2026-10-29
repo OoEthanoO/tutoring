@@ -38,4 +38,21 @@ describe("remote diagnostic viewer", () => {
     expect(container.querySelector("pre")?.textContent).toContain("<img");
     expect(container.querySelector("img")).toBeNull();
   });
+  it("says when macOS is blocking screen recording", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json({ receivedAt: "2026-10-29T01:00:00Z", report: {
+      state: "recording", inCall: true, capturing: true, frozen: true, screenAccess: "denied",
+      captureFailures: 0, segmentCount: 1, pendingUploads: 0, logs: [],
+    } })));
+    await open();
+    expect(container.textContent).toContain("Screen Recording permission: denied");
+    expect(container.textContent).toContain("quit and reopen it");
+  });
+  it("does not guess the permission when an older Recorder did not report it", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json({ receivedAt: "2026-10-29T01:00:00Z", report: {
+      state: "idle", inCall: null, capturing: false, screenAccess: null, captureFailures: 0, segmentCount: 0, pendingUploads: 0, logs: [],
+    } })));
+    await open();
+    expect(container.textContent).toContain("Screen Recording permission: not reported");
+    expect(container.textContent).not.toContain("permission: denied");
+  });
 });

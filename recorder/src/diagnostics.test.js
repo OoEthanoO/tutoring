@@ -33,6 +33,15 @@ describe("Recorder diagnostic privacy", () => {
     expect(normalize({ schema: 1, state: "idle", logs: [{ at: new Date(now - RETENTION_MS - 1).toISOString(), message: "old" }] }, now).logs).toEqual([]);
     expect(normalize({ schema: 1, state: "test" }, now)).toBeNull();
   });
+
+  it("reports the macOS Screen Recording permission, and nothing else in its place", () => {
+    expect(normalize({ schema: 1, state: "recording", screenAccess: "denied" }, now).screenAccess).toBe("denied");
+    expect(normalize({ schema: 1, state: "idle", screenAccess: "granted" }, now).screenAccess).toBe("granted");
+    // Windows has no such permission; older Recorders do not send it at all.
+    for (const screenAccess of ["unsupported", undefined, null, true, "DENIED", "denied; secret"]) {
+      expect(normalize({ schema: 1, state: "idle", screenAccess }, now).screenAccess).toBeNull();
+    }
+  });
 });
 
 describe("Recorder diagnostic reporting", () => {
@@ -57,6 +66,12 @@ describe("Recorder diagnostic reporting", () => {
     reporter.record("Capture failed on private title");
     await reporter.flush();
     expect(send.mock.calls[0][1].logs.map((l) => l.message)).toEqual(["Capture failed on [private]"]);
+  });
+  it("sends the Screen Recording permission with every report", async () => {
+    const { ctx, send, reporter } = setup();
+    ctx.report = { state: "recording", screenAccess: "denied" };
+    await reporter.flush();
+    expect(send.mock.calls[0][1].screenAccess).toBe("denied");
   });
   it("does not send a previous account's logs after an account switch", async () => {
     const { ctx, send, reporter } = setup();
