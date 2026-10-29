@@ -21,6 +21,8 @@ type Device = {
   currentClassStartsAt?: string | null;
   currentClassEndsAt?: string | null;
   outdated: boolean;
+  /** Its latest diagnostics report says macOS is blocking screen recording. */
+  screenAccessDenied?: boolean;
 };
 
 type TutorStatus = {
@@ -204,6 +206,11 @@ export default function AdminRecorderStatus() {
                       {device.appVersion ? `v${device.appVersion}` : "version unknown"}
                       {device.outdated ? " · older than the latest" : ""}
                     </span>
+                    {device.screenAccessDenied ? (
+                      <span className="font-semibold text-red-600 dark:text-red-400">
+                        macOS is blocking screen recording
+                      </span>
+                    ) : null}
                     {device.connected ? (
                       <span className="text-[var(--foreground)]">
                         {device.stateLabel}

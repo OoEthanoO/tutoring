@@ -37,7 +37,12 @@ export type RecorderDevice = {
   lastSeenAt: string;
   currentClassId: string | null;
   outdated: boolean;
+  /** Its latest diagnostics report says macOS is blocking screen recording. */
+  screenAccessDenied: boolean;
 };
+
+/** One tutor's computer, in recorder_sessions and recorder_diagnostics alike. */
+export const recorderDeviceKey = (tutorId: string, deviceId: string) => `${tutorId}/${deviceId}`;
 
 export type TutorRecorderStatus = {
   tutorId: string;
@@ -106,12 +111,15 @@ export const summarizeTutorRecorders = ({
   sessions,
   nowMs,
   latestVersion,
+  screenAccessDenied,
 }: {
   tutors: TutorRow[];
   sessions: RecorderSessionRow[];
   nowMs: number;
   /** The newest published release, or null when it could not be looked up. */
   latestVersion: string | null;
+  /** recorderDeviceKey of each computer whose latest report says macOS blocks screen recording. */
+  screenAccessDenied?: ReadonlySet<string>;
 }): TutorRecorderStatus[] => {
   const sessionsByTutor = new Map<string, RecorderSessionRow[]>();
   for (const session of sessions) {
@@ -136,6 +144,8 @@ export const summarizeTutorRecorders = ({
           lastSeenAt: session.last_seen_at,
           currentClassId: session.current_class_id,
           outdated: Boolean(latestVersion) && compareVersions(session.app_version, latestVersion) < 0,
+          screenAccessDenied:
+            screenAccessDenied?.has(recorderDeviceKey(String(session.tutor_id), String(session.device_id))) ?? false,
         };
       })
       .sort((a, b) => Number(b.connected) - Number(a.connected) || Date.parse(b.lastSeenAt) - Date.parse(a.lastSeenAt));

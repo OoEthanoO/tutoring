@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   compareVersions,
   recorderConnectedWithinMs,
+  recorderDeviceKey,
   recorderStateLabel,
   summarizeTutorRecorders,
   type RecorderSessionRow,
@@ -113,6 +114,23 @@ describe("summarizeTutorRecorders", () => {
     expect(row.outdated).toBe(false);
     expect(row.devices[0].stateLabel).toBe("Recording");
     expect(row.devices).toHaveLength(2);
+  });
+
+  it("flags only the computer whose latest report says macOS is blocking screen recording", () => {
+    const [row] = summarizeTutorRecorders({
+      tutors: tutors.slice(0, 1),
+      sessions: [session({ device_id: "mac" }), session({ device_id: "other", last_seen_at: ago(20) })],
+      nowMs,
+      latestVersion: "0.5.5",
+      screenAccessDenied: new Set([recorderDeviceKey("t1", "mac"), recorderDeviceKey("t2", "other")]),
+    });
+    expect(row.devices.find((device) => device.deviceId === "mac")?.screenAccessDenied).toBe(true);
+    expect(row.devices.find((device) => device.deviceId === "other")?.screenAccessDenied).toBe(false);
+  });
+
+  it("flags nothing when no diagnostics were read", () => {
+    const [row] = summarizeTutorRecorders({ tutors: tutors.slice(0, 1), sessions: [session({})], nowMs, latestVersion: null });
+    expect(row.devices[0].screenAccessDenied).toBe(false);
   });
 
   it("puts connected tutors first, then the most recently seen, then never", () => {

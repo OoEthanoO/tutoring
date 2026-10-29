@@ -3,7 +3,8 @@ import { getAdminClient, getRequestAuthContext } from "@/lib/authServer";
 import { isExecutive, isFounder, resolveAccountRole } from "@/lib/roles";
 import { chunks, fetchAllRows, idChunkSize } from "@/lib/supabasePaging";
 import { getLatestRecorderRelease, recorderVersion } from "@/lib/recorderRelease";
-import { summarizeTutorRecorders, type RecorderSessionRow } from "@/lib/recorderPresence";
+import { recorderDeviceKey, summarizeTutorRecorders, type RecorderSessionRow } from "@/lib/recorderPresence";
+import { recorderDiagnosticsRetentionMs } from "@/lib/recorderDiagnostics";
 import { classEndMs } from "@/lib/classTiming";
 
 /**
@@ -59,6 +60,29 @@ export async function GET(request: NextRequest) {
   // Unknown if GitHub cannot be reached: then nothing is flagged as outdated.
   const latestVersion = recorderVersion(await getLatestRecorderRelease());
 
+  // Computers whose latest diagnostics report says macOS is blocking screen
+  // recording. Only that one field is read, and without it the list still loads.
+  const screenAccessDenied = new Set<string>();
+  try {
+    const reports = await fetchAllRows<{ tutor_id: string; device_id: string; screen_access: string | null }>(
+      (from, to) =>
+        db
+          .from("recorder_diagnostics")
+          .select("tutor_id, device_id, screen_access:report->>screenAccess")
+          .gte("received_at", new Date(Date.now() - recorderDiagnosticsRetentionMs).toISOString())
+          .order("tutor_id")
+          .order("device_id")
+          .range(from, to)
+    );
+    for (const report of reports) {
+      if (report.screen_access === "denied") {
+        screenAccessDenied.add(recorderDeviceKey(String(report.tutor_id), String(report.device_id)));
+      }
+    }
+  } catch {
+    // Diagnostics are an extra here; the status list does not depend on them.
+  }
+
   const tutors = users
     .filter((user) => isExecutive(resolveAccountRole(user)))
     .map((user) => ({
@@ -73,6 +97,7 @@ export async function GET(request: NextRequest) {
     sessions: sessions.filter((session) => tutorIds.has(String(session.tutor_id))),
     nowMs: Date.now(),
     latestVersion,
+    screenAccessDenied,
   });
 
   // Name the class a recorder is busy with, for the ones that are.

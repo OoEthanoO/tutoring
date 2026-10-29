@@ -265,7 +265,10 @@ refreshed, and as each class gets ready, arms and starts. While it is denied:
 * The Activity log gets one line per run (per signed-in account), and every
   diagnostics report carries `screenAccess`: "granted", "denied", or null on
   Windows and from Recorder versions without the check. The diagnostics panel
-  shows it.
+  shows it, and the Recorders list flags a computer whose latest report says
+  "denied" ("macOS is blocking screen recording"; `api/admin/recorder-status`
+  reads only that field of each unexpired report, and the list still loads if
+  that read fails).
 
 None of this stops a class being recorded: the microphone still is, and
 capture is still attempted, so a wrong answer from the check never costs a

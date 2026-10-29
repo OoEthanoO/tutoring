@@ -50,6 +50,16 @@ describe("AdminRecorderStatus", () => {
     expect(text).toContain("Never signed in");
   });
 
+  it("flags a Mac whose Recorder reports that macOS is blocking screen recording", async () => {
+    await mount();
+    expect(container.textContent).not.toContain("macOS is blocking screen recording");
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json({ ...payload, tutors: [{
+      ...payload.tutors[0], devices: [device({ stateLabel: "Recording", screenAccessDenied: true })],
+    }] })));
+    await click("Refresh now");
+    expect(container.textContent).toContain("macOS is blocking screen recording");
+  });
+
   it("filters to tutors on an older version", async () => {
     await mount();
     await click("Older version");
