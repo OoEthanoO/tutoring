@@ -243,8 +243,8 @@ The Recorder now asks macOS (`CGPreflightScreenCaptureAccess`,
 refreshed, and as each class gets ready, arms and starts. While it is denied:
 
 * It asks for it once per run (`CGRequestScreenCaptureAccess`). macOS shows
-  its prompt only the first time an app ever asks, and not at all where
-  parental controls decide.
+  its prompt only the first time an app ever asks, and may not show it at all
+  where parental controls or a management profile decide.
 * A notice above every view says what is wrong and how to fix it, with an
   **Open System Settings** button (Privacy & Security → Screen & System Audio
   Recording; "Screen Recording" before macOS 15). If the app already looks

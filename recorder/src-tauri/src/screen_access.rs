@@ -23,9 +23,10 @@ pub fn screen_capture_access() -> String {
 }
 
 /// Ask macOS for the permission. It shows its prompt only the first time an
-/// app ever asks, and never when a policy (parental controls) decides; either
-/// way the answer stays "denied" for the rest of this run, because a grant
-/// takes effect only after a restart. Same answers as `screen_capture_access`.
+/// app ever asks, and may not show it at all where a policy (parental
+/// controls, a management profile) decides; either way the answer stays
+/// "denied" for the rest of this run, because a grant takes effect only after
+/// a restart. Same answers as `screen_capture_access`.
 #[tauri::command]
 pub fn request_screen_capture_access() -> String {
     platform::request().to_string()
