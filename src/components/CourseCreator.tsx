@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { getCurrentUser, onAuthChange } from "@/lib/authClient";
 import { canManageCourses, resolveUserRole } from "@/lib/roles";
 import { setHasUnsavedData } from "@/lib/unsavedData";
+import { MAX_PAID_FEE, MIN_PAID_FEE, normalizePaidFee } from "@/lib/paidCourses";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 
@@ -27,6 +28,8 @@ type CourseRequestEditData = {
   notes?: string;
   status?: string;
   recordings_enabled?: boolean;
+  is_paid?: boolean;
+  requested_fee?: number | string | null;
 };
 
 type CourseCreatorProps = {
@@ -53,6 +56,17 @@ export default function CourseCreator({ editData, onSuccess, onCancel }: CourseC
     editData?.recordings_enabled !== false
   );
 
+  // Paid courses are offered to senior tutors only (PAID_COURSES.md). The
+  // server checks again; this only decides whether the option is shown.
+  const [isSeniorTutor, setIsSeniorTutor] = useState(false);
+  const [hasPaymentNote, setHasPaymentNote] = useState(false);
+  const [isPaid, setIsPaid] = useState(editData?.is_paid === true);
+  const [requestedFee, setRequestedFee] = useState(
+    editData?.requested_fee === null || editData?.requested_fee === undefined
+      ? ""
+      : String(editData.requested_fee)
+  );
+
   const [status, setStatus] = useState<StatusState>({
     type: "idle",
     message: "",
@@ -75,6 +89,17 @@ export default function CourseCreator({ editData, onSuccess, onCancel }: CourseC
         user.role ?? null
       );
       setCanCreate(canManageCourses(resolvedRole));
+
+      try {
+        const response = await fetch("/api/tutor-profile");
+        if (response.ok) {
+          const profile = (await response.json()) as { seniorTutor?: boolean; paymentNote?: string };
+          setIsSeniorTutor(Boolean(profile.seniorTutor));
+          setHasPaymentNote(Boolean(profile.paymentNote));
+        }
+      } catch {
+        // Without it the paid option stays hidden, which is the safe side.
+      }
     };
 
     load();
@@ -122,6 +147,11 @@ export default function CourseCreator({ editData, onSuccess, onCancel }: CourseC
       return;
     }
 
+    if (isPaid && requestedFee.trim() && normalizePaidFee(requestedFee) === null) {
+      setStatus({ type: "error", message: "Enter the suggested fee as a dollar amount, or leave it blank." });
+      return;
+    }
+
     setShowConfirmModal(true);
   };
 
@@ -144,6 +174,11 @@ export default function CourseCreator({ editData, onSuccess, onCancel }: CourseC
           startDate: startDate?.toISOString().split('T')[0],
           notes: notes.trim(),
           recordingsEnabled,
+          // Only sent by tutors who were offered the option, so an ordinary
+          // request never touches these fields.
+          ...(isSeniorTutor || editData?.is_paid
+            ? { isPaid, requestedFee: isPaid && requestedFee.trim() ? Number(requestedFee) : null }
+            : {}),
           status: isEditing && editData?.status === "rejected" ? "draft" : undefined,
         }),
       });
@@ -395,6 +430,59 @@ export default function CourseCreator({ editData, onSuccess, onCancel }: CourseC
               </div>
             </div>
           </div>
+
+          {isSeniorTutor || isPaid ? (
+            <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
+              <div className="flex items-start gap-3">
+                <input
+                  id="course-is-paid"
+                  type="checkbox"
+                  checked={isPaid}
+                  onChange={(event) => setIsPaid(event.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded border-[var(--border)] bg-[var(--background)] text-[var(--foreground)] focus:ring-0"
+                />
+                <div className="flex-1">
+                  <label
+                    htmlFor="course-is-paid"
+                    className="text-sm font-semibold text-[var(--foreground)]"
+                  >
+                    Paid course
+                  </label>
+                  <p className="mt-1 text-xs text-[var(--muted)]">
+                    {isPaid
+                      ? "Families pay the course fee directly to you instead of donating to SickKids. You confirm each payment in My courses before management approves the enrollment. A paid course earns no community service hours."
+                      : "Senior tutors only. Tick this if families should pay you directly instead of donating to SickKids."}
+                  </p>
+                  {isPaid ? (
+                    <div className="mt-3">
+                      <label
+                        htmlFor="course-requested-fee"
+                        className="text-[0.65rem] font-bold uppercase tracking-[0.2em] text-[var(--muted)]"
+                      >
+                        Suggested fee for the whole course, in dollars (optional)
+                      </label>
+                      <input
+                        id="course-requested-fee"
+                        type="number"
+                        min={MIN_PAID_FEE}
+                        max={MAX_PAID_FEE}
+                        step="0.01"
+                        value={requestedFee}
+                        onChange={(event) => setRequestedFee(event.target.value)}
+                        placeholder="Management sets the final fee"
+                        className="mt-2 w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+                      />
+                    </div>
+                  ) : null}
+                  {isPaid && isSeniorTutor && !hasPaymentNote ? (
+                    <p className="mt-3 text-xs font-semibold text-amber-600">
+                      You have no payment note yet. Add one in My courses: the request cannot be approved as a paid course without it.
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          ) : null}
 
           <div className="flex gap-2">
             {onCancel && (

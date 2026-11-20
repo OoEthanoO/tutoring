@@ -179,6 +179,15 @@ DNS is on Cloudflare, with a local updater for the home address. See
   replace that with separate check-then-write queries. Students see only their
   own attempts. The first question announces the link in the course channel;
   later questions reuse it. Practice mode stays local with no exercise API calls.
+- Paid courses (November 2026): a course with `courses.is_paid` has a fee
+  the family pays straight to the tutor, not a SickKids donation; the site
+  never handles the money. Only senior tutors (`app_users.senior_tutor`, a
+  tick the trio sets in Manage accounts) may teach one, the tutor needs a
+  payment note, the course's own tutor must mark each payment as received
+  before an enrollment can be approved, and a paid course earns no service
+  hours. Every rule is a pure function in `src/lib/paidCourses.ts`; enforce
+  them server-side, never only in the interface. See `PAID_COURSES.md`; apply
+  `20261120120000_paid_courses.sql` before deployment.
 
 ## Conventions
 

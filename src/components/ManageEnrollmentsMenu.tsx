@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { getCurrentUser, onAuthChange } from "@/lib/authClient";
 import { isFounder, resolveUserRole } from "@/lib/roles";
 import { MAX_ENROLLMENT_REJECTION_REASON_LENGTH, parseEnrollmentRejectionReason } from "@/lib/enrollmentRequests";
+import { enrollmentApprovalBlocker, formatPaidFee } from "@/lib/paidCourses";
 
 type RequestCourse = {
   id: string;
@@ -12,6 +13,9 @@ type RequestCourse = {
   created_by_name?: string | null;
   created_by_email?: string | null;
   max_students?: number | null;
+  // Paid course: the tutor confirms the payment before anyone can approve.
+  is_paid?: boolean | null;
+  paid_fee?: number | null;
   course_enrollments?: { count: number }[];
 };
 
@@ -32,6 +36,7 @@ type EnrollmentRequest = {
   status: string;
   rejection_reason?: string | null;
   created_at: string;
+  payment_confirmed_at?: string | null;
   student_name?: string | null;
   student_email?: string | null;
   course?: RequestCourse | null;
@@ -208,6 +213,10 @@ export default function ManageEnrollmentsMenu() {
         {requests.map((request) => {
           const isPending = pendingId === request.id;
           const app = request.student_application;
+          const approvalBlocker = enrollmentApprovalBlocker({
+            courseIsPaid: request.course?.is_paid === true,
+            paymentConfirmedAt: request.payment_confirmed_at,
+          });
 
           return (
             <div
@@ -234,6 +243,22 @@ export default function ManageEnrollmentsMenu() {
                     </p>
                   ) : null}
                 </div>
+                {request.course?.is_paid ? (
+                  <div className="flex flex-wrap items-center gap-2 pt-1">
+                    <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+                      Paid course · {formatPaidFee(request.course.paid_fee)} to the tutor
+                    </span>
+                    {request.status === "approved" ? null : request.payment_confirmed_at ? (
+                      <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                        The tutor marked the payment as received on {new Date(request.payment_confirmed_at).toLocaleDateString()}.
+                      </span>
+                    ) : (
+                      <span className="text-xs font-semibold text-amber-700 dark:text-amber-400">
+                        Waiting for the tutor to mark the payment as received.
+                      </span>
+                    )}
+                  </div>
+                ) : null}
               </div>
 
               {app ? (
@@ -291,7 +316,8 @@ export default function ManageEnrollmentsMenu() {
                 {request.status !== "approved" && (
                   <button
                     type="button"
-                    disabled={isPending}
+                    disabled={isPending || Boolean(approvalBlocker)}
+                    title={approvalBlocker ?? undefined}
                     onClick={() => updateRequest(request.id, "approve")}
                     className="rounded-full border border-emerald-300 px-4 py-2 text-xs font-semibold text-emerald-600 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-70 dark:border-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
                   >

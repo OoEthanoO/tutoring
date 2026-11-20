@@ -10,7 +10,8 @@ import type { ReactNode } from "react";
  * the class-reminders cron), presence warnings (CLASS_PRESENCE_WARNINGS.md),
  * live channels and breakout rooms (discordLiveChannels.ts, breakoutRooms.ts),
  * Zen mode (ZEN_MODE.md), exercises (CLASS_EXERCISES.md), the Recorder
- * (RECORDER.md), trials (TRIAL_CLASSES.md) and service hours (serviceHours.ts).
+ * (RECORDER.md), trials (TRIAL_CLASSES.md), service hours (serviceHours.ts)
+ * and paid courses (PAID_COURSES.md).
  */
 
 const linkStyle = "font-medium underline decoration-[var(--border)] underline-offset-4 hover:decoration-[var(--foreground)]";
@@ -66,6 +67,7 @@ export const readmeParts: Part[] = [
             <li><strong>Total Number of Classes</strong>: exactly how many classes the course has. Choose carefully (see <a href="#readme-course-content" className={linkStyle}>Course content</a>): extending a course after submitting the request is very unlikely.</li>
             <li><strong>Proposed Start Date</strong>: the earliest date you are able to start teaching.</li>
             <li><strong>Notes for Founders</strong> (optional): any other concerns or special information about this request.</li>
+            <li><strong>Paid course</strong>: shown to senior tutors only. See <a href="#readme-paid-courses" className={linkStyle}>Paid courses</a>.</li>
             <li><strong>Record classes with YanLearn Recorder</strong>: ticked by default. Students are much less inclined to enroll in a course without recordings, because they cannot catch up on a class they miss or review one afterwards. See <a href="#readme-recorder" className={linkStyle}>YanLearn Recorder</a>.</li>
           </ul>
           <p>After you submit, the request shows <strong>In Review</strong> and management is notified. You will hear the result by email and on Discord.</p>
@@ -212,6 +214,22 @@ export const readmeParts: Part[] = [
     title: "After class",
     sections: [
       {
+        id: "paid-courses",
+        title: "Paid courses",
+        body: <>
+          <p>Most YanLearn courses ask families for a donation to SickKids. A <strong>paid course</strong> is different: the family pays a course fee straight to you. YanLearn never receives or holds that money.</p>
+          <ul className={listStyle}>
+            <li>Only <strong>senior tutors</strong> can teach paid courses. Management decides who is a senior tutor. In a co-taught course, both tutors have to be senior tutors.</li>
+            <li>First save a <strong>payment note</strong> under Paid courses in <Link href="/?menu=manage_courses" className={linkStyle}>My courses</Link>. It tells families how to pay you, for example the address for an Interac e-Transfer. Signed-in families see it when they enroll in your paid course, so never put a password or a card number in it. A request cannot be approved as a paid course until you have one, and while a paid course is running you can change the note but not remove it.</li>
+            <li>Tick <strong>Paid course</strong> on the course request. You can suggest a fee for the whole course; management sets the final fee when approving it.</li>
+            <li>When a family applies, you get an email and a Discord mention. Check your account, and once the money has arrived press <strong>Payment received</strong> under Paid courses in My courses. Management can approve the enrollment only after that. Press it only when the money has really arrived; <strong>Undo</strong> is there if you pressed it by mistake.</li>
+            <li>A paid course earns <strong>no community service hours</strong>, because paid teaching is not volunteer work.</li>
+            <li>Everything else works as in any other course: reminders, live channels, attendance, YanLearn Recorder and the strike system.</li>
+          </ul>
+          <p className={noteStyle}>Because the money never passes through YanLearn, YanLearn cannot refund it. A refund has to come from you.</p>
+        </>,
+      },
+      {
         id: "homework-and-notes",
         title: "Homework and lesson notes",
         body: <>
@@ -225,6 +243,7 @@ export const readmeParts: Part[] = [
         body: <ul className={listStyle}>
           <li>You earn hours automatically for every class you teach, once it has started: the class’s length × 1.5, or × 2 for a course at grade 11 or 12. A one-hour class earns 1.5 hours, or 2 at grade 11 or 12.</li>
           <li>Hours count teaching time rather than classes, so a removed class that is made up by extending the course does not cost you hours.</li>
+          <li>A <a href="#readme-paid-courses" className={linkStyle}>paid course</a> earns no hours: its classes never count towards your total.</li>
           <li>To claim them, request a withdrawal in <Link href="/?menu=manage_courses" className={linkStyle}>My courses</Link>. Your legal name must be set first. You can have one pending request at a time; management processes it and issues your certificate.</li>
         </ul>,
       },

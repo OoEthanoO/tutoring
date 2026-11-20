@@ -1,8 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getRequestUser } from "@/lib/authServer";
-import { notifyFounders } from "@/lib/notificationsServer";
 import { escapeEnrollmentEmailHtml } from "@/lib/enrollmentRequests";
+import { notifyFounders, sendEmail, sendDiscordMessageByChannelName, executivesChannelName } from "@/lib/notificationsServer";
+import { formatPaidFee, paidCourseBlocker } from "@/lib/paidCourses";
+import { loadPaidCourseTutors } from "@/lib/paidCoursesServer";
 
 const supabaseUrl = process.env.SUPABASE_URL ?? "";
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
@@ -42,7 +44,7 @@ export async function POST(
 
   const { data: course, error: courseError } = await adminClient
     .from("courses")
-    .select("id, title, max_students, course_classes(starts_at), course_enrollments(count)")
+    .select("id, title, max_students, is_paid, paid_fee, created_by, is_co_taught, co_tutor_id, course_classes(starts_at), course_enrollments(count)")
     .eq("id", courseId)
     .single();
 
@@ -76,6 +78,30 @@ export async function POST(
       { error: "Enrollment for this course is closed." },
       { status: 400 }
     );
+  }
+
+  // A paid course is paid straight to its tutor. Without a senior tutor and
+  // their payment note there is nobody to pay, so the course is not open.
+  if (course.is_paid) {
+    let blocker: string | null;
+    try {
+      const tutors = await loadPaidCourseTutors(adminClient, [course.created_by, course.co_tutor_id]);
+      blocker = paidCourseBlocker({
+        owner: course.created_by ? tutors.get(course.created_by) ?? null : null,
+        coTutor: course.is_co_taught && course.co_tutor_id
+          ? tutors.get(course.co_tutor_id) ?? { seniorTutor: false }
+          : null,
+        fee: course.paid_fee,
+      });
+    } catch {
+      return NextResponse.json({ error: "Unable to check this course. Please try again." }, { status: 503 });
+    }
+    if (blocker) {
+      return NextResponse.json(
+        { error: "Enrollment for this paid course is not open yet. Please check back later." },
+        { status: 400 }
+      );
+    }
   }
 
   const { data: existingEnrollment, error: enrollmentLookupError } = await adminClient
@@ -187,7 +213,8 @@ export async function POST(
   };
   const writeRequest = existingRequest
     ? adminClient.from("course_enrollment_requests")
-      .update({ ...requestValues, rejection_reason: null, decided_at: null, created_at: new Date().toISOString() })
+      // A new application is a new payment to confirm, so the old tick goes.
+      .update({ ...requestValues, rejection_reason: null, decided_at: null, created_at: new Date().toISOString(), payment_confirmed_at: null, payment_confirmed_by: null })
       .eq("id", existingRequest.id)
       .eq("status", existingRequest.status)
       .eq("created_at", existingRequest.created_at)
@@ -208,6 +235,39 @@ export async function POST(
   const html = `<p>${escapeEnrollmentEmailHtml(studentName)} requested enrollment in <strong>${escapeEnrollmentEmailHtml(courseTitle)}</strong>.</p>`;
   
   await notifyFounders(subject, html);
+
+  // The tutor of a paid course has to mark the payment as received before
+  // management can approve, so they hear about the request too. The family's
+  // names go by email only; the Discord ping carries none.
+  if (course.is_paid && course.created_by) {
+    try {
+      const { data: tutor } = await adminClient
+        .from("app_users")
+        .select("email, full_name, discord_user_id")
+        .eq("id", course.created_by)
+        .maybeSingle();
+      const guardianName = String(body.parentGuardianName ?? "").trim();
+      if (tutor?.email) {
+        await sendEmail(
+          tutor.email,
+          `Payment to confirm: ${courseTitle}`,
+          `<p>${escapeEnrollmentEmailHtml(String(body.studentFullName ?? studentName).trim())} has asked to enroll in your paid course <strong>${escapeEnrollmentEmailHtml(courseTitle)}</strong>.</p>
+           <p>Parent or guardian: ${escapeEnrollmentEmailHtml(guardianName || "not given")}<br>Course fee: ${formatPaidFee(course.paid_fee)}</p>
+           <p>When the payment has arrived in your account, open Teaching &gt; My courses on YanLearn and press <strong>Payment received</strong>. Management can approve the enrollment only after that. Do not press it before the money has arrived.</p>`
+        );
+      }
+      if (tutor?.discord_user_id) {
+        await sendDiscordMessageByChannelName(
+          executivesChannelName(),
+          `<@${tutor.discord_user_id}> A family has asked to enroll in your paid course **${courseTitle}**. When their payment arrives, press **Payment received** in My courses so that management can approve the enrollment.`,
+          undefined,
+          [tutor.discord_user_id]
+        );
+      }
+    } catch (error) {
+      console.error("Failed to tell the tutor about a paid enrollment request:", error);
+    }
+  }
 
   return NextResponse.json({ request: requestData });
 }

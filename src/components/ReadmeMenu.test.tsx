@@ -16,7 +16,7 @@ afterEach(async () => { await act(async () => root.unmount()); container.remove(
 describe("ReadmeMenu", () => {
   it("covers the class tools tutors use, not just the old #readme rules", () => {
     const headings = [...container.querySelectorAll("h3")].map(heading => heading.textContent);
-    for (const title of ["Course requests", "Before class", "During class", "Breakout rooms", "Zen mode",
+    for (const title of ["Course requests", "Paid courses", "Before class", "During class", "Breakout rooms", "Zen mode",
       "In-class exercises", "YanLearn Recorder", "Trial students", "Community service hours", "Strike system"]) {
       expect(headings).toContain(title);
     }

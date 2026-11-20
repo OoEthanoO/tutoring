@@ -10,6 +10,7 @@ import { MarkdownText } from "@/lib/parseMarkdown";
 import { useNotification } from "./Notification";
 import StudentApplicationForm from "./StudentApplicationForm";
 import { isFounder, resolveUserRole } from "@/lib/roles";
+import { formatPaidFee } from "@/lib/paidCourses";
 
 type StatusState = {
   type: "idle" | "error";
@@ -70,6 +71,11 @@ type Course = {
   completed_class_count?: number | null;
   max_students?: number | null;
   donation_fee: number | null;
+  // Paid course: families pay `paid_fee` straight to the tutor. The tutor's
+  // payment note is sent only to signed-in users.
+  is_paid?: boolean;
+  paid_fee?: number | null;
+  payment_note?: string | null;
   enrollment_count?: number;
   created_by_name?: string | null;
   created_by_email?: string | null;
@@ -185,6 +191,7 @@ export default function CoursesMenu() {
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
   const [isEnrolling, setIsEnrolling] = useState(false);
   const [hasOpenedDonationLink, setHasOpenedDonationLink] = useState(false);
+  const [hasSentPayment, setHasSentPayment] = useState(false);
   const [nowMs, setNowMs] = useState<number>(() => new Date().getTime());
   const [status, setStatus] = useState<StatusState>({
     type: "idle",
@@ -435,11 +442,15 @@ export default function CoursesMenu() {
     return minutes;
   }, [courses, nowMs]);
 
-  const requiresDonationLink = Boolean(selectedCourse?.donation_link);
+  const isPaidCourse = selectedCourse?.is_paid === true;
+  // A paid course never asks for a donation, whatever link its tutor holds.
+  const requiresDonationLink = !isPaidCourse && Boolean(selectedCourse?.donation_link);
+  const paymentNote = isPaidCourse ? (selectedCourse?.payment_note ?? "").trim() : "";
   const isGuest = !userId;
 
   const openEnrollmentModal = (course: Course) => {
     setHasOpenedDonationLink(false);
+    setHasSentPayment(false);
     setSelectedCourse(course);
   };
 
@@ -718,7 +729,9 @@ export default function CoursesMenu() {
                 <div className="flex items-start gap-2 rounded-lg border border-amber-400 bg-amber-50 px-3 py-2 dark:border-amber-700 dark:bg-amber-950/30">
                   <span className="mt-0.5 flex-shrink-0 text-amber-600 text-base leading-none" aria-hidden="true">⚠️</span>
                   <p className="text-xs font-semibold text-amber-800 dark:text-amber-400">
-                    Before registering, please carefully check the course tutor and course time you select. Each course has a different donation link, and if you select the wrong one, your donation cannot be refunded.
+                    {isPaidCourse
+                      ? "Before registering, please carefully check the course tutor and course time you select. This is a paid course: the fee goes directly to the tutor and YanLearn never receives it, so any refund would have to come from the tutor."
+                      : "Before registering, please carefully check the course tutor and course time you select. Each course has a different donation link, and if you select the wrong one, your donation cannot be refunded."}
                   </p>
                 </div>
               )}
@@ -729,9 +742,14 @@ export default function CoursesMenu() {
                 </div>
               ) : null}
 
-              {selectedCourse.donation_fee != null && selectedCourse.donation_fee > 0 && (
+              {!isPaidCourse && selectedCourse.donation_fee != null && selectedCourse.donation_fee > 0 && (
                 <div className="text-sm text-[var(--muted)]">
                   Donation Fee: ${selectedCourse.donation_fee}
+                </div>
+              )}
+              {isPaidCourse && (
+                <div className="text-sm text-[var(--muted)]">
+                  Course Fee: {formatPaidFee(selectedCourse.paid_fee)}, paid directly to the tutor
                 </div>
               )}
 
@@ -773,7 +791,48 @@ export default function CoursesMenu() {
                 </p>
               )}
               {!isGuest && !isCourseEnded && !isFullCourse(selectedCourse) && !isEnrolledInCourse(selectedCourse) && (
-                requiresDonationLink ? (
+                isPaidCourse ? (
+                  <div className="space-y-3 rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] p-4 shadow-sm">
+                    <div className="flex flex-col gap-1">
+                      <p className="text-xs font-semibold text-[var(--foreground)]">
+                        Payment Required
+                      </p>
+                      <p className="text-[10px] text-[var(--muted)] leading-relaxed">
+                        This is a paid course. Send {formatPaidFee(selectedCourse.paid_fee)} directly to the tutor, then fill out the student application form below. The payment goes to the tutor, not to YanLearn and not to SickKids.
+                      </p>
+                    </div>
+                    {paymentNote ? (
+                      <>
+                        <div className="space-y-1">
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">
+                            How to pay the tutor
+                          </p>
+                          <p className="whitespace-pre-wrap break-words rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-xs text-[var(--foreground)]">
+                            {paymentNote}
+                          </p>
+                        </div>
+                        <label className="flex items-start gap-2 text-xs font-semibold text-[var(--foreground)]">
+                          <input
+                            type="checkbox"
+                            checked={hasSentPayment}
+                            onChange={(event) => setHasSentPayment(event.target.checked)}
+                            className="mt-0.5 h-4 w-4 rounded border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)] focus:ring-0"
+                          />
+                          I have sent the payment to the tutor
+                        </label>
+                        <p role="status" className="text-xs text-[var(--muted)]">
+                          {hasSentPayment
+                            ? "You can now submit your enrollment request after filling out the form below. The tutor confirms that the payment arrived before your request is reviewed."
+                            : "Tick the box once the payment is sent to unlock enrollment submission."}
+                        </p>
+                      </>
+                    ) : (
+                      <p role="status" className="text-xs font-semibold text-amber-700 dark:text-amber-400">
+                        The tutor has not added payment details yet, so enrollment for this course is not open. Please check back later.
+                      </p>
+                    )}
+                  </div>
+                ) : requiresDonationLink ? (
                   <div className="space-y-3 rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] p-4 shadow-sm">
                     <div className="flex flex-col gap-1">
                       <p className="text-xs font-semibold text-[var(--foreground)]">
@@ -817,7 +876,7 @@ export default function CoursesMenu() {
                   initialSchool={user?.school}
                   initialStudentName={user?.full_name}
                   isSubmitting={isEnrolling}
-                  isConfirmDisabled={(requiresDonationLink && !hasOpenedDonationLink) || isFullCourse(selectedCourse) || isEnrolledInCourse(selectedCourse)}
+                  isConfirmDisabled={(requiresDonationLink && !hasOpenedDonationLink) || (isPaidCourse && (!paymentNote || !hasSentPayment)) || isFullCourse(selectedCourse) || isEnrolledInCourse(selectedCourse)}
                   isFull={isFullCourse(selectedCourse)}
                   isEnrolled={isEnrolledInCourse(selectedCourse)}
                   isGuest={isGuest}

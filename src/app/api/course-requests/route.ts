@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { canManageCourses, isExecutive, isFounder, resolveUserRole } from "@/lib/roles";
 import { getRequestUser } from "@/lib/authServer";
 import {
@@ -8,6 +8,8 @@ import {
   getDiscordRoleIdByName,
   foundersChannelName,
 } from "@/lib/notificationsServer";
+import { formatPaidFee, normalizePaidFee } from "@/lib/paidCourses";
+import { loadPaidCourseTutors } from "@/lib/paidCoursesServer";
 
 const supabaseUrl = process.env.SUPABASE_URL ?? "";
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
@@ -24,6 +26,28 @@ type CourseRequestUpdatePayload = {
   is_co_taught?: boolean;
   co_tutor_id?: string | null;
   recordings_enabled?: boolean;
+  is_paid?: boolean;
+  requested_fee?: number | null;
+};
+
+/**
+ * Why this request cannot ask for a paid course, or null when it can. Only
+ * senior tutors teach paid courses (PAID_COURSES.md); the payment note is
+ * checked later, when management approves the request.
+ */
+const paidRequestBlocker = async (
+  adminClient: SupabaseClient,
+  tutorId: string | null | undefined,
+  coTutorId: string | null | undefined
+): Promise<string | null> => {
+  const tutors = await loadPaidCourseTutors(adminClient, [tutorId, coTutorId]);
+  if (!tutorId || !tutors.get(tutorId)?.seniorTutor) {
+    return "Only senior tutors can request a paid course.";
+  }
+  if (coTutorId && !tutors.get(coTutorId)?.seniorTutor) {
+    return "Only senior tutors can teach paid courses, and this request's co-tutor is not a senior tutor.";
+  }
+  return null;
 };
 
 export async function POST(request: NextRequest) {
@@ -62,6 +86,8 @@ export async function POST(request: NextRequest) {
     isCoTaught?: boolean;
     coTutorId?: string | null;
     recordingsEnabled?: boolean;
+    isPaid?: boolean;
+    requestedFee?: number | string | null;
   } | null;
 
   const title = body?.title?.trim() ?? "";
@@ -85,6 +111,26 @@ export async function POST(request: NextRequest) {
     auth: { persistSession: false },
   });
 
+  // A paid course is paid straight to the tutor instead of donated to SickKids.
+  // The tutor may suggest a fee; management sets the real one on approval.
+  const isPaid = body?.isPaid === true;
+  const hasRequestedFee = isPaid && body?.requestedFee !== undefined && body?.requestedFee !== null && body?.requestedFee !== "";
+  const requestedFee = hasRequestedFee ? normalizePaidFee(body?.requestedFee) : null;
+  if (hasRequestedFee && requestedFee === null) {
+    return NextResponse.json({ error: "Enter the fee as a dollar amount." }, { status: 400 });
+  }
+  if (isPaid) {
+    let blocker: string | null;
+    try {
+      blocker = await paidRequestBlocker(adminClient, user.id, isCoTaught ? coTutorId : null);
+    } catch {
+      return NextResponse.json({ error: "Could not check senior tutor standing." }, { status: 503 });
+    }
+    if (blocker) {
+      return NextResponse.json({ error: blocker }, { status: 403 });
+    }
+  }
+
   const { data, error } = await adminClient
     .from("course_creation_requests")
     .insert({
@@ -100,6 +146,8 @@ export async function POST(request: NextRequest) {
       is_co_taught: isCoTaught,
       co_tutor_id: coTutorId,
       recordings_enabled: recordingsEnabled,
+      is_paid: isPaid,
+      requested_fee: requestedFee,
     })
     .select("id")
     .single();
@@ -122,6 +170,7 @@ export async function POST(request: NextRequest) {
     <p><strong>Frequency:</strong> ${frequency || "(Not specified)"}</p>
     <p><strong>Total Classes:</strong> ${totalClasses}</p>
     <p><strong>Start Date:</strong> ${startDate}</p>
+    ${isPaid ? `<p><strong>Paid course:</strong> yes, paid directly to the tutor${requestedFee !== null ? ` (suggested fee ${formatPaidFee(requestedFee)})` : ""}</p>` : ""}
     ${notes ? `<p><strong>Notes:</strong></p><p>${notes}</p>` : ""}
     <p><a href="${requestLink}">View in YanLearn</a></p>
   `;
@@ -170,7 +219,7 @@ export async function GET(request: NextRequest) {
 
   let query = adminClient
     .from("course_creation_requests")
-    .select("id, title, description, timeframes, frequency, notes, rejection_reason, total_classes, start_date, status, created_by, created_at, decided_at, decided_by, is_co_taught, co_tutor_id, recordings_enabled, app_users!course_creation_requests_created_by_fkey(full_name, email), co_tutor:app_users!course_creation_requests_co_tutor_id_fkey(full_name, email)")
+    .select("id, title, description, timeframes, frequency, notes, rejection_reason, total_classes, start_date, status, created_by, created_at, decided_at, decided_by, is_co_taught, co_tutor_id, recordings_enabled, is_paid, requested_fee, app_users!course_creation_requests_created_by_fkey(full_name, email), co_tutor:app_users!course_creation_requests_co_tutor_id_fkey(full_name, email)")
     .order("created_at", { ascending: false });
 
   if (!isFounder(role)) {
@@ -222,6 +271,8 @@ export async function PATCH(request: NextRequest) {
     isCoTaught?: boolean;
     coTutorId?: string | null;
     recordingsEnabled?: boolean;
+    isPaid?: boolean;
+    requestedFee?: number | string | null;
   } | null;
 
   const requestId = body?.requestId;
@@ -241,7 +292,7 @@ export async function PATCH(request: NextRequest) {
   // Verify the user owns this request or is a founder
   const { data: existing } = await adminClient
     .from("course_creation_requests")
-    .select("created_by, status, title")
+    .select("created_by, status, title, is_paid, is_co_taught, co_tutor_id")
     .eq("id", requestId)
     .maybeSingle();
 
@@ -272,6 +323,37 @@ export async function PATCH(request: NextRequest) {
   if (body?.isCoTaught !== undefined) updatePayload.is_co_taught = body.isCoTaught;
   if (body?.coTutorId !== undefined) updatePayload.co_tutor_id = body.coTutorId;
   if (body?.recordingsEnabled !== undefined) updatePayload.recordings_enabled = body.recordingsEnabled;
+
+  // Paid courses: the tick and the suggested fee follow the same rule as on a
+  // new request, checked against the tutor the request belongs to.
+  if (body?.isPaid !== undefined && typeof body.isPaid !== "boolean") {
+    return NextResponse.json({ error: "Invalid paid course value." }, { status: 400 });
+  }
+  const nextIsPaid = body?.isPaid ?? Boolean(existing.is_paid);
+  if (body?.isPaid !== undefined) updatePayload.is_paid = body.isPaid;
+  if (!nextIsPaid) {
+    if (body?.isPaid === false || body?.requestedFee !== undefined) updatePayload.requested_fee = null;
+  } else if (body?.requestedFee !== undefined) {
+    const emptyFee = body.requestedFee === null || body.requestedFee === "";
+    const requestedFee = emptyFee ? null : normalizePaidFee(body.requestedFee);
+    if (!emptyFee && requestedFee === null) {
+      return NextResponse.json({ error: "Enter the fee as a dollar amount." }, { status: 400 });
+    }
+    updatePayload.requested_fee = requestedFee;
+  }
+  if (nextIsPaid && (body?.isPaid === true || body?.isCoTaught !== undefined || body?.coTutorId !== undefined)) {
+    const nextIsCoTaught = body?.isCoTaught ?? Boolean(existing.is_co_taught);
+    const nextCoTutorId = body?.coTutorId !== undefined ? body.coTutorId : existing.co_tutor_id;
+    let blocker: string | null;
+    try {
+      blocker = await paidRequestBlocker(adminClient, existing.created_by, nextIsCoTaught ? nextCoTutorId : null);
+    } catch {
+      return NextResponse.json({ error: "Could not check senior tutor standing." }, { status: 503 });
+    }
+    if (blocker) {
+      return NextResponse.json({ error: blocker }, { status: 403 });
+    }
+  }
 
   const { error: updateError } = await adminClient
     .from("course_creation_requests")

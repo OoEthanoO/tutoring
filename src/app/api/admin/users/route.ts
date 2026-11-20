@@ -10,6 +10,8 @@ import { getRequestUser } from "@/lib/authServer";
 import { fetchDiscordGuildMemberIds } from "@/lib/discordSync";
 import { classEndMs } from "@/lib/classTiming";
 import { sendDiscordMessageByChannelName } from "@/lib/notificationsServer";
+import { normalizePaymentNote, paymentNoteClearBlocker, seniorUntickBlocker } from "@/lib/paidCourses";
+import { countActivePaidCourses } from "@/lib/paidCoursesServer";
 
 const supabaseUrl = process.env.SUPABASE_URL ?? "";
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
@@ -254,7 +256,7 @@ export async function GET(request: NextRequest) {
       let query = adminClient
         .from("app_users")
         .select(
-          "id, email, full_name, legal_name, role, created_at, email_verified_at, tutor_promoted_at, discord_user_id, discord_username, discord_connected_at, is_junior, pending_role_exempt, grade, school, strike_count, custom_role, custom_roles(role_level), executive_generation"
+          "id, email, full_name, legal_name, role, created_at, email_verified_at, tutor_promoted_at, discord_user_id, discord_username, discord_connected_at, is_junior, pending_role_exempt, senior_tutor, grade, school, strike_count, custom_role, custom_roles(role_level), executive_generation"
         )
         .ilike("email", search ? `%${search}%` : "%");
       if (wantUnverified) {
@@ -292,6 +294,9 @@ export async function GET(request: NextRequest) {
     isJunior: item.is_junior,
     // Founder-set: keeps the Executive Discord role without a course.
     pendingRoleExempt: Boolean(item.pending_role_exempt),
+    // Management-set: may teach paid courses (see PAID_COURSES.md).
+    seniorTutor: Boolean(item.senior_tutor),
+    paymentNote: "",
     // Filled in below: false means they hold Pending in Discord instead of
     // Executive.
     teachesCourse: false,
@@ -373,7 +378,7 @@ export async function GET(request: NextRequest) {
     const donationData = await forEachChunk((ids, from, to) =>
       adminClient
         .from("tutor_profiles")
-        .select("user_id, donation_link")
+        .select("user_id, donation_link, payment_note")
         .in("user_id", ids)
         .order("user_id")
         .range(from, to)
@@ -382,9 +387,13 @@ export async function GET(request: NextRequest) {
     const donationMap = new Map(
       (donationData ?? []).map((row) => [row.user_id, row.donation_link ?? ""])
     );
+    const paymentNoteMap = new Map(
+      (donationData ?? []).map((row) => [row.user_id, row.payment_note ?? ""])
+    );
 
     users.forEach((user) => {
       user.donationLink = donationMap.get(user.id) ?? "";
+      user.paymentNote = paymentNoteMap.get(user.id) ?? "";
     });
 
     // Determine which users on this page have an upcoming class, either as an
@@ -490,6 +499,8 @@ export async function PATCH(request: NextRequest) {
       tutorPromotedAt?: string | null;
       isJunior?: boolean;
       pendingRoleExempt?: boolean;
+      seniorTutor?: boolean;
+      paymentNote?: string | null;
       grade?: string;
       school?: string;
       strikeCount?: number;
@@ -506,6 +517,8 @@ export async function PATCH(request: NextRequest) {
       body.tutorPromotedAt === undefined &&
       body.isJunior === undefined &&
       body.pendingRoleExempt === undefined &&
+      body.seniorTutor === undefined &&
+      body.paymentNote === undefined &&
       body.grade === undefined &&
       body.school === undefined &&
       body.strikeCount === undefined &&
@@ -529,6 +542,8 @@ export async function PATCH(request: NextRequest) {
 
   const changesAccess = body.role !== undefined || body.customRole !== undefined ||
     body.isJunior !== undefined || body.pendingRoleExempt !== undefined ||
+    // Who may take payments, and where families send them, is as sensitive as a role.
+    body.seniorTutor !== undefined || body.paymentNote !== undefined ||
     body.strikeCount !== undefined || body.transferDiscordFromEmail !== undefined;
   if (changesAccess) {
     const protection = await checkLeadershipProtection(adminClient, user, { id: body.userId });
@@ -592,7 +607,7 @@ export async function PATCH(request: NextRequest) {
         discord_connected_at: sourceUser.discord_connected_at,
       })
       .eq("id", body.userId)
-      .select("id, email, full_name, legal_name, role, created_at, tutor_promoted_at, discord_user_id, discord_username, discord_connected_at, is_junior, pending_role_exempt, grade, school, strike_count, custom_role, custom_roles(role_level), executive_generation")
+      .select("id, email, full_name, legal_name, role, created_at, tutor_promoted_at, discord_user_id, discord_username, discord_connected_at, is_junior, pending_role_exempt, senior_tutor, grade, school, strike_count, custom_role, custom_roles(role_level), executive_generation")
       .single();
 
     if (linkError || !updatedTarget) {
@@ -624,6 +639,7 @@ export async function PATCH(request: NextRequest) {
       discordConnectedAt: updatedTarget.discord_connected_at ?? null,
       isJunior: updatedTarget.is_junior ?? false,
       pendingRoleExempt: Boolean(updatedTarget.pending_role_exempt),
+      seniorTutor: Boolean(updatedTarget.senior_tutor),
       grade: updatedTarget.grade ?? "",
       school: updatedTarget.school ?? "",
       strikeCount: updatedTarget.strike_count || 0,
@@ -633,6 +649,51 @@ export async function PATCH(request: NextRequest) {
     };
 
     return NextResponse.json({ user: responseUser });
+  }
+
+  // Paid courses (PAID_COURSES.md): only a tutor can be a senior tutor, and a
+  // tutor with a paid course still running keeps both the tick and a payment
+  // note, since families pay that tutor directly.
+  let paymentNote: string | null | undefined;
+  if (body.paymentNote !== undefined) {
+    const parsedNote = normalizePaymentNote(body.paymentNote);
+    if (!parsedNote.ok) {
+      return NextResponse.json({ error: parsedNote.error }, { status: 400 });
+    }
+    paymentNote = parsedNote.note;
+  }
+  if (body.seniorTutor !== undefined && typeof body.seniorTutor !== "boolean") {
+    return NextResponse.json({ error: "Invalid senior tutor value." }, { status: 400 });
+  }
+  if (body.seniorTutor === true) {
+    const { data: seniorTarget, error: seniorTargetError } = await adminClient
+      .from("app_users")
+      .select("id, email, role, custom_role, custom_roles(role_level)")
+      .eq("id", body.userId)
+      .maybeSingle();
+    if (seniorTargetError || !seniorTarget) {
+      return NextResponse.json({ error: "Failed to load user." }, { status: 500 });
+    }
+    const staysTutor = body.role !== undefined
+      ? body.role !== "student"
+      : isExecutive(resolveAccountRole(seniorTarget));
+    if (!staysTutor) {
+      return NextResponse.json({ error: "Only a tutor can be a senior tutor." }, { status: 400 });
+    }
+  }
+  if (body.seniorTutor === false || paymentNote === null) {
+    let activePaidCourses: number;
+    try {
+      activePaidCourses = await countActivePaidCourses(adminClient, body.userId);
+    } catch {
+      return NextResponse.json({ error: "Could not check this tutor's paid courses." }, { status: 503 });
+    }
+    const blocker = body.seniorTutor === false
+      ? seniorUntickBlocker(activePaidCourses)
+      : paymentNoteClearBlocker(activePaidCourses);
+    if (blocker) {
+      return NextResponse.json({ error: blocker }, { status: 400 });
+    }
   }
 
   const existingUser = body.role !== undefined || body.tutorPromotedAt !== undefined || body.isJunior !== undefined || body.strikeCount !== undefined
@@ -662,7 +723,7 @@ export async function PATCH(request: NextRequest) {
     body.tutorPromotedAt === null ? null : body.tutorPromotedAt;
 
   const updatePayload =
-    body.role || shouldUpdatePromotedAt || body.isJunior !== undefined || body.pendingRoleExempt !== undefined || body.grade !== undefined || body.school !== undefined || body.strikeCount !== undefined || body.customRole !== undefined || body.generation !== undefined
+    body.role || shouldUpdatePromotedAt || body.isJunior !== undefined || body.pendingRoleExempt !== undefined || body.seniorTutor !== undefined || body.grade !== undefined || body.school !== undefined || body.strikeCount !== undefined || body.customRole !== undefined || body.generation !== undefined
       ? {
         role: body.role !== undefined ? (isExecutive(body.role as UserRole) ? "tutor" : body.role) : undefined,
         tutor_promoted_at: isPromotingToTutor
@@ -673,6 +734,8 @@ export async function PATCH(request: NextRequest) {
         is_junior: body.isJunior !== undefined ? body.isJunior : undefined,
         pending_role_exempt:
           body.pendingRoleExempt !== undefined ? body.pendingRoleExempt : undefined,
+        // A student is never a senior tutor, so a demotion takes the tick away.
+        senior_tutor: body.role === "student" ? false : body.seniorTutor,
         grade: body.grade !== undefined ? body.grade : undefined,
         school: body.school !== undefined ? body.school : undefined,
         strike_count: body.strikeCount !== undefined ? body.strikeCount : undefined,
@@ -687,13 +750,13 @@ export async function PATCH(request: NextRequest) {
       .update(updatePayload)
       .eq("id", body.userId)
       .select(
-        "id, email, full_name, legal_name, role, created_at, tutor_promoted_at, discord_user_id, discord_username, discord_connected_at, is_junior, pending_role_exempt, grade, school, strike_count, custom_role, custom_roles(role_level), executive_generation"
+        "id, email, full_name, legal_name, role, created_at, tutor_promoted_at, discord_user_id, discord_username, discord_connected_at, is_junior, pending_role_exempt, senior_tutor, grade, school, strike_count, custom_role, custom_roles(role_level), executive_generation"
       )
       .single()
     : await adminClient
       .from("app_users")
       .select(
-        "id, email, full_name, legal_name, role, created_at, tutor_promoted_at, discord_user_id, discord_username, discord_connected_at, is_junior, pending_role_exempt, grade, school, strike_count, custom_role, custom_roles(role_level), executive_generation"
+        "id, email, full_name, legal_name, role, created_at, tutor_promoted_at, discord_user_id, discord_username, discord_connected_at, is_junior, pending_role_exempt, senior_tutor, grade, school, strike_count, custom_role, custom_roles(role_level), executive_generation"
       )
       .eq("id", body.userId)
       .single();
@@ -765,6 +828,19 @@ export async function PATCH(request: NextRequest) {
       });
   }
 
+  if (paymentNote !== undefined) {
+    const { error: noteError } = await adminClient
+      .from("tutor_profiles")
+      .upsert({
+        user_id: body.userId,
+        payment_note: paymentNote,
+        updated_at: new Date().toISOString(),
+      });
+    if (noteError) {
+      return NextResponse.json({ error: "Could not save the payment note." }, { status: 500 });
+    }
+  }
+
   if (isPromotingToTutor && updated.email) {
     const attachments: { filename: string; content: string }[] = [];
     try {
@@ -806,6 +882,9 @@ export async function PATCH(request: NextRequest) {
     discordConnectedAt: updatedUser.discord_connected_at ?? null,
     isJunior: updatedUser.is_junior ?? false,
     pendingRoleExempt: Boolean(updatedUser.pending_role_exempt),
+    seniorTutor: Boolean(updatedUser.senior_tutor),
+    // Only present when this request changed it, like the donation link.
+    paymentNote: paymentNote === undefined ? undefined : paymentNote ?? "",
     grade: updatedUser.grade ?? "",
     school: updatedUser.school ?? "",
     strikeCount: updatedUser.strike_count || 0,

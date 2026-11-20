@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
   const { data: requests, error: listError } = await adminClient
     .from("course_enrollment_requests")
     .select(
-      "id, status, rejection_reason, created_at, student_id, course_id, student_name, student_email, course:courses(id, title, created_by, created_by_name, created_by_email, max_students, course_enrollments(count))"
+      "id, status, rejection_reason, created_at, payment_confirmed_at, student_id, course_id, student_name, student_email, course:courses(id, title, created_by, created_by_name, created_by_email, max_students, is_paid, paid_fee, course_enrollments(count))"
     )
     .order("created_at", { ascending: false });
 

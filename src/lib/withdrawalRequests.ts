@@ -4,6 +4,7 @@ import {
   sumHours,
   withdrawableHourSteps,
 } from "@/lib/serviceHours";
+import { courseEarnsServiceHours } from "@/lib/paidCourses";
 
 export type TutorAvailability = {
   availableHours: number;
@@ -21,6 +22,9 @@ export type TutorAvailability = {
 // classes already stamped with a tutor_withdrawal_id. Withdrawn hours come from
 // the withdrawal records themselves, so past certificates stay authoritative even
 // if a course's grade level is changed afterwards.
+//
+// Paid courses are left out entirely: paid teaching is not volunteer work, so
+// their classes are never available to withdraw (PAID_COURSES.md).
 export async function getTutorAvailability(
   adminClient: SupabaseClient,
   tutorId: string
@@ -33,13 +37,16 @@ export async function getTutorAvailability(
     hourSteps: [],
   };
 
-  const { data: courses } = await adminClient
+  const { data: allCourses } = await adminClient
     .from("courses")
-    .select("id, grade_level")
+    .select("id, grade_level, is_paid")
     .is("deleted_at", null)
     .or(`created_by.eq.${tutorId},co_tutor_id.eq.${tutorId}`);
 
-  const courseIds = (courses ?? []).map((c: { id: string }) => c.id);
+  const courses = (
+    (allCourses ?? []) as { id: string; grade_level: number | null; is_paid: boolean | null }[]
+  ).filter(courseEarnsServiceHours);
+  const courseIds = courses.map((c) => c.id);
 
   const { data: withdrawalRows } = await adminClient
     .from("tutor_withdrawals")
@@ -54,12 +61,7 @@ export async function getTutorAvailability(
     return { ...empty, withdrawnHours };
   }
 
-  const gradeByCourse = new Map(
-    (courses ?? []).map((course: { id: string; grade_level: number | null }) => [
-      course.id,
-      course.grade_level,
-    ])
-  );
+  const gradeByCourse = new Map(courses.map((course) => [course.id, course.grade_level]));
 
   const nowStr = new Date().toISOString();
   const { data: pastClasses } = await adminClient

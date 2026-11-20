@@ -10,6 +10,8 @@ import {
 } from "@/lib/notificationsServer";
 import { normalizeGradeLevel } from "@/lib/serviceHours";
 import { classEndDate } from "@/lib/classTiming";
+import { formatPaidFee, normalizePaidFee } from "@/lib/paidCourses";
+import { findPaidCourseBlocker } from "@/lib/paidCoursesServer";
 
 const supabaseUrl = process.env.SUPABASE_URL ?? "";
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
@@ -54,6 +56,7 @@ export async function POST(
     classes?: { title?: string; startsAt?: string; durationHours?: number; tutorId?: string }[];
     maxStudents?: number | null;
     donationFee?: number | null;
+    paidFee?: number | string | null;
     gradeLevel?: number | string | null;
   } | null;
 
@@ -101,6 +104,27 @@ export async function POST(
     : requestRecord.co_tutor;
   const coTutorName = coTutorUser?.full_name?.trim() || coTutorUser?.email || "Unknown co-tutor";
 
+  // A request for a paid course becomes a paid course: the fee is paid straight
+  // to the tutor, there is no donation fee, and the tutor (and co-tutor) must be
+  // senior tutors with a payment note in place (PAID_COURSES.md).
+  const isPaid = requestRecord.is_paid === true;
+  const paidFee = isPaid ? normalizePaidFee(body?.paidFee) : null;
+  if (isPaid) {
+    let blocker: string | null;
+    try {
+      blocker = await findPaidCourseBlocker(adminClient, {
+        ownerId: requestRecord.created_by,
+        coTutorId: requestRecord.is_co_taught ? requestRecord.co_tutor_id : null,
+        fee: body?.paidFee,
+      });
+    } catch {
+      return NextResponse.json({ error: "Could not check senior tutor standing." }, { status: 503 });
+    }
+    if (blocker) {
+      return NextResponse.json({ error: blocker }, { status: 400 });
+    }
+  }
+
   // Create the course
   const { data: courseData, error: courseError } = await adminClient
     .from("courses")
@@ -109,7 +133,9 @@ export async function POST(
       description: requestRecord.description,
       is_completed: false,
       max_students: maxStudents,
-      donation_fee: donationFee,
+      donation_fee: isPaid ? null : donationFee,
+      is_paid: isPaid,
+      paid_fee: paidFee,
       grade_level: gradeLevel,
       created_by: requestRecord.created_by,
       created_by_name: creatorName,
@@ -237,6 +263,7 @@ export async function POST(
         <h2>Course Details</h2>
         <p><strong>Title:</strong> ${courseTitle}</p>
         <p><strong>Max Students:</strong> ${maxStudents || 'Unlimited'}</p>
+        ${isPaid ? `<p><strong>Paid course:</strong> ${formatPaidFee(paidFee)} for the course, paid directly to you. When a family applies, mark their payment as received in My courses so that management can approve the enrollment. A paid course earns no community service hours.</p>` : ""}
         <h3>Finalized Classes:</h3>
         <pre>${classDetails || 'No classes scheduled yet.'}</pre>
         <p>Good luck with your course!</p>
@@ -245,7 +272,7 @@ export async function POST(
       await sendEmail(execEmail, emailSubject, emailHtml);
 
       const discordMention = execDiscordId ? `<@${execDiscordId}>` : `**${execUser.full_name || execUser.email}**`;
-      const discordContent = `${discordMention} Your course request for **${courseTitle}** has been approved!\n\n**Finalized Details:**\n- **Max Students:** ${maxStudents || 'Unlimited'}\n**Classes:**\n${classDetails || 'No classes scheduled.'}`;
+      const discordContent = `${discordMention} Your course request for **${courseTitle}** has been approved!\n\n**Finalized Details:**\n- **Max Students:** ${maxStudents || 'Unlimited'}\n${isPaid ? `- **Paid course:** ${formatPaidFee(paidFee)}, paid directly to the tutor\n` : ""}**Classes:**\n${classDetails || 'No classes scheduled.'}`;
       announced = await sendDiscordMessageByChannelName(executivesChannelName(), discordContent);
     } catch (err) {
       console.error("Failed to send approval notifications:", err);

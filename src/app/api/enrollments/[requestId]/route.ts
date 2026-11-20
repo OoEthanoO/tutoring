@@ -6,6 +6,7 @@ import { getRequestUser } from "@/lib/authServer";
 import { notifyCourseTutorsOfNewEnrollment } from "@/lib/courseChangeNotifications";
 import { sendEmail } from "@/lib/notificationsServer";
 import { enrollmentRejectionEmail, escapeEnrollmentEmailHtml, MAX_ENROLLMENT_REJECTION_REASON_LENGTH, parseEnrollmentRejectionReason } from "@/lib/enrollmentRequests";
+import { enrollmentApprovalBlocker } from "@/lib/paidCourses";
 
 const supabaseUrl = process.env.SUPABASE_URL ?? "";
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
@@ -20,6 +21,7 @@ type EnrollmentRequestCourse = {
   created_by: string | null;
   created_by_email: string | null;
   max_students: number | null;
+  is_paid: boolean | null;
   course_enrollments: { count: number }[] | null;
 };
 
@@ -84,7 +86,7 @@ export async function PATCH(
   const { data: requestData, error: requestError } = await adminClient
     .from("course_enrollment_requests")
     .select(
-      "id, course_id, student_id, student_name, student_email, status, created_at, course:courses(id, title, short_name, created_by_name, created_by, created_by_email, max_students, course_enrollments(count))"
+      "id, course_id, student_id, student_name, student_email, status, created_at, payment_confirmed_at, course:courses(id, title, short_name, created_by_name, created_by, created_by_email, max_students, is_paid, course_enrollments(count))"
     )
     .eq("id", requestId)
     .single();
@@ -119,6 +121,16 @@ export async function PATCH(
     const maxStudents = course?.max_students;
     const enrollmentCount = course?.course_enrollments?.[0]?.count ?? 0;
     const courseId = course?.id;
+
+    // A paid course is paid straight to its tutor, so only the tutor knows
+    // whether the money arrived. Nobody can approve before they have said so.
+    const paymentBlocker = enrollmentApprovalBlocker({
+      courseIsPaid: Boolean(course?.is_paid),
+      paymentConfirmedAt: requestData.payment_confirmed_at,
+    });
+    if (paymentBlocker) {
+      return NextResponse.json({ error: paymentBlocker }, { status: 400 });
+    }
 
     if (action === "approve" && maxStudents && enrollmentCount >= maxStudents) {
       return NextResponse.json(

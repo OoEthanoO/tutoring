@@ -15,6 +15,7 @@ import AdminClassTrials from "@/components/AdminClassTrials";
 import CourseAttendance from "@/components/CourseAttendance";
 import CourseNeedsList, { type CourseNeed } from "@/components/CourseNeedsList";
 import { summariseCourseNeedsSend } from "@/lib/courseNeeds";
+import { MAX_PAYMENT_NOTE_LENGTH } from "@/lib/paidCourses";
 import TutorApplicationFormModal from "@/components/TutorApplicationFormModal";
 
 type AdminUser = {
@@ -35,6 +36,10 @@ type AdminUser = {
   teachesCourse?: boolean;
   // Founder-set: keep the Executive role without teaching a course.
   pendingRoleExempt?: boolean;
+  // Management-set: may teach paid courses.
+  seniorTutor?: boolean;
+  // How families pay this tutor for a paid course.
+  paymentNote?: string;
   grade?: string;
   school?: string;
   strikeCount?: number;
@@ -184,6 +189,7 @@ export default function AdminUserManager() {
     null
   );
   const [donationLinks, setDonationLinks] = useState<Record<string, string>>({});
+  const [paymentNotes, setPaymentNotes] = useState<Record<string, string>>({});
   const [promotedDates, setPromotedDates] = useState<Record<string, string>>(
     {}
   );
@@ -342,6 +348,11 @@ export default function AdminUserManager() {
             user.id,
             user.donationLink ?? "",
           ])
+        )
+      );
+      setPaymentNotes(
+        Object.fromEntries(
+          (data.users ?? []).map((user) => [user.id, user.paymentNote ?? ""])
         )
       );
       setPromotedDates(
@@ -895,6 +906,80 @@ export default function AdminUserManager() {
         : data.user.teachesCourse
           ? `${who} teaches a course, so they stay an Executive.`
           : `${who} holds Pending until they upload a course they teach. It applies on the next Discord sync.`,
+    });
+    setPendingId(null);
+  };
+
+  // Only senior tutors can teach paid courses (PAID_COURSES.md). The server
+  // refuses to remove the tick while one of their paid courses is running.
+  const toggleSeniorTutor = async (userId: string, seniorTutor: boolean) => {
+    setPendingId(userId);
+    setStatus({ type: "idle", message: "" });
+
+    const response = await fetch("/api/admin/users", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, seniorTutor }),
+    });
+
+    if (!response.ok) {
+      const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+      setStatus({
+        type: "error",
+        message: payload?.error ?? "Could not update the senior tutor setting.",
+      });
+      setPendingId(null);
+      return;
+    }
+
+    const data = (await response.json()) as { user: AdminUser };
+    // Only this field: the response leaves out what the list worked out itself.
+    setUsers((current) =>
+      current.map((user) =>
+        user.id === data.user.id ? { ...user, seniorTutor: Boolean(data.user.seniorTutor) } : user
+      )
+    );
+    const who = data.user.fullName || data.user.email || "User";
+    setStatus({
+      type: "success",
+      message: data.user.seniorTutor
+        ? `${who} is now a senior tutor and can request paid courses.`
+        : `${who} is no longer a senior tutor.`,
+    });
+    setPendingId(null);
+  };
+
+  const updatePaymentNote = async (userId: string) => {
+    setPendingId(userId);
+    setStatus({ type: "idle", message: "" });
+
+    const response = await fetch("/api/admin/users", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, paymentNote: paymentNotes[userId] ?? "" }),
+    });
+
+    if (!response.ok) {
+      const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+      setStatus({
+        type: "error",
+        message: payload?.error ?? "Could not update the payment note.",
+      });
+      setPendingId(null);
+      return;
+    }
+
+    const data = (await response.json()) as { user: AdminUser };
+    const saved = data.user.paymentNote ?? "";
+    setPaymentNotes((current) => ({ ...current, [userId]: saved }));
+    setUsers((current) =>
+      current.map((user) => (user.id === userId ? { ...user, paymentNote: saved } : user))
+    );
+    setStatus({
+      type: "success",
+      message: saved
+        ? `Updated the payment note for ${data.user.fullName || data.user.email || "user"}.`
+        : `Removed the payment note for ${data.user.fullName || data.user.email || "user"}.`,
     });
     setPendingId(null);
   };
@@ -2379,6 +2464,24 @@ export default function AdminUserManager() {
                           )}
                         </div>
                       ) : null}
+                      {isExecutive(user.role) && canChangeAccess ? (
+                        <div className="flex flex-wrap items-center gap-2">
+                          <input
+                            id={`senior-tutor-${user.id}`}
+                            type="checkbox"
+                            checked={!!user.seniorTutor}
+                            disabled={isPending}
+                            onChange={(event) => toggleSeniorTutor(user.id, event.target.checked)}
+                            className="h-4 w-4 rounded border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)] transition focus:ring-0"
+                          />
+                          <label
+                            htmlFor={`senior-tutor-${user.id}`}
+                            className="text-xs font-medium text-[var(--foreground)]"
+                          >
+                            Senior tutor (can teach paid courses)
+                          </label>
+                        </div>
+                      ) : null}
                       {!isTopLeadership(user.role) && canChangeAccess ? (
                         <div className="flex items-center gap-2">
                           <span className="text-xs font-medium text-red-500">
@@ -2434,6 +2537,38 @@ export default function AdminUserManager() {
                           {isPending ? "Saving..." : "Save link"}
                         </button>
                       </div>
+                      {user.seniorTutor && canChangeAccess ? (
+                        <div className="flex flex-wrap items-start gap-2">
+                          <label
+                            htmlFor={`payment-note-${user.id}`}
+                            className="pt-2 text-xs text-[var(--muted)]"
+                          >
+                            Payment note
+                          </label>
+                          <textarea
+                            id={`payment-note-${user.id}`}
+                            value={paymentNotes[user.id] ?? ""}
+                            onChange={(event) =>
+                              setPaymentNotes((current) => ({
+                                ...current,
+                                [user.id]: event.target.value,
+                              }))
+                            }
+                            rows={2}
+                            maxLength={MAX_PAYMENT_NOTE_LENGTH}
+                            placeholder="How families pay this tutor for a paid course"
+                            className="min-w-[12rem] flex-1 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-2 text-xs text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+                          />
+                          <button
+                            type="button"
+                            disabled={isPending}
+                            onClick={() => updatePaymentNote(user.id)}
+                            className="rounded-full border border-[var(--foreground)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-70"
+                          >
+                            {isPending ? "Saving..." : "Save note"}
+                          </button>
+                        </div>
+                      ) : null}
                       {!isTopLeadership(user.role) && canChangeAccess ? (
                         <div className="flex flex-wrap items-center gap-2">
                           <label className="text-xs text-[var(--muted)]">

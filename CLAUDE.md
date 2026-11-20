@@ -141,6 +141,15 @@ DNS is on Cloudflare, with a local updater for the home address. See
   ScreenCaptureKit, never a crop of the screen — so notifications and windows
   drawn over it stay out of the recording (`windowfeed.rs`,
   `recorder/wincapture/main.swift`); never add a crop fallback.
+- Paid courses (November 2026): a course with `courses.is_paid` has a fee
+  the family pays straight to the tutor, not a SickKids donation; the site
+  never handles the money. Only senior tutors (`app_users.senior_tutor`, a
+  tick the trio sets in Manage accounts) may teach one, the tutor needs a
+  payment note, the course's own tutor must mark each payment as received
+  before an enrollment can be approved, and a paid course earns no service
+  hours. Every rule is a pure function in `src/lib/paidCourses.ts`; enforce
+  them server-side, never only in the interface. See `PAID_COURSES.md`; apply
+  `20261120120000_paid_courses.sql` before deployment.
 
 ## Conventions
 

@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
   // 2. Get course info
   const { data: course, error: courseError } = await adminClient
     .from("courses")
-    .select("id, title")
+    .select("id, title, is_paid")
     .eq("id", body.courseId)
     .single();
 
@@ -72,6 +72,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       { error: "Course not found." },
       { status: 404 }
+    );
+  }
+
+  // Adding a student by hand would skip the tutor's "payment received", which
+  // is the one check a paid course has (PAID_COURSES.md).
+  if (course.is_paid) {
+    return NextResponse.json(
+      { error: "This is a paid course. The family has to apply on the Courses page, so that the tutor can confirm the payment before the enrollment is approved." },
+      { status: 400 }
     );
   }
 

@@ -13,6 +13,7 @@ import {
   serviceHoursForClass,
   sumHours,
 } from "@/lib/serviceHours";
+import { courseEarnsServiceHours } from "@/lib/paidCourses";
 
 const escapeHtmlValue = (value: string) =>
   value
@@ -161,16 +162,20 @@ export async function GET(request: NextRequest) {
 
   const tutorLegalName = String(tutorUser.legal_name ?? "").trim();
 
-  // Fetch tutor's taught courses
-  const { data: courses, error: coursesError } = await adminClient
+  // Fetch tutor's taught courses. Paid courses earn no service hours, so their
+  // classes never appear here (PAID_COURSES.md).
+  const { data: allCourses, error: coursesError } = await adminClient
     .from("courses")
-    .select("id, title, grade_level")
+    .select("id, title, grade_level, is_paid")
     .is("deleted_at", null)
     .or(`created_by.eq.${tutorId},co_tutor_id.eq.${tutorId}`);
 
   if (coursesError) {
     return NextResponse.json({ error: coursesError.message }, { status: 500 });
   }
+  const courses = ((allCourses ?? []) as (CourseRow & { is_paid: boolean | null })[]).filter(
+    courseEarnsServiceHours
+  );
 
   const courseIds = courses?.map((c: CourseRow) => c.id) || [];
 
@@ -289,16 +294,20 @@ export async function POST(request: NextRequest) {
     }, { status: 400 });
   }
 
-  // Fetch tutor's taught courses
-  const { data: courses, error: coursesError } = await adminClient
+  // Fetch tutor's taught courses, leaving out paid courses: they earn no
+  // service hours, so none of their classes can be withdrawn.
+  const { data: allCourses, error: coursesError } = await adminClient
     .from("courses")
-    .select("id, grade_level")
+    .select("id, grade_level, is_paid")
     .is("deleted_at", null)
     .or(`created_by.eq.${tutorId},co_tutor_id.eq.${tutorId}`);
 
   if (coursesError) {
     return NextResponse.json({ error: coursesError.message }, { status: 500 });
   }
+  const courses = (
+    (allCourses ?? []) as (Pick<CourseRow, "id" | "grade_level"> & { is_paid: boolean | null })[]
+  ).filter(courseEarnsServiceHours);
 
   const courseIds = courses?.map((c: Pick<CourseRow, "id">) => c.id) || [];
   if (courseIds.length === 0) {

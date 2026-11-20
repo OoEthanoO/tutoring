@@ -10,6 +10,8 @@ import { suggestNextClassStart } from "@/lib/classSchedule";
 import { MarkdownText } from "@/lib/parseMarkdown";
 import CourseAttendance from "@/components/CourseAttendance";
 import RequestWithdrawalCard from "@/components/RequestWithdrawalCard";
+import PaidCoursesCard from "@/components/PaidCoursesCard";
+import { MAX_PAID_FEE, MIN_PAID_FEE, formatPaidFee, normalizePaidFee } from "@/lib/paidCourses";
 
 type EnrolledStudent = {
   id: string;
@@ -40,6 +42,9 @@ type Course = {
   completed_class_count?: number | null;
   max_students?: number | null;
   donation_fee?: number | null;
+  /** Paid course: families pay `paid_fee` straight to the tutor. */
+  is_paid?: boolean;
+  paid_fee?: number | null;
   grade_level?: number | null;
   /** Recorded with YanLearn Recorder. Off exempts the tutor from the app. */
   recordings_enabled?: boolean;
@@ -134,6 +139,8 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
   const [editCourseDescription, setEditCourseDescription] = useState("");
   const [editCourseMaxStudents, setEditCourseMaxStudents] = useState<string>("");
   const [editCourseDonationFee, setEditCourseDonationFee] = useState<string>("");
+  const [editCourseIsPaid, setEditCourseIsPaid] = useState(false);
+  const [editCoursePaidFee, setEditCoursePaidFee] = useState<string>("");
   const [editCourseGradeLevel, setEditCourseGradeLevel] = useState<string>("");
   const [editCourseRecordingsEnabled, setEditCourseRecordingsEnabled] = useState(false);
   const [editCompletedStartDate, setEditCompletedStartDate] = useState("");
@@ -823,6 +830,8 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
     setEditCourseDescription(course.description ?? "");
     setEditCourseMaxStudents(course.max_students ? String(course.max_students) : "");
     setEditCourseDonationFee(course.donation_fee ? String(course.donation_fee) : "");
+    setEditCourseIsPaid(course.is_paid === true);
+    setEditCoursePaidFee(course.paid_fee ? String(course.paid_fee) : "");
     setEditCourseGradeLevel(course.grade_level ? String(course.grade_level) : "");
     setEditCourseRecordingsEnabled(course.recordings_enabled === true);
     setEditCompletedStartDate(course.completed_start_date ?? "");
@@ -837,6 +846,8 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
     setEditCourseDescription("");
     setEditCourseMaxStudents("");
     setEditCourseDonationFee("");
+    setEditCourseIsPaid(false);
+    setEditCoursePaidFee("");
     setEditCourseGradeLevel("");
     setEditCourseRecordingsEnabled(false);
     setEditCompletedStartDate("");
@@ -863,6 +874,20 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
     const editedCourse = courses.find((item) => item.id === courseId);
     const recordingsChanged =
       editCourseRecordingsEnabled !== (editedCourse?.recordings_enabled === true);
+    // The same care for the paid setting: it is sent only when it was changed,
+    // because the server checks the tutor's standing whenever it arrives.
+    const paidChanged =
+      editCourseIsPaid !== (editedCourse?.is_paid === true) ||
+      (editCourseIsPaid && Number(editCoursePaidFee || 0) !== Number(editedCourse?.paid_fee ?? 0));
+    const sendPaid = isHighRankingChiefExecutive(role) && paidChanged;
+    if (sendPaid && editCourseIsPaid && normalizePaidFee(editCoursePaidFee) === null) {
+      setStatus({
+        type: "error",
+        message: `Enter the course fee: a dollar amount from $${MIN_PAID_FEE} to $${MAX_PAID_FEE}.`,
+      });
+      setPendingCourseEditId(null);
+      return;
+    }
 
     const response = await fetch("/api/courses", {
       method: "PATCH",
@@ -873,7 +898,9 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
         shortName: isFounder(role) ? editCourseShortName.trim() : undefined,
         description: editCourseDescription.trim(),
         maxStudents: isFounder(role) ? (editCourseMaxStudents ? Number(editCourseMaxStudents) : null) : undefined,
-        donationFee: isHighRankingChiefExecutive(role) ? (editCourseDonationFee ? Number(editCourseDonationFee) : null) : undefined,
+        donationFee: isHighRankingChiefExecutive(role) ? (!editCourseIsPaid && editCourseDonationFee ? Number(editCourseDonationFee) : null) : undefined,
+        isPaid: sendPaid ? editCourseIsPaid : undefined,
+        paidFee: sendPaid ? (editCourseIsPaid ? Number(editCoursePaidFee) : null) : undefined,
         gradeLevel: isFounder(role) ? (editCourseGradeLevel ? Number(editCourseGradeLevel) : null) : undefined,
         recordingsEnabled: isFounder(role) && recordingsChanged ? editCourseRecordingsEnabled : undefined,
         completedStartDate: isFounder(role) ? (editCompletedStartDate || null) : undefined,
@@ -1191,6 +1218,7 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
           ) : null}
         </div>
         {!isTrashMode && isExecutive(role) ? <RequestWithdrawalCard /> : null}
+        {!isTrashMode && isExecutive(role) ? <PaidCoursesCard /> : null}
         {!isTrashMode && (
           <div className="flex flex-col gap-1">
             {isExecutive(role) && donationLink ? (
@@ -1349,7 +1377,7 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
                         className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
                       />
                     ) : null}
-                    {isHighRankingChiefExecutive(role) ? (
+                    {isHighRankingChiefExecutive(role) && !editCourseIsPaid ? (
                       <input
                         type="number"
                         min="0"
@@ -1359,6 +1387,43 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
                         placeholder="Donation Fee (Leave blank for none)"
                         className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
                       />
+                    ) : null}
+                    {isHighRankingChiefExecutive(role) ? (
+                      <div className="space-y-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
+                        <div className="flex items-start gap-3">
+                          <input
+                            id={`course-paid-${course.id}`}
+                            type="checkbox"
+                            checked={editCourseIsPaid}
+                            onChange={(event) => setEditCourseIsPaid(event.target.checked)}
+                            className="mt-0.5 h-4 w-4 rounded border-[var(--border)] bg-[var(--background)] text-[var(--foreground)] focus:ring-0"
+                          />
+                          <div>
+                            <label
+                              htmlFor={`course-paid-${course.id}`}
+                              className="text-sm font-semibold text-[var(--foreground)]"
+                            >
+                              Paid course
+                            </label>
+                            <p className="mt-1 text-xs text-[var(--muted)]">
+                              Families pay the fee straight to the tutor instead of donating to SickKids, and the course earns no community service hours. The tutor (and any co-tutor) must be a senior tutor with a payment note. It cannot be switched once a class has started or a family has applied.
+                            </p>
+                          </div>
+                        </div>
+                        {editCourseIsPaid ? (
+                          <input
+                            type="number"
+                            min={MIN_PAID_FEE}
+                            max={MAX_PAID_FEE}
+                            step="0.01"
+                            value={editCoursePaidFee}
+                            onChange={(event) => setEditCoursePaidFee(event.target.value)}
+                            placeholder="Course fee in dollars, for the whole course"
+                            aria-label="Course fee in dollars"
+                            className="w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--foreground)]"
+                          />
+                        ) : null}
+                      </div>
                     ) : null}
                     {isFounder(role) ? (
                       <div className="space-y-1">
@@ -1545,7 +1610,12 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
                     ) : null}
                     {/* Shown to every tutor, not just founders: it is what each of
                         their classes is worth in community service hours. */}
-                    {course.grade_level ? (
+                    {course.is_paid ? (
+                      <p className="text-xs text-[var(--muted)]">
+                        Paid course · {formatPaidFee(course.paid_fee)} paid directly to the tutor ·
+                        no community service hours
+                      </p>
+                    ) : course.grade_level ? (
                       <p className="text-xs text-[var(--muted)]">
                         Grade {course.grade_level} ·{" "}
                         {serviceHourMultiplierForGrade(course.grade_level)} community service

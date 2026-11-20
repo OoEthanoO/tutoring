@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
   // Find the target user by email
   const { data: targetUser, error: findError } = await adminClient
     .from("app_users")
-    .select("id, email, full_name, role")
+    .select("id, email, full_name, role, senior_tutor")
     .eq("email", targetEmail)
     .maybeSingle();
 
@@ -63,8 +63,10 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Perform bulk update on courses where created_by is null
-  const { error: updateError } = await adminClient
+  // Perform bulk update on courses where created_by is null. Only senior
+  // tutors can teach paid courses (PAID_COURSES.md), so a paid course without a
+  // tutor is left alone unless the new tutor is one.
+  let bulkUpdate = adminClient
     .from("courses")
     .update({
       created_by: targetUser.id,
@@ -72,6 +74,10 @@ export async function POST(request: NextRequest) {
       created_by_email: targetUser.email,
     })
     .is("created_by", null);
+  if (!targetUser.senior_tutor) {
+    bulkUpdate = bulkUpdate.eq("is_paid", false);
+  }
+  const { error: updateError } = await bulkUpdate;
 
   if (updateError) {
     return NextResponse.json(

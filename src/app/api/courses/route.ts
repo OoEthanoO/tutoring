@@ -5,6 +5,8 @@ import { getRequestUser } from "@/lib/authServer";
 import { relabelClassesForCourse } from "@/lib/classTools";
 import { notifyCourseTutorsOfChanges } from "@/lib/courseChangeNotifications";
 import { normalizeGradeLevel, serviceHourMultiplierForGrade } from "@/lib/serviceHours";
+import { formatPaidFee, normalizePaidFee, paidStatusChangeBlocker } from "@/lib/paidCourses";
+import { findPaidCourseBlocker } from "@/lib/paidCoursesServer";
 
 const supabaseUrl = process.env.SUPABASE_URL ?? "";
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
@@ -131,7 +133,7 @@ export async function POST(request: NextRequest) {
       recordings_enabled: recordingsEnabled,
     })
     .select(
-      "id, title, short_name, description, is_completed, completed_start_date, completed_end_date, completed_class_count, max_students, donation_fee, grade_level, created_by, created_by_name, created_by_email, is_co_taught, co_tutor_id, co_tutor_name, co_tutor_email, recordings_enabled, created_at, deleted_at"
+      "id, title, short_name, description, is_completed, completed_start_date, completed_end_date, completed_class_count, max_students, donation_fee, is_paid, paid_fee, grade_level, created_by, created_by_name, created_by_email, is_co_taught, co_tutor_id, co_tutor_name, co_tutor_email, recordings_enabled, created_at, deleted_at"
     )
     .single();
 
@@ -222,7 +224,7 @@ export async function GET(request: NextRequest) {
   let query = adminClient
     .from("courses")
     .select(
-      "id, title, short_name, description, is_completed, completed_start_date, completed_end_date, completed_class_count, max_students, donation_fee, grade_level, created_by, created_by_name, created_by_email, is_co_taught, co_tutor_id, co_tutor_name, co_tutor_email, recordings_enabled, created_at, deleted_at, course_classes(id, title, starts_at, duration_hours, created_at), course_enrollments(count)"
+      "id, title, short_name, description, is_completed, completed_start_date, completed_end_date, completed_class_count, max_students, donation_fee, is_paid, paid_fee, grade_level, created_by, created_by_name, created_by_email, is_co_taught, co_tutor_id, co_tutor_name, co_tutor_email, recordings_enabled, created_at, deleted_at, course_classes(id, title, starts_at, duration_hours, created_at), course_enrollments(count)"
     );
 
   if (trash) {
@@ -278,12 +280,15 @@ export async function GET(request: NextRequest) {
   const { data: donationData } = creatorIds.length
     ? await adminClient
       .from("tutor_profiles")
-      .select("user_id, donation_link")
+      .select("user_id, donation_link, payment_note")
       .in("user_id", creatorIds)
     : { data: [] };
 
   const donationMap = new Map(
     (donationData ?? []).map((row) => [row.user_id, row.donation_link ?? null])
+  );
+  const paymentNoteMap = new Map(
+    (donationData ?? []).map((row) => [row.user_id, row.payment_note ?? null])
   );
 
   const { data: creatorUsers } = creatorIds.length
@@ -307,7 +312,11 @@ export async function GET(request: NextRequest) {
     return {
       ...course,
       enrollment_count: course.course_enrollments?.[0]?.count ?? 0,
-      donation_link: donationMap.get(course.created_by ?? "") ?? null,
+      // A paid course is paid straight to its tutor, so it has no donation link.
+      // The tutor's payment note takes its place, and only for signed-in users:
+      // it can hold a tutor's own contact details.
+      donation_link: course.is_paid ? null : donationMap.get(course.created_by ?? "") ?? null,
+      payment_note: course.is_paid && user ? paymentNoteMap.get(course.created_by ?? "") ?? null : null,
       created_by_strike_count: strikesMap.get(course.created_by ?? "") ?? 0,
       enrollment_status: enrollmentStatus,
       enrollment_request_id: request?.id ?? null,
@@ -433,6 +442,8 @@ export async function PATCH(request: NextRequest) {
       createdBy?: string | null;
       maxStudents?: number | null;
       donationFee?: number | null;
+      isPaid?: boolean;
+      paidFee?: number | string | null;
       gradeLevel?: number | string | null;
       completedStartDate?: string | null;
       completedEndDate?: string | null;
@@ -474,6 +485,10 @@ export async function PATCH(request: NextRequest) {
       : typeof body.donationFee === "number" && body.donationFee >= 0
         ? body.donationFee
         : undefined;
+  // Paid course (PAID_COURSES.md): the fee is paid straight to the tutor.
+  const isPaidInput = typeof body.isPaid === "boolean" ? body.isPaid : undefined;
+  const paidFeeInput = body.paidFee;
+  const touchesPaid = isPaidInput !== undefined || paidFeeInput !== undefined;
   // Grade level drives the tutor's service-hour rate: grade 11/12 courses are
   // worth 2 hours per class instead of 1.5.
   const gradeLevel =
@@ -498,6 +513,7 @@ export async function PATCH(request: NextRequest) {
     createdBy === undefined &&
     maxStudents === undefined &&
     donationFee === undefined &&
+    !touchesPaid &&
     gradeLevel === undefined &&
     recordingsEnabled === undefined &&
     body.restore !== true
@@ -514,7 +530,7 @@ export async function PATCH(request: NextRequest) {
 
   const { data: previousCourse } = await adminClient
     .from("courses")
-    .select("id, title, description, short_name, max_students, donation_fee, grade_level, completed_start_date, completed_end_date, completed_class_count, created_by, created_by_name, created_by_email")
+    .select("id, title, description, short_name, max_students, donation_fee, is_paid, paid_fee, is_co_taught, co_tutor_id, grade_level, completed_start_date, completed_end_date, completed_class_count, created_by, created_by_name, created_by_email, course_classes(starts_at), course_enrollments(count)")
     .eq("id", body.courseId)
     .maybeSingle();
 
@@ -524,6 +540,8 @@ export async function PATCH(request: NextRequest) {
     description?: string | null;
     max_students?: number | null;
     donation_fee?: number | null;
+    is_paid?: boolean;
+    paid_fee?: number | null;
     grade_level?: number | null;
     created_by?: string | null;
     created_by_name?: string | null;
@@ -634,6 +652,71 @@ export async function PATCH(request: NextRequest) {
     updatePayload.created_by_email = tutorUser.email ?? null;
   }
 
+  // Paid courses. Only senior tutors with a payment note may teach one, a
+  // course cannot switch once families have paid or donated, and a paid course
+  // never carries a donation fee. Changing the tutor of a paid course runs the
+  // same check against the new tutor.
+  const wasPaid = Boolean(previousCourse?.is_paid);
+  const willBePaid = isPaidInput ?? wasPaid;
+  if (touchesPaid || (wasPaid && (createdBy !== undefined || donationFee !== undefined))) {
+    if (!previousCourse) {
+      return NextResponse.json({ error: "Course not found." }, { status: 404 });
+    }
+    if (willBePaid && donationFee !== undefined && donationFee !== null) {
+      return NextResponse.json(
+        { error: "A paid course has no donation fee: families pay the tutor directly." },
+        { status: 400 }
+      );
+    }
+    if (willBePaid !== wasPaid) {
+      const { count: pendingRequestCount, error: pendingError } = await adminClient
+        .from("course_enrollment_requests")
+        .select("id", { count: "exact", head: true })
+        .eq("course_id", previousCourse.id)
+        .eq("status", "pending");
+      if (pendingError) {
+        return NextResponse.json({ error: "Could not check this course's enrollment requests." }, { status: 503 });
+      }
+      const nowMs = Date.now();
+      const switchBlocker = paidStatusChangeBlocker({
+        hasStartedClass: (previousCourse.course_classes ?? []).some(
+          (item: { starts_at: string }) => new Date(item.starts_at).getTime() <= nowMs
+        ),
+        enrollmentCount: previousCourse.course_enrollments?.[0]?.count ?? 0,
+        pendingRequestCount: pendingRequestCount ?? 0,
+      });
+      if (switchBlocker) {
+        return NextResponse.json({ error: switchBlocker }, { status: 400 });
+      }
+    }
+    // An edit that changes neither the paid setting nor the tutor (a new
+    // title, say) is not held to the tutor's standing again.
+    if (willBePaid && (touchesPaid || createdBy !== undefined)) {
+      const nextFee = paidFeeInput !== undefined ? paidFeeInput : previousCourse.paid_fee;
+      let paidBlocker: string | null;
+      try {
+        paidBlocker = await findPaidCourseBlocker(adminClient, {
+          ownerId: createdBy === undefined ? previousCourse.created_by : updatePayload.created_by,
+          coTutorId: previousCourse.is_co_taught ? previousCourse.co_tutor_id : null,
+          fee: nextFee,
+        });
+      } catch {
+        return NextResponse.json({ error: "Could not check senior tutor standing." }, { status: 503 });
+      }
+      if (paidBlocker) {
+        return NextResponse.json({ error: paidBlocker }, { status: 400 });
+      }
+      if (touchesPaid) {
+        updatePayload.is_paid = true;
+        updatePayload.paid_fee = normalizePaidFee(nextFee);
+        updatePayload.donation_fee = null;
+      }
+    } else if (touchesPaid) {
+      updatePayload.is_paid = false;
+      updatePayload.paid_fee = null;
+    }
+  }
+
   let updateQuery = adminClient
     .from("courses")
     .update(updatePayload)
@@ -645,7 +728,7 @@ export async function PATCH(request: NextRequest) {
 
   const { data, error: updateError } = await updateQuery
     .select(
-      "id, title, short_name, description, is_completed, completed_start_date, completed_end_date, completed_class_count, max_students, donation_fee, grade_level, created_by, created_by_name, created_by_email, is_co_taught, co_tutor_id, co_tutor_name, co_tutor_email, recordings_enabled, created_at, deleted_at"
+      "id, title, short_name, description, is_completed, completed_start_date, completed_end_date, completed_class_count, max_students, donation_fee, is_paid, paid_fee, grade_level, created_by, created_by_name, created_by_email, is_co_taught, co_tutor_id, co_tutor_name, co_tutor_email, recordings_enabled, created_at, deleted_at"
     )
     .single();
 
@@ -686,9 +769,19 @@ export async function PATCH(request: NextRequest) {
     }
     if (
       donationFee !== undefined &&
+      !willBePaid &&
       donationFee !== (previousCourse.donation_fee ?? null)
     ) {
       changes.push(`Donation fee changed from ${previousCourse.donation_fee ?? "None"} to ${donationFee ?? "None"}.`);
+    }
+    if (touchesPaid && willBePaid !== wasPaid) {
+      changes.push(
+        willBePaid
+          ? `This is now a paid course: families pay ${formatPaidFee(data.paid_fee)} directly to the tutor instead of donating to SickKids. The tutor confirms each payment in My courses before management approves the enrollment, and the course earns no community service hours.`
+          : "This is no longer a paid course: families donate through the tutor's donation link again, and the course earns community service hours."
+      );
+    } else if (touchesPaid && willBePaid && Number(previousCourse.paid_fee) !== Number(data.paid_fee)) {
+      changes.push(`Course fee changed from ${formatPaidFee(previousCourse.paid_fee)} to ${formatPaidFee(data.paid_fee)}.`);
     }
     if (
       gradeLevel !== undefined &&

@@ -3,12 +3,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNotification } from "./Notification";
 import { classEndMs } from "@/lib/classTiming";
+import { formatPaidFee } from "@/lib/paidCourses";
 
 interface Course {
   id: string;
   title: string;
   created_by_name?: string | null;
   donation_fee?: number;
+  // Paid course: the fee goes to the tutor, not to the SickKids fundraiser.
+  is_paid?: boolean;
+  paid_fee?: number | null;
   completed_class_count?: number | null;
   is_completed?: boolean;
   completed_start_date?: string | null;
@@ -296,7 +300,7 @@ export default function AllCoursesTableMenu() {
             <th className="border border-[var(--border)] px-2 py-1 text-center font-semibold leading-tight">Course</th>
             <th className="border border-[var(--border)] px-2 py-1 text-center font-semibold leading-tight">Tutor</th>
             <th className="border border-[var(--border)] px-2 py-1 text-center font-semibold leading-tight">Classes</th>
-            <th className="border border-[var(--border)] px-2 py-1 text-center font-semibold leading-tight">Donation</th>
+            <th className="border border-[var(--border)] px-2 py-1 text-center font-semibold leading-tight">Donation / Fee</th>
             <th className="border border-[var(--border)] px-2 py-1 text-center font-semibold leading-tight">Period</th>
             <th className="border border-[var(--border)] px-1 py-1 text-center font-semibold leading-tight whitespace-nowrap">Mon</th>
             <th className="border border-[var(--border)] px-1 py-1 text-center font-semibold leading-tight whitespace-nowrap">Tue</th>
@@ -337,7 +341,7 @@ export default function AllCoursesTableMenu() {
                   <td className="border border-[var(--border)] px-2 py-1 truncate leading-tight text-center whitespace-nowrap" title={course.title}>{course.title}</td>
                   <td className="border border-[var(--border)] px-2 py-1 truncate leading-tight text-center whitespace-nowrap" title={course.created_by_name || ""}>{course.created_by_name || "N/A"}</td>
                   <td className="border border-[var(--border)] px-2 py-1 text-center leading-tight">{classCount}</td>
-                  <td className="border border-[var(--border)] px-2 py-1 text-center leading-tight">${course.donation_fee || 0}</td>
+                  <td className="border border-[var(--border)] px-2 py-1 text-center leading-tight">{course.is_paid ? `Fee ${formatPaidFee(course.paid_fee)}` : `$${course.donation_fee || 0}`}</td>
                   <td className="border border-[var(--border)] px-2 py-1 text-xs leading-tight text-center whitespace-nowrap">{periodLabel}</td>
                   <td
                     colSpan={8}
@@ -355,7 +359,7 @@ export default function AllCoursesTableMenu() {
                 <td className="border border-[var(--border)] px-2 py-1 truncate leading-tight text-center whitespace-nowrap" title={course.title}>{course.title}</td>
                 <td className="border border-[var(--border)] px-2 py-1 truncate leading-tight text-center whitespace-nowrap" title={course.created_by_name || ""}>{course.created_by_name || "N/A"}</td>
                 <td className="border border-[var(--border)] px-2 py-1 text-center leading-tight">{classCount}</td>
-                <td className="border border-[var(--border)] px-2 py-1 text-center leading-tight">${course.donation_fee || 0}</td>
+                <td className="border border-[var(--border)] px-2 py-1 text-center leading-tight">{course.is_paid ? `Fee ${formatPaidFee(course.paid_fee)}` : `$${course.donation_fee || 0}`}</td>
                 <td className="border border-[var(--border)] px-2 py-1 text-xs leading-tight text-center whitespace-nowrap">{periodLabel}</td>
                 {DAYS_OF_WEEK.map((day) => (
                   <td key={day} className="border border-[var(--border)] px-1 py-1 text-xs leading-tight whitespace-nowrap text-center">

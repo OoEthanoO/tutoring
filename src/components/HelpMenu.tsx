@@ -72,6 +72,9 @@ export default function HelpMenu() {
                             If the course requires a donation, click <span className="font-semibold text-[var(--foreground)]">&quot;Open Donation Link&quot;</span> to make your course donation.
                         </li>
                         <li>
+                            If it is a <span className="font-semibold text-[var(--foreground)]">paid course</span>, there is no donation. Send the course fee directly to the tutor using the payment details shown, then tick <span className="font-semibold text-[var(--foreground)]">&quot;I have sent the payment to the tutor&quot;</span>. The fee goes to the tutor, not to YanLearn and not to SickKids, and the tutor confirms that it arrived before your request is reviewed.
+                        </li>
+                        <li>
                             Fill out the <span className="font-semibold text-[var(--foreground)]">Student Application Form</span> embedded below.
                         </li>
                         <li>

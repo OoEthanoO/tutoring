@@ -8,6 +8,7 @@ import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import CourseCreator from "./CourseCreator";
 import CourseNeedsList, { type CourseNeed } from "./CourseNeedsList";
+import { MAX_PAID_FEE, MIN_PAID_FEE, formatPaidFee, normalizePaidFee } from "@/lib/paidCourses";
 
 type RequestRecord = {
   id: string;
@@ -24,6 +25,9 @@ type RequestRecord = {
   created_at: string;
   is_co_taught?: boolean;
   recordings_enabled?: boolean;
+  // Paid course: families pay the tutor directly (senior tutors only).
+  is_paid?: boolean;
+  requested_fee?: number | string | null;
   co_tutor_id?: string;
   app_users: { full_name: string; email: string };
   co_tutor?: { full_name: string; email: string };
@@ -54,6 +58,7 @@ export default function CourseRequestsMenu() {
   const [approvingId, setApprovingId] = useState<string | null>(null);
   const [maxStudents, setMaxStudents] = useState<string>("");
   const [donationFee, setDonationFee] = useState<string>("");
+  const [paidFee, setPaidFee] = useState<string>("");
   const [gradeLevel, setGradeLevel] = useState<string>("");
   const [draftClassStartsAt, setDraftClassStartsAt] = useState<Date | null>(new Date());
   const [draftClassDurationMinutes, setDraftClassDurationMinutes] = useState<string>("60");
@@ -243,6 +248,13 @@ export default function CourseRequestsMenu() {
     e.preventDefault();
     if (!approvingId) return;
 
+    const approving = requests.find((item) => item.id === approvingId);
+    const approvingPaid = approving?.is_paid === true;
+    if (approvingPaid && normalizePaidFee(paidFee) === null) {
+      alert(`Enter the course fee: a dollar amount from $${MIN_PAID_FEE} to $${MAX_PAID_FEE}.`);
+      return;
+    }
+
     setActioningId(approvingId);
     try {
       const res = await fetch(`/api/course-requests/${approvingId}/approve`, {
@@ -250,7 +262,8 @@ export default function CourseRequestsMenu() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           maxStudents: maxStudents ? parseInt(maxStudents) : null,
-          donationFee: donationFee ? parseInt(donationFee) : null,
+          donationFee: !approvingPaid && donationFee ? parseInt(donationFee) : null,
+          paidFee: approvingPaid ? Number(paidFee) : null,
           gradeLevel: gradeLevel ? parseInt(gradeLevel) : null,
           classes: draftClasses.map((item, index) => ({
             title: `Class ${index + 1}`,
@@ -268,6 +281,7 @@ export default function CourseRequestsMenu() {
         setDraftClasses([]);
         setMaxStudents("");
         setDonationFee("");
+        setPaidFee("");
         setGradeLevel("");
         if (payload && payload.announced === false) {
           // The course is created; only the announcement failed, and silence
@@ -450,6 +464,11 @@ export default function CourseRequestsMenu() {
                           No recordings
                         </span>
                       )}
+                      {req.is_paid && (
+                        <span className="ml-2 text-xs font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                          Paid course
+                        </span>
+                      )}
                     </h3>
                     <p className="text-sm text-[var(--muted)]">
                       Primary Tutor: {req.app_users?.full_name || req.app_users?.email}
@@ -500,6 +519,14 @@ export default function CourseRequestsMenu() {
                       <p className="text-sm font-medium mt-0.5">{req.start_date}</p>
                     </div>
                   )}
+                  {req.is_paid && (
+                    <div>
+                      <p className="text-[0.65rem] font-bold uppercase tracking-[0.2em] text-[var(--muted)]">Suggested fee</p>
+                      <p className="text-sm font-medium mt-0.5">
+                        {req.requested_fee === null || req.requested_fee === undefined ? "None given" : formatPaidFee(req.requested_fee)}
+                      </p>
+                    </div>
+                  )}
                 </div>
                 
                 {Object.keys(req.timeframes || {}).filter(([, v]) => v).length > 0 && (
@@ -535,10 +562,20 @@ export default function CourseRequestsMenu() {
                       <input type="number" min="1" value={maxStudents} onChange={(e) => setMaxStudents(e.target.value)} placeholder="Leave blank for unlimited" className="mt-2 w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-4 py-3 text-sm text-[var(--foreground)] outline-none" />
                     </div>
 
-                    <div>
-                      <label className="text-[0.65rem] font-bold uppercase tracking-[0.2em] text-[var(--muted)]">Donation Fee</label>
-                      <input type="number" min="0" value={donationFee} onChange={(e) => setDonationFee(e.target.value)} placeholder="0 or leave blank for none" className="mt-2 w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-4 py-3 text-sm text-[var(--foreground)] outline-none" />
-                    </div>
+                    {req.is_paid ? (
+                      <div>
+                        <label htmlFor={`paid-fee-${req.id}`} className="text-[0.65rem] font-bold uppercase tracking-[0.2em] text-[var(--muted)]">Course Fee (paid to the tutor)</label>
+                        <input id={`paid-fee-${req.id}`} type="number" min={MIN_PAID_FEE} max={MAX_PAID_FEE} step="0.01" required value={paidFee} onChange={(e) => setPaidFee(e.target.value)} placeholder="Dollars for the whole course" className="mt-2 w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-4 py-3 text-sm text-[var(--foreground)] outline-none" />
+                        <p className="mt-2 text-xs text-[var(--muted)]">
+                          This is a paid course: families pay this amount straight to the tutor, not to SickKids, and the tutor earns no community service hours for it. It can be approved only if the tutor (and any co-tutor) is a senior tutor with a payment note.
+                        </p>
+                      </div>
+                    ) : (
+                      <div>
+                        <label className="text-[0.65rem] font-bold uppercase tracking-[0.2em] text-[var(--muted)]">Donation Fee</label>
+                        <input type="number" min="0" value={donationFee} onChange={(e) => setDonationFee(e.target.value)} placeholder="0 or leave blank for none" className="mt-2 w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-4 py-3 text-sm text-[var(--foreground)] outline-none" />
+                      </div>
+                    )}
 
                     <div>
                       <label className="text-[0.65rem] font-bold uppercase tracking-[0.2em] text-[var(--muted)]">Grade Level</label>
@@ -655,7 +692,7 @@ export default function CourseRequestsMenu() {
                   isFounderAccess && (
                     <div className="flex flex-col gap-2">
                       <div className="flex gap-2">
-                        <button onClick={() => { setApprovingId(req.id); setMaxStudents(""); setDonationFee(""); setDraftClasses([]); }} disabled={actioningId === req.id} className="flex-1 rounded-full border border-emerald-600 px-4 py-2 text-sm font-semibold text-emerald-600 transition hover:bg-emerald-50 disabled:opacity-70">
+                        <button onClick={() => { setApprovingId(req.id); setMaxStudents(""); setDonationFee(""); setPaidFee(req.requested_fee === null || req.requested_fee === undefined ? "" : String(req.requested_fee)); setDraftClasses([]); }} disabled={actioningId === req.id} className="flex-1 rounded-full border border-emerald-600 px-4 py-2 text-sm font-semibold text-emerald-600 transition hover:bg-emerald-50 disabled:opacity-70">
                           Approve
                         </button>
                         <button onClick={() => handleReject(req.id)} disabled={actioningId === req.id} className="flex-1 rounded-full border border-red-600 px-4 py-2 text-sm font-semibold text-red-600 transition hover:bg-red-50 disabled:opacity-70">
@@ -707,6 +744,11 @@ export default function CourseRequestsMenu() {
                       {req.recordings_enabled === false && (
                         <span className="ml-2 text-xs font-medium text-[var(--muted)] bg-[var(--background)] px-2 py-0.5 rounded-full border border-[var(--border)]">
                           No recordings
+                        </span>
+                      )}
+                      {req.is_paid && (
+                        <span className="ml-2 text-xs font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                          Paid course
                         </span>
                       )}
                     </h3>
