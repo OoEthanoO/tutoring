@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNotification } from "./Notification";
 import { classEndMs } from "@/lib/classTiming";
 import { formatPaidFee } from "@/lib/paidCourses";
+import { courseTableStatus, type CourseTableStatus } from "@/lib/courseTable";
 
 interface Course {
   id: string;
@@ -199,34 +200,12 @@ export default function AllCoursesTableMenu() {
   const [courses, setCourses] = useState<Course[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const { showNotification } = useNotification();
+  // Upcoming and ongoing courses (src/lib/courseTable.ts); finished ones are left out.
   const visibleCourses = useMemo(() => {
     const now = Date.now();
-    const filtered = courses.filter((course) => {
-      const isLegacyCompletedCourse =
-        Boolean(course.is_completed) ||
-        Boolean(course.completed_start_date && course.completed_end_date);
-
-      if (isLegacyCompletedCourse) {
-        return false;
-      }
-
-      const startTimes = (course.course_classes ?? [])
-        .map((courseClass) => new Date(courseClass.starts_at).getTime())
-        .filter(Number.isFinite);
-
-      // A course with no classes scheduled yet (or none with a usable date) is
-      // still to come.
-      if (startTimes.length === 0) {
-        return true;
-      }
-
-      // Upcoming means the course has not begun: its first class is still in the
-      // future. A course whose first class has started is dropped even though
-      // later classes are still to come, so mid-term this table is empty until
-      // the next term's courses exist — that is intended (decided August 2026),
-      // and is why the earlier "has an unfinished class" rule was replaced.
-      return Math.min(...startTimes) > now;
-    });
+    const filtered = courses
+      .map((course) => ({ ...course, tableStatus: courseTableStatus(course, now) }))
+      .filter((course): course is Course & { tableStatus: CourseTableStatus } => course.tableStatus !== null);
 
     // Courses with a grade number (first number in the title) come first,
     // ordered by grade ascending. Courses without one keep their existing
@@ -338,7 +317,10 @@ export default function AllCoursesTableMenu() {
               // Irregular schedule - collapse columns 6-13 into one
               return (
                 <tr key={course.id} className="border-b border-[var(--border)] hover:bg-[var(--background-secondary)]">
-                  <td className="border border-[var(--border)] px-2 py-1 truncate leading-tight text-center whitespace-nowrap" title={course.title}>{course.title}</td>
+                  <td className="border border-[var(--border)] px-2 py-1 truncate leading-tight text-center whitespace-nowrap" title={course.tableStatus === "ongoing" ? `${course.title} (ongoing)` : course.title}>
+                    {course.title}
+                    {course.tableStatus === "ongoing" ? <span className="ml-1 text-[var(--muted)]">· Ongoing</span> : null}
+                  </td>
                   <td className="border border-[var(--border)] px-2 py-1 truncate leading-tight text-center whitespace-nowrap" title={course.created_by_name || ""}>{course.created_by_name || "N/A"}</td>
                   <td className="border border-[var(--border)] px-2 py-1 text-center leading-tight">{classCount}</td>
                   <td className="border border-[var(--border)] px-2 py-1 text-center leading-tight">{course.is_paid ? `Fee ${formatPaidFee(course.paid_fee)}` : `$${course.donation_fee || 0}`}</td>
@@ -356,7 +338,10 @@ export default function AllCoursesTableMenu() {
             // Regular schedule - show by day
             return (
               <tr key={course.id} className="border-b border-[var(--border)] hover:bg-[var(--background-secondary)]">
-                <td className="border border-[var(--border)] px-2 py-1 truncate leading-tight text-center whitespace-nowrap" title={course.title}>{course.title}</td>
+                <td className="border border-[var(--border)] px-2 py-1 truncate leading-tight text-center whitespace-nowrap" title={course.tableStatus === "ongoing" ? `${course.title} (ongoing)` : course.title}>
+                    {course.title}
+                    {course.tableStatus === "ongoing" ? <span className="ml-1 text-[var(--muted)]">· Ongoing</span> : null}
+                  </td>
                 <td className="border border-[var(--border)] px-2 py-1 truncate leading-tight text-center whitespace-nowrap" title={course.created_by_name || ""}>{course.created_by_name || "N/A"}</td>
                 <td className="border border-[var(--border)] px-2 py-1 text-center leading-tight">{classCount}</td>
                 <td className="border border-[var(--border)] px-2 py-1 text-center leading-tight">{course.is_paid ? `Fee ${formatPaidFee(course.paid_fee)}` : `$${course.donation_fee || 0}`}</td>
@@ -374,7 +359,7 @@ export default function AllCoursesTableMenu() {
       </table>
 
       {visibleCourses.length === 0 && (
-        <div className="py-8 text-center text-[var(--muted)]">No upcoming courses</div>
+        <div className="py-8 text-center text-[var(--muted)]">No upcoming or ongoing courses</div>
       )}
     </div>
   );
