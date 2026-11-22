@@ -1,4 +1,4 @@
-# Backups of the self-hosted database, every 6 hours (task yanlearn-db-backup):
+# Backups of the self-hosted database, every 6 hours and after every boot (task yanlearn-db-backup):
 # pg_dump into backups\db, kept 14 days, and an AES-256-GCM copy in the
 # recordings bucket under db-backups/, kept 60 days. Emails the founder when a
 # run fails or no backup has succeeded for 26 hours (at most every 12 hours).
@@ -15,12 +15,16 @@ $layout = Get-DatabaseLayout $Root
 
 if ($Register) {
     $arguments = '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}" -Root "{1}"' -f (Join-Path $Root 'ops\backup-db.ps1'), $Root
-    $trigger = New-ScheduledTaskTrigger -Once -At ([DateTime]::Today.AddHours(3).AddMinutes(30)) -RepetitionInterval (New-TimeSpan -Hours 6)
+    # Also five minutes after every boot: after the restart on 2026-11-20 Windows never fired
+    # the repeating trigger again on its own, and no backup ran for 33 hours.
+    $boot = New-ScheduledTaskTrigger -AtStartup
+    $boot.Delay = 'PT5M'
+    $trigger = @($boot, (New-ScheduledTaskTrigger -Once -At ([DateTime]::Today.AddHours(3).AddMinutes(30)) -RepetitionInterval (New-TimeSpan -Hours 6)))
     $settings = New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Minutes 30) `
         -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
     Register-ScheduledTask -TaskName 'yanlearn-db-backup' -Action (New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $arguments) `
         -Trigger $trigger -Settings $settings -User 'SYSTEM' -RunLevel Highest -Force | Out-Null
-    Write-Output 'Registered yanlearn-db-backup: every 6 hours from 03:30.'
+    Write-Output 'Registered yanlearn-db-backup: every 6 hours from 03:30, and 5 minutes after every boot.'
     return
 }
 

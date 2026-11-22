@@ -273,8 +273,14 @@ afterwards, or a PostgREST restart.
 
 ### Backups and restore
 
-`backup-db.ps1` runs every 6 hours as the SYSTEM task `yanlearn-db-backup`
-(register it with `-Register`):
+`backup-db.ps1` runs every 6 hours, and 5 minutes after every boot, as the
+SYSTEM task `yanlearn-db-backup` (register it with `-Register`). The boot
+trigger is there because after a restart on 2026-11-20 Windows stopped firing
+the repeating trigger of tasks that had nothing else; `yanlearn-deploy` has one
+for the same reason. If a task's last run time reads 1999 and it never runs,
+re-register it.
+
+Each run does this:
 
 1. `pg_dump` into `backups\db`, kept 14 days;
 2. an AES-256-GCM copy, keyed by the passphrase in
