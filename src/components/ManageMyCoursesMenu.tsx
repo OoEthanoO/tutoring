@@ -11,6 +11,7 @@ import { MarkdownText } from "@/lib/parseMarkdown";
 import CourseAttendance from "@/components/CourseAttendance";
 import RequestWithdrawalCard from "@/components/RequestWithdrawalCard";
 import PaidCoursesCard from "@/components/PaidCoursesCard";
+import TutorCourseFeedbackCard from "@/components/TutorCourseFeedbackCard";
 import { MAX_PAID_FEE, MIN_PAID_FEE, formatPaidFee, normalizePaidFee } from "@/lib/paidCourses";
 
 type EnrolledStudent = {
@@ -1219,6 +1220,7 @@ export default function ManageMyCoursesMenu({ isTrashMode = false }: { isTrashMo
         </div>
         {!isTrashMode && isExecutive(role) ? <RequestWithdrawalCard /> : null}
         {!isTrashMode && isExecutive(role) ? <PaidCoursesCard /> : null}
+        {!isTrashMode && isExecutive(role) ? <TutorCourseFeedbackCard /> : null}
         {!isTrashMode && (
           <div className="flex flex-col gap-1">
             {isExecutive(role) && donationLink ? (

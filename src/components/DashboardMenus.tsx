@@ -9,6 +9,7 @@ import AdminUserManager from "@/components/AdminUserManager";
 import EmailHistoryMenu from "@/components/EmailHistoryMenu";
 import CoursesMenu from "@/components/CoursesMenu";
 import EnrolledCoursesMenu from "@/components/EnrolledCoursesMenu";
+import CourseFeedbackMenu from "@/components/CourseFeedbackMenu";
 import AllCoursesTableMenu from "@/components/AllCoursesTableMenu";
 import HomeMenu from "@/components/HomeMenu";
 import OurTeamMenu from "@/components/OurTeamMenu";
@@ -41,6 +42,7 @@ export type MenuKey =
   | "manage_course_requests"
   | "manage_courses"
   | "manage_enrollments"
+  | "course_feedback"
   | "founder_tools"
   | "tutor_recruitment"
   | "emails"
@@ -71,6 +73,7 @@ const ALL_MENU_KEYS: readonly MenuKey[] = [
   "manage_course_requests",
   "manage_courses",
   "manage_enrollments",
+  "course_feedback",
   "founder_tools",
   "tutor_recruitment",
   "emails",
@@ -430,6 +433,7 @@ export default function DashboardMenus() {
       admin.push({ key: "tutor_recruitment", label: "Tutor recruitment" });
       admin.push({ key: "founder_tools", label: "Manage accounts" });
       admin.push({ key: "manage_enrollments", label: "Manage enrollments" });
+      admin.push({ key: "course_feedback", label: "Course feedback" });
     }
     if (role && isHighRankingChiefExecutive(role)) {
       admin.push({ key: "emails", label: "Emails" });
@@ -568,6 +572,7 @@ export default function DashboardMenus() {
       {activeMenu === "manage_course_requests" ? <CourseRequestsMenu /> : null}
       {activeMenu === "manage_courses" ? <ManageMyCoursesMenu /> : null}
       {activeMenu === "manage_enrollments" ? <ManageEnrollmentsMenu /> : null}
+      {activeMenu === "course_feedback" ? <CourseFeedbackMenu /> : null}
       {activeMenu === "founder_tools" ? <AdminUserManager /> : null}
       {activeMenu === "tutor_recruitment" ? <TutorRecruitmentGuide /> : null}
       {activeMenu === "emails" ? <EmailHistoryMenu /> : null}

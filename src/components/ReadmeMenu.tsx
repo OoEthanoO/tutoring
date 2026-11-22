@@ -230,6 +230,18 @@ export const readmeParts: Part[] = [
         </>,
       },
       {
+        id: "course-feedback",
+        title: "Course feedback",
+        body: <>
+          <p>When your course&rsquo;s last class ends, each enrolled student gets one email and a short, optional form in My enrollments, open for 30 days. It asks them to rate the course and you from 1 to 5, whether the pace was right, whether they would take another YanLearn course and which one, and for any comments.</p>
+          <ul className={listStyle}>
+            <li>Once the form closes, the answers appear under Course feedback in <Link href="/?menu=manage_courses" className={linkStyle}>My courses</Link>, <strong>without the students&rsquo; names</strong> and in no particular order. Until then you see nothing, not even how many have answered.</li>
+            <li>Management sees each response with the student&rsquo;s name, so it can follow up if something went wrong.</li>
+            <li>Please don&rsquo;t ask your students who said what. The feedback is meant to help you improve your next course.</li>
+          </ul>
+        </>,
+      },
+      {
         id: "homework-and-notes",
         title: "Homework and lesson notes",
         body: <>

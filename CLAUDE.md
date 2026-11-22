@@ -150,6 +150,14 @@ DNS is on Cloudflare, with a local updater for the home address. See
   hours. Every rule is a pure function in `src/lib/paidCourses.ts`; enforce
   them server-side, never only in the interface. See `PAID_COURSES.md`; apply
   `20261120120000_paid_courses.sql` before deployment.
+- Post-course feedback (November 2026): when a course's last class ends,
+  its students get one email (claimed in `courses.feedback_invited_at` by
+  the class-reminders cron) and an optional form at the top of My
+  enrollments for 30 days (`course_feedback`). Management sees responses with
+  names (Admin → Course feedback); tutors see them without names, and only
+  after the form closes (My courses). Rules are pure in
+  `src/lib/courseFeedback.ts`. See `COURSE_FEEDBACK.md`; apply
+  `20261122120000_course_feedback.sql` before deployment.
 
 ## Conventions
 

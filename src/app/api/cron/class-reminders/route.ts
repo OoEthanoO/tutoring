@@ -56,6 +56,7 @@ import {
   tutorStrikeDeadlineAfterStartMs,
 } from "@/lib/tutorPresence";
 import { sendBccEmail } from "@/lib/notificationsServer";
+import { sendFeedbackInvites, type FeedbackInviteResult } from "@/lib/courseFeedbackServer";
 import { expireClassRecordings, type RecordingExpiryResult } from "@/lib/recordings";
 import { recorderDiagnosticsRetentionMs } from "@/lib/recorderDiagnostics";
 import {
@@ -3451,6 +3452,21 @@ ${tutorWasPresent ? "" : "<p><strong>Note:</strong> you were not detected in the
     );
   }
 
+  // --- Post-course feedback ------------------------------------------------------
+  // Once a course's last class has ended, email its students one invitation
+  // to the optional feedback form (COURSE_FEEDBACK.md). Each course is claimed
+  // before sending, so an overlapping tick cannot send it twice.
+  let feedbackInvites: FeedbackInviteResult = { invitedCourseIds: [], emailRecipients: 0, errors: [] };
+  if (emailRemindersEnabled) {
+    try {
+      feedbackInvites = await sendFeedbackInvites(adminClient, Date.now(), torontoTimeZone);
+    } catch (error) {
+      feedbackInvites.errors.push(
+        `Feedback invitation pass failed: ${error instanceof Error ? error.message : "Unknown error"}`
+      );
+    }
+  }
+
   // --- YanLearn Recorder ---------------------------------------------------------
   // Recordings live for 7 days after upload; delete the ones past that. Then,
   // at each class's five-minute deadline, check that the tutor's recorder is
@@ -3625,6 +3641,7 @@ ${tutorWasPresent ? "" : "<p><strong>Note:</strong> you were not detected in the
     recorderDiagnosticsCleanupError = "Could not expire recorder diagnostics.";
   }
   return NextResponse.json({
+    feedbackInvites,
     recorderDiagnosticsCleanupError,
     recordingExpiry,
     recordingAnnouncements,

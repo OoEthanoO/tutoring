@@ -3,6 +3,7 @@ import Link from "next/link";
 import { getCurrentUser, onAuthChange } from "@/lib/authClient";
 import { MarkdownText } from "@/lib/parseMarkdown";
 import { classDurationMinutes, classEndMs } from "@/lib/classTiming";
+import CourseFeedbackCard from "@/components/CourseFeedbackCard";
 
 type StatusState = {
   type: "idle" | "error";
@@ -126,6 +127,8 @@ export default function EnrolledCoursesMenu() {
           My enrollments
         </h2>
       </header>
+
+      <CourseFeedbackCard key={userId} />
 
       {status.type === "error" ? (
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-400">

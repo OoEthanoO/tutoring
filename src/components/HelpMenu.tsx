@@ -94,6 +94,9 @@ export default function HelpMenu() {
                     <p className="text-sm text-[var(--foreground)] leading-relaxed">
                         Once approved, <span className="font-semibold text-[var(--foreground)]">check your email for instructions on how to attend your classes</span>. You must also <span className="font-semibold text-[var(--foreground)]">connect to Discord</span> to participate — see the instructions below.
                     </p>
+                    <p className="text-sm text-[var(--foreground)] leading-relaxed">
+                        When a course ends, a short, optional feedback form appears at the top of <span className="font-semibold text-[var(--foreground)]">&quot;My enrollments&quot;</span> for 30 days, and we send one email about it. Every question is optional. Your tutor sees your answers without your name; YanLearn&apos;s leadership sees your name, so we can follow up if something went wrong.
+                    </p>
                 </div>
 
                 {/* Discord Section */}
