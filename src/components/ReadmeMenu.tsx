@@ -75,6 +75,7 @@ export const readmeParts: Part[] = [
             <li><strong>Approved</strong>: your course is in the catalog (the <Link href="/?menu=all_courses" className={linkStyle}>Courses</Link> tab) and in <Link href="/?menu=manage_courses" className={linkStyle}>My courses</Link>. Check that its details and class schedule are correct and work for you, and tell management straight away if not.</li>
             <li><strong>Rejected</strong>: the rejection reason explains why. Usually the request is not up to standard, breaks a policy, or has not gathered enough students. You can edit and resubmit it, addressing the reason, or abandon it. After resubmitting, check that the status says <strong>In Review</strong>; <strong>Draft</strong> means it has not been resubmitted.</li>
           </ul>
+          <p>Management can also create a course for you directly, with no request. You are told the same way, by email and in the executives channel, and the course is in the catalog and in My courses at once. Check its details and schedule just as you would after an approval.</p>
         </>,
       },
       {

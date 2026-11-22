@@ -150,6 +150,15 @@ DNS is on Cloudflare, with a local updater for the home address. See
   hours. Every rule is a pure function in `src/lib/paidCourses.ts`; enforce
   them server-side, never only in the interface. See `PAID_COURSES.md`; apply
   `20261120120000_paid_courses.sql` before deployment.
+- Create course (November 2026): the trio can create a course directly,
+  without a course request (Teaching → Course requests → Create course,
+  `api/admin/courses`, `CourseDirectCreator.tsx`). The form is parsed by the
+  pure `src/lib/newCourse.ts`; the route checks the tutors are executives and
+  the paid-course rules, and the tutors are emailed and pinged in the
+  executives channel unless management teaches it alone. Approving a request
+  and creating directly write the course through the same
+  `insertCourseWithClasses` (`src/lib/courseCreation.ts`), so keep any new
+  course column in that one place.
 - Post-course feedback (November 2026): when a course's last class ends,
   its students get one email (claimed in `courses.feedback_invited_at` by
   the class-reminders cron) and an optional form at the top of My

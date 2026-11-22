@@ -7,6 +7,7 @@ import { suggestNextClassStart } from "@/lib/classSchedule";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import CourseCreator from "./CourseCreator";
+import CourseDirectCreator from "./CourseDirectCreator";
 import CourseNeedsList, { type CourseNeed } from "./CourseNeedsList";
 import { MAX_PAID_FEE, MIN_PAID_FEE, formatPaidFee, normalizePaidFee } from "@/lib/paidCourses";
 
@@ -48,6 +49,9 @@ export default function CourseRequestsMenu() {
   const [isFounderAccess, setIsFounderAccess] = useState(false);
   const [requests, setRequests] = useState<RequestRecord[]>([]);
   const [isCreatorModalOpen, setIsCreatorModalOpen] = useState(false);
+  // Management only: create a course straight away, with no request.
+  const [isDirectCreatorOpen, setIsDirectCreatorOpen] = useState(false);
+  const [createdNotice, setCreatedNotice] = useState("");
   // Either a request being edited, or just a title to start a new one with.
   const [editData, setEditData] = useState<Partial<RequestRecord> | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -94,13 +98,13 @@ export default function CourseRequestsMenu() {
   }, []);
 
   useEffect(() => {
-    if (isCreatorModalOpen) {
+    if (isCreatorModalOpen || isDirectCreatorOpen) {
       document.body.style.overflow = "hidden";
     } else {
       document.body.style.overflow = "unset";
     }
     return () => { document.body.style.overflow = "unset"; };
-  }, [isCreatorModalOpen]);
+  }, [isCreatorModalOpen, isDirectCreatorOpen]);
 
   const fetchRequests = async () => {
     setIsLoading(true);
@@ -371,7 +375,7 @@ export default function CourseRequestsMenu() {
 
   return (
     <div className="space-y-8">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-[var(--foreground)]">Course Requests</h1>
           {isFounderAccess ? (
@@ -380,16 +384,66 @@ export default function CourseRequestsMenu() {
             <p className="text-sm text-[var(--muted)]">Submit and track your course creation requests.</p>
           )}
         </div>
-        <button
-          onClick={() => {
-            setEditData(null);
-            setIsCreatorModalOpen(true);
-          }}
-          className="rounded-full bg-[var(--foreground)] px-4 py-2 text-sm font-semibold text-[var(--background)] transition-colors hover:bg-[var(--foreground)]/90"
-        >
-          Submit course request
-        </button>
+        <div className="flex flex-wrap justify-end gap-2">
+          {isFounderAccess && (
+            <button
+              onClick={() => {
+                setCreatedNotice("");
+                setIsDirectCreatorOpen(true);
+              }}
+              className="rounded-full border border-[var(--foreground)] px-4 py-2 text-sm font-semibold text-[var(--foreground)] transition-colors hover:bg-[var(--border)]"
+            >
+              Create course
+            </button>
+          )}
+          <button
+            onClick={() => {
+              setEditData(null);
+              setIsCreatorModalOpen(true);
+            }}
+            className="rounded-full bg-[var(--foreground)] px-4 py-2 text-sm font-semibold text-[var(--background)] transition-colors hover:bg-[var(--foreground)]/90"
+          >
+            Submit course request
+          </button>
+        </div>
       </div>
+
+      {createdNotice && (
+        <div className="flex items-start justify-between gap-3 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-[var(--foreground)]">
+          <p>{createdNotice}</p>
+          <button onClick={() => setCreatedNotice("")} className="text-[var(--muted)] hover:text-[var(--foreground)]" aria-label="Dismiss">
+            ✕
+          </button>
+        </div>
+      )}
+
+      {isDirectCreatorOpen && (
+        <div className="fixed top-0 left-0 z-50 flex h-[100dvh] w-[100dvw] items-center justify-center p-4 bg-black/50 backdrop-blur-sm shadow-xl">
+          <div className="relative w-full max-w-2xl bg-[var(--background)] rounded-2xl border border-[var(--border)] overflow-hidden my-auto max-h-[90dvh] flex flex-col">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border)] bg-[var(--surface)]">
+              <h2 className="text-lg font-bold">Create course</h2>
+              <button onClick={() => setIsDirectCreatorOpen(false)} className="text-[var(--muted)] hover:text-[var(--foreground)]" aria-label="Close">
+                ✕
+              </button>
+            </div>
+            <div className="overflow-y-auto p-6">
+              <CourseDirectCreator
+                onCancel={() => setIsDirectCreatorOpen(false)}
+                onCreated={(result) => {
+                  setIsDirectCreatorOpen(false);
+                  setCreatedNotice(
+                    [
+                      `Created ${result.title}, taught by ${result.tutorName}. It is in their My courses now.`,
+                      result.classesAdded ? "" : "The classes could not be added: add them in My courses.",
+                      result.announced ? "" : "YanBot could not post to the executives channel, so tell the tutor directly.",
+                    ].filter(Boolean).join(" ")
+                  );
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       {courseNeeds.length > 0 && (
         <section className="space-y-3 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6">

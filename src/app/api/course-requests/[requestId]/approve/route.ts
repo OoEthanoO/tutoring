@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { isFounder, resolveUserRole } from "@/lib/roles";
 import { getRequestUser } from "@/lib/authServer";
-import { relabelClassesForCourse } from "@/lib/classTools";
+import { insertCourseWithClasses } from "@/lib/courseCreation";
 import {
   sendEmail,
   sendDiscordMessageByChannelName,
@@ -125,40 +125,7 @@ export async function POST(
     }
   }
 
-  // Create the course
-  const { data: courseData, error: courseError } = await adminClient
-    .from("courses")
-    .insert({
-      title: requestRecord.title,
-      description: requestRecord.description,
-      is_completed: false,
-      max_students: maxStudents,
-      donation_fee: isPaid ? null : donationFee,
-      is_paid: isPaid,
-      paid_fee: paidFee,
-      grade_level: gradeLevel,
-      created_by: requestRecord.created_by,
-      created_by_name: creatorName,
-      created_by_email: creatorUser?.email ?? null,
-      is_co_taught: requestRecord.is_co_taught,
-      co_tutor_id: requestRecord.co_tutor_id,
-      co_tutor_name: requestRecord.is_co_taught && coTutorUser ? coTutorName : null,
-      co_tutor_email: requestRecord.is_co_taught && coTutorUser ? (coTutorUser.email ?? null) : null,
-      // The tutor answered this on the request; anything but an explicit no
-      // means the course is recorded.
-      recordings_enabled: requestRecord.recordings_enabled !== false,
-    })
-    .select("id")
-    .single();
-
-  if (courseError || !courseData) {
-    return NextResponse.json(
-      { error: courseError?.message ?? "Failed to create course." },
-      { status: 500 }
-    );
-  }
-
-  // Create classes if provided
+  // Create the course and its classes (shared with Create course).
   const classRows = classes
     .map((item) => ({
       title: item?.title?.trim() ?? "",
@@ -168,26 +135,30 @@ export async function POST(
     }))
     .filter((item) => item.title && item.startsAt);
 
-  if (classRows.length > 0) {
-    const { error: classError } = await adminClient
-      .from("course_classes")
-      .insert(
-        classRows.map((item) => ({
-          course_id: courseData.id,
-          title: item.title,
-          starts_at: item.startsAt,
-          duration_hours: item.durationHours,
-          created_by: item.tutorId,
-        }))
-      );
+  const created = await insertCourseWithClasses(adminClient, {
+    title: requestRecord.title,
+    description: requestRecord.description,
+    max_students: maxStudents,
+    donation_fee: isPaid ? null : donationFee,
+    is_paid: isPaid,
+    paid_fee: paidFee,
+    grade_level: gradeLevel,
+    created_by: requestRecord.created_by,
+    created_by_name: creatorName,
+    created_by_email: creatorUser?.email ?? null,
+    is_co_taught: requestRecord.is_co_taught,
+    co_tutor_id: requestRecord.co_tutor_id,
+    co_tutor_name: requestRecord.is_co_taught && coTutorUser ? coTutorName : null,
+    co_tutor_email: requestRecord.is_co_taught && coTutorUser ? (coTutorUser.email ?? null) : null,
+    // The tutor answered this on the request; anything but an explicit no
+    // means the course is recorded.
+    recordings_enabled: requestRecord.recordings_enabled !== false,
+  }, classRows);
 
-    if (classError) {
-      // It failed partially, but course is created. Let user handle missing classes manually.
-      console.error("Failed to add classes to course", courseData.id, classError);
-    } else {
-      await relabelClassesForCourse(courseData.id, adminClient);
-    }
+  if (!created.ok) {
+    return NextResponse.json({ error: created.error }, { status: 500 });
   }
+  const courseData = { id: created.courseId };
 
   const { data: finalizedClasses, error: finalizedClassesError } = await adminClient
     .from("course_classes")
