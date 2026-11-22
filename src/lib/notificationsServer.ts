@@ -125,10 +125,22 @@ export type BccSendResult = {
 };
 
 /**
+ * The visible "To" of every group email, whose real recipients are in Bcc. It
+ * must be a mailbox that accepts mail. It used to be the sender address, which
+ * cannot receive any, so every group email bounced on it after hours of retries
+ * (Resend counted a 43% bounce rate in November 2026, although every Bcc
+ * recipient got the email), and a high bounce rate can get the account paused.
+ * The organization's inbox therefore gets a copy of each group email.
+ */
+export const groupEmailTo = () =>
+  (process.env.GROUP_EMAIL_TO ?? "").trim() || "yanlearnorg@gmail.com";
+
+/**
  * Sends ONE email to many recipients via BCC (chunked to respect Resend's
  * per-message recipient limit) instead of one email per recipient. The
- * visible "to" is the sender address, so recipients cannot see each other.
- * Only use this for content that is identical for every recipient.
+ * visible "to" is the organization's inbox (groupEmailTo), so recipients
+ * cannot see each other. Only use this for content that is identical for
+ * every recipient.
  */
 export const sendBccEmail = async (
   bccEmails: string[],
@@ -143,12 +155,12 @@ export const sendBccEmail = async (
     return result;
   }
 
-  // Leave one recipient slot for the "to" address (the sender).
+  // Leave one recipient slot for the "to" address (the organization's inbox).
   const chunkSize = RESEND_MAX_RECIPIENTS - 1;
   for (let start = 0; start < recipients.length; start += chunkSize) {
     const chunk = recipients.slice(start, start + chunkSize);
     const outcome = await postResendEmail({
-      to: resendFrom,
+      to: groupEmailTo(),
       bcc: chunk,
       subject,
       html,

@@ -9,7 +9,7 @@ import { chunks, fetchAllRows, idChunkSize } from "@/lib/supabasePaging";
 import { getRequestUser } from "@/lib/authServer";
 import { fetchDiscordGuildMemberIds } from "@/lib/discordSync";
 import { classEndMs } from "@/lib/classTiming";
-import { sendDiscordMessageByChannelName } from "@/lib/notificationsServer";
+import { groupEmailTo, sendDiscordMessageByChannelName } from "@/lib/notificationsServer";
 import { normalizePaymentNote, paymentNoteClearBlocker, seniorUntickBlocker } from "@/lib/paidCourses";
 import { countActivePaidCourses } from "@/lib/paidCoursesServer";
 
@@ -142,7 +142,7 @@ const sendBccEmail = async (bccEmails: string[], subject: string, html: string) 
     new Set(bccEmails.map((email) => normalizeEmail(email)).filter(Boolean))
   );
 
-  // Leave one recipient slot for the "to" address (the sender).
+  // Leave one recipient slot for the "to" address (the organization's inbox).
   const chunkSize = RESEND_MAX_RECIPIENTS - 1;
   let sentCount = 0;
   const failed: Array<{ batch: string; error: string }> = [];
@@ -150,7 +150,7 @@ const sendBccEmail = async (bccEmails: string[], subject: string, html: string) 
   for (let start = 0; start < recipients.length; start += chunkSize) {
     const chunk = recipients.slice(start, start + chunkSize);
     const result = await postResendEmail({
-      to: resendFrom,
+      to: groupEmailTo(),
       bcc: chunk,
       subject,
       html,
