@@ -23,7 +23,8 @@ const defaultTasksChannelName = "tasks";
 const defaultWebsiteVoiceChannelName = "learn.ethanyanxu.com";
 const defaultEveryoneChatChannelName = "everyone";
 const defaultExecutivesOnlyChannelName = "executives";
-const defaultFoundersOnlyChannelName = "founders";
+// The Founder/CEO/COO channel; #founders until November 2026 (see oldName below).
+const defaultManagementChannelName = "management";
 const defaultCommitsChannelName = "commits";
 const defaultEveryoneVoiceChannelName = "Everyone";
 const defaultExecutivesVoiceChannelName = "Executives";
@@ -1450,9 +1451,9 @@ export const runDiscordSync = async ({
   const everyoneChatChannelName =
     String(process.env.DISCORD_EVERYONE_CHANNEL_NAME ?? "").trim() ||
     defaultEveryoneChatChannelName;
-  const foundersOnlyChannelName =
+  const managementChannelName =
     String(process.env.DISCORD_FOUNDERS_ONLY_CHANNEL_NAME ?? "").trim() ||
-    defaultFoundersOnlyChannelName;
+    defaultManagementChannelName;
   const executivesOnlyChannelName =
     String(process.env.DISCORD_EXECUTIVES_ONLY_CHANNEL_NAME ?? "").trim() ||
     defaultExecutivesOnlyChannelName;
@@ -3036,8 +3037,10 @@ export const runDiscordSync = async ({
     ),
   });
 
-  const foundersOnlyChannel = await ensureFixedChannel({
-    name: foundersOnlyChannelName,
+  const managementChannel = await ensureFixedChannel({
+    name: managementChannelName,
+    // Renamed in place, so the channel keeps its history and permissions.
+    oldName: "founders",
     channelType: discordTextChannelType,
     parentId: textCategory.id,
     permissionOverwrites: buildFoundersPermissionOverwrites(
@@ -3049,10 +3052,10 @@ export const runDiscordSync = async ({
     ),
   });
 
-  // Ping the COO in the founders channel whenever a member joins or leaves the
+  // Ping the COO in the management channel whenever a member joins or leaves the
   // server. There is no realtime gateway, so we diff the current website-linked
   // membership against the snapshot persisted from the previous sync run.
-  if (foundersOnlyChannel) {
+  if (managementChannel) {
     try {
       const discordUsernameByMemberId = new Map<string, string>();
       for (const member of humanMembers) {
@@ -3132,7 +3135,7 @@ export const runDiscordSync = async ({
               if (!buffer) {
                 return;
               }
-              await apiClient.createChannelMessage(foundersOnlyChannel.id, buffer);
+              await apiClient.createChannelMessage(managementChannel.id, buffer);
               buffer = "";
             };
             try {
@@ -3260,10 +3263,10 @@ export const runDiscordSync = async ({
     );
     nextTextPosition += 1;
   }
-  if (foundersOnlyChannel) {
+  if (managementChannel) {
     await enforceTextPosition(
-      foundersOnlyChannel.id,
-      foundersOnlyChannelName,
+      managementChannel.id,
+      managementChannelName,
       nextTextPosition
     );
     nextTextPosition += 1;
@@ -3456,7 +3459,7 @@ export const runDiscordSync = async ({
     allowedTextChannelIds.add(everyoneChatChannel.id);
   }
 
-  if (foundersOnlyChannel) allowedTextChannelIds.add(foundersOnlyChannel.id);
+  if (managementChannel) allowedTextChannelIds.add(managementChannel.id);
   if (executivesOnlyChannel) allowedTextChannelIds.add(executivesOnlyChannel.id);
 
   const allowedVoiceChannelIds = new Set<string>();

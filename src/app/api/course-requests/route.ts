@@ -6,7 +6,7 @@ import {
   notifyFounders,
   sendDiscordMessageByChannelName,
   getDiscordRoleIdByName,
-  foundersChannelName,
+  managementChannelName,
 } from "@/lib/notificationsServer";
 import { formatPaidFee, normalizePaidFee } from "@/lib/paidCourses";
 import { loadPaidCourseTutors } from "@/lib/paidCoursesServer";
@@ -180,11 +180,11 @@ export async function POST(request: NextRequest) {
     console.error("Failed to send founder emails:", err);
   });
 
-  // Send Discord message to founders channel (best-effort, non-blocking)
+  // Send Discord message to the management channel (best-effort, non-blocking)
   const cooRoleId = await getDiscordRoleIdByName("COO");
   const founderMention = cooRoleId ? `<@&${cooRoleId}>` : "@COO";
   const discordMessage = `${founderMention} New course request: **${title}** from ${user.full_name} (${user.email})`;
-  await sendDiscordMessageByChannelName(foundersChannelName(), discordMessage).catch((err) => {
+  await sendDiscordMessageByChannelName(managementChannelName(), discordMessage).catch((err) => {
     console.error("Failed to send Discord message:", err);
   });
 
@@ -374,7 +374,7 @@ export async function PATCH(request: NextRequest) {
     const cooRoleId = await getDiscordRoleIdByName("COO");
     const founderMention = cooRoleId ? `<@&${cooRoleId}>` : "@COO";
     const discordMessage = `${founderMention} Course request resubmitted: **${courseTitle}** by ${user.full_name} (${user.email})`;
-    await sendDiscordMessageByChannelName(foundersChannelName(), discordMessage).catch((err) => {
+    await sendDiscordMessageByChannelName(managementChannelName(), discordMessage).catch((err) => {
       console.error("Failed to send Discord message:", err);
     });
 

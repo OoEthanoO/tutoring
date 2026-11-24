@@ -193,3 +193,13 @@ describe("trial guests through the real guild sync", () => {
     expect(access("breakout-a")).toBe(true);
   });
 });
+
+describe("the management channel through the real guild sync", () => {
+  it("renames #founders to #management in place, so it keeps its history", async () => {
+    channels.push({ id: "founders-channel", name: "founders", type: 0 });
+    await sync();
+    const leadership = channels.filter(c => c.type === 0 && (c.name === "management" || c.name === "founders"));
+    expect(leadership).toEqual([expect.objectContaining({ id: "founders-channel", name: "management" })]);
+    expect(calls.some(c => c.method === "DELETE" && c.path === "/channels/founders-channel")).toBe(false);
+  });
+});

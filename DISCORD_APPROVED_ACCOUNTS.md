@@ -55,8 +55,8 @@ atomically. See [TRIAL_CLASSES.md](TRIAL_CLASSES.md).
 
 - **Sync health**: Admin → Manage accounts → Admin Tools shows the last sync
   run, whether it succeeded, and its errors (persisted by the cron to
-  `site_settings.discord_sync_status`). The founders channel gets a ping when
-  sync starts or stops failing.
+  `site_settings.discord_sync_status`). The management channel (#founders
+  until November 2026) gets a ping when sync starts or stops failing.
 - **Approved account got kicked**: check that its approval row still exists
   (deleting the owner's website account cascades) and that the sync isn't
   aborting (see sync health above).

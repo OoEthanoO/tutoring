@@ -55,7 +55,7 @@ import {
   tutorStillNotJoinedReminderType,
   tutorStrikeDeadlineAfterStartMs,
 } from "@/lib/tutorPresence";
-import { sendBccEmail } from "@/lib/notificationsServer";
+import { managementChannelName, sendBccEmail } from "@/lib/notificationsServer";
 import { deliverEmail, isEmailConfigured, MISSING_EMAIL_CONFIG } from "@/lib/mailer";
 import { sendFeedbackInvites, type FeedbackInviteResult } from "@/lib/courseFeedbackServer";
 import { expireClassRecordings, type RecordingExpiryResult } from "@/lib/recordings";
@@ -667,9 +667,8 @@ export async function POST(request: NextRequest) {
   const executivesChannelName =
     String(process.env.DISCORD_EXECUTIVES_ONLY_CHANNEL_NAME ?? "").trim() ||
     defaultExecutivesChannelName;
-  const foundersChannelName = "founders";
   let executivesChannelId: string | null = null;
-  let foundersChannelId: string | null = null;
+  let managementChannelId: string | null = null;
   let founderRoleId: string | null = null;
   let ceoRoleId: string | null = null;
   let cooRoleId: string | null = null;
@@ -693,10 +692,10 @@ export async function POST(request: NextRequest) {
         (ch) => ch.type === discordTextChannelType && ch.name === executivesChannelName
       );
       executivesChannelId = execChannel?.id ?? null;
-      const foundersChannel = guildChannels.find(
-        (ch) => ch.type === discordTextChannelType && ch.name === foundersChannelName
+      const managementChannel = guildChannels.find(
+        (ch) => ch.type === discordTextChannelType && ch.name === managementChannelName()
       );
-      foundersChannelId = foundersChannel?.id ?? null;
+      managementChannelId = managementChannel?.id ?? null;
       const founderRole = guildRoles.find((r) => r.name === "Founder");
       founderRoleId = founderRole?.id ?? null;
       const ceoRole = guildRoles.find((r) => r.name === "CEO");
@@ -2555,7 +2554,7 @@ ${tutorWasPresent ? "" : "<p><strong>Note:</strong> you were not detected in the
       !isFounderTaughtClass &&
       (reminderType === "one_hour" || reminderType === "ten_minutes") &&
       discordReminderDeliveryEnabled &&
-      foundersChannelId !== null &&
+      managementChannelId !== null &&
       founderRoleId !== null;
 
     if (
@@ -3096,7 +3095,7 @@ ${tutorWasPresent ? "" : "<p><strong>Note:</strong> you were not detected in the
 
     if (
       shouldSendFounderChannelReminder &&
-      foundersChannelId &&
+      managementChannelId &&
       founderRoleId
     ) {
       let founderContent = "";
@@ -3125,7 +3124,7 @@ ${tutorWasPresent ? "" : "<p><strong>Note:</strong> you were not detected in the
 
       try {
         await sendDiscordCourseReminderMessage(
-          foundersChannelId,
+          managementChannelId,
           founderRoleId,
           founderContent
         );

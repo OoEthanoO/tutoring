@@ -49,7 +49,10 @@ DNS is on Cloudflare, with a local updater for the home address. See
   account takes its owner's); the server owner is skipped, since Discord never
   lets a bot rename them.
   Anything it does not manage is deleted, so removing a role or channel from
-  this file is how you retire it. The supplementary Social Media / Science
+  this file is how you retire it. To rename a channel, pass its old name as
+  `oldName` to `ensureFixedChannel` so it is renamed in place, keeping its
+  history (the Founder/CEO/COO channel became #management that way in
+  November 2026; the site finds it with `managementChannelName()`). The supplementary Social Media / Science
   Tutor / Math Tutor / Nonprofit Team / Development Team roles and channels
   were retired that way in September 2026 — do not re-add them. Only the
   Founder, CEO and COO may ping @everyone/@here: each run strips "Mention

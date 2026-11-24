@@ -133,8 +133,10 @@ export const notifyFounders = async (subject: string, html: string) => {
  * allowed_mentions pattern used by the class-reminders cron.
  */
 /** The channels the site posts to, resolved the same way discordSync names them. */
-export const foundersChannelName = (): string =>
-  String(process.env.DISCORD_FOUNDERS_ONLY_CHANNEL_NAME ?? "").trim() || "founders";
+// The Founder/CEO/COO channel: #management, named #founders until November
+// 2026 (the env name keeps its old spelling).
+export const managementChannelName = (): string =>
+  String(process.env.DISCORD_FOUNDERS_ONLY_CHANNEL_NAME ?? "").trim() || "management";
 
 export const executivesChannelName = (): string =>
   String(process.env.DISCORD_EXECUTIVES_ONLY_CHANNEL_NAME ?? "").trim() || "executives";

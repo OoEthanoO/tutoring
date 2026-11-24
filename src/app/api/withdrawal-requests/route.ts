@@ -5,6 +5,7 @@ import { isExecutive, resolveUserRole } from "@/lib/roles";
 import { getTutorAvailability } from "@/lib/withdrawalRequests";
 import {
   getDiscordRoleIdByName,
+  managementChannelName,
   sendDiscordMessageByChannelName,
 } from "@/lib/notificationsServer";
 import { classCountForHours, describeHourSteps } from "@/lib/serviceHours";
@@ -17,7 +18,7 @@ const requestFields = "id, hours, status, created_at, resolved_at";
 /**
  * Tutor-facing hour withdrawal requests. Tutors request; the COO fulfills or
  * declines via the admin "Withdraw hours" dashboard. Submitting posts a Discord
- * message to the founders channel mentioning @COO.
+ * message to the management channel mentioning @COO.
  */
 export async function GET(request: NextRequest) {
   if (!supabaseUrl || !serviceRoleKey) {
@@ -222,7 +223,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Notify the COO in the founders channel. Best-effort: a Discord failure must
+  // Notify the COO in the management channel. Best-effort: a Discord failure must
   // not fail the request itself.
   let discordNotified = false;
   try {
@@ -244,7 +245,7 @@ export async function POST(request: NextRequest) {
     ].join("\n");
 
     discordNotified = await sendDiscordMessageByChannelName(
-      "founders",
+      managementChannelName(),
       content,
       cooRoleId ? [cooRoleId] : undefined
     );
