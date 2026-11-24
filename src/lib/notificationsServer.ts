@@ -5,9 +5,8 @@ import {
   type DiscordCourseRole,
 } from "./discordCourseMessages";
 import { withoutEveryoneMentions } from "./discordMentions";
+import { deliverEmail, MAX_RECIPIENTS_PER_EMAIL, type EmailAttachment } from "./mailer";
 
-const resendApiKey = process.env.RESEND_API_KEY ?? "";
-const resendFrom = process.env.RESEND_FROM ?? "";
 const discordBotToken = process.env.DISCORD_BOT_TOKEN ?? "";
 const discordGuildId = process.env.DISCORD_GUILD_ID ?? "";
 
@@ -34,90 +33,19 @@ const sleep = (ms: number) =>
     setTimeout(resolve, ms);
   });
 
-/**
- * Sends an email using the Resend API.
- * This is a server-side only utility.
- * Attachments use Resend's shape: base64 `content` + `filename`.
- */
-const postResendEmail = async (
-  payload: Record<string, unknown>
-): Promise<{ ok: boolean; error: string }> => {
-  if (!resendApiKey || !resendFrom) {
-    console.warn("Skipping email send: Missing configuration.", { subject: payload.subject });
-    return { ok: false, error: "Missing email configuration." };
-  }
-
-  const maxAttempts = 3;
-  let lastError = "Unknown error";
-  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    try {
-      const response = await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${resendApiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ from: resendFrom, ...payload }),
-      });
-
-      if (response.ok) {
-        return { ok: true, error: "" };
-      }
-
-      lastError = await response.text().catch(() => "Unknown error");
-      console.error(`Failed to send email (Attempt ${attempt}):`, lastError);
-
-      if (response.status !== 429 && response.status < 500) {
-        // Non-retriable error
-        break;
-      }
-
-      if (attempt < maxAttempts) {
-        // Honor the provider's retry-after hint when present.
-        const retryAfterSeconds = Number.parseFloat(
-          response.headers.get("retry-after") ?? ""
-        );
-        await sleep(
-          Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
-            ? Math.ceil(retryAfterSeconds * 1000)
-            : 1000 * 2 ** (attempt - 1)
-        );
-      }
-      continue;
-    } catch (error) {
-      lastError = error instanceof Error ? error.message : "Unknown error";
-      console.error(`Error sending email (Attempt ${attempt}):`, error);
-    }
-
-    if (attempt < maxAttempts) {
-      await sleep(1000 * 2 ** (attempt - 1)); // Exponential backoff
-    }
-  }
-
-  return { ok: false, error: lastError };
-};
-
 export const sendEmail = async (
   to: string,
   subject: string,
   html: string,
-  attachments?: { filename: string; content: string }[]
+  attachments?: EmailAttachment[]
 ): Promise<boolean> => {
   if (!to) {
     console.warn("Skipping email send: Missing recipient.", { subject });
     return false;
   }
-  const result = await postResendEmail({
-    to,
-    subject,
-    html,
-    ...(attachments && attachments.length > 0 ? { attachments } : {}),
-  });
+  const result = await deliverEmail({ to, subject, html, attachments });
   return result.ok;
 };
-
-// Resend allows at most 50 recipients (to + cc + bcc combined) per email.
-const RESEND_MAX_RECIPIENTS = 50;
 
 export type BccSendResult = {
   sentCount: number;
@@ -126,18 +54,17 @@ export type BccSendResult = {
 
 /**
  * The visible "To" of every group email, whose real recipients are in Bcc. It
- * must be a mailbox that accepts mail. It used to be the sender address, which
- * cannot receive any, so every group email bounced on it after hours of retries
- * (Resend counted a 43% bounce rate in November 2026, although every Bcc
- * recipient got the email), and a high bounce rate can get the account paused.
- * The organization's inbox therefore gets a copy of each group email.
+ * must be a mailbox that accepts mail. It used to be a sending-only address,
+ * so every group email bounced on it after hours of retries (43% of all
+ * emails in November 2026, although every Bcc recipient got the email). The
+ * organization's inbox therefore gets a copy of each group email.
  */
 export const groupEmailTo = () =>
   (process.env.GROUP_EMAIL_TO ?? "").trim() || "yanlearnorg@gmail.com";
 
 /**
- * Sends ONE email to many recipients via BCC (chunked to respect Resend's
- * per-message recipient limit) instead of one email per recipient. The
+ * Sends ONE email to many recipients via BCC (chunked to respect the mail
+ * server's per-message recipient limit) instead of one email per recipient. The
  * visible "to" is the organization's inbox (groupEmailTo), so recipients
  * cannot see each other. Only use this for content that is identical for
  * every recipient.
@@ -156,10 +83,10 @@ export const sendBccEmail = async (
   }
 
   // Leave one recipient slot for the "to" address (the organization's inbox).
-  const chunkSize = RESEND_MAX_RECIPIENTS - 1;
+  const chunkSize = MAX_RECIPIENTS_PER_EMAIL - 1;
   for (let start = 0; start < recipients.length; start += chunkSize) {
     const chunk = recipients.slice(start, start + chunkSize);
-    const outcome = await postResendEmail({
+    const outcome = await deliverEmail({
       to: groupEmailTo(),
       bcc: chunk,
       subject,
@@ -172,7 +99,7 @@ export const sendBccEmail = async (
         result.failed.push({ email, reason: outcome.error });
       }
     }
-    // Pace requests to stay under the email provider's rate limit.
+    // Pace the sends so the mail server never sees a burst.
     await sleep(150);
   }
   return result;

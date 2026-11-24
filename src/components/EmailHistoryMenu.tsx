@@ -10,6 +10,7 @@ type EmailHistoryEntry = {
   subject: string;
   createdAt: string;
   lastEvent: string | null;
+  error?: string | null;
 };
 
 type EmailHistoryDetail = {
@@ -144,8 +145,10 @@ export default function EmailHistoryMenu() {
           Emails
         </h2>
         <p className="text-sm text-[var(--muted)]">
-          Every email sent through the platform, including ones sent before this
-          view existed. Click an email to read its contents.
+          Every email the platform has sent through its Gmail account, newest
+          first. Emails sent earlier through Resend are not listed. A late bounce
+          (for example a mistyped address) arrives in that account&apos;s inbox.
+          Click an email to read its contents.
         </p>
       </header>
 
@@ -194,6 +197,9 @@ export default function EmailHistoryMenu() {
                   ) : null}
                   {email.from ? (
                     <p className="text-xs text-[var(--muted)]">From: {email.from}</p>
+                  ) : null}
+                  {email.error ? (
+                    <p className="text-xs text-red-500">{email.error}</p>
                   ) : null}
                 </button>
                 {isExpanded ? (

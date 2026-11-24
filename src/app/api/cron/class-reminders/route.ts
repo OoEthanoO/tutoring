@@ -56,6 +56,7 @@ import {
   tutorStrikeDeadlineAfterStartMs,
 } from "@/lib/tutorPresence";
 import { sendBccEmail } from "@/lib/notificationsServer";
+import { deliverEmail, isEmailConfigured, MISSING_EMAIL_CONFIG } from "@/lib/mailer";
 import { sendFeedbackInvites, type FeedbackInviteResult } from "@/lib/courseFeedbackServer";
 import { expireClassRecordings, type RecordingExpiryResult } from "@/lib/recordings";
 import { recorderDiagnosticsRetentionMs } from "@/lib/recorderDiagnostics";
@@ -77,8 +78,6 @@ import {
 
 const supabaseUrl = process.env.SUPABASE_URL ?? "";
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
-const resendApiKey = process.env.RESEND_API_KEY ?? "";
-const resendFrom = process.env.RESEND_FROM ?? "";
 const cronSecret = process.env.CRON_SECRET ?? "";
 const discordBotToken = process.env.DISCORD_BOT_TOKEN ?? "";
 const discordGuildId = process.env.DISCORD_GUILD_ID ?? "";
@@ -488,44 +487,11 @@ const getDiscordUserVoiceChannelId = async (
   }
 };
 
+// Throws on failure: the reminder loop records the reason per recipient.
 const sendEmail = async (to: string, subject: string, html: string) => {
-  const maxAttempts = 4;
-
-  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    const response = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${resendApiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from: resendFrom,
-        to,
-        subject,
-        html,
-      }),
-    });
-
-    if (response.ok) {
-      return;
-    }
-
-    const details = await response.text().catch(() => "");
-    const retryAfterHeader = response.headers.get("retry-after");
-    const retryAfterSeconds = retryAfterHeader
-      ? Number.parseFloat(retryAfterHeader)
-      : Number.NaN;
-    const isRetriable = response.status === 429 || response.status >= 500;
-
-    if (!isRetriable || attempt === maxAttempts) {
-      throw new Error(details || `Failed to send email (${response.status}).`);
-    }
-
-    const backoffMs =
-      Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
-        ? Math.ceil(retryAfterSeconds * 1000)
-        : 500 * 2 ** (attempt - 1);
-    await sleep(backoffMs);
+  const result = await deliverEmail({ to, subject, html });
+  if (!result.ok) {
+    throw new Error(result.error || "Failed to send email.");
   }
 };
 
@@ -688,10 +654,8 @@ export async function POST(request: NextRequest) {
     };
   }
 
-  const emailRemindersEnabled = Boolean(resendApiKey && resendFrom);
-  const reminderSkippedReason = emailRemindersEnabled
-    ? null
-    : "Missing RESEND_API_KEY or RESEND_FROM.";
+  const emailRemindersEnabled = isEmailConfigured();
+  const reminderSkippedReason = emailRemindersEnabled ? null : MISSING_EMAIL_CONFIG;
 
   const discordRemindersEnabled = Boolean(discordBotToken && discordGuildId);
   let discordReminderSkippedReason: string | null = null;

@@ -36,12 +36,41 @@ if (-not $status) { $status = [pscustomobject]@{} }
 function Set-Status([string]$Name, $Value) { $status | Add-Member -NotePropertyName $Name -NotePropertyValue $Value -Force }
 $production = Read-Json (Join-Path $Root 'secrets\production.json')
 
+# Sends through the site's own SMTP settings (EMAIL.md): Gmail on port 587
+# with STARTTLS unless SMTP_HOST/SMTP_PORT say otherwise.
+function Get-ProductionSetting([string]$Name, [string]$Default = '') {
+    $property = $production.PSObject.Properties[$Name]
+    if ($property -and [string]$property.Value) { return [string]$property.Value }
+    return $Default
+}
+function Send-SmtpMessage([string]$To, [string]$Subject, [string]$Body) {
+    $user = Get-ProductionSetting 'SMTP_USER'
+    $smtpHost = Get-ProductionSetting 'SMTP_HOST' 'smtp.gmail.com'
+    $password = Get-ProductionSetting 'SMTP_PASSWORD'
+    if ($smtpHost -eq 'smtp.gmail.com') { $password = $password -replace '\s', '' }
+    if (-not $user -or -not $password -or -not $To) { throw 'Missing SMTP_USER, SMTP_PASSWORD or NEXT_PUBLIC_FOUNDER_EMAIL.' }
+    [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+    $client = New-Object System.Net.Mail.SmtpClient($smtpHost, [int](Get-ProductionSetting 'SMTP_PORT' '587'))
+    $message = New-Object System.Net.Mail.MailMessage
+    try {
+        $client.EnableSsl = $true
+        $client.Timeout = 20000
+        $client.Credentials = New-Object System.Net.NetworkCredential($user, $password)
+        $message.From = New-Object System.Net.Mail.MailAddress((Get-ProductionSetting 'EMAIL_FROM' "YanLearn <$user>"))
+        $message.To.Add($To)
+        $message.Subject = $Subject
+        $message.Body = $Body
+        $client.Send($message)
+    } finally {
+        $message.Dispose()
+        $client.Dispose()
+    }
+}
+
 function Send-Alert([string]$Subject, [string]$Body) {
     $last = if ($status.PSObject.Properties['lastAlertAt'] -and $status.lastAlertAt) { [DateTime]$status.lastAlertAt } else { [DateTime]::MinValue }
     if (((Get-Date).ToUniversalTime() - $last.ToUniversalTime()).TotalHours -lt 12) { return }
-    $message = @{ from = $production.RESEND_FROM; to = @($production.NEXT_PUBLIC_FOUNDER_EMAIL); subject = $Subject; text = $Body } | ConvertTo-Json
-    Invoke-RestMethod -Method Post -Uri 'https://api.resend.com/emails' -Headers @{ Authorization = 'Bearer ' + $production.RESEND_API_KEY } `
-        -ContentType 'application/json' -Body $message -TimeoutSec 20 | Out-Null
+    Send-SmtpMessage ([string]$production.NEXT_PUBLIC_FOUNDER_EMAIL) $Subject $Body
     Set-Status 'lastAlertAt' (Get-Date).ToUniversalTime().ToString('o')
 }
 

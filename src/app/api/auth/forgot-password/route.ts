@@ -1,31 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server";
 import crypto from "crypto";
 import { getAdminClient, hashToken } from "@/lib/authServer";
+import { sendEmail } from "@/lib/notificationsServer";
 
-const resendApiKey = process.env.RESEND_API_KEY ?? "";
-const resendFrom = process.env.RESEND_FROM ?? "";
 const siteUrl =
   process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/+$/, "") ?? "";
-
-const sendEmail = async (to: string, subject: string, html: string) => {
-  if (!resendApiKey || !resendFrom || !to) {
-    return;
-  }
-
-  await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${resendApiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from: resendFrom,
-      to,
-      subject,
-      html,
-    }),
-  });
-};
 
 export async function POST(request: NextRequest) {
   const body = (await request.json().catch(() => null)) as

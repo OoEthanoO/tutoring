@@ -167,6 +167,15 @@ DNS is on Cloudflare, with a local updater for the home address. See
   after the form closes (My courses). Rules are pure in
   `src/lib/courseFeedback.ts`. See `COURSE_FEEDBACK.md`; apply
   `20261122120000_course_feedback.sql` before deployment.
+- Email (November 2026): every email goes through `deliverEmail` in
+  `src/lib/mailer.ts` (nodemailer over SMTP, by default Gmail as the
+  organization's account with an app password; env `SMTP_USER`,
+  `SMTP_PASSWORD`, optional `EMAIL_FROM`/`SMTP_HOST`/`SMTP_PORT`). It
+  replaced the Resend API; never call an email API with `fetch` again. Each
+  send is recorded in `email_log`, which Admin → Emails reads. Gmail caps a
+  personal account at roughly 500 recipients a day, so keep group emails in
+  Bcc (`sendBccEmail`, at most 50 recipients a message). See `EMAIL.md`;
+  apply `20261124120000_email_log.sql` before deployment.
 
 ## Conventions
 

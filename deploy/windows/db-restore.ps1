@@ -187,7 +187,9 @@ rollback;
         $overrides = @{
             SUPABASE_URL = 'http://127.0.0.1:{0}' -f $script:DatabaseGatewayPort
             SUPABASE_SERVICE_ROLE_KEY = [string]$settings.ServiceRoleKey
-            DISCORD_BOT_TOKEN = 'trial-disabled'; RESEND_API_KEY = 'trial-disabled'; CRON_SECRET = (New-RandomSecret 24)
+            DISCORD_BOT_TOKEN = 'trial-disabled'; CRON_SECRET = (New-RandomSecret 24)
+            # Empty, not a dummy: a wrong password would be a real failed sign-in to the Gmail account.
+            SMTP_USER = ''; SMTP_PASSWORD = ''
             RECORDINGS_S3_ACCESS_KEY_ID = 'trial-disabled'; RECORDINGS_S3_SECRET_ACCESS_KEY = 'trial-disabled'
             PORT = '3199'; HOSTNAME = '127.0.0.1'; YANLEARN_ZEN_GATEWAY_PORT = '3198'
         }

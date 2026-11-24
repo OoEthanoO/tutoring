@@ -1,42 +1,55 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
- * Group emails go To a mailbox that accepts mail, never the sender address:
- * with the sender in To, every group email bounced on it (see groupEmailTo).
+ * Group emails go To a mailbox that accepts mail, never a sending-only
+ * address: with one in To, every group email bounced on it (see groupEmailTo).
  */
 
+const { sendMail } = vi.hoisted(() => ({ sendMail: vi.fn() }));
+vi.mock("nodemailer", () => ({
+  default: { createTransport: () => ({ sendMail, close: () => {} }) },
+}));
+vi.mock("@/lib/authServer", () => ({
+  getAdminClient: () => ({ from: () => ({ insert: async () => ({ error: null }) }) }),
+}));
+
 let notifications: typeof import("./notificationsServer");
-const fetcher = vi.fn<typeof fetch>();
 
 beforeAll(async () => {
-  vi.stubEnv("RESEND_API_KEY", "re_test_key");
-  vi.stubEnv("RESEND_FROM", "YanLearn <learn@notifications.example.test>");
-  vi.stubGlobal("fetch", fetcher);
+  vi.stubEnv("SMTP_USER", "sender@example.test");
+  vi.stubEnv("SMTP_PASSWORD", "app-password");
   notifications = await import("./notificationsServer");
 });
-afterAll(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
+afterAll(() => { vi.unstubAllEnvs(); });
 beforeEach(() => {
-  fetcher.mockReset();
-  fetcher.mockResolvedValue(new Response(JSON.stringify({ id: "email" }), { status: 200 }));
+  sendMail.mockReset();
+  sendMail.mockResolvedValue({ messageId: "<id@example.test>", rejected: [] });
   vi.stubEnv("GROUP_EMAIL_TO", "");
 });
 
-const sentBodies = () => fetcher.mock.calls.map(([, init]) => JSON.parse(String(init?.body)));
+const sentMessages = () => sendMail.mock.calls.map(([message]) => message);
 
 describe("group emails", () => {
   it("are addressed to the organization's inbox, with the families in Bcc", async () => {
     const result = await notifications.sendBccEmail(["One@Example.test", "two@example.test"], "Subject", "<p>Hi</p>");
     expect(result).toEqual({ sentCount: 2, failed: [] });
-    const [body] = sentBodies();
-    expect(body.to).toBe("yanlearnorg@gmail.com");
-    expect(body.to).not.toContain("notifications.example.test");
-    expect(body.bcc).toEqual(["one@example.test", "two@example.test"]);
-    expect(body.from).toBe("YanLearn <learn@notifications.example.test>");
+    const [message] = sentMessages();
+    expect(message.to).toEqual(["yanlearnorg@gmail.com"]);
+    expect(message.bcc).toEqual(["one@example.test", "two@example.test"]);
+    expect(message.from).toBe("YanLearn <sender@example.test>");
   });
 
   it("can be sent to another inbox through GROUP_EMAIL_TO", async () => {
     vi.stubEnv("GROUP_EMAIL_TO", "  records@example.test ");
     await notifications.sendBccEmail(["one@example.test"], "Subject", "<p>Hi</p>");
-    expect(sentBodies()[0].to).toBe("records@example.test");
+    expect(sentMessages()[0].to).toEqual(["records@example.test"]);
+  });
+
+  it("splits a long list into messages of at most 50 recipients", async () => {
+    const families = Array.from({ length: 120 }, (_, index) => `family${index}@example.test`);
+    const result = await notifications.sendBccEmail(families, "Subject", "<p>Hi</p>");
+    expect(result.sentCount).toBe(120);
+    const sizes = sentMessages().map((message) => message.to.length + message.bcc.length);
+    expect(sizes).toEqual([50, 50, 23]);
   });
 });

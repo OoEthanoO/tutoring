@@ -67,10 +67,12 @@ other consumers. The deploy script checks required settings before building.
 Use the unchanged `https://learn.ethanyanxu.com` site URL and Discord OAuth
 redirect so existing logins, Recorder clients, and emailed links keep working.
 
-`RESEND_API_KEY` needs Resend's **Full access** permission for Admin's email
-history list and message viewer. A domain-scoped Sending access key can deliver
-emails, but Resend rejects history reads with `restricted_api_key`. The API key
-stays server-side; the email history endpoints retain their leadership role gate.
+Email goes out over SMTP as the organization's Gmail account (see
+`EMAIL.md`): `SMTP_USER` is that address and `SMTP_PASSWORD` a Google app
+password for it, both required. Never use the account's own password, and
+never put a dummy password in a copy of the settings: every wrong password is
+a failed sign-in Google counts against the account. Admin's email history
+reads the `email_log` table, not the provider.
 
 Prepare a release without changing public traffic:
 

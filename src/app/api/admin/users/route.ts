@@ -10,14 +10,13 @@ import { getRequestUser } from "@/lib/authServer";
 import { fetchDiscordGuildMemberIds } from "@/lib/discordSync";
 import { classEndMs } from "@/lib/classTiming";
 import { groupEmailTo, sendDiscordMessageByChannelName } from "@/lib/notificationsServer";
+import { deliverEmail, isEmailConfigured, MAX_RECIPIENTS_PER_EMAIL, MISSING_EMAIL_CONFIG, type EmailAttachment } from "@/lib/mailer";
 import { normalizePaymentNote, paymentNoteClearBlocker, seniorUntickBlocker } from "@/lib/paidCourses";
 import { countActivePaidCourses } from "@/lib/paidCoursesServer";
 
 const supabaseUrl = process.env.SUPABASE_URL ?? "";
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 
-const resendApiKey = process.env.RESEND_API_KEY ?? "";
-const resendFrom = process.env.RESEND_FROM ?? "";
 
 const escapeHtml = (value: string) =>
   value
@@ -72,84 +71,29 @@ const sleep = (ms: number) =>
     setTimeout(resolve, ms);
   });
 
-// Resend allows at most 50 recipients (to + cc + bcc combined) per email.
-const RESEND_MAX_RECIPIENTS = 50;
-
-// Core sender with retry/backoff. Accepts an arbitrary Resend payload (to, bcc, etc.).
-const postResendEmail = async (payload: Record<string, unknown>) => {
-  if (!resendApiKey || !resendFrom) {
-    return { ok: false as const, error: "Missing email configuration." };
-  }
-
-  const maxAttempts = 4;
-
-  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    const response = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${resendApiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ from: resendFrom, ...payload }),
-    });
-
-    if (response.ok) {
-      return { ok: true as const };
-    }
-
-    const details = (await response.text().catch(() => "")).trim();
-    const retryAfterHeader = response.headers.get("retry-after");
-    const retryAfterSeconds = retryAfterHeader
-      ? Number.parseFloat(retryAfterHeader)
-      : Number.NaN;
-    const isRetriable = response.status === 429 || response.status >= 500;
-
-    if (!isRetriable || attempt === maxAttempts) {
-      return {
-        ok: false as const,
-        error: details || `Email provider error (${response.status}).`,
-      };
-    }
-
-    const backoffMs =
-      Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
-        ? Math.ceil(retryAfterSeconds * 1000)
-        : 500 * 2 ** (attempt - 1);
-
-    await sleep(backoffMs);
-  }
-
-  return { ok: false as const, error: "Unknown email failure." };
-};
-
-const sendEmail = async (to: string, subject: string, html: string, attachments?: { filename: string; content: string }[]) => {
+const sendEmail = async (to: string, subject: string, html: string, attachments?: EmailAttachment[]) => {
   if (!to) {
-    return { ok: false as const, error: "Missing email configuration." };
+    return { ok: false as const, error: "Missing recipient." };
   }
-  return postResendEmail({
-    to,
-    subject,
-    html,
-    ...(attachments && attachments.length > 0 ? { attachments } : {}),
-  });
+  return deliverEmail({ to, subject, html, attachments });
 };
 
-// Send a single email to many recipients via BCC, chunked to respect Resend's
-// per-message recipient limit. The visible "to" is the sender, so recipients
-// cannot see each other.
+// Send a single email to many recipients via BCC, chunked to respect the mail
+// server's per-message recipient limit. The visible "to" is the organization's
+// inbox (groupEmailTo), so recipients cannot see each other.
 const sendBccEmail = async (bccEmails: string[], subject: string, html: string) => {
   const recipients = Array.from(
     new Set(bccEmails.map((email) => normalizeEmail(email)).filter(Boolean))
   );
 
   // Leave one recipient slot for the "to" address (the organization's inbox).
-  const chunkSize = RESEND_MAX_RECIPIENTS - 1;
+  const chunkSize = MAX_RECIPIENTS_PER_EMAIL - 1;
   let sentCount = 0;
   const failed: Array<{ batch: string; error: string }> = [];
 
   for (let start = 0; start < recipients.length; start += chunkSize) {
     const chunk = recipients.slice(start, start + chunkSize);
-    const result = await postResendEmail({
+    const result = await deliverEmail({
       to: groupEmailTo(),
       bcc: chunk,
       subject,
@@ -920,12 +864,9 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  if (!resendApiKey || !resendFrom) {
+  if (!isEmailConfigured()) {
     return NextResponse.json(
-      {
-        error:
-          "Missing RESEND_API_KEY or RESEND_FROM. Cannot send notification emails.",
-      },
+      { error: `${MISSING_EMAIL_CONFIG} Cannot send notification emails.` },
       { status: 500 }
     );
   }

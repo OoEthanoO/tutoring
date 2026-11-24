@@ -1,59 +1,46 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { getRequestUser } from "@/lib/authServer";
+import { getAdminClient, getRequestUser } from "@/lib/authServer";
 import { isHighRankingChiefExecutive, resolveUserRole } from "@/lib/roles";
 
-const resendApiKey = process.env.RESEND_API_KEY ?? "";
-
-type ResendEmail = {
-  id?: string;
-  to?: string | string[] | null;
-  bcc?: string | string[] | null;
-  cc?: string | string[] | null;
-  from?: string | null;
-  subject?: string | null;
-  created_at?: string | null;
-  last_event?: string | null;
+type EmailLogRow = {
+  id: number | string;
+  created_at: string | null;
+  from_address: string | null;
+  to_addresses: string[] | null;
+  bcc_addresses: string[] | null;
+  subject: string | null;
+  status: string | null;
+  error: string | null;
   html?: string | null;
-  text?: string | null;
 };
 
-const toRecipients = (value: string | string[] | null | undefined): string[] => {
-  if (!value) {
-    return [];
-  }
-  return Array.isArray(value) ? value : [value];
-};
+const listColumns =
+  "id, created_at, from_address, to_addresses, bcc_addresses, subject, status, error";
 
-const normalizeEmail = (email: ResendEmail) => ({
-  id: email.id ?? "",
-  to: toRecipients(email.to),
-  bcc: toRecipients(email.bcc),
-  cc: toRecipients(email.cc),
-  from: email.from ?? "",
-  subject: email.subject ?? "(no subject)",
-  createdAt: email.created_at ?? "",
-  lastEvent: email.last_event ?? null,
+const normalizeEmail = (row: EmailLogRow) => ({
+  id: String(row.id),
+  to: row.to_addresses ?? [],
+  bcc: row.bcc_addresses ?? [],
+  cc: [] as string[],
+  from: row.from_address ?? "",
+  subject: row.subject || "(no subject)",
+  createdAt: row.created_at ?? "",
+  lastEvent: row.status ?? null,
+  error: row.error ?? null,
 });
 
 /**
- * Returns email history from Resend. Founder/CEO/COO only.
+ * Returns the site's email history from public.email_log, which
+ * src/lib/mailer.ts writes on every send. Founder/CEO/COO only.
  *
- * Resend retains every email sent through the account, so this surfaces all
- * emails — including ones sent before this feature existed, since nothing is
- * stored locally.
+ * Emails sent before the move from Resend to Gmail (November 2026) were never
+ * logged here, so they are not listed.
  *
  * Query params:
- *   - id: retrieve a single email (including its html/text body)
- *   - limit / after: cursor-based pagination for the list view
+ *   - id: retrieve a single email (including its html body)
+ *   - limit / after: pagination for the list view (after = the last id shown)
  */
 export async function GET(request: NextRequest) {
-  if (!resendApiKey) {
-    return NextResponse.json(
-      { error: "Email history is unavailable: missing Resend configuration." },
-      { status: 500 }
-    );
-  }
-
   const user = await getRequestUser(request);
   if (!user) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
@@ -70,60 +57,56 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Forbidden." }, { status: 403 });
   }
 
-  const authHeaders = { Authorization: `Bearer ${resendApiKey}` };
+  const adminClient = getAdminClient();
   const { searchParams } = request.nextUrl;
   const id = searchParams.get("id")?.trim();
 
-  // Single email — includes the full html/text body.
+  // Single email — includes the full html body.
   if (id) {
-    const response = await fetch(`https://api.resend.com/emails/${encodeURIComponent(id)}`, {
-      headers: authHeaders,
-    });
-    if (!response.ok) {
-      const detail = await response.text().catch(() => "");
-      return NextResponse.json(
-        { error: detail || "Failed to load email." },
-        { status: response.status === 404 ? 404 : 502 }
-      );
+    if (!/^\d+$/.test(id)) {
+      return NextResponse.json({ error: "Email not found." }, { status: 404 });
     }
-    const email = (await response.json()) as ResendEmail;
+    const { data, error } = await adminClient
+      .from("email_log")
+      .select(`${listColumns}, html`)
+      .eq("id", id)
+      .maybeSingle();
+    if (error) {
+      return NextResponse.json({ error: "Failed to load email." }, { status: 502 });
+    }
+    if (!data) {
+      return NextResponse.json({ error: "Email not found." }, { status: 404 });
+    }
+    const row = data as EmailLogRow;
     return NextResponse.json({
-      email: {
-        ...normalizeEmail(email),
-        html: email.html ?? null,
-        text: email.text ?? null,
-      },
+      email: { ...normalizeEmail(row), html: row.html ?? null, text: null },
     });
   }
 
-  // List view — cursor-based pagination.
+  // List view, newest first.
   const limit = Math.min(Math.max(Number(searchParams.get("limit")) || 50, 1), 100);
   const after = searchParams.get("after")?.trim();
 
-  const listUrl = new URL("https://api.resend.com/emails");
-  listUrl.searchParams.set("limit", String(limit));
-  if (after) {
-    listUrl.searchParams.set("after", after);
+  let query = adminClient
+    .from("email_log")
+    .select(listColumns)
+    .order("id", { ascending: false })
+    .limit(limit + 1);
+  if (after && /^\d+$/.test(after)) {
+    query = query.lt("id", after);
   }
 
-  const response = await fetch(listUrl, { headers: authHeaders });
-  if (!response.ok) {
-    const detail = await response.text().catch(() => "");
-    return NextResponse.json(
-      { error: detail || "Failed to load email history." },
-      { status: 502 }
-    );
+  const { data, error } = await query;
+  if (error) {
+    return NextResponse.json({ error: "Failed to load email history." }, { status: 502 });
   }
 
-  const payload = (await response.json()) as {
-    data?: ResendEmail[];
-    has_more?: boolean;
-  };
-  const emails = (payload.data ?? []).map(normalizeEmail);
+  const rows = (data ?? []) as EmailLogRow[];
+  const emails = rows.slice(0, limit).map(normalizeEmail);
 
   return NextResponse.json({
     emails,
-    hasMore: Boolean(payload.has_more),
+    hasMore: rows.length > limit,
     nextCursor: emails.length > 0 ? emails[emails.length - 1].id : null,
   });
 }
