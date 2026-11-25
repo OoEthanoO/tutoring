@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { getCurrentUser, onAuthChange } from "@/lib/authClient";
+import { useChangeGuard, useLiveRefresh } from "@/lib/useLiveRefresh";
 import { isFounder, resolveUserRole } from "@/lib/roles";
 import { MAX_ENROLLMENT_REJECTION_REASON_LENGTH, parseEnrollmentRejectionReason } from "@/lib/enrollmentRequests";
 import { enrollmentApprovalBlocker, formatPaidFee } from "@/lib/paidCourses";
@@ -59,6 +60,9 @@ export default function ManageEnrollmentsMenu() {
   const [isLoading, setIsLoading] = useState(false);
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [rejectionReason, setRejectionReason] = useState("");
+  // A background read that overlapped this reviewer's own approval or rejection would put the
+  // old state back.
+  const changes = useChangeGuard();
 
   useEffect(() => {
     const load = async () => {
@@ -71,17 +75,18 @@ export default function ManageEnrollmentsMenu() {
     return onAuthChange(load);
   }, []);
 
-  useEffect(() => {
-    if (!isFounderAccess) {
-      return;
-    }
-
-    const fetchRequests = async () => {
+  // The first load shows "Loading" and any error. Background refreshes (payments a tutor has just
+  // confirmed, new requests, decisions made elsewhere) change the list quietly and keep messages.
+  const fetchRequests = useCallback(async (background: boolean) => {
+    const startedAt = changes.snapshot();
+    if (!background) {
       setIsLoading(true);
       setStatus({ type: "idle", message: "" });
+    }
 
-      const response = await fetch("/api/enrollments");
-      if (!response.ok) {
+    const response = await fetch("/api/enrollments");
+    if (!response.ok) {
+      if (!background) {
         const payload = (await response.json().catch(() => null)) as
           | { error?: string }
           | null;
@@ -90,18 +95,28 @@ export default function ManageEnrollmentsMenu() {
           message: payload?.error ?? "Unable to load enrollment requests.",
         });
         setIsLoading(false);
-        return;
       }
+      return;
+    }
 
-      const data = (await response.json()) as {
-        requests: EnrollmentRequest[];
-      };
-      setRequests(data.requests ?? []);
-      setIsLoading(false);
+    const data = (await response.json()) as {
+      requests: EnrollmentRequest[];
     };
+    if (background && !changes.stillCurrent(startedAt)) {
+      return;
+    }
+    setRequests(data.requests ?? []);
+    setIsLoading(false);
+  }, [changes]);
 
-    fetchRequests();
-  }, [isFounderAccess]);
+  useEffect(() => {
+    if (!isFounderAccess) {
+      return;
+    }
+    void fetchRequests(false);
+  }, [isFounderAccess, fetchRequests]);
+
+  useLiveRefresh(() => fetchRequests(true), { enabled: isFounderAccess });
 
   const updateRequest = async (
     requestId: string,
@@ -133,6 +148,7 @@ export default function ManageEnrollmentsMenu() {
       if (!window.confirm(`Approve enrollment for ${student} in ${course}?`)) return;
     }
 
+    changes.begin();
     setPendingId(requestId);
     setStatus({ type: "idle", message: "" });
 
@@ -168,6 +184,7 @@ export default function ManageEnrollmentsMenu() {
         message: error instanceof Error ? error.message : "Unable to update request.",
       });
     } finally {
+      changes.end();
       setPendingId(null);
     }
   };

@@ -29,7 +29,11 @@ tutor says the payment arrived.
    payment to the tutor" and submits the application. The course's own tutor
    then presses **Payment received** in My courses
    (`course_enrollment_requests.payment_confirmed_at` / `_by`). Until then,
-   Approve is disabled in Manage enrollments and the API refuses it. Only the
+   Approve is disabled in Manage enrollments and the API refuses it. Both
+   lists update by themselves while they are open (every 5 seconds, and at
+   once when the tab comes back; `useLiveRefresh` in `src/lib/useLiveRefresh.ts`),
+   so a new request reaches the tutor, and a confirmation unlocks Approve,
+   without a reload. Only the
    course owner can confirm, never management, a co-tutor, or management
    viewing the site as the tutor: the money goes to the owner's account.
    A new application from the same family clears the confirmation.

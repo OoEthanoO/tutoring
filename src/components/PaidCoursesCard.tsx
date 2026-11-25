@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { MAX_PAYMENT_NOTE_LENGTH, formatPaidFee } from "@/lib/paidCourses";
+import { useChangeGuard, useLiveRefresh } from "@/lib/useLiveRefresh";
 
 type PaidRequest = {
   id: string;
@@ -36,19 +37,25 @@ export default function PaidCoursesCard() {
   const [busyRequestId, setBusyRequestId] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
+  // A list read that overlapped the tutor's own change would put the old state back.
+  const changes = useChangeGuard();
 
   const loadRequests = useCallback(async () => {
+    const startedAt = changes.snapshot();
     try {
       const response = await fetch("/api/paid-enrollments");
       if (!response.ok) {
         return;
       }
       const data = (await response.json()) as { requests?: PaidRequest[] };
+      if (!changes.stillCurrent(startedAt)) {
+        return;
+      }
       setRequests(data.requests ?? []);
     } catch {
-      // The list is retried the next time the page is opened.
+      // The list is read again on the next refresh.
     }
-  }, []);
+  }, [changes]);
 
   useEffect(() => {
     const load = async () => {
@@ -71,6 +78,9 @@ export default function PaidCoursesCard() {
     };
     load();
   }, [loadRequests]);
+
+  // New requests, and changes made elsewhere, show up while the page is open.
+  useLiveRefresh(loadRequests, { enabled: isSenior });
 
   const saveNote = async () => {
     setIsSavingNote(true);
@@ -100,6 +110,7 @@ export default function PaidCoursesCard() {
   };
 
   const setReceived = async (target: PaidRequest, received: boolean) => {
+    changes.begin();
     setBusyRequestId(target.id);
     setErrorMsg("");
     setSuccessMsg("");
@@ -130,6 +141,7 @@ export default function PaidCoursesCard() {
     } catch (error) {
       setErrorMsg(error instanceof Error ? error.message : "Could not save the payment status.");
     } finally {
+      changes.end();
       setBusyRequestId(null);
     }
   };

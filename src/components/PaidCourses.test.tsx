@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import ManageEnrollmentsMenu from "./ManageEnrollmentsMenu";
 import CoursesMenu from "./CoursesMenu";
 import PaidCoursesCard from "./PaidCoursesCard";
+import { LIVE_REFRESH_MS } from "@/lib/useLiveRefresh";
 
 const auth = vi.hoisted(() => ({ user: vi.fn() }));
 vi.mock("@/lib/authClient", () => ({ getCurrentUser: auth.user, onAuthChange: () => () => {} }));
@@ -145,5 +146,114 @@ describe("the tutor's paid courses card", () => {
     await mount({ seniorTutor: true, paymentNote: "" });
     expect(container.textContent).toContain("cannot become a paid course until you have saved a payment note");
     expect(button("Save payment note").disabled).toBe(true);
+  });
+});
+
+describe("live updates without a reload", () => {
+  const wait = async (ms: number) => {
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(ms);
+    });
+  };
+  const reviewEntry = (status: string, paymentConfirmedAt: string | null) => ({
+    id: "request", status, created_at: "2026-11-20T12:00:00.000Z",
+    payment_confirmed_at: paymentConfirmedAt, student_name: "Applicant", student_email: "applicant@example.test",
+    course: { id: "course", title: "Paid Coding", is_paid: true, paid_fee: 60 },
+  });
+  const tutorEntry = (paymentConfirmedAt: string | null) => ({
+    id: "11111111-1111-4111-8111-111111111111", courseId: "course", courseTitle: "Paid Coding", fee: 60,
+    studentName: "Applicant", guardianName: "Guardian", submittedAt: "2026-11-20T12:00:00.000Z", paymentConfirmedAt,
+  });
+  const deferred = () => {
+    let resolve: (value: Response) => void = () => {};
+    const promise = new Promise<Response>((done) => { resolve = done; });
+    return { promise, resolve };
+  };
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it("Manage enrollments unlocks Approve as soon as the tutor marks the payment as received", async () => {
+    let confirmedAt: string | null = null;
+    auth.user.mockResolvedValue({ id: "reviewer", email: "reviewer@example.test", role: "COO" });
+    fetcher.mockImplementation(async () => Response.json({ requests: [reviewEntry("pending", confirmedAt)] }));
+    await act(async () => root.render(<ManageEnrollmentsMenu />));
+    expect(button("Approve").disabled).toBe(true);
+
+    confirmedAt = "2026-11-25T15:00:00.000Z";
+    await wait(LIVE_REFRESH_MS);
+    expect(container.textContent).toContain("The tutor marked the payment as received");
+    expect(button("Approve").disabled).toBe(false);
+    expect(container.textContent).not.toContain("Loading requests");
+  });
+
+  it("Manage enrollments ignores a refresh that started before an approval and finished after it", async () => {
+    auth.user.mockResolvedValue({ id: "reviewer", email: "reviewer@example.test", role: "COO" });
+    const confirmed = "2026-11-25T15:00:00.000Z";
+    const slowRead = deferred();
+    let reads = 0;
+    fetcher.mockImplementation(async (_url, options) => {
+      if (options?.method === "PATCH") return Response.json({ request: { status: "approved" } });
+      reads += 1;
+      if (reads === 1) return Response.json({ requests: [reviewEntry("pending", confirmed)] });
+      // The first refresh is slow and still has the request as pending.
+      if (reads === 2) return slowRead.promise;
+      return Response.json({ requests: [reviewEntry("approved", confirmed)] });
+    });
+    await act(async () => root.render(<ManageEnrollmentsMenu />));
+    await wait(LIVE_REFRESH_MS);
+    await act(async () => button("Approve").click());
+    expect(container.textContent).toContain("This request was approved.");
+
+    await act(async () => slowRead.resolve(Response.json({ requests: [reviewEntry("pending", confirmed)] })));
+    expect(container.textContent).toContain("This request was approved.");
+
+    // Later refreshes are applied, and the reviewer's message stays.
+    await wait(LIVE_REFRESH_MS);
+    expect(reads).toBe(3);
+    expect(container.textContent).toContain("This request was approved.");
+    expect(container.textContent).toContain("Enrollment approved.");
+  });
+
+  it("My courses shows a new payment to confirm without a reload", async () => {
+    let requests: ReturnType<typeof tutorEntry>[] = [];
+    fetcher.mockImplementation(async (url) => {
+      if (String(url) === "/api/tutor-profile") return Response.json({ seniorTutor: true, paymentNote: "e-Transfer" });
+      return Response.json({ requests });
+    });
+    await act(async () => root.render(<PaidCoursesCard />));
+    expect(container.textContent).toContain("No enrollment requests are waiting on your paid courses.");
+
+    requests = [tutorEntry(null)];
+    await wait(LIVE_REFRESH_MS);
+    expect(container.textContent).toContain("Paid Coding · $60");
+    expect(button("Payment received")).toBeDefined();
+  });
+
+  it("My courses ignores a refresh that started before the tutor's confirmation and finished after it", async () => {
+    const slowRead = deferred();
+    let reads = 0;
+    fetcher.mockImplementation(async (url, options) => {
+      if (String(url) === "/api/tutor-profile") return Response.json({ seniorTutor: true, paymentNote: "e-Transfer" });
+      if (options?.method === "PATCH") {
+        return Response.json({ request: { paymentConfirmedAt: "2026-11-25T15:00:00.000Z" } });
+      }
+      reads += 1;
+      return reads === 2 ? slowRead.promise : Response.json({ requests: [tutorEntry(null)] });
+    });
+    await act(async () => root.render(<PaidCoursesCard />));
+    await wait(LIVE_REFRESH_MS);
+    await act(async () => button("Payment received").click());
+    expect(button("Undo")).toBeDefined();
+
+    await act(async () => slowRead.resolve(Response.json({ requests: [tutorEntry(null)] })));
+    expect(button("Undo")).toBeDefined();
+    expect(container.textContent).toContain("Management can now approve the enrollment");
   });
 });

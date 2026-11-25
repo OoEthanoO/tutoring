@@ -182,6 +182,14 @@ DNS is on Cloudflare, with a local updater for the home address. See
 
 ## Conventions
 
+- Live lists: there is no push channel (no Supabase Realtime on the
+  self-hosted database), so a list that must stay current polls with
+  `useLiveRefresh` (`src/lib/useLiveRefresh.ts`: every 5 s while the tab is
+  visible, at once on return, never overlapping). Pair it with
+  `useChangeGuard` so a refresh that overlapped the viewer's own change can't
+  put the old state back, and keep background refreshes quiet (no loading
+  state, no clearing of messages). Used by My courses' payments to confirm
+  and Manage enrollments.
 - Migrations: `supabase/migrations/<timestamp>_<name>.sql`; every table gets
   `enable row level security` + a deny-all policy (access is service-role
   only). Apply them to the self-hosted database with
