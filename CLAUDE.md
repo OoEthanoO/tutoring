@@ -112,7 +112,12 @@ DNS is on Cloudflare, with a local updater for the home address. See
   **Pending** Discord role instead of Executive — never both — unless the trio
   ticks "Executive without a course" (`app_users.pending_role_exempt`) in
   Manage accounts. The rule is `src/lib/executiveStanding.ts`; `discordSync`
-  applies it and deletes the old Junior Executive guild role. CEO Shadow is a
+  applies it and deletes the old Junior Executive guild role. An executive
+  still Pending six calendar months after `tutor_promoted_at` is turned back
+  into a student by the class-reminders cron (`src/lib/pendingExecutives.ts`,
+  pure; `pendingExecutivesServer.ts`): never anyone exempt, teaching, above
+  Executive, without a promotion date, or with a course request in review.
+  They are emailed and #management is told. CEO Shadow is a
   seeded custom role at the Executive permission level: it grants no CEO or
   founder authority and sits alongside the member's Executive/Pending standing.
 - `recorder/` — **YanLearn Recorder**, the Tauri 2 desktop app (macOS +

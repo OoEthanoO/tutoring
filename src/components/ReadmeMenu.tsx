@@ -41,6 +41,7 @@ export const readmeParts: Part[] = [
           <li>Your website role is <strong>Executive</strong>. It gives you the Teaching menu (My courses, Course requests, this Readme) and lets you sign in to YanLearn Recorder.</li>
           <li>Connect your own Discord account from your <strong>Profile Card</strong> (upper right) → <strong>Connect Discord</strong>, then join the server. Use the account you will teach with.</li>
           <li>In Discord you hold the <strong>Pending</strong> role until a course you own or co-teach has been created, then <strong>Executive</strong> instead, never both. Management can grant Executive without a course as an exception.</li>
+          <li>Pending lasts at most <strong>6 months</strong>. If you are still Pending 6 months after you became an executive, your account goes back to a student account automatically, and you get an email. A course request that management is still reviewing puts this on hold. Management can make you an executive again.</li>
           <li>Each course you teach gives you its course role and its course channel. YanBot keeps roles, channels and nicknames in step with the website, so do not change them by hand. Your server nickname is always your YanLearn name: change your name on the website, not in Discord.</li>
         </ul>,
       },

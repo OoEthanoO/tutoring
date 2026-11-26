@@ -58,6 +58,7 @@ import {
 import { managementChannelName, sendBccEmail } from "@/lib/notificationsServer";
 import { deliverEmail, isEmailConfigured, MISSING_EMAIL_CONFIG } from "@/lib/mailer";
 import { sendFeedbackInvites, type FeedbackInviteResult } from "@/lib/courseFeedbackServer";
+import { demoteExpiredPendingExecutives, type PendingDemotionResult } from "@/lib/pendingExecutivesServer";
 import { expireClassRecordings, type RecordingExpiryResult } from "@/lib/recordings";
 import { recorderDiagnosticsRetentionMs } from "@/lib/recorderDiagnostics";
 import {
@@ -3415,6 +3416,19 @@ ${tutorWasPresent ? "" : "<p><strong>Note:</strong> you were not detected in the
     );
   }
 
+  // --- Pending window --------------------------------------------------------------
+  // An executive still Pending six months after being promoted becomes a
+  // student again (pendingExecutives.ts). The next tick's Discord sync moves
+  // their roles.
+  let pendingDemotions: PendingDemotionResult = { demotedUserIds: [], errors: [] };
+  try {
+    pendingDemotions = await demoteExpiredPendingExecutives(adminClient, Date.now());
+  } catch (error) {
+    pendingDemotions.errors.push(
+      `Pending window pass failed: ${error instanceof Error ? error.message : "Unknown error"}`
+    );
+  }
+
   // --- Post-course feedback ------------------------------------------------------
   // Once a course's last class has ended, email its students one invitation
   // to the optional feedback form (COURSE_FEEDBACK.md). Each course is claimed
@@ -3605,6 +3619,7 @@ ${tutorWasPresent ? "" : "<p><strong>Note:</strong> you were not detected in the
   }
   return NextResponse.json({
     feedbackInvites,
+    pendingDemotions,
     recorderDiagnosticsCleanupError,
     recordingExpiry,
     recordingAnnouncements,
