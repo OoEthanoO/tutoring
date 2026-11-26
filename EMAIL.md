@@ -1,15 +1,19 @@
 # Email
 
-Since November 2026 YanLearn sends every email over SMTP as the
-organization's Gmail account, instead of through the Resend API. Gmail is
-free and needs no extra account; the families already know the address, and
-their replies land in that inbox.
+YanLearn sends every email over SMTP through **SMTP2GO** (free plan), as
+`YanLearn <learn@notifications.ethanyanxu.com>`. History:
+
+- Until 2026-11-24, the Resend API.
+- 2026-11-24 to 2026-11-26, the organization's Gmail account over SMTP. Its
+  mail kept landing in recipients' Spam (password resets included), so it was
+  replaced.
+- Since 2026-11-26, SMTP2GO. It was chosen because its free plan adds no
+  "sent with" footer or branding to emails; Brevo and Mailjet do.
 
 A mail server on finprint-host itself cannot work: the home connection
 blocks outgoing port 25 (tested 2026-11-24 against Gmail's, Outlook's and
 Yahoo's mail servers), and the big providers refuse or junk mail from home
-addresses anyway. Port 587 to `smtp.gmail.com` is open, which is what this
-uses.
+addresses anyway. Port 587 is open, which is what this uses.
 
 ## How it works
 
@@ -29,9 +33,9 @@ uses.
   Admin → Emails (`api/admin/emails`, `EmailHistoryMenu.tsx`) lists it, newest
   first, for the founder, CEO and COO. Emails sent through Resend before the
   switch are not in it.
-- `sent` means Gmail accepted the email. A bounce that comes later, such as a
-  mistyped address, arrives in the account's inbox as a "Mail Delivery
-  Subsystem" email.
+- `sent` means SMTP2GO accepted the email. Whether it was then delivered,
+  bounced or held is in SMTP2GO's dashboard (Reports → Activity), not in
+  `email_log`.
 - The database-backup alert (`deploy/windows/backup-db.ps1`) sends through
   the same settings with .NET's SMTP client.
 
@@ -40,21 +44,29 @@ uses.
 In `secrets\production.json` on finprint-host (and `.env.local` for local
 development):
 
-| Setting | Value |
+| Setting | Production value |
 |---|---|
-| `SMTP_USER` | the organization's Gmail address (required) |
-| `SMTP_PASSWORD` | a Google **app password** for that account (required) |
-| `EMAIL_FROM` | optional; defaults to `YanLearn <SMTP_USER>`. Gmail only keeps a different address here if it is a verified "Send mail as" alias of the account. |
-| `SMTP_HOST`, `SMTP_PORT` | optional; default `smtp.gmail.com` and `587` |
+| `SMTP_HOST` | `mail.smtp2go.com` |
+| `SMTP_PORT` | `587` |
+| `SMTP_USER` | the SMTP2GO SMTP user (Sending → SMTP Users) |
+| `SMTP_PASSWORD` | that SMTP user's password |
+| `EMAIL_FROM` | `YanLearn <learn@notifications.ethanyanxu.com>` (required: the SMTP2GO username is not an address) |
 
-Making the app password: the account needs 2-Step Verification (Google
-Account → Security). Then Google Account → Security → App passwords, name it
-"YanLearn", and copy the 16 letters. Google shows them in groups of four;
-the spaces may stay, the site removes them for Gmail. Never use the account's
-real password, and never put a dummy password in a copy of the settings
-(the trial restore and the smoke test leave SMTP empty or point it at a
-closed local port): each wrong password is a failed sign-in Google counts
-against the account.
+The SMTP2GO account belongs to the organization's Gmail. Its verified sender
+domain is `notifications.ethanyanxu.com`, through three DNS-only CNAMEs in
+Cloudflare: `em1272564` → `return.smtp2go.net`, `s1272564._domainkey` →
+`dkim.smtp2go.net` (DKIM), and `link` → `track.smtp2go.net`. Deleting them
+stops delivery. A new SMTP user may be refused (`535 Incorrect authentication
+data`) for a minute or two after it is created.
+
+To change the login, run `C:\Users\ethan\yanlearn-check\set-smtp2go.ps1` over `ssh -t` (it asks for the
+username and a hidden password and keeps `production.json.before-smtp2go`),
+then deploy a new commit. The running site only reads the settings when it
+starts, and `ops\deploy.ps1` skips a commit that is already live.
+
+Falling back to Gmail: remove `SMTP_HOST` and `EMAIL_FROM`, and set
+`SMTP_USER` to the organization's Gmail address and `SMTP_PASSWORD` to a
+Google app password. The code still defaults to `smtp.gmail.com`.
 
 The deploy refuses a release without `SMTP_USER` and `SMTP_PASSWORD`, and the
 new release's own start-up check fails, so existing traffic stays on the old
@@ -62,26 +74,10 @@ release until they are set.
 
 ## Limits
 
-A personal Gmail account may send to roughly 500 recipients a day; Google
-counts every To and Bcc address. YanLearn sent about 13 emails a day in
-November 2026, most to one class. Over the limit, Gmail refuses every email
-for up to a day (`550 5.4.5 Daily user sending limit exceeded`), password
-resets included, and each refusal is logged as `failed`. So keep group
-emails in Bcc and avoid mass emails to every account on busy days.
-
-## Going live (order matters)
-
-1. Make the app password (above) and add `SMTP_USER` and `SMTP_PASSWORD` to
-   `secrets\production.json`. The site keeps sending through Resend until
-   step 3.
-2. Apply `supabase\migrations\20261124120000_email_log.sql` with
-   `ops\apply-migration.ps1`.
-3. Push to `master`. The first emails after the deploy show in Admin →
-   Emails with status `sent`, and a copy of each group email reaches the
-   organization's inbox.
-4. Once emails are flowing, `RESEND_API_KEY` and `RESEND_FROM` may be
-   removed from `secrets\production.json`. Keep the Resend account itself:
-   STROJ also sends through it.
-
-Rolling back with `ops\rollback.ps1` returns to the Resend release; it works
-as long as the Resend settings are still in `secrets\production.json`.
+SMTP2GO's free plan allows 1,000 emails a month and 200 a day. Once the
+monthly limit is reached, every new email is rejected (not queued) until the
+month resets, password resets included, and each is logged as `failed`.
+YanLearn's log showed about 10 emails and 25 recipients a day in late
+November 2026. If SMTP2GO counts each recipient, that is close to the limit,
+so check the quota on SMTP2GO's dashboard and upgrade before it runs out.
+Keep group emails in Bcc and avoid mass emails to every account.

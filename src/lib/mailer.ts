@@ -2,17 +2,19 @@ import nodemailer, { type Transporter } from "nodemailer";
 import { getAdminClient } from "@/lib/authServer";
 
 /**
- * Every email YanLearn sends goes through deliverEmail: SMTP, by default
- * Gmail's (smtp.gmail.com, port 587 with STARTTLS) signed in as the
- * organization's account with a Google app password. It replaced the Resend
- * API in November 2026 (see EMAIL.md). Server-side only.
+ * Every email YanLearn sends goes through deliverEmail over SMTP. Since
+ * 2026-11-26 production sends through SMTP2GO (mail.smtp2go.com, port 587
+ * with STARTTLS) as learn@notifications.ethanyanxu.com; before that it was
+ * the organization's Gmail account, and before that the Resend API (see
+ * EMAIL.md). Server-side only.
  *
  * Settings (secrets/production.json on the server, .env.local locally):
- *   SMTP_USER      the account that sends, e.g. the organization's Gmail address
- *   SMTP_PASSWORD  its app password (Google shows it in groups of four; spaces are ignored)
- *   EMAIL_FROM     optional, defaults to "YanLearn <SMTP_USER>"; Gmail only keeps
- *                  another address here if it is a verified "Send mail as" alias
- *   SMTP_HOST, SMTP_PORT  optional, default smtp.gmail.com and 587
+ *   SMTP_USER      the SMTP username (SMTP2GO's SMTP user, or a Gmail address)
+ *   SMTP_PASSWORD  its password (for Gmail an app password; spaces are ignored there)
+ *   EMAIL_FROM     the sender; required with SMTP2GO, whose username is not an
+ *                  address. Defaults to "YanLearn <SMTP_USER>" for Gmail.
+ *   SMTP_HOST, SMTP_PORT  default smtp.gmail.com and 587; production sets
+ *                  mail.smtp2go.com
  *
  * Each send is recorded in public.email_log, which Admin -> Emails reads.
  */
@@ -31,8 +33,8 @@ export type OutgoingEmail = {
 export type SendOutcome = { ok: boolean; error: string; messageId: string | null };
 
 /**
- * Recipients (To + Bcc) per message. Gmail refuses more than 100 per message
- * sent over SMTP; staying at 50 keeps each group email well inside that.
+ * Recipients (To + Bcc) per message. SMTP2GO and Gmail both refuse more than
+ * 100 per message; staying at 50 keeps each group email well inside that.
  */
 export const MAX_RECIPIENTS_PER_EMAIL = 50;
 

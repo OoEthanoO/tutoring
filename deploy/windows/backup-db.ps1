@@ -36,8 +36,8 @@ if (-not $status) { $status = [pscustomobject]@{} }
 function Set-Status([string]$Name, $Value) { $status | Add-Member -NotePropertyName $Name -NotePropertyValue $Value -Force }
 $production = Read-Json (Join-Path $Root 'secrets\production.json')
 
-# Sends through the site's own SMTP settings (EMAIL.md): Gmail on port 587
-# with STARTTLS unless SMTP_HOST/SMTP_PORT say otherwise.
+# Sends through the site's own SMTP settings (EMAIL.md): SMTP2GO on port 587
+# with STARTTLS in production; Gmail when SMTP_HOST is not set.
 function Get-ProductionSetting([string]$Name, [string]$Default = '') {
     $property = $production.PSObject.Properties[$Name]
     if ($property -and [string]$property.Value) { return [string]$property.Value }
