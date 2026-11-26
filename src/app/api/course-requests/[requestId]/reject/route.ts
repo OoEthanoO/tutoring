@@ -109,7 +109,8 @@ export async function POST(
       }
 
       const discordMention = execDiscordId ? `<@${execDiscordId}>` : `**${requesterName}**`;
-      const discordContent = `${discordMention} Your course request for **${requestRecord.title}** was rejected.
+      const rejectedBy = user.full_name?.trim() || user.email || "management";
+      const discordContent = `${discordMention} Your course request for **${requestRecord.title}** was rejected by **${rejectedBy}**.
 
 Reason: ${note}
 
